@@ -14,3 +14,14 @@ public class Main {
     build();
   }
 }
+/*
+NOTE: to make this run you may have to set user.dir to the right location, for example
+adding a file RealMain.java (already in the git ignore) as follows
+package main;
+public class RealMain {
+  public static void main(String[] arg){
+    System.setProperty("user.dir", "C:\\..\\ZeroToHero");
+    Main.main(arg);
+  }
+}
+*/
