@@ -6,6 +6,7 @@ import java.util.List;
 import levels.*;
 
 public class Main {
+  public static final boolean debug= false;
   static List<Level> levels= new ArrayList<>();
   static void add(Level l){ levels.add(l); }
   static void build(){ levels.stream().forEach(l->l.writeFile()); }
@@ -15,6 +16,8 @@ public class Main {
   }
 }
 /*
+NOTE: a clean way to use this project is to 'link source' to the 
+ZeroToHero/src location from a project anywhere/anywhere else on your HD
 NOTE: to make this run you may have to set user.dir to the right location, for example
 adding a file RealMain.java (already in the git ignore) as follows
 package main;

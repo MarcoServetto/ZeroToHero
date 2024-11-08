@@ -4,16 +4,25 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import main.Main;
 import resources.File;
 public class DirectInstructions {
+  private String fileName;
+  public DirectInstructions(String fileName){ this.fileName= fileName; }
   private List<Image> images= new ArrayList<>();
   private Image current;
   private void commit(Image i){
     current= i;
     images.add(i);
   }
-  public DirectInstructions image(){ commit(new Image(new ArrayList<>())); return this; }
+  public DirectInstructions image(){ commit(new Image(fileName,new ArrayList<>())); return this; }
+  public DirectInstructions image(int size){
+    assert size>0;
+    if(size==1){ return image(); } 
+    return image().image(size-1);
+    }
   public DirectInstructions area(double minX, double maxX, double minY, double maxY,String original, String solution){
+    if(Main.debug) {original= solution;}
     current.areas().add(new TArea(original,solution,new Range(minX,maxX,minY,maxY)));
     return this;
   }
@@ -25,10 +34,13 @@ public class DirectInstructions {
       .text.replace("[###BODY###]", body);
   }
 }
-record Image(List<TArea> areas){
+record Image(String fileName, List<TArea> areas){
+  String indexToName(int index){
+    return fileName+(index>9?"-":"-0")+index;
+  }
   String body(int index){ return
      "<div class=\"contentItem\" id=\"content"+index+"\">\n"
-    +"<img class=\"img_16_9\" src=\"img"+index+".png\"/>\n"
+    +"<img class=\"img_16_9\" src=\""+indexToName(index+1)+".jpg\"/>\n"
     + IntStream.range(0, areas.size())
         .mapToObj(i->areas.get(i).body(index,i))
         .collect(Collectors.joining("\n"))
@@ -46,6 +58,6 @@ record TArea(String original,String solution,Range r){
     +"name=\"Question_"+index1+"_"+index2+"\"\n"
     +"data-solution=\""+solution+"\"\n"
     +"data-original=\""+original+"\"\n"
-    +"autocomplete=\"off\"></textarea>";
+    +"autocomplete=\"off\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\"></textarea>";
   }
 }
