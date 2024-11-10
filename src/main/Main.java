@@ -10,8 +10,10 @@ public class Main {
   static List<Level> levels= new ArrayList<>();
   static void add(Level l){ levels.add(l); }
   static void build(){ levels.stream().forEach(l->l.writeFile()); }
-  public static void main(String[] arg){
+  public static void main(){//see comment below
     add(new Level1());
+    add(new Level2());
+    add(new Level3());
     build();
   }
 }

@@ -11,7 +11,8 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 public enum File{
-  DirectInstructions_html;
+  DirectInstructions_html,
+  Walking_html;
   public final String text;
   File(){text= loadText(this.name());}
   public static Path startPath(){

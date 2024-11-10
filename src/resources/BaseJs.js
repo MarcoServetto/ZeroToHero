@@ -1,11 +1,24 @@
 const Utils = {
+  error:(text) =>{
+	alert(text);
+	throw new Error(text);
+    },
+  check:(cond,text) =>{ if(!cond){ Utils.error(text); } },
   normalize: (text) => text.replace(/\s+/g, ' ').trim(),
-  metaData: (t, str) => t.dataset[str].replace(/\\n/g, '\n'),
-  showMessageBox: (message) => {
+  metaData: (t, str) => {
+	Utils.check(str === str.toLowerCase(),
+	  "metadata can not be case sensitive");
+	return t.dataset[str].replace(/\\n/g, '\n');
+    },
+  metaDataInt: (t, str) => parseInt(Utils.metaData(t,str), 10), 
+  showMessageBox: (message,timeOut) => {
+	if (!timeOut){ timeOut= 1000; }
     const messageBox = document.getElementById('gameMessage');
+	Utils.check(messageBox,
+	  "missing message box");
     messageBox.textContent = message;
     messageBox.style.display = 'block';
-    setTimeout(() => (messageBox.style.display = 'none'), 1000);
+    setTimeout(() => (messageBox.style.display = 'none'), timeOut);
   },
 };
 
