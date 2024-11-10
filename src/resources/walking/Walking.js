@@ -100,19 +100,11 @@ document.addEventListener('DOMContentLoaded', () => {
     return (option === requiredOption && (isErrorType ||
 	  (selectionStart === dataSelectionStart && selectionEnd === dataSelectionEnd)));
 	};
-  const showNextLevelButton= () => {
-	const buttonContainer= document.createElement('div');
-	buttonContainer.classList.add('roundBtn','next-level-button');
-	const nextLevelButton= document.createElement('button');
-	nextLevelButton.innerHTML=
-	  '<span class="emoji">🎉</span>';
-	nextLevelButton.setAttribute('data-tooltip', 'Next Level');
-	nextLevelButton.onclick= 
-	  ()=>window.location.href = nextLevelUrl;
-	buttonContainer.appendChild(nextLevelButton);	
-    const st= document.querySelector('.score-text');
-	if(st){ st.replaceWith(buttonContainer); }
-	};
+  const showNextLevelButton= () => Utils.showNextLevelButton(
+	document.querySelector('.score-text'),
+	'<span class="emoji">🎉</span>',
+	() => window.location.href = nextLevelUrl
+    );
   const handleCorrectAnswer = (increment) => {
 	score += increment;
 	solved[currentQuestionIndex] = true;

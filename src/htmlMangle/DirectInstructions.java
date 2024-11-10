@@ -8,7 +8,11 @@ import main.Main;
 import resources.File;
 public class DirectInstructions {
   private String fileName;
-  public DirectInstructions(String fileName){ this.fileName= fileName; }
+  private int next;
+  public DirectInstructions(String fileName, int next){
+    this.fileName= fileName; 
+    this.next= next;
+  }
   private List<Image> images= new ArrayList<>();
   private Image current;
   private void commit(Image i){
@@ -30,8 +34,11 @@ public class DirectInstructions {
     String body= IntStream.range(0, images.size())
       .mapToObj(index->images.get(index).body(index))
       .collect(Collectors.joining("\n"));
-    return File.DirectInstructions_html
-      .text.replace("[###BODY###]", body);
+    return File.DirectInstructions_html.text
+      .replace("<body>","<body data-next=\"../level"
+        +next+"/Level"
+        +next+".html\">")
+      .replace("[###BODY###]", body);
   }
 }
 record Image(String fileName, List<TArea> areas){

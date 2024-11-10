@@ -19,8 +19,20 @@ const Utils = {
     messageBox.textContent = message;
     messageBox.style.display = 'block';
     setTimeout(() => (messageBox.style.display = 'none'), timeOut);
-  },
-};
+  },  
+  showNextLevelButton: (target, innerHTML, onClick ) => {
+    if (!target){ return; }//Most times we want to show it and keep it shown
+    const buttonContainer = document.createElement('div');
+    buttonContainer.classList.add('roundBtn', 'next-level-button');
+    const button = document.createElement('button');
+    button.innerHTML = innerHTML;
+    button.setAttribute('data-tooltip', 'Next Level');
+    button.addEventListener('click', onClick);
+    buttonContainer.appendChild(button);
+    target.replaceWith(buttonContainer);
+    return buttonContainer;
+    },
+  };
 
 const initButtons = (updateContent,buttonActions) => {
   const freezeButtons = new Set();
@@ -45,4 +57,4 @@ const initButtons = (updateContent,buttonActions) => {
       });
     });
   return {freezeFor:freezeFor};
-  }
+  };

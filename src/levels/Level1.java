@@ -3,7 +3,7 @@ public class Level1 implements Level{
   public String fileName(){ return "Level1"; }
   public String of(){
     String last="";
-    return new htmlMangle.DirectInstructions(fileName())
+    return new htmlMangle.DirectInstructions(fileName(),2)
     // topStart/end   leftStart/end
     .image(8)
       .area(15, 30,     3, 48, "", "Hear:{}")

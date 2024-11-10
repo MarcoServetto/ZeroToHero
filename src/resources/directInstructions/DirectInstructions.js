@@ -2,7 +2,7 @@ const initSlides = () => {
   let currentIndex = 0;
   const prev = document.getElementById('prevBtn');
   const next = document.getElementById('nextBtn');
-  //const reset= document.getElementById('resetBtn');
+  const nextLevelUrl = Utils.metaData(document.body,'next');
   const maxIndex = (() => {
 	let i = 0; 
     while (true) {
@@ -24,19 +24,20 @@ const initSlides = () => {
 	  .classList.add('active');
 	prev.disabled = (currentIndex === 0);
 	next.disabled = (currentIndex === maxIndex);
+	if (next.disabled){ Utils.showNextLevelButton(
+      document.getElementById('endButtonPlaceholder'),
+	  '<span class="emoji">🎉</span>',
+	  () => window.location.href = nextLevelUrl
+	  );}
 	};
   const checkSolution = () => allTextArea(currentIndex).every(t => {
 	const userInput = Utils.normalize(t.value);
 	const solution = Utils.normalize(Utils.metaData(t, 'solution'));
 	return userInput === solution;
 	});
-  const prevBtn = () => {
-	if (currentIndex > 0){ currentIndex--; }
-	};
+  const prevBtn = () => { if (currentIndex > 0){ currentIndex--; } };
   const nextBtn = () => {
-	if (!checkSolution()) {
-	  return Utils.showMessageBox('Complete all the text to continue');
-	  }
+	if (!checkSolution()) { return Utils.showMessageBox('Complete all the text to continue'); }
 	if (currentIndex < maxIndex){ currentIndex++; }
 	};
   const resetBtn = () => {
