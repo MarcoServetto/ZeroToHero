@@ -1,8 +1,10 @@
 package levels;
 public class Level1 implements Level{
+  @Override
   public String fileName(){ return "Level1"; }
+  @Override
   public String of(){
-    String last="";
+    String last;
     return new htmlMangle.DirectInstructions(fileName(),2)
     // topStart/end   leftStart/end
     .image(8)

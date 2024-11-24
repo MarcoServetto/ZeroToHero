@@ -2,7 +2,6 @@ package main;
 
 import java.util.ArrayList;
 import java.util.List;
-
 import levels.*;
 
 public class Main {
@@ -26,7 +25,7 @@ package main;
 public class RealMain {
   public static void main(String[] arg){
     System.setProperty("user.dir", "C:\\..\\ZeroToHero");
-    Main.main(arg);
+    Main.main();
   }
 }
 */

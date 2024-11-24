@@ -31,7 +31,7 @@ public class Level2 implements Level{
       //Text +%/--%-- outside of comments
       //is an error. When there is an error,
       //does not matter what you select.
-      @[Yust press @@error :-)]@ 
+      @[Just press @@error :-)]@ 
       """,Error)
     .question("""
       @[//@@Ok, if you answer all correct, the]@

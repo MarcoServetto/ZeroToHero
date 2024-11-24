@@ -1,8 +1,1 @@
-/**
- * 
- */
-/**
- * 
- */
-module ZeroToHeroGame {
-}
+module ZeroToHeroGame {}
