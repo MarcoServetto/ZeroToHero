@@ -48,7 +48,7 @@ public class Walking {
       .replace("[###BODY###]", body);
   }
   public enum Option{
-    Binding,
+    Parameter,
     MethodCall,
     ObjectLiteral,
     MethodDeclaration,

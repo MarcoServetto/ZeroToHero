@@ -37,7 +37,21 @@ const initSlides = () => {
 	});
   const prevBtn = () => { if (currentIndex > 0){ currentIndex--; } };
   const nextBtn = () => {
-	if (!checkSolution()) { return Utils.showMessageBox('Complete all the text to continue'); }
+	if (!checkSolution()) { return Utils.showMessageBox(`
+	  <div>
+	    <p style="font-size: 2.5ex; text-align: center;"><strong>Complete all the text to continue!</strong></p>
+	    <hr>
+	    <p>Game explanation:</p>
+	    <ul>
+	      <li>🖊️ Complete the text area with the needed content.</li>
+	      <li>⟳ You can reset the text area to the original content by pressing the blue ⟳ button.</li>
+	      <li>✨ This also shows the solution for a moment!</li>
+	      <li>🎉 At the end, you can go to the next level by pressing on the symbol <span class="emoji">🎉</span>.</li>
+	    </ul>
+		<hr>
+		<p>☑️ Click here to make this message disappear</p>
+	  </div>
+      `,0,true,Buttons,()=>{}); }
 	if (currentIndex < maxIndex){ currentIndex++; }
 	};
   const resetBtn = () => {

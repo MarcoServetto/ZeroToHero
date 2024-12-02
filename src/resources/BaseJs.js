@@ -23,7 +23,11 @@ const Utils = {
     throw new Error(text);
     },
   check:(cond,text) =>{ if(!cond){ Utils.error(text); } },
-  normalize: (text) => text.replace(/\s+/g, ' ').trim(),
+  normalize: (text) => (' ' + text + ' ')
+	.replace(/\s+(?=[^a-zA-Z0-9])/g, '') // Remove spaces before symbols
+	.replace(/(?<=[^a-zA-Z0-9])\s+/g, '') // Remove spaces after symbols
+    .replace(/\s+/g, ' ') // Collapse remaining spaces
+    .trim(),
   metaData: (t, str) => {
 	Utils.check(str === str.toLowerCase(),
 	  "metadata can not be case sensitive");
@@ -35,7 +39,7 @@ const Utils = {
 	  if (!timeOut){ timeOut= 1000; }
     const messageBox = document.getElementById('gameMessage');
 	  Utils.check(messageBox,"missing message box");
-    messageBox.textContent = message;
+    messageBox.innerHTML = message;
     messageBox.style.display = 'block';
     const autoMsg= requireClick !== true;
     const t= Buttons.freezeToken();

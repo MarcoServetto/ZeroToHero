@@ -2,7 +2,8 @@
 //import { OptionExplanations } from './GameOptions.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-  const nextQuestion = Utils.tag('nextQuestion', () => {    
+  const nextQuestion = Utils.tag('nextQuestion', () => {
+	if (streak === 0){streak = 1; }    
     const completed= questions.every(q => q.solved);
     if (completed){ questions.forEach(q => q.solved = false); }
     let i = (currentQuestionIndex + 1) % totalQuestions;
@@ -13,15 +14,24 @@ document.addEventListener('DOMContentLoaded', () => {
     updateContent();
     });
   const updateContent= Utils.tag('updateContent',() => {
-    //questions.forEach(q => q.active(false));
-    //questions[currentQuestionIndex].active(true);
     requiredPointsElem.textContent = requiredPoints;
     resetAnimationSpeed();
     });
   const speedUp= ()=>{ streak = streak + 1; };
   const resetAnimationSpeed= () => {
-    backLayer.style.animationDuration = (1000000*Math.pow(0.3981,streak)+'s');
-    frontLayer.style.animationDuration = (500000*Math.pow(0.3981,streak)+'s');
+	const speed= streak>0?Math.pow(0.3981,streak):0;
+    backLayer.style.animationDuration = (1000000 * speed + 's');
+    frontLayer.style.animationDuration = (500000 * speed + 's');
+    if (speed > 0){
+      character.style.animationPlayState = 'running';
+	  smallCharacter.style.animationPlayState = 'running';
+	  character.style.animationDuration = ((1.5 + 50 * speed) + 's');
+      smallCharacter.style.animationDuration = ((1.5 + 50 * speed) + 's');
+	  }
+	else {
+	  character.style.animationPlayState = 'paused';
+	  smallCharacter.style.animationPlayState = 'paused';
+	  }
     };
   const showScoreAnimation= (increment) => {
     const incrementElem = document.createElement('span');
@@ -53,9 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const handleIncorrectAnswer= Utils.tag('handleIncorrectAnswer', (currentQuestion) => {
     //Utils.log(true,'showing answer for incorrect Q' + getQuestionNumber(currentQuestion));
     streak = 0;
-    resetAnimationSpeed();
-    streak = 1;
-    currentBonusElem.textContent = streak;
+    currentBonusElem.textContent = 1;
     currentQuestion.toSolution();
     currentQuestion.selectionEvent();
     Buttons.freezeFor(4050);
@@ -63,14 +71,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   const displayExplanationMessage = (requiredOption) => {
     const explanation = OptionExplanations[requiredOption] || Utils.error('bad button id '+requiredOption);
-    const msg = `You stumble and fall.
-    It was ${explanation}, see the text currently selected.
-    Minigame explanation:
-      - Look for the character selected in the code.
-      - Select the smallest cohesive amout of code around that character.
-      - Click on the button corresponding to the kind of text you selected.
-      - There is an error around the selected character? just press error.
-    `;
+    const msg =`
+	  <div>
+	    <p><strong>You stumble and fall.</strong></p>
+		<p>See the text currently selected.</p>
+		<p>The right button was "<strong>${explanation}</strong>".</p>
+		<hr>
+	    <p>Minigame explanation:</p>
+	    <ul>
+	      <li>👀Look for the character selected in the code.</li>
+	      <li>🖱️Select the smallest cohesive amount of code around that character.</li>
+	      <li>☑️Click on the button corresponding to the kind of text you selected.</li>
+	      <li>🚨There is an error around the selected character? Just press "Error".</li>
+		  <li>🎲This puzzle is all about learning patterns via trial and error.</li>
+	    </ul>
+		<hr>
+		<p>☑️ Click here to make this message disappear</p>
+		<p>🎉 At the end, you can go to the next level by pressing on the symbol <span class="emoji">🎉</span>.</p>
+	  </div>
+	  `;
     Utils.showMessageBox(msg, 4000, true, Buttons, nextQuestion);
     };	
   const handleButtonClick = Utils.tag('handleButtonClick', (option) => {
@@ -83,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
     nextQuestion();
     });
   const buttonActions = {
-    btnBinding: () => handleButtonClick(1),
+    btnParameter: () => handleButtonClick(1),
     btnMethodCall: () => handleButtonClick(2),
     btnObjectLiteral: () => handleButtonClick(3),
     btnMethodDeclaration: () => handleButtonClick(4),
@@ -93,10 +112,16 @@ document.addEventListener('DOMContentLoaded', () => {
     btnError: () => handleButtonClick(8),
   };
   //init code
+  const overlay = document.getElementById('screenOverlay');
+  setTimeout(() => { 
+	overlay.style.opacity = '0';      
+    setTimeout(() => overlay.remove(), 3000);
+    }, 0);
   let currentQuestionIndex= 0;
   let score= 0;
   let streak= 1;
   const Buttons= initButtons(updateContent, buttonActions);
+  Buttons.freezeFor(1500);
   const questions= InitQuestions(Buttons);
   const totalQuestions= questions.length;
   const currentPointsElem= document.getElementById('currentPoints');
@@ -107,6 +132,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const scoreDisplayElem= document.querySelector('.score-display');
   const backLayer= document.querySelector('.back-layer');
   const frontLayer= document.querySelector('.front-layer');
+  const character = document.querySelector('.character');
+  const smallCharacter = document.querySelector('.small-character');
   questions.forEach(q => q.active(false));
   questions[currentQuestionIndex].active(true);
   updateContent();
