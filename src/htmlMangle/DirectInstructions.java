@@ -46,7 +46,7 @@ record Image(String fileName, List<TArea> areas){
     return fileName+(index>9?"-":"-0")+index;
   }
   String body(int index){ return
-     "<div class=\"contentItem\" id=\"content"+index+"\">\n"
+     "<div class=\"contentItem\" id=\"content"+index+"\" hidden>\n"
     +"<img class=\"img_16_9\" src=\""+indexToName(index+1)+".jpg\"/>\n"
     + IntStream.range(0, areas.size())
         .mapToObj(i->areas.get(i).body(index,i))

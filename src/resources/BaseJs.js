@@ -1,54 +1,70 @@
-const Utils = {
+const Deck= {
+  list: (str) => {
+    const res = [];
+    for (let i= 0; true; i++) {
+      const elem = document.getElementById(str + i);
+      if (!elem) { return res; }
+      res.push(elem);
+      }
+    },
+  hideAll: (str) => Deck.list(str).forEach(c=>c.hidden = true),
+  };
+const MetaData= {
+  str: (t, str) => {
+    Utils.check(str === str.toLowerCase(),
+      "metadata can not be case sensitive");
+    return t.dataset[str].replace(/\\n/g, '\n');
+    },
+  int: (t, str) => parseInt(MetaData.str(t,str), 10),         
+  };
+const Log= {
   _currentStack: [],  // Safe for sync code due to JS single-threading
   tag: (name, fn) => (...args) => {
-    Utils._currentStack.push(name);
+    Log._currentStack.push(name);
     try { return fn(...args); }
-    finally { Utils._currentStack.pop(); }
+    finally { Log._currentStack.pop(); }
     },
   tagAsync: (name, fn) => (...args) => {
-    if (Utils._currentStack.length > 0){throw new Error(
+    if (Log._currentStack.length > 0){throw new Error(
       `Async handler "${name}" started with non-empty stack:
-      [${Utils._currentStack.join('->')}].
+      [${Log._currentStack.join('->')}].
       This suggests a bug in the tag/tagAsync system.`);}
-    Utils._currentStack = [name];
+    Log._currentStack = [name];
     try { return fn(...args); }
-    finally { Utils._currentStack = []; }
+    finally { Log._currentStack = []; }
     },
-    log: (cond, msg) => {
-      if (!cond) return;
-      console.log(`${msg}\nTagStack: [${Utils._currentStack.join('->')}]\n`);
+  log: (cond, msg) => {
+    if (msg===undefined){ return Log.log(true,cond); }
+    if (!cond){ return; }
+    console.log(`${msg}\nTagStack: [${Log._currentStack.join('->')}]\n`);
     },
+  };
+const Utils= {
   error:(text) =>{
     alert(text);
     throw new Error(text);
     },
+  checkExists:(value)=>{
+    const err= value === null || value === undefined || Number.isNaN(value);
+    if(!err){ return value; }
+    Utils.error("Value does not exists");
+    },
   check:(cond,text) =>{ if(!cond){ Utils.error(text); } },
   normalize: (text) => (' ' + text + ' ')
-	.replace(/\s+(?=[^a-zA-Z0-9])/g, '') // Remove spaces before symbols
-	.replace(/(?<=[^a-zA-Z0-9])\s+/g, '') // Remove spaces after symbols
+    .replace(/\s+(?=[^a-zA-Z0-9])/g, '') // Remove spaces before symbols
+    .replace(/(?<=[^a-zA-Z0-9])\s+/g, '') // Remove spaces after symbols
     .replace(/\s+/g, ' ') // Collapse remaining spaces
     .trim(),
-  metaData: (t, str) => {
-	Utils.check(str === str.toLowerCase(),
-	  "metadata can not be case sensitive");
-	return t.dataset[str].replace(/\\n/g, '\n');
-    },
-  metaDataInt: (t, str) => parseInt(Utils.metaData(t,str), 10), 
   
-  showMessageBox: (message, timeOut, requireClick, Buttons, callback) => {
-	  if (!timeOut){ timeOut= 1000; }
+  showMessageBox: (message, timeOut, requireClick, freezeToken, callback) => {
+    if (!timeOut){ timeOut= 1000; }
     const messageBox = document.getElementById('gameMessage');
-	  Utils.check(messageBox,"missing message box");
+    Utils.check(messageBox,"missing message box");
     messageBox.innerHTML = message;
     messageBox.style.display = 'block';
     const autoMsg= requireClick !== true;
-    const t= Buttons.freezeToken();
-    /*const endMsg= () => {
-      messageBox.style.display = 'none';
-      t.unfreeze();      
-      if (callback){ callback(); }
-      };*/
-    const endMsg = Utils.tag('MessageBoxCallBack', () => {
+    const t= freezeToken();
+    const endMsg = Log.tag('MessageBoxCallBack', () => {
         messageBox.style.display = 'none';
         t.unfreeze();
         if (callback){ callback(); }
@@ -104,3 +120,14 @@ const initButtons = (updateContent,buttonActions) => {
     isFrozen: isFrozen,
     };
   };
+//----------- Debugging monkey patching to avoid common mistakes
+//(()=>{//Not working. Would need manually wrapping all functions
+//  const debugGlobalFunctionProxy = new Proxy(Function.prototype, {
+//    get(target, prop, receiver) {
+//      if (prop !== 'length'){ return Reflect.get(target, prop, receiver); }
+//      throw new Error("Accessing 'length' of a function is discouraged.");
+//      }});
+//  Object.setPrototypeOf(Function.prototype, debugGlobalFunctionProxy);
+//  Log.log("Debug On");
+//  })();
+

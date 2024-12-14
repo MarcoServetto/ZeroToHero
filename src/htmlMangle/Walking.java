@@ -1,6 +1,7 @@
 package htmlMangle;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -68,12 +69,10 @@ record Question(String fileName, String text, int sel, int start, int end, htmlM
           + "    data-selectionstart=\"" + start + "\"\n"
           + "    data-selectionend=\"" + end + "\"\n"
           + "    data-option=\"" + (option.ordinal()+1) + "\"\n"
-          + "    autocomplete=\"off\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" readonly></textarea>";
+          + "    autocomplete=\"off\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" readonly hidden></textarea>";
   }
 }
 /*
 Bugs:
 the tool tip for the next level button appears as a round in the score?
-
-
 */

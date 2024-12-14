@@ -2,8 +2,8 @@
 //import { OptionExplanations } from './GameOptions.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-  const nextQuestion = Utils.tag('nextQuestion', () => {
-	if (streak === 0){streak = 1; }    
+  const nextQuestion= Log.tag('nextQuestion', () => {
+    if (streak === 0){streak = 1; }    
     const completed= questions.every(q => q.solved);
     if (completed){ questions.forEach(q => q.solved = false); }
     let i = (currentQuestionIndex + 1) % totalQuestions;
@@ -13,25 +13,25 @@ document.addEventListener('DOMContentLoaded', () => {
     questions[currentQuestionIndex].active(true);
     updateContent();
     });
-  const updateContent= Utils.tag('updateContent',() => {
+  const updateContent= Log.tag('updateContent',() => {
     requiredPointsElem.textContent = requiredPoints;
     resetAnimationSpeed();
     });
   const speedUp= ()=>{ streak = streak + 1; };
   const resetAnimationSpeed= () => {
-	const speed= streak>0?Math.pow(0.3981,streak):0;
+    const speed= streak>0?Math.pow(0.3981,streak):0;
     backLayer.style.animationDuration = (1000000 * speed + 's');
     frontLayer.style.animationDuration = (500000 * speed + 's');
     if (speed > 0){
       character.style.animationPlayState = 'running';
-	  smallCharacter.style.animationPlayState = 'running';
-	  character.style.animationDuration = ((1.5 + 50 * speed) + 's');
+      smallCharacter.style.animationPlayState = 'running';
+      character.style.animationDuration = ((1.5 + 50 * speed) + 's');
       smallCharacter.style.animationDuration = ((1.5 + 50 * speed) + 's');
-	  }
-	else {
-	  character.style.animationPlayState = 'paused';
-	  smallCharacter.style.animationPlayState = 'paused';
-	  }
+      }
+    else {
+      character.style.animationPlayState = 'paused';
+      smallCharacter.style.animationPlayState = 'paused';
+      }
     };
   const showScoreAnimation= (increment) => {
     const incrementElem = document.createElement('span');
@@ -60,8 +60,8 @@ document.addEventListener('DOMContentLoaded', () => {
     showScoreAnimation(increment);
     if (score >= requiredPoints){ showNextLevelButton(); }
     };
-  const handleIncorrectAnswer= Utils.tag('handleIncorrectAnswer', (currentQuestion) => {
-    //Utils.log(true,'showing answer for incorrect Q' + getQuestionNumber(currentQuestion));
+  const handleIncorrectAnswer= Log.tag('handleIncorrectAnswer', (currentQuestion) => {
+    //Log.log(true,'showing answer for incorrect Q' + getQuestionNumber(currentQuestion));
     streak = 0;
     currentBonusElem.textContent = 1;
     currentQuestion.toSolution();
@@ -90,9 +90,9 @@ document.addEventListener('DOMContentLoaded', () => {
 		<p>🎉 At the end, you can go to the next level by pressing on the symbol <span class="emoji">🎉</span>.</p>
 	  </div>
 	  `;
-    Utils.showMessageBox(msg, 4000, true, Buttons, nextQuestion);
+    Utils.showMessageBox(msg, 4000, true, Buttons.freezeToken, nextQuestion);
     };	
-  const handleButtonClick = Utils.tag('handleButtonClick', (option) => {
+  const handleButtonClick = Log.tag('handleButtonClick', (option) => {
     Buttons.freezeFor(500);
     const currentQuestion = questions[currentQuestionIndex];
     const nope= !currentQuestion.isCorrectAnswer(option);
@@ -126,8 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const totalQuestions= questions.length;
   const currentPointsElem= document.getElementById('currentPoints');
   const currentBonusElem= document.getElementById('currentBonus');
-  const requiredPoints= Utils.metaDataInt(document.body,'required');
-  const nextLevelUrl= Utils.metaData(document.body,'next');
+  const requiredPoints= MetaData.int(document.body,'required');
+  const nextLevelUrl= MetaData.str(document.body,'next');
   const requiredPointsElem= document.getElementById('requiredPoints');
   const scoreDisplayElem= document.querySelector('.score-display');
   const backLayer= document.querySelector('.back-layer');
