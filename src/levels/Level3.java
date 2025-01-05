@@ -27,7 +27,7 @@ public class Level3 implements Level{
       """,TypeDeclaration)    
     .question("@[South@@.turn]@", MethodCall)
     .question("@[So@@uth]@.turn", ObjectLiteral)
-    .question("@[No@@rth:]@", Error)
+    .question("@[North@@:]@", Error)
     .question("Direction:{.turn:@[Dir@@ection]@,}", Type)
     .question("North:Direction{@[.turn@@->East,]@}", MethodDeclaration)
     .question("North:@[Dire@@ction]@{.turn->East,}", Type)

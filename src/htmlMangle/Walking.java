@@ -43,7 +43,7 @@ public class Walking {
     return File.Walking_html
       .text
       .replace("<body>","<body data-required=\""
-        +required+"\" data-next=\"../level"
+        +required+"\" data-next=\"../Level"
         +next+"/Level"
         +next+".html\">")
       .replace("[###BODY###]", body);

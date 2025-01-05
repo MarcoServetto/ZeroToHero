@@ -35,7 +35,7 @@ public class DirectInstructions {
       .mapToObj(index->images.get(index).body(index))
       .collect(Collectors.joining("\n"));
     return File.DirectInstructions_html.text
-      .replace("<body>","<body data-next=\"../level"
+      .replace("<body>","<body data-next=\"../Level"
         +next+"/Level"
         +next+".html\">")
       .replace("[###BODY###]", body);

@@ -19,8 +19,8 @@ public class CollectText {
 
     Path outputFile= workingDir.toAbsolutePath().resolve("assets", "collectedText","collectedText.txt");
     List<Path> allFiles=List.of(
-      levels.resolve("level1","Level1.html"),
-      levels.resolve("level2","Level2.html"),
+      levels.resolve("Level1","Level1.html"),
+      levels.resolve("Level2","Level2.html"),
       resources.resolve("BaseJs.js"),
       resources.resolve("BaseStyle.css"),
       resources.resolve("RoundButtonsStyle.css"),
@@ -30,7 +30,7 @@ public class CollectText {
       walking.resolve("Question.js"),
       walking.resolve("Walking.js"),
       walking.resolve("Walking.css"),
-      levels.resolve("level1","GatherExample.html"),
+      levels.resolve("Level1","GatherExample.html"),
       gather.resolve("Gather.css"),
       gather.resolve("CodeCard.js"),
       gather.resolve("Gather.js")

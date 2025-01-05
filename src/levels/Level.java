@@ -13,7 +13,7 @@ public interface Level {
   default void writeFile(){
     Path p= File.startPath()
       .getParent()
-      .resolve("assets")
+      .resolve("assetsDest")
       .resolve(fileName())
       .resolve(fileName()+".html");
     try {

@@ -7,7 +7,7 @@ public class Level1 implements Level{
     String last;
     return new htmlMangle.DirectInstructions(fileName(),2)
     // topStart/end   leftStart/end
-    .image(8)
+    .image(12)
       .area(15, 30,     3, 48, "", "Hear:{}")
     .image(2)
       .area(15, 30,     3, 48, "", "See:{}")
@@ -24,7 +24,7 @@ public class Level1 implements Level{
       .area( 2, 85,    55, 98, last,last=
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}")
     .image()
-      .area(27, 85,     1, 41, last,last=
+      .area(37, 90,     1, 41, last,last=
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}")
     .image(2)
       .area(27, 85,     1, 41, last,last=
@@ -38,5 +38,5 @@ public class Level1 implements Level{
     .image()
       .area(27, 85,     1, 41, last,last=
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{.turn->South,}\nWest:Direction{.turn->North,}\nSouth:Direction{.turn->West,}")
-    .image(2)
+    .image(4)
     .build(); } }

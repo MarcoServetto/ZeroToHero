@@ -58,7 +58,7 @@ public class Gather {
       .collect(Collectors.joining("\n"));
     return File.Gather_html
       .text
-      .replace("<body>","<body data-next=\"../level"
+      .replace("<body>","<body data-next=\"../Level"
         +next+"/Level"
         +next+".html\">")
       .replace("[###BODY###]", pre+body+"\n</div>\n");
