@@ -67,7 +67,8 @@ public class Gather {
     BrownMushroom("BrownM",21),
     Eggplant("EggP",25),
     YellowFlower("YellowF",29),
-    RedFlower("RedF",21);
+    RedFlower("RedF",21),
+    Tomato("Tomato",25);
     String loc;
     int limit;
     Kind(String loc, int limit){

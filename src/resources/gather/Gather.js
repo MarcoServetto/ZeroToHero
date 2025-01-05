@@ -15,16 +15,17 @@ const CheckSolution= (freezeToken,allCards)=>{
   const uniqueGroups= new Set(usedBaskets.map(getSameIn));
   const allBasketsAreUnique= uniqueGroups.size == usedBaskets.length; 
   const allCardsUsed= allCards.cards().length === 0;
-  const noTrash= usedBaskets.every(noTrashIn);
+  const trashCount = usedBaskets.filter(b => !noTrashIn(b)).length;
+  const noTrash= trashCount === 0;
   const onlyTrash= onlyTrashIn(getBasketIds(9));
   const allSame= usedBaskets.every(allSameIn);
 
   const explanation=(() => {
     if(!allCardsUsed){ return "You have not yet collected all the items."; }
-    if (!noTrash){   return "Not all poisonous items are in the trash."; }
+    if (!noTrash){   return "Not all poisonous items are in the trash.<BR>"+trashCount+" toxic code outside the trash."; }
     if (!onlyTrash){ return "Some good items ended up in the trash."; }
     if (!allSame){   return "Some baskets contain items of different kinds."; }
-    if (!allBasketsAreUnique){ return "Some items of the same kind are split across baskets."+uniqueGroups.size +" "+ usedBaskets.length; }
+    if (!allBasketsAreUnique){ return "Some items of the same kind are split across baskets.<BR>There are "+uniqueGroups.size+" unique groups but you used "+usedBaskets.length+" baskets"; }
     return "";
     })();
   const msg= `

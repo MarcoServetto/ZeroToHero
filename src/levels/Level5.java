@@ -1,9 +1,5 @@
 package levels;
 import static htmlMangle.Gather.Kind.*;
-//Panic: ok, this is a good area for some tasty
-//mushrooms and wild eggplants
-//Panic: ah, you can write .turn-> or not, since it is the only abstract method in Direction.
-//Panic: also, empty parenthesis can be omitted                        
 
 public class Level5 implements Level{
   public String fileName(){ return "Level5"; }
@@ -11,20 +7,21 @@ public class Level5 implements Level{
     return new htmlMangle.Gather(fileName(),"""
 //This code is visible by all the cards to the left
 Direction:{.turn:Direction,}
-North:Direction {.turn->East,}
-East:Direction{South}
-South:Direction{West}
-West:Direction{North}
-""",1)
-        // code with title, group img, img num
-    .card("North\nNorth",1,BrownMushroom,1)
-    .card("North again?\nNorth.turn.turn.turn.turn",1,BrownMushroom,2)
-    .card("Not north\nNorth.turn",2,Eggplant,1)
-    .cardTrash("Starts with dot?\n.turn East",BrownMushroom,5)
-    .card("Start East and turn\nEast.turn.turn.turn",1,BrownMushroom,3)
-    .cardTrash("Will this work?\nEast.turn{}",BrownMushroom,7)
-    .card("Empty () make no difference\nEast.turn().turn.turn",1,BrownMushroom,4)
-    .card("Clearly East\nEast",2,Eggplant,2)
-    .cardTrash("Turning from where?\nDirection.turn",BrownMushroom,6)
+""",6)
 
+        // code with title, group img, img num
+    .card("1-North\nNorth:Direction{.turn->East,}",1,BrownMushroom,1)
+    .card("2-North\nNorth:Direction{East,}",1,BrownMushroom,3)
+    .card("3-South\nSouth:Direction{.turn->West,}",3,Eggplant,11)
+    .card("4-West\nWest:Direction{.turn->North,}",4,YellowFlower,7)    
+    .card("5-East\nEast:Direction{South}",2,Tomato,1)
+    .card("6-East\nEast:Direction{.turn->South,}",2,Tomato,10)
+    .card("7-West\nWest:Direction{.turn[]()->North,}",4,YellowFlower,1)    
+    .cardTrash("8-North\nNorth:Direction{->East,}",BrownMushroom,13)
+    .card("9-North\nNorth:Direction{East{},}",1,BrownMushroom,12)
+    .card("10-East\nEast:Direction{South[]{}}",2,Tomato,5)
+    .cardTrash("11-East\nEast:Direction{()->South}",Tomato,23)    
+    .cardTrash("12-South\nSouth:Direction{.turn->South}",Eggplant,1)
+    .card("13-South\nSouth:Direction{.turn()->West}",3,Eggplant,3)
+    .cardTrash("14-West\nWest:Direction{turn->North,}",YellowFlower,10)    
     .build(); } }
