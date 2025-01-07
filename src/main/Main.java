@@ -5,7 +5,7 @@ import java.util.List;
 import levels.*;
 
 public class Main {
-  public static final boolean debug= true;
+  public static final boolean debug= false;
   static List<Level> levels= new ArrayList<>();
   static void add(Level l){ levels.add(l); }
   static void build(){ levels.stream().forEach(l->l.writeFile()); }
@@ -16,6 +16,7 @@ public class Main {
     add(new Level4());
     add(new Level5());
     add(new Level6());
+    add(new Level7());
     build();
   }
 }

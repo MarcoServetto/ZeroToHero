@@ -15,7 +15,7 @@ North:Direction {.turn->East,}
 East:Direction{South}
 South:Direction{West}
 West:Direction{North}
-""",1)
+""",7)
         // code with title, group img, img num
     .card("North\nNorth",1,BrownMushroom,1)
     .card("North again?\nNorth.turn.turn.turn.turn",1,BrownMushroom,2)

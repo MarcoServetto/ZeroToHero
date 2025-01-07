@@ -1,6 +1,7 @@
 package htmlMangle;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -29,6 +30,15 @@ public class DirectInstructions {
     if(Main.debug) {original= solution;}
     current.areas().add(new TArea(original,solution,new Range(minX,maxX,minY,maxY)));
     return this;
+  }
+  public DirectInstructions area(double minX, double maxX, double minY, double maxY,String annotatedOriginal){
+    String solution= annotatedOriginal
+      .replace("/*[*/", "")
+      .replace("/*]*/", "");
+    String start= Pattern.quote("/*[*/");
+    String end= Pattern.quote("/*]*/");
+    String original= annotatedOriginal.replaceAll(start+".*?"+end,"[???]");
+    return area(minX,maxX,minY,maxY,original,solution);
   }
   public String build(){    
     String body= IntStream.range(0, images.size())
