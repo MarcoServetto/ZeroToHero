@@ -74,5 +74,7 @@ const initSlides = () => {
     }
   updateContent();
   const Buttons = initButtons(updateContent,{nextBtn,prevBtn,resetBtn});
+  document.querySelectorAll('img')//force img preloading
+    .forEach(img =>img.offsetHeight);
   };
 initSlides();
