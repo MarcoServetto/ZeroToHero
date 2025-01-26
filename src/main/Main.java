@@ -17,6 +17,8 @@ public class Main {
     add(new Level5());
     add(new Level6());
     add(new Level7());
+    add(new Level8());
+    add(new Level9());
     build();
   }
 }

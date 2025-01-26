@@ -4,7 +4,7 @@ import static htmlMangle.Walking.Option.*;
 public class Level3 implements Level{
   public String fileName(){ return "Level3"; }
   public String of(){
-    return new htmlMangle.Walking(fileName(),25,5)
+    return new htmlMangle.Walking(fileName(),25,4)
     // selected, start, end, option
     .question("""
       //Going forward the text will help
