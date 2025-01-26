@@ -120,6 +120,13 @@ const initButtons = (updateContent,buttonActions) => {
     isFrozen: isFrozen,
     };
   };
+(()=>{
+  const overlay = document.getElementById('screenOverlay');
+  setTimeout(() => { 
+    overlay.style.opacity = '0';      
+    setTimeout(() => overlay.remove(), 3000);
+      }, 0);
+  })();
 //----------- Debugging monkey patching to avoid common mistakes
 //(()=>{//Not working. Would need manually wrapping all functions
 //  const debugGlobalFunctionProxy = new Proxy(Function.prototype, {

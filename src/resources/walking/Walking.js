@@ -112,11 +112,6 @@ document.addEventListener('DOMContentLoaded', () => {
     btnError: () => handleButtonClick(8),
   };
   //init code
-  const overlay = document.getElementById('screenOverlay');
-  setTimeout(() => { 
-	overlay.style.opacity = '0';      
-    setTimeout(() => overlay.remove(), 3000);
-    }, 0);
   let currentQuestionIndex= 0;
   let score= 0;
   let streak= 1;

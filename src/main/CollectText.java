@@ -11,7 +11,7 @@ import java.util.List;
 public class CollectText {
   public static void main(String[] args) throws IOException, URISyntaxException {
     var workingDir = Path.of("C:\\Users\\sonta\\Documents\\GitHub\\ZeroToHero\\src");
-    Path levels= workingDir.toAbsolutePath().resolve("assets");
+    Path levels= workingDir.toAbsolutePath().resolve("assetsDest");
     Path resources= workingDir.toAbsolutePath().resolve("resources");
     Path walking= resources.resolve("walking");
     Path directInstructions= resources.resolve("directInstructions");
@@ -29,11 +29,7 @@ public class CollectText {
       walking.resolve("GameOptions.js"),
       walking.resolve("Question.js"),
       walking.resolve("Walking.js"),
-      walking.resolve("Walking.css"),
-      levels.resolve("Level1","GatherExample.html"),
-      gather.resolve("Gather.css"),
-      gather.resolve("CodeCard.js"),
-      gather.resolve("Gather.js")
+      walking.resolve("Walking.css")
       );
     String intro="""
     I'm making a browser based game to teach programming.
@@ -104,17 +100,20 @@ public class CollectText {
     let x= 3;//Good, still initialization    
     if (cond){ x = 3; }//Good, this is update
     ----------------
-    At this point I've completed direct instructions and walking,
-    I'm now working on 'gather'.
-    Gather has a completed html structure and css, 
-    I'm now working on the js.
-    The code is mostly complete, but there are some bugs.
-    In particular,
-    when 'Mushroom 4!' is dragged on the baskets,
-    it is partially confused for the egg plant:
-    - when mouse over, the data of the eggplant is shown
-    - when dragged back on top of the eggplant, both cards disappear
-    Can you track down the source of the bug? 
+    At this point I think I want to make sure that every time we go to the next level, there is some cool
+    animation showing that the game is progressing.
+    Since it is always pressing a specific button that goes to the next level,
+    we should be able to add some specific code to BaseJs in order
+    to get the animation working on all level changes, for all kinds of levels. 
+    Can you design code in this sense?
+    -Think carefully what a good 'jump to next level' animation can be.
+    The player do not really knows about 'level numbers', they
+    think in order of 'game days' and each day is made by a number of levels,
+    for example day1 is 9 levels.
+    - I can make new images with transparency if you give me a clear description of the image.
+     Images may or may not be appropriate for this animation.
+    - The animation should last between 3 and 15 seconds, but you probably know
+     better than me what an appropriate time is.
     """;
     try (var writer = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8, StandardOpenOption.CREATE)){
       writer.write(intro);
