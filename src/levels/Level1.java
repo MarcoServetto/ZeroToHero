@@ -13,7 +13,11 @@ public class Level1 implements Level{
       .area(15, 30,     3, 48, "", "See:{}")
     .image()
       .area(33, 80,    45, 98, "\nSee:{}\nHear:{}",last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}")
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}",
+                               "\nSee:{}\nHear:{}\nSense:{}\nSee:Sense{}\nHear:Sense{}|###|"+
+                               "You have to complete the provided text, not add new one. In this case, you redeclared See and Hear|###|"+
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nSee:{}\nHear:{}|###|"+
+                               "You have to complete the provided text, not add new one. In this case, you redeclared See and Hear")
     .image(5)
       .area(15, 85,     1, 46, last,last=
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nNorth:{}")
@@ -25,16 +29,21 @@ public class Level1 implements Level{
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}")
     .image()
       .area(37, 90,     1, 41, last,last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}")
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}|###|You forgot the comma! In this case that comma could indeed be omitted, but for now please write it down anyway")
     .image(2)
       .area(27, 85,     1, 41, last,last=
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}")
     .image()
       .area(27, 85,     1, 41, last,last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{.turn->South,}\nWest:Direction{}\nSouth:Direction{}")
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{.turn->South,}\nWest:Direction{}\nSouth:Direction{}",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East}\nEast:Direction{.turn->South,}\nWest:Direction{}\nSouth:Direction{}|###|You forgot the comma! In this case that comma could indeed be omitted, but for now please write it down anyway|###|"+
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{.turn->South,}\nWest:Direction{.turn->North,}\nSouth:Direction{.turn->West,}|###|hold your horses, we are doing one direction at a time!")
     .image()
       .area(27, 85,     1, 41, last,last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{.turn->South,}\nWest:Direction{}\nSouth:Direction{.turn->West,}")
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{.turn->South,}\nWest:Direction{}\nSouth:Direction{.turn->West,}",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{.turn->South,}\nWest:Direction{.turn->North,}\nSouth:Direction{}|###|You just assumed I asked to complete West, right? Read slowly and carefully! :-)|###|"+
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{.turn->South,}\nWest:Direction{.turn->North,}\nSouth:Direction{.turn->West,}|###|hold your horses, we are doing one direction at a time!")
     .image()
       .area(27, 85,     1, 41, last,last=
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{.turn->South,}\nWest:Direction{.turn->North,}\nSouth:Direction{.turn->West,}")

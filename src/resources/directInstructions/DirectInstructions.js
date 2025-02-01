@@ -28,32 +28,56 @@ const initSlides = () => {
       () => window.location.href = nextLevelUrl
       );}
     };
-  const checkSolution = () => allTextArea(currentIndex).every(t => {
-	const userInput = Utils.normalize(t.value);
-	const solution = Utils.normalize(MetaData.str(t, 'solution'));
-	return userInput === solution;
-	});
+  const getAlternativePairs= (t)=>{
+    const altStr= MetaData.str(t, 'alternative');
+    if (!altStr){ return []; }
+    const parts= altStr.split('|###|').map(part => part.trim());
+    const pairs= [];
+    for (let i= 0; i < parts.length; i += 2) {
+      const altSolution= Utils.normalize(Utils.checkExists(parts[i]));
+      const altMessage=  Utils.checkExists(parts[i + 1]);
+      pairs.push({ altSolution, altMessage });
+      }
+    return pairs;
+    }    
+  const checkSolution = () => allTextArea(currentIndex).map(t => {
+    const userInput = Utils.normalize(t.value);
+    const solution = Utils.normalize(MetaData.str(t, 'solution'));
+    const alts= getAlternativePairs(t);
+    if (userInput === solution){ return ""; }
+    for (const { altSolution, altMessage } of alts){
+       if (userInput === altSolution){ return altMessage; }
+     }
+    return "Complete all the text to continue!";
+    }).filter(s=>s !== "");
   const prevBtn = () => { if (currentIndex > 0){ currentIndex--; } };
   const nextBtn = () => {
-	if (!checkSolution()) { return Utils.showMessageBox(`
-	  <div>
-	    <p style="font-size: 2.5ex; text-align: center;"><strong>Complete all the text to continue!</strong></p>
-	    <hr>
-	    <p>Game explanation:</p>
-	    <ul>
-	      <li>🖊️ Complete the text area with the needed content.</li>
-	      <li>⟳ You can reset the text area to the original content by pressing the blue ⟳ button.</li>
-	      <li>✨ This also shows the solution for a moment!</li>
-	      <li>🎉 At the end, you can go to the next level by pressing on the symbol <span class="emoji">🎉</span>.</li>
-	    </ul>
-		<hr>
-		<p>☑️ Click here to make this message disappear</p>
-	  </div>
-      `,0,true,Buttons.freezeToken,()=>{}); }
-	if (currentIndex < maxIndex){ currentIndex++; }
-	};
+    const errs= checkSolution();
+    if (errs.length === 0){ 
+      if (currentIndex < maxIndex){ currentIndex++; }
+      return;
+      }
+    let msg= errs.join("<BR>");
+    return Utils.showMessageBox(`
+      <div>
+        <p style="font-size: 2.5ex; text-align: center;">
+          <strong>${msg}</strong>
+          </p>
+        <hr>
+        <p>Game explanation:</p>
+        <ul>
+          <li>🖊️ Complete the text area with the needed content.</li>
+          <li>⟳ You can reset the text area to the original content by pressing the blue ⟳ button.</li>
+          <li>✨ This also shows the solution for a moment!</li>
+          <li>🎉 At the end, you can go to the next level by pressing on the symbol <span class="emoji">🎉</span>.</li>
+          </ul>
+        <hr>
+        <p>☑️ Click here to make this message disappear</p>
+        </div>
+      `,0,true,Buttons.freezeToken,()=>{});
+    };
   const resetBtn = () => {
-    Buttons.freezeFor(1000);
+    Buttons.freezeFor(3000);
 	allTextArea(currentIndex).forEach(t0 => {
       t0.disabled = true;
       t0.value = '';
@@ -66,7 +90,7 @@ const initSlides = () => {
       t2.value = MetaData.str(t2, 'original');
       t2.disabled = false;
       t2.style.backgroundColor = '';
-      }), 750);
+      }), 2750);
     };
   //init
   for (let i = 0; i <= maxIndex; i++) {

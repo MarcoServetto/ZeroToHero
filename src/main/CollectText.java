@@ -100,20 +100,42 @@ public class CollectText {
     let x= 3;//Good, still initialization    
     if (cond){ x = 3; }//Good, this is update
     ----------------
-    At this point I think I want to make sure that every time we go to the next level, there is some cool
+    At this point I need to add a new minigame, called 'book'.
+    The idea of book is that the game area will show an image of an open book, 
+    that will contain fully formatted html stuff, with images etc in a vertically scrollable
+    area.
+    Most of that html will be simple texts/paragraphs etc.
+    The text will have some words 'obscured', the idea is that the pages of the book
+    are ruined, and we need to discover the missing text.
+    From the aspect of coding this minigame, the are the following challenges:
+    - Get a css showing text in a way that looks like an ancient book/scroll,
+    with a scroll bar in theme.
+    - Think a way to represent those missing words. There are many unicode characteres that
+    looks really alien, may be we can use some of those? 
+    or, some unicode showing dotted lines and or dots at various height level
     animation showing that the game is progressing.
-    Since it is always pressing a specific button that goes to the next level,
-    we should be able to add some specific code to BaseJs in order
-    to get the animation working on all level changes, for all kinds of levels. 
-    Can you design code in this sense?
-    -Think carefully what a good 'jump to next level' animation can be.
-    The player do not really knows about 'level numbers', they
-    think in order of 'game days' and each day is made by a number of levels,
-    for example day1 is 9 levels.
-    - I can make new images with transparency if you give me a clear description of the image.
-     Images may or may not be appropriate for this animation.
-    - The animation should last between 3 and 15 seconds, but you probably know
-     better than me what an appropriate time is.
+    - When the user overs the mouse on top of a 'broken word/sentence', we need to figure out
+    a good 'UI' to show them a list of options.
+    The list of options need to not really cover the text, otherwise, how can they
+    read the context of the words around? Discuss what can be a good solution and why.
+    We expect to provide about 10 different options for the replacement.
+    -When the user selects one of those options, the text will now contain such word.
+    This introduces a new challenge: we must ensure that the formatting somehow stays consistent even
+    if the text changes. That is, the 'replacement text' may not have the same exact length of the 'hole'
+    but we need to make sure that all the words that were on that line before stay on that line.
+    I'm not sure how to do that in html. May be we simply end that line shortish with a manual <BR> to 
+    gurantee that the line does not split when we add the replacement?
+    -When the user makes the wrong selection, they get a timeout.
+    They can keep reading and scrolling, but they can not provide another replacement for xx seconds.
+    This timeout time need to be clearlly visible with a cool countdown.
+    This timeout need to start 'quick', like 10 sec only, and become bigger if they keep making mistakes, and
+    becomes shorter if they make correct answers in a row.
+    -The challenge here is to design a good artimetic progression for those timeouts, something that is clear to the player
+    not too punishing, but not too light either.
+    For example, every mistake could be times 1.5 and every success halved? (capped to the min of 10 sec)
+    But, I'm really not sure, and I would like your opinions as an expert game designer.
+    What is a good progression and why? is this a good idea at all to encourage the player to not just answer randomly?    
+    Overall here I'm asking for game design decisions in addition to concrete implementations.
     """;
     try (var writer = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8, StandardOpenOption.CREATE)){
       writer.write(intro);

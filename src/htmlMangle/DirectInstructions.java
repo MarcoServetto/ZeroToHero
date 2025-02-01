@@ -27,8 +27,12 @@ public class DirectInstructions {
     return image().image(size-1);
     }
   public DirectInstructions area(double minX, double maxX, double minY, double maxY,String original, String solution){
+    return area(minX,maxX,minY,maxY,original,solution,"");
+  }
+
+  public DirectInstructions area(double minX, double maxX, double minY, double maxY,String original, String solution,String alternatives){
     if(Main.debug) {original= solution;}
-    current.areas().add(new TArea(original,solution,new Range(minX,maxX,minY,maxY)));
+    current.areas().add(new TArea(original,solution,alternatives,new Range(minX,maxX,minY,maxY)));
     return this;
   }
   public DirectInstructions area(double minX, double maxX, double minY, double maxY,String annotatedOriginal){
@@ -57,14 +61,14 @@ record Image(String fileName, List<TArea> areas){
   }
   String body(int index){ return
      "<div class=\"contentItem\" id=\"content"+index+"\" hidden>\n"
-    +"<img class=\"img_16_9\" src=\""+indexToName(index+1)+".jpg\"/>\n"
+    +"<img class=\"img_16_9\" src=\""+indexToName(index+1)+".jpg\" draggable=\"false\"/>\n"
     + IntStream.range(0, areas.size())
         .mapToObj(i->areas.get(i).body(index,i))
         .collect(Collectors.joining("\n"))
     +"\n</div>";
   }
 }
-record TArea(String original,String solution,Range r){
+record TArea(String original,String solution,String alternatives,Range r){
   String lift(String s){ return s
     .replace("\r","")
     .replace("\n", "\\n");
@@ -73,8 +77,9 @@ record TArea(String original,String solution,Range r){
      "<textarea class=\"overlayTextarea\"\n"
     +r.asStyle()+"\n"
     +"name=\"Question_"+index1+"_"+index2+"\"\n"
-    +"data-solution=\""+solution+"\"\n"
-    +"data-original=\""+original+"\"\n"
+    +"data-solution=\""+Escape.escapeForHtmlAttribute(solution)+"\"\n"
+    +"data-original=\""+Escape.escapeForHtmlAttribute(original)+"\"\n"
+    +"data-alternative=\""+Escape.escapeForHtmlAttribute(alternatives)+"\"\n"
     +"autocomplete=\"off\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\"></textarea>";
   }
 }

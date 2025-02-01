@@ -1,7 +1,7 @@
 //import { InitQuestions } from './Question.js';
 //import { OptionExplanations } from './GameOptions.js';
 
-document.addEventListener('DOMContentLoaded', () => {
+const Walking= () => {
   const nextQuestion= Log.tag('nextQuestion', () => {
     if (streak === 0){streak = 1; }    
     const completed= questions.every(q => q.solved);
@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   const speedUp= ()=>{ streak = streak + 1; };
   const resetAnimationSpeed= () => {
-    const speed= streak>0?Math.pow(0.3981,streak):0;
+    const speed= streak > 0 ? Math.pow(0.3981,streak) : 0;
     backLayer.style.animationDuration = (1000000 * speed + 's');
     frontLayer.style.animationDuration = (500000 * speed + 's');
     if (speed > 0){
@@ -51,25 +51,30 @@ document.addEventListener('DOMContentLoaded', () => {
     '<span class="emoji">🎉</span>',
     () => window.location.href = nextLevelUrl
     );
-  const handleCorrectAnswer= (increment) => {
-    score += increment;
-    questions[currentQuestionIndex].solved = true;
+  const handleCorrectAnswer= () => {
+    questions[currentQuestionIndex].solved = streak > 0;
+    score += increment();
+    showScoreAnimation(increment());
     speedUp();
-    currentBonusElem.textContent = increment;
-    currentPointsElem.textContent = score;
-    showScoreAnimation(increment);
+    currentBonusElem.textContent = increment();
+    currentPointsElem.textContent = score;    
     if (score >= requiredPoints){ showNextLevelButton(); }
     };
   const handleIncorrectAnswer= Log.tag('handleIncorrectAnswer', (currentQuestion) => {
     //Log.log(true,'showing answer for incorrect Q' + getQuestionNumber(currentQuestion));
     streak = 0;
-    currentBonusElem.textContent = 1;
+    currentBonusElem.textContent = 0;
     currentQuestion.toSolution();
     currentQuestion.selectionEvent();
     Buttons.freezeFor(4050);
-    displayExplanationMessage(currentQuestion.requiredOption);
+    displayExplanationMessage(currentQuestion.requiredOption,()=>{
+      questions.forEach(q => q.active(false));
+      questions[currentQuestionIndex].active(true);
+      updateContent();
+      streak = 0;
+      });
     });
-  const displayExplanationMessage = (requiredOption) => {
+  const displayExplanationMessage = (requiredOption, onDismiss) => {
     const explanation = OptionExplanations[requiredOption] || Utils.error('bad button id '+requiredOption);
     const msg =`
 	  <div>
@@ -90,15 +95,15 @@ document.addEventListener('DOMContentLoaded', () => {
 		<p>🎉 At the end, you can go to the next level by pressing on the symbol <span class="emoji">🎉</span>.</p>
 	  </div>
 	  `;
-    Utils.showMessageBox(msg, 4000, true, Buttons.freezeToken, nextQuestion);
-    };	
+    Utils.showMessageBox(msg, 4000, true, Buttons.freezeToken, onDismiss);
+    };
+  const increment= ()=>streak > 0 ? Math.pow(2, streak - 1) : 0;	
   const handleButtonClick = Log.tag('handleButtonClick', (option) => {
     Buttons.freezeFor(500);
     const currentQuestion = questions[currentQuestionIndex];
     const nope= !currentQuestion.isCorrectAnswer(option);
     if (nope){ handleIncorrectAnswer(currentQuestion); return; }
-    const increment = Math.pow(2, streak - 1);
-    handleCorrectAnswer(increment);
+    handleCorrectAnswer();
     nextQuestion();
     });
   const buttonActions = {
@@ -141,5 +146,6 @@ document.addEventListener('DOMContentLoaded', () => {
     backLayer.style.animation = animationTxt;
     frontLayer.style.animation = animationTxt;
     resetAnimationSpeed();
-  });
-});
+    });
+  };
+Walking();
