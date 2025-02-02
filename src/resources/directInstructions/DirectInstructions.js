@@ -68,7 +68,7 @@ const initSlides = () => {
         <ul>
           <li>🖊️ Complete the text area with the needed content.</li>
           <li>⟳ You can reset the text area to the original content by pressing the blue ⟳ button.</li>
-          <li>✨ This also shows the solution for a moment!</li>
+          <li>❓ You can see a solution hint via the ❓ button.</li>
           <li>🎉 At the end, you can go to the next level by pressing on the symbol <span class="emoji">🎉</span>.</li>
           </ul>
         <hr>
@@ -77,27 +77,34 @@ const initSlides = () => {
       `,0,true,Buttons.freezeToken,()=>{});
     };
   const resetBtn = () => {
-    Buttons.freezeFor(3000);
-	allTextArea(currentIndex).forEach(t0 => {
-      t0.disabled = true;
-      t0.value = '';
-      t0.style.backgroundColor = 'rgba(196, 179, 167, 1)';
-	  });
-    setTimeout(() => allTextArea(currentIndex).forEach(t1 => 
-	  t1.value = MetaData.str(t1, 'solution')
-	  ), 350);
-    setTimeout(() => allTextArea(currentIndex).forEach(t2 => {
-      t2.value = MetaData.str(t2, 'original');
-      t2.disabled = false;
-      t2.style.backgroundColor = '';
-      }), 2750);
+    const textAreas = allTextArea(currentIndex);
+    textAreas.forEach(t => t.value = MetaData.str(t, 'original'));
+    };
+  const hintBtn = () => {
+    const tas= allTextArea(currentIndex);
+    if (tas.length === 0) { return; }
+    Buttons.freezeFor(2000);
+    tas.forEach(t => {
+      t.disabled = true;
+      t.dataset.tempValue = t.value;
+      t.value = '';
+      t.style.backgroundColor = 'rgba(196, 179, 167, 1)';
+      });
+    setTimeout(() => tas.forEach(t =>{
+      t.value = MetaData.str(t, 'solution');
+      }), 100);
+    setTimeout(() => tas.forEach(t => {
+      t.value = t.dataset.tempValue;
+      t.disabled = false;
+      t.style.backgroundColor = '';
+      }), 1550);
     };
   //init
   for (let i = 0; i <= maxIndex; i++) {
     allTextArea(i).forEach(t => t.value = MetaData.str(t, 'original'));
     }
   updateContent();
-  const Buttons = initButtons(updateContent,{nextBtn,prevBtn,resetBtn});
+  const Buttons = initButtons(updateContent,{nextBtn,prevBtn,resetBtn,hintBtn});
   document.querySelectorAll('img')//force img preloading
     .forEach(img =>img.offsetHeight);
   };

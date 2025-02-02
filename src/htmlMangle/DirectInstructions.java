@@ -27,12 +27,13 @@ public class DirectInstructions {
     return image().image(size-1);
     }
   public DirectInstructions area(double minX, double maxX, double minY, double maxY,String original, String solution){
-    return area(minX,maxX,minY,maxY,original,solution,"");
+    return area(minX,maxX,minY,maxY,original,solution,List.of());
   }
 
-  public DirectInstructions area(double minX, double maxX, double minY, double maxY,String original, String solution,String alternatives){
+  public DirectInstructions area(double minX, double maxX, double minY, double maxY,String original, String solution,List<String> alternatives){
     if(Main.debug) {original= solution;}
-    current.areas().add(new TArea(original,solution,alternatives,new Range(minX,maxX,minY,maxY)));
+    var alts=alternatives.stream().collect(Collectors.joining("|###|"));
+    current.areas().add(new TArea(original,solution,alts,new Range(minX,maxX,minY,maxY)));
     return this;
   }
   public DirectInstructions area(double minX, double maxX, double minY, double maxY,String annotatedOriginal){
