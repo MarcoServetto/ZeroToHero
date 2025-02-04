@@ -35,19 +35,19 @@ const Walking= () => {
     };
   const showScoreAnimation= (increment) => {
     const incrementElem = document.createElement('span');
-    incrementElem.classList.add('score-increment');
+    incrementElem.classList.add('scoreIncrement');
     incrementElem.textContent = `+${increment}`;
-    const scoreCounter = document.querySelector('.score-counter');
+    const scoreCounter = document.querySelector('.scoreCounter');
     scoreCounter.appendChild(incrementElem);
     setTimeout(() => incrementElem.remove(), 3000);
     setTimeout(() => scoreDisplayElem.textContent = score,1000);
-    setTimeout(() => {	  
+    setTimeout(() => {    
       scoreDisplayElem.classList.add('animate-glow');
       setTimeout(() => scoreDisplayElem.classList.remove('animate-glow'), 3000);
       },500);
     };
   const showNextLevelButton= () => Utils.showNextLevelButton(
-    document.querySelector('.score-text'),
+    document.querySelector('.scoreText'),
     '<span class="emoji">🎉</span>',
     () => window.location.href = nextLevelUrl
     );
@@ -77,27 +77,27 @@ const Walking= () => {
   const displayExplanationMessage = (requiredOption, onDismiss) => {
     const explanation = OptionExplanations[requiredOption] || Utils.error('bad button id '+requiredOption);
     const msg =`
-	  <div>
-	    <p><strong>You stumble and fall.</strong></p>
-		<p>See the text currently selected.</p>
-		<p>The right button was "<strong>${explanation}</strong>".</p>
-		<hr>
-	    <p>Minigame explanation:</p>
-	    <ul>
-	      <li>👀Look for the character selected in the code.</li>
-	      <li>🖱️Select the smallest cohesive amount of code around that character.</li>
-	      <li>☑️Click on the button corresponding to the kind of text you selected.</li>
-	      <li>🚨There is an error around the selected character? Just press "Error".</li>
-		  <li>🎲This puzzle is all about learning patterns via trial and error.</li>
-	    </ul>
-		<hr>
-		<p>☑️ Click here to make this message disappear</p>
-		<p>🎉 At the end, you can go to the next level by pressing on the symbol <span class="emoji">🎉</span>.</p>
-	  </div>
-	  `;
+    <div>
+      <p><strong>You stumble and fall.</strong></p>
+    <p>See the text currently selected.</p>
+    <p>The right button was "<strong>${explanation}</strong>".</p>
+    <hr>
+      <p>Minigame explanation:</p>
+      <ul>
+        <li>👀Look for the character selected in the code.</li>
+        <li>🖱️Select the smallest cohesive amount of code around that character.</li>
+        <li>☑️Click on the button corresponding to the kind of text you selected.</li>
+        <li>🚨There is an error around the selected character? Just press "Error".</li>
+      <li>🎲This puzzle is all about learning patterns via trial and error.</li>
+      </ul>
+    <hr>
+    <p>☑️ Click here to make this message disappear</p>
+    <p>🎉 At the end, you can go to the next level by pressing on the symbol <span class="emoji">🎉</span>.</p>
+    </div>
+    `;
     Utils.showMessageBox(msg, 4000, true, Buttons.freezeToken, onDismiss);
     };
-  const increment= ()=>streak > 0 ? Math.pow(2, streak - 1) : 0;	
+  const increment= ()=>streak > 0 ? Math.pow(2, streak - 1) : 0;  
   const handleButtonClick = Log.tag('handleButtonClick', (option) => {
     Buttons.freezeFor(500);
     const currentQuestion = questions[currentQuestionIndex];
@@ -129,7 +129,7 @@ const Walking= () => {
   const requiredPoints= MetaData.int(document.body,'required');
   const nextLevelUrl= MetaData.str(document.body,'next');
   const requiredPointsElem= document.getElementById('requiredPoints');
-  const scoreDisplayElem= document.querySelector('.score-display');
+  const scoreDisplayElem= document.querySelector('.scoreDisplay');
   const backLayer= document.querySelector('.back-layer');
   const frontLayer= document.querySelector('.front-layer');
   const character = document.querySelector('.character');

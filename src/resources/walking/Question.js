@@ -21,7 +21,7 @@ const QuestionText = (q,Buttons) => {
     const isErrorType= requiredOption === 8;
     const selectionOk= q.selectionStart === startOk && q.selectionEnd === endOk;
     return option === requiredOption && (isErrorType || selectionOk);
-	};
+  };
   const active= Log.tag('active',(flag)=>{
     if(!flag){ q.hidden = true; return; }
     q.hidden = false;

@@ -72,21 +72,28 @@ const Utils= {
     });
     const timeOutF=autoMsg ? endMsg : ()=>messageBox.addEventListener('click', endMsg, { once: true });
     setTimeout(timeOutF, timeOut);
-  },
+  },  
+  flashGreen:()=> {
+    const overlay = document.getElementById('screenOverlay').style;
+    overlay.transition = 'none';
+    overlay.backgroundColor = 'rgba(0,255,0,0.7)';
+    void overlay.offsetWidth;
+    overlay.animation = 'flashEffect 2s ease-out';
+    }, 
   showNextLevelButton: (target, innerHTML, onClick ) => {
     if (!target){ return; }//Most times we want to show it and keep it shown
+    Utils.flashGreen();
     const buttonContainer = document.createElement('div');
-    buttonContainer.classList.add('roundBtn', 'next-level-button');
+    buttonContainer.classList.add('roundBtn', 'nextLevelButton');
     const button = document.createElement('button');
     button.innerHTML = innerHTML;
-    button.setAttribute('data-tooltip', 'Next Level');
+    //button.setAttribute('data-tooltip', 'Next Level');//buggy somehow
     button.addEventListener('click', onClick);
     buttonContainer.appendChild(button);
     target.replaceWith(buttonContainer);
     return buttonContainer;
     },
   };
-
 const initButtons = (updateContent,buttonActions) => {
   const freezeButtons = new Set();
   const freezeToken = () => {
@@ -102,14 +109,14 @@ const initButtons = (updateContent,buttonActions) => {
   const isFrozen = () => freezeButtons.size !== 0;
   //init
   document.querySelectorAll('button').forEach(button => {
-	const bid = button.id;
-	if (!bid){ return; }
-	const action = buttonActions[bid];
-	if (!action) {
-	  const txt= `No action defined for button with id: ${bid}`;
-	  alert(txt); throw new Error(txt);
-	  }
-	button.addEventListener('click', ()=>{
+  const bid = button.id;
+  if (!bid){ return; }
+  const action = buttonActions[bid];
+  if (!action) {
+    const txt= `No action defined for button with id: ${bid}`;
+    alert(txt); throw new Error(txt);
+    }
+  button.addEventListener('click', ()=>{
       if (freezeButtons.size !== 0){ return; }
       action();
       updateContent();
@@ -121,13 +128,51 @@ const initButtons = (updateContent,buttonActions) => {
     isFrozen: isFrozen,
     };
   };
-(()=>{
-  const overlay = document.getElementById('screenOverlay');
-  setTimeout(() => { 
-    overlay.style.opacity = '0';      
-    setTimeout(() => overlay.remove(), 3000);
-      }, 0);
-  })();
+const inactiveNudge= (isFrozenFun,initTime,initCallback) => {
+  let timeoutId= null;
+  let timeLimit= initTime;
+  let onInactiveCallback= initCallback;
+  const callback= ()=>{
+    if(isFrozenFun()){ return; }
+    onInactiveCallback();
+    resetTimer();
+    };
+  const resetTimer= () => {
+    if (timeoutId){ clearTimeout(timeoutId); }
+    timeoutId = setTimeout(callback, timeLimit);
+    };
+  const startListening= () => {
+    document.addEventListener("keydown", resetTimer, true);
+    document.addEventListener("mousedown", resetTimer, true);
+    document.addEventListener("touchstart", resetTimer, true);
+    document.addEventListener("wheel", resetTimer, true);
+    resetTimer();
+    };
+  startListening();
+  return {
+    setTimeLimit:(ms) => { timeLimit = ms; resetTimer(); },
+    onInactive:(callback) => { onInactiveCallback = callback; },
+    start: () => startListening(),
+    stop: () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener("keydown", resetTimer, true);
+      document.removeEventListener("mousedown", resetTimer, true);
+      document.removeEventListener("touchstart", resetTimer, true);
+      document.removeEventListener("wheel", resetTimer, true);
+      }
+    };
+  };
+  
+setTimeout(() => document.getElementById('screenOverlay')
+  .style.opacity = '0', 0);
+/*  (()=>{//old overkill, remember why
+const overlay = document.getElementById('screenOverlay');
+    setTimeout(() => { 
+      overlay.style.opacity = '0';      
+      setTimeout(() => overlay.style.opacity = '0', 3000);
+        }, 0);
+    })();
+*/
 //----------- Debugging monkey patching to avoid common mistakes
 //(()=>{//Not working. Would need manually wrapping all functions
 //  const debugGlobalFunctionProxy = new Proxy(Function.prototype, {
