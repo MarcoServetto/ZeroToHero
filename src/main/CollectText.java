@@ -19,17 +19,21 @@ public class CollectText {
 
     Path outputFile= workingDir.toAbsolutePath().resolve("assets", "collectedText","collectedText.txt");
     List<Path> allFiles=List.of(
-      levels.resolve("Level1","Level1.html"),
-      levels.resolve("Level2","Level2.html"),
+      //levels.resolve("Level1","Level1.html"),
+      //levels.resolve("Level2","Level2.html"),
+      levels.resolve("Level6","Level6.html"),
       resources.resolve("BaseJs.js"),
       resources.resolve("BaseStyle.css"),
       resources.resolve("RoundButtonsStyle.css"),
-      directInstructions.resolve("DirectInstructions.css"),
-      directInstructions.resolve("DirectInstructions.js"),
+      //directInstructions.resolve("DirectInstructions.css"),
+      //directInstructions.resolve("DirectInstructions.js"),
       walking.resolve("GameOptions.js"),
-      walking.resolve("Question.js"),
-      walking.resolve("Walking.js"),
-      walking.resolve("Walking.css")
+      //walking.resolve("Question.js"),
+      //walking.resolve("Walking.js"),
+      //walking.resolve("Walking.css")
+      gather.resolve("Gather.js"),
+      gather.resolve("CodeCard.js"),
+      gather.resolve("Gather.css")
       );
     String intro="""
     I'm making a browser based game to teach programming.
@@ -100,13 +104,10 @@ public class CollectText {
     let x= 3;//Good, still initialization    
     if (cond){ x = 3; }//Good, this is update
     ----------------
-    In all the levels, the users are not seeing when the 'next level' button appear.
-    Can we do something to make it more clear?
-    As you can see, it has quite extreme glow, but this does not work because the eyes
-    of the player are looking to another part of the screen.
-    We already have an effect where the screen starts back and fades in,
-    Can we re use the same logic to make the screen go green for a moment or something like that?
-    What would encourage the players more?
+    I'm focusing on adding the hint.
+    As you can see, there is a character on the bottom right, with a speach bubble.
+    I would like to add a mouseover event so that if we are currently dragging,
+    the text bubble changes giving information on the image (the group)
     """;
     try (var writer = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8, StandardOpenOption.CREATE)){
       writer.write(intro);

@@ -2,6 +2,7 @@
   const dragDropImg= document.getElementById('dragDropImg');
   const gameArea = document.getElementById('gameArea');
   let dragging= false;
+  let draggingE= null;
   const mouseMove = Log.tag('mouseMove', e => {
     if (!dragging){ return; }
     const half= dragDropImg.getBoundingClientRect().width/2;
@@ -10,37 +11,42 @@
     dragDropImg.style.left = `${mouseX}px`;
     dragDropImg.style.top =  `${mouseY}px`;
     });
-    const makeMouseDown= f => e =>{
-      if (isFrozen()){ return; }
-      if (dragging){ return; }
-      dragging = true;
-      window.getSelection().removeAllRanges();
-      document.body.classList.add('noSelect');      
-      const newImg = document.createElement('img');
-      newImg.src = f(e);
-      newImg.style.width = '100%';
-      newImg.style.height = 'auto';
-      dragDropImg.appendChild(newImg);
-      dragDropImg.hidden = false;
-      mouseMove(e);
-      };
-    let currentMouseUpCont=e=>{};
-    const setMouseUp= f=>{ currentMouseUpCont = f; };
-    const mouseUp= e => {
-      if (!dragging){ return; }
-      dragging = false;
-      document.body.classList.remove('noSelect');
-      dragDropImg.hidden = true;
-      dragDropImg.innerHTML = '';
-      currentMouseUpCont(e);
-      };
+  const draggedElem=()=>{
+    if (!dragging){ return null; }
+    return draggingE;
+    }
+  const makeMouseDown= f => e =>{
+    if (isFrozen()){ return; }
+    if (dragging){ return; }
+    dragging = true;
+    window.getSelection().removeAllRanges();
+    document.body.classList.add('noSelect');      
+    const newImg = document.createElement('img');
+    newImg.src = f(e);
+    newImg.style.width = '100%';
+    newImg.style.height = 'auto';
+    newImg.setAttribute('draggable', 'false');// Disable native chrome drag      
+    dragDropImg.appendChild(newImg);
+    dragDropImg.hidden = false;
+    mouseMove(e);
+    };
+  let currentMouseUpCont=e=>{};
+  const setMouseUp= (e,f)=>{ currentMouseUpCont = f; draggingE = e; };
+  const mouseUp= e => {
+    if (!dragging){ return; }
+    dragging = false;
+    document.body.classList.remove('noSelect');
+    dragDropImg.hidden = true;
+    dragDropImg.innerHTML = '';
+    currentMouseUpCont(e);
+    };
   document.addEventListener('mousemove', mouseMove);
   document.addEventListener('mouseup', mouseUp);
   document.querySelectorAll('img')//avoid browser specific img drag stuff
     .forEach(img => img.setAttribute('draggable', 'false'));
   return {
     isDragging:()=>dragging,
-    makeMouseDown,setMouseUp,
+    makeMouseDown,setMouseUp,draggedElem,
     }
   };
 /*export*/ const CodeCards = (Dragging, dropEvent)=> {
@@ -58,7 +64,7 @@
     };
   const mouseDownF= Dragging.makeMouseDown((e)=>{
     cards[0].drag();
-    Dragging.setMouseUp(mouseUpF);
+    Dragging.setMouseUp(cards[0].cardId(),mouseUpF);
     return cards[0].imgUrl();
     });
   const mouseUpF = e => {
@@ -68,7 +74,7 @@
     pop();
     if (oldId==-1){ return; }//new slot
     push(oldId);
-    Dragging.setMouseUp(ee => {});
+    Dragging.setMouseUp(null,ee => {});
     };
   const cards= Deck.list('card_').map(q=>CodeCard(q,mouseDownF));
   Utils.check(cards.length!==0,"No cards in init")

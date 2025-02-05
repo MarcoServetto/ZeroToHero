@@ -70,18 +70,19 @@ const Gather= Log.tagAsync('Gather', () => {
     const cond = (x >= deckRect.left && x <= deckRect.right && y >= deckRect.top && y <= deckRect.bottom);
     return cond;
     };
-  const emptySlotItem= {cardId:-1, imgUrl:''};
+  const emptySlotItem= {cardId:()=>-1, imgUrl:()=>''};//eventually should be refactored away and only Card should stay
   const getSlotItem = slot => {
     const cardId = MetaData.int(slot,'card_id');
-
     const imgUrl = slot.src; 
-    return { cardId, imgUrl };
+    return { cardId:()=>cardId, imgUrl:()=>imgUrl };//to be refactored into a card as below
+//    const cardId = MetaData.int(slot,'card_id');
+//    return CodeCard(document.getElementById('card_' + cardId), (e)=>{});
     };
   const setSlotItem = (slot, item) => {
-    slot.dataset.card_id = '' + item.cardId;
-    const okUrl= item.imgUrl && item.imgUrl.includes('/images/');
-    if (okUrl) { slot.src = item.imgUrl;}
-    else { slot.removeAttribute('src'); }
+    slot.dataset.card_id = '' + item.cardId();
+    const okUrl= item.imgUrl() && item.imgUrl().includes('/images/');
+    if (okUrl) { slot.src = item.imgUrl();}
+    else { slot.src= "../../resources/Empty.png"; }
     };
  
   const slotDropItem = (x, y, draggedItem, srcSlot) => {
@@ -89,7 +90,7 @@ const Gather= Log.tagAsync('Gather', () => {
     const dropOnDeck = isOverDeck(x, y);
     const dropOnSlot = !!destSlot;
     if (!dropOnSlot && !dropOnDeck){ setSlotItem(srcSlot, draggedItem); return; }
-    if(dropOnDeck){ allCards.push(draggedItem.cardId); return; }
+    if(dropOnDeck){ allCards.push(draggedItem.cardId()); return; }
     const existingItem = getSlotItem(destSlot);
     setSlotItem(srcSlot, existingItem);
     setSlotItem(destSlot, draggedItem);
@@ -103,14 +104,38 @@ const Gather= Log.tagAsync('Gather', () => {
     console.log(`Placed card ${slot.dataset.card_id} in slot ${slot.id}`);
     return oldId;
     };
+  const setUpHints= ()=>{
+    const msgForGroup= [
+      "\uD83D\uDC80",
+      "\uD83D\uDD34", //Red Circle
+      "\uD83D\uDD35", //Blue Circle
+      "\uD83D\uDFE2", //Green Circle
+      "\uD83D\uDFE1", //Yellow Circle
+      "\uD83D\uDFE3", //Purple Circle
+      "\u26AB",      //Black Circle
+      "\u26AA",      //White Circle
+      "\uD83C\uDF08", //Rainbow
+      "\u2728"       //Sparkles
+      ];
+    const hintChar = document.getElementById("hintCharacter");
+    const speechBubble = hintChar.querySelector(".speechBubble");
+    hintChar.addEventListener('mouseover', ()=>{
+      if (!Dragging.isDragging()){ return; }
+      const cardId = Dragging.draggedElem();
+      const group = allCards.groupOf(cardId);
+      speechBubble.textContent = 'This makes me feel like '+msgForGroup[group];
+      });
+    hintChar.addEventListener('mouseout',
+      ()=>speechBubble.textContent = 'Show me an item for a hint!');
+    };
   const isFrozen= ()=>Buttons.isFrozen();//to solve circular dep Buttons<->Dragging
   const Dragging= initDragging(isFrozen);
   const allCards= CodeCards(Dragging,dropEvent);
   const slotMouseDown= srcSlot => Dragging.makeMouseDown(ee => {
     const draggedItem = getSlotItem(srcSlot);
     setSlotItem(srcSlot, emptySlotItem);
-    Dragging.setMouseUp(e => slotDropItem(e.clientX, e.clientY, draggedItem, srcSlot));
-    return draggedItem.imgUrl;
+    Dragging.setMouseUp(draggedItem.cardId(),e => slotDropItem(e.clientX, e.clientY, draggedItem, srcSlot));
+    return draggedItem.imgUrl();
     });
   allSlots.forEach(s => s.addEventListener('mousedown', slotMouseDown(s)));
 
@@ -135,14 +160,7 @@ const Gather= Log.tagAsync('Gather', () => {
     submitBtn,
     resetBtn: () => location.reload()
     };
-  const Buttons = initButtons(() => {}, buttonActions);
+  const Buttons= initButtons(() => {}, buttonActions);
+  setUpHints();
   });
-
 Gather();
-/*
-TODO:
-bug for finish 
-block drag/drop (mouse down) if button frozen
-just remove all selection all over everywhere all the time
-
-*/
