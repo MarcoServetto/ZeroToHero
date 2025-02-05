@@ -5,22 +5,19 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import main.Days;
 import main.Main;
 import resources.File;
 public class DirectInstructions {
-  private String fileName;
-  private int next;
-  public DirectInstructions(String fileName, int next){
-    this.fileName= fileName; 
-    this.next= next;
-  }
+  private Days.LevelName name;
+  public DirectInstructions(Days.LevelName name){ this.name= name; }
   private List<Image> images= new ArrayList<>();
   private Image current;
   private void commit(Image i){
     current= i;
     images.add(i);
   }
-  public DirectInstructions image(){ commit(new Image(fileName,new ArrayList<>())); return this; }
+  public DirectInstructions image(){ commit(new Image(name, new ArrayList<>())); return this; }
   public DirectInstructions image(int size){
     assert size>0;
     if(size==1){ return image(); } 
@@ -49,16 +46,14 @@ public class DirectInstructions {
     String body= IntStream.range(0, images.size())
       .mapToObj(index->images.get(index).body(index))
       .collect(Collectors.joining("\n"));
-    return File.DirectInstructions_html.text
-      .replace("<body>","<body data-next=\"../Level"
-        +next+"/Level"
-        +next+".html\">")
+    return name
+      .htmlNextLevel(File.DirectInstructions_html.text)
       .replace("[###BODY###]", body);
   }
 }
-record Image(String fileName, List<TArea> areas){
+record Image(Days.LevelName name, List<TArea> areas){
   String indexToName(int index){
-    return fileName+(index>9?"-":"-0")+index;
+    return name.currentLevel()+(index>9?"-":"-0")+index;
   }
   String body(int index){ return
      "<div class=\"contentItem\" id=\"content"+index+"\" hidden>\n"

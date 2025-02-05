@@ -1,19 +1,17 @@
 package htmlMangle;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import main.Days;
 import resources.File;
 public class Walking {
-  private String fileName;
+  private Days.LevelName name;
   private int required;
-  private int next;
-  public Walking(String fileName, int required,int next){
-    this.fileName= fileName;
+  public Walking(Days.LevelName name,int required){
     this.required= required;
-    this.next=next;
+    this.name= name;
     }
   private List<Question> qs= new ArrayList<>();
   private void commit(Question q){
@@ -29,23 +27,19 @@ public class Walking {
     int end= text.indexOf("]@");
     assert end >= 0:text;
     text = text.replace("]@","");
-    commit(new Question(fileName,text, sel,start,end,option));
+    commit(new Question(text, sel,start,end,option));
     return this;
   }
   public Walking question(String text,int sel, int start, int end, Option option){
-    commit(new Question(fileName,text, sel,start,end,option));
+    commit(new Question(text, sel,start,end,option));
     return this;
   }
   public String build(){    
     String body= IntStream.range(0, qs.size())
       .mapToObj(index->qs.get(index).body(index))
       .collect(Collectors.joining("\n"));
-    return File.Walking_html
-      .text
-      .replace("<body>","<body data-required=\""
-        +required+"\" data-next=\"../Level"
-        +next+"/Level"
-        +next+".html\">")
+    return name.htmlNextLevel(File.Walking_html.text,
+        "data-required=\""+required+"\"")
       .replace("[###BODY###]", body);
   }
   public enum Option{
@@ -59,7 +53,7 @@ public class Walking {
     Error;
   }
 }
-record Question(String fileName, String text, int sel, int start, int end, htmlMangle.Walking.Option option) {
+record Question(String text, int sel, int start, int end, htmlMangle.Walking.Option option) {
   String body(int index) {
       return "<textarea class=\"overlayTextarea\"\n"
           + "    id=\"question" + index + "\"\n"

@@ -82,7 +82,7 @@ const Utils= {
     }, 
   showNextLevelButton: (target, innerHTML, onClick ) => {
     if (!target){ return; }//Most times we want to show it and keep it shown
-    Utils.flashGreen();
+    setTimeout(Utils.flashGreen, 1500);
     const buttonContainer = document.createElement('div');
     buttonContainer.classList.add('roundBtn', 'nextLevelButton');
     const button = document.createElement('button');

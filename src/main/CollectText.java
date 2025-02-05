@@ -104,10 +104,10 @@ public class CollectText {
     let x= 3;//Good, still initialization    
     if (cond){ x = 3; }//Good, this is update
     ----------------
-    I'm focusing on adding the hint.
-    As you can see, there is a character on the bottom right, with a speach bubble.
-    I would like to add a mouseover event so that if we are currently dragging,
-    the text bubble changes giving information on the image (the group)
+    Now I'm really confused on why the reset button on Gather does not work.
+    If I click it, nothing happens (no reload) 
+    Also, it does not do the expected 'button pressed' animation.
+    (but it is still blue, does not visually look like it is disabled)
     """;
     try (var writer = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8, StandardOpenOption.CREATE)){
       writer.write(intro);

@@ -2,17 +2,15 @@ package htmlMangle;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
+import main.Days;
 import resources.File;
 public class Gather {
-  private String fileName;
+  private Days.LevelName name;
   private String common;
-  private int next;
-  public Gather(String fileName, String common, int next){
-    this.fileName= fileName;
+  public Gather(Days.LevelName name, String common){
+    this.name= name;
     this.common= common;
-    this.next=next;
     }
   private List<Card> cs= new ArrayList<>();
   public Gather cardTrash(String text, Kind kind, int num){ return cardPr(text,0,kind,num); }
@@ -28,7 +26,7 @@ public class Gather {
     assert split!=-1;
     var code= text.substring(split+1,text.length());
     var title= text.substring(0,split);
-    cs.add(new Card(fileName,code,group,loc,cs.size(),title));
+    cs.add(new Card(name.currentLevel(),code,group,loc,cs.size(),title));
     return this;
   }
   public String build(){
@@ -56,11 +54,7 @@ public class Gather {
     String body= cs.stream()
       .map(Card::body)
       .collect(Collectors.joining("\n"));
-    return File.Gather_html
-      .text
-      .replace("<body>","<body data-next=\"../Level"
-        +next+"/Level"
-        +next+".html\">")
+    return name.htmlNextLevel(File.Gather_html.text)
       .replace("[###BODY###]", pre+body+"\n</div>\n");
   }
   public enum Kind{

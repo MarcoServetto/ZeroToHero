@@ -1,25 +1,23 @@
 package main;
 
-import java.util.ArrayList;
-import java.util.List;
-import levels.*;
+import levels.day01.*;
 
 public class Main {
-  public static final boolean debug= false;
-  static List<Level> levels= new ArrayList<>();
-  static void add(Level l){ levels.add(l); }
-  static void build(){ levels.stream().forEach(l->l.writeFile()); }
+  public static final boolean debug= true;
   public static void main(){//see comment below
-    add(new Level1());
-    add(new Level2());
-    add(new Level3());
-    add(new Level4());
-    add(new Level5());
-    add(new Level6());
-    add(new Level7());
-    add(new Level8());
-    add(new Level9());
-    build();
+    Days d= new Days();
+    d.add(new IntroLevel());
+    d.add(new Walking1());
+    d.add(new Walking2());
+    d.add(new ExplainGather());
+    d.add(new GatherPre1());
+    d.add(new GatherPre2());
+    d.add(new GatherPre3());
+    d.add(new GatherTrue1());
+    d.add(new GatgherTrue2());
+    d.add(new ExplainReverse());
+    d.add(new WalkingBack());
+    d.add(new Day1Outro());
   }
 }
 /*
