@@ -29,7 +29,7 @@ public class Walking2 implements Function<Days.LevelName,String>{
       //Can you solve it now?
       """,TypeDeclaration)    
     .question("@[South@@.turn]@", MethodCall)
-    .question("@[So@@uth]@.turn\n//Remember, you need to select the smallest\n//syntactical unit around the marked character", ObjectLiteral)
+    .question("@[So@@uth]@.turn\n//Remember, you need to select the smallest\n//syntactical unit around the highlighted character", ObjectLiteral)
     .question("@[Ea@@st]@.turn", ObjectLiteral)
     .question("@[North@@:]@", Error)
     .question("Direction:{.turn:@[Dir@@ection]@,}", Type)

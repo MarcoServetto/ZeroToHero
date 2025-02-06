@@ -13,6 +13,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
       @[/*
       This is the walking minigame
       Select all the code and press 'comment'.
+      This text -is- the code!
       Indeed, this code is a multiline comment.
       Text useful for explanation but
       ignored in execution@@.
@@ -20,20 +21,22 @@ public class Walking1 implements Function<Days.LevelName,String>{
     .question("""
       @[//This is a @@single line comment]@
       //Select all and only the line with
-      //the marked character. 
+      //the highlighted character.
+      //The highlighted character is
+      //the currently selected character.
       """,Comment)
     .question("""
       @[No@@rth]@
       //In this kind of puzzle, we select the
       //smallest self contained unit of code
-      //around the marked character. 
+      //around the highlighted/selected character. 
       //This time it is an object literal. 
       """,ObjectLiteral)
     .question("@[+%/-@@-%--]@",Error)
     .question("""
       //Text +%/--%-- outside of comments
       //is an error. When there is an error,
-      //does not matter what you select.
+      //it does not matter what you select.
       @[Just press @@error :-)]@ 
       """,Error)
     .question("""
@@ -48,7 +51,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
     .question("""
       @[//@@Why the question before was a]@
       //comment and not error?
-      //because the text around the marked character
+      //because the text around the highlighted character
       //was in a well formed comment.
       //Error outside the smallest valid syntactical
       //unit do not impact the answer
@@ -67,7 +70,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
         //Note the missing dot!
         """, Error)
     .question("""
-        @[/*This is a multiline comment
+        @[/*This is a multiline comment.
         This is the last question of this batch,
         after, they will just repeat.
         If you have completed the level, you should

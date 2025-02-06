@@ -84,15 +84,14 @@ const Walking= () => {
     <hr>
       <p>Minigame explanation:</p>
       <ul>
-        <li>👀Look for the character selected in the code.</li>
+        <li>👀Look for the character highlighted in the code.</li>
         <li>🖱️Select the smallest cohesive amount of code around that character.</li>
         <li>☑️Click on the button corresponding to the kind of text you selected.</li>
-        <li>🚨There is an error around the selected character? Just press "Error".</li>
+        <li>🚨There is an error around the highlighted character? Just press "Error".</li>
       <li>🎲This puzzle is all about learning patterns via trial and error.</li>
       </ul>
     <hr>
     <p>☑️ Click here to make this message disappear</p>
-    <p>🎉 At the end, you can go to the next level by pressing on the symbol <span class="emoji">🎉</span>.</p>
     </div>
     `;
     Utils.showMessageBox(msg, 4000, true, Buttons.freezeToken, onDismiss);

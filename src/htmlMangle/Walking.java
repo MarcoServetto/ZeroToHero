@@ -18,6 +18,8 @@ public class Walking {
     qs.add(q);
   }
   public Walking question(String text, Option option){
+    text = text.replaceAll("[ \t\r]+\n", "\n");   
+    if (text.endsWith("\n")){ text = text.substring(0, text.length() - 1); }
     int start= text.indexOf("@[");
     assert start >= 0:text;
     text = text.replace("@[","");    

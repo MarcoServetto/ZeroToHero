@@ -19,6 +19,7 @@ public class Main {
     d.add(new ExplainReverse());
     d.add(new WalkingBack());
     d.addLast(new Day1Outro());
+    d.add(new BookIntro());
     d.add(new BookArchery());
   }
 }
