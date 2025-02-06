@@ -78,7 +78,15 @@ const Utils= {
     overlay.transition = 'none';
     overlay.backgroundColor = 'rgba(0,255,0,0.7)';
     void overlay.offsetWidth;
-    overlay.animation = 'flashEffect 2s ease-out';
+    overlay.animation = 'flashEffect 6s ease-out';
+    
+    const character= document.getElementById('levelEndCharacter');
+    character.hidden = false;
+    character.style.animation = 'levelEndAppear 3s ease-in-out forwards';
+    setTimeout(() => {
+      character.hidden = true;
+      character.style.animation = '';
+      }, 4000);
     }, 
   showNextLevelButton: (target, innerHTML, onClick ) => {
     if (!target){ return; }//Most times we want to show it and keep it shown

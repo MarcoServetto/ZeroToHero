@@ -19,21 +19,21 @@ public class CollectText {
 
     Path outputFile= workingDir.toAbsolutePath().resolve("assets", "collectedText","collectedText.txt");
     List<Path> allFiles=List.of(
-      //levels.resolve("Level1","Level1.html"),
+      levels.resolve("Level1","Level1.html"),
       //levels.resolve("Level2","Level2.html"),
-      levels.resolve("Level6","Level6.html"),
+      //levels.resolve("Level6","Level6.html"),
       resources.resolve("BaseJs.js"),
       resources.resolve("BaseStyle.css"),
       resources.resolve("RoundButtonsStyle.css"),
-      //directInstructions.resolve("DirectInstructions.css"),
-      //directInstructions.resolve("DirectInstructions.js"),
-      walking.resolve("GameOptions.js"),
+      directInstructions.resolve("DirectInstructions.css"),
+      directInstructions.resolve("DirectInstructions.js"),
+      walking.resolve("GameOptions.js")
       //walking.resolve("Question.js"),
       //walking.resolve("Walking.js"),
       //walking.resolve("Walking.css")
-      gather.resolve("Gather.js"),
-      gather.resolve("CodeCard.js"),
-      gather.resolve("Gather.css")
+      //gather.resolve("Gather.js"),
+      //gather.resolve("CodeCard.js"),
+      //gather.resolve("Gather.css")
       );
     String intro="""
     I'm making a browser based game to teach programming.
@@ -104,10 +104,13 @@ public class CollectText {
     let x= 3;//Good, still initialization    
     if (cond){ x = 3; }//Good, this is update
     ----------------
-    Now I'm really confused on why the reset button on Gather does not work.
-    If I click it, nothing happens (no reload) 
-    Also, it does not do the expected 'button pressed' animation.
-    (but it is still blue, does not visually look like it is disabled)
+    Right now the green flash is used to notify the end of a level, but I'm not so happy with it.
+    I would like to have an image in the center, may be a character with a thumbs up and transparend background in
+    png format.
+    How would I do that? how would I add the character centered in the screen with size depending on the screen?
+    Ideally, the character should be inside the game area, so that we can size it using the game area aspect ratio
+    managing. I would like the character to be another html element that always exists but is visualized only on need,
+    like the end button is.
     """;
     try (var writer = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8, StandardOpenOption.CREATE)){
       writer.write(intro);

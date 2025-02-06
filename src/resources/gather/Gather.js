@@ -49,7 +49,11 @@ const CheckSolution= (freezeToken,allCards)=>{
     `;
   const nextLevelUrl = MetaData.str(document.body, 'next');
   Utils.checkExists(nextLevelUrl);
-  if (explanation.length == 0){ window.location.href = nextLevelUrl; return; }
+  if (explanation.length == 0){
+    setTimeout(Utils.flashGreen,500);
+    setTimeout(() => window.location.href = nextLevelUrl,6000);
+    return;
+    }
   Utils.showMessageBox(msg, 1000, true, freezeToken,()=>{});
   };
   
