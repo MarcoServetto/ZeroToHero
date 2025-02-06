@@ -1,6 +1,7 @@
 package main;
 
 import levels.day01.*;
+import levels.day02.*;
 
 public class Main {
   public static final boolean debug= false;
@@ -17,7 +18,8 @@ public class Main {
     d.add(new GatgherTrue2());
     d.add(new ExplainReverse());
     d.add(new WalkingBack());
-    d.add(new Day1Outro());
+    d.addLast(new Day1Outro());
+    d.add(new BookArchery());
   }
 }
 /*

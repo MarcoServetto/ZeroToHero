@@ -22,7 +22,7 @@ public class Days{
   private void next(){
     assert level >= 0 && level <= 98;
     if (!nextNow){ level += 1; return; }
-    day += 1; level= 0; nextNow= false; 
+    day += 1; level= 1; nextNow= false; 
     }
   public String currentLevel(){ return "Level"+day+(level <= 9 ? "0" : "") + level; }
   public String nextLevel(){

@@ -98,8 +98,7 @@ const Book = () => {
         if (currentPopup === popup){ currentPopup = null; }
       }
       if (!isCorrect){ freeze.onMistake(); updateTimerDisplay(); return; }
-      hole.textContent = opt;
-      hole.classList.remove('hole');
+      hole.replaceWith(document.createTextNode(opt));
       updateMissingWordsCount();
       freeze.onCorrect();      
       });
@@ -107,7 +106,7 @@ const Book = () => {
     };
   const showHoleOptions= (hole) => {
     const correct= MetaData.str(hole, 'correct');
-    const list= MetaData.str(hole, 'options').split(',');
+    const list= MetaData.str(hole, 'options').split('|#|');
     const popup = document.createElement('div');
     popup.classList.add('bookPopup');
     popup.style.position = 'absolute';
