@@ -15,6 +15,12 @@ public class Days{
       +nextLevel()+"/"
       +nextLevel()+".html\">");
       }
+    public Path directoryName(){
+      return File.startPath()
+      .getParent()
+      .resolve("assetsDest")
+      .resolve(currentLevel);
+      }
     }
   private int day= 1;
   private int level= 0;

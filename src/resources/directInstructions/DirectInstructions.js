@@ -108,14 +108,20 @@ const initSlides = () => {
     };
   const textInit= t =>{
     t.value = MetaData.str(t, 'original');
+    let tokenLastInput= {};
     t.addEventListener('input', () => {
+      const currentInput= {};
+      tokenLastInput = currentInput;/*update token*/
       t.classList.remove("correctGlow", "incorrectGlow");
       let msg= checkSolutionTA(t);
       if (msg === defaultMsg){ return; }
-      if (msg === "") { t.classList.add("correctGlow"); return; }
-      t.classList.add("incorrectGlow");
+      if (msg === "") { t.classList.add("correctGlow"); return; }      
+      setTimeout(() => {
+        if (tokenLastInput !== currentInput){ return; }
+        t.classList.add("incorrectGlow");        
+        }, 1500);      
       });
-    };  
+    };
   //init
   for (let i= 0; i <= maxIndex; i++){ allTextArea(i).forEach(textInit); }
   updateContent();
