@@ -38,7 +38,7 @@ public class Book {
       .map(Escape::escapeForHtmlAttribute)
       .collect(Collectors.joining(middleTag));
     return holeStart + first + holeMiddle + options
-      + holeEnd1 + holeChar.repeat(maxSize) + holeEnd2;
+      + holeEnd1 + holeChar.repeat((maxSize/2)+1) + holeEnd2;
     }  
   private String allHtmlHoles(String text){
     //find all openTag text closeTag

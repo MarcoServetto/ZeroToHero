@@ -22,7 +22,7 @@ public class Main {
     d.add(new BookIntro());
     d.add(new BookArchery1());
     d.add(new Archery1());
-    d.add(new BookArchery1());
+    d.add(new BookArchery2());
   }
 }
 /*
