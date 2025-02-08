@@ -41,7 +41,7 @@ public class Walking2 implements Function<Days.LevelName,String>{
     .question("West:Direction{.turnTwice->@[West.turn@@.turn]@}", MethodCall)
     .question("West:Direction{.turnTwice->@[West@@.turn]@.turn}", MethodCall)
     .question("West:Direction{@[.turnTwi@@ce->West.turn.turn]@}", MethodDeclaration)
-    .question("North: Direction{ .turnTwice->@[North.turn@@.turn,]@ }", MethodCall)
+    .question("North: Direction{ .turnTwice->@[North.turn@@.turn]@, }", MethodCall)
     .question("North:Direction{ .turnTwice -> @[North@@.turn]@.turn }", MethodCall)
     .question("North:Direction { @[.turnTwi@@ce -> North.turn.turn,]@ }", MethodDeclaration)
     .build(); } }

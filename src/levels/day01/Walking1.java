@@ -70,6 +70,12 @@ public class Walking1 implements Function<Days.LevelName,String>{
         //Note the missing dot!
         """, Error)
     .question("""
+      @[Mistakes are not just welcome, 
+      Mistakes are necessary.
+      Do mistakes on purpose in
+      order to experiment@@.]@
+      """, Error)    
+    .question("""
         @[/*This is a multiline comment.
         This is the last question of this batch,
         after, they will just repeat.

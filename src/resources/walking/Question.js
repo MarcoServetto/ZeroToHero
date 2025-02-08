@@ -19,7 +19,15 @@ const QuestionText = (q,Buttons) => {
   const toSingle= ()=>{ startFix = redChar; endFix = redChar + 1; };
   const isCorrectAnswer= (option)=>{
     const isErrorType= requiredOption === 8;
-    const selectionOk= q.selectionStart === startOk && q.selectionEnd === endOk;
+    let start = q.selectionStart;
+    let end = q.selectionEnd;    
+    let trimmedStart = start;
+    let trimmedEnd = end;
+    const trimMe= (i)=>
+      i >= start && i< end && (q.value[i] === '\n' || q.value[i] === ' ');
+    while (trimMe(trimmedStart)){ trimmedStart += 1; }
+    while (trimMe(trimmedEnd - 1)){ trimmedEnd -= 1; }
+    const selectionOk= trimmedStart === startOk && trimmedEnd === endOk;
     return option === requiredOption && (isErrorType || selectionOk);
   };
   const active= Log.tag('active',(flag)=>{

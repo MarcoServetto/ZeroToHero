@@ -11,7 +11,10 @@ public class GatherPre1 implements Function<Days.LevelName,String>{
 //Drag and drop items into baskets
 //Bad code in the trash
 //Good code in a basket
-//This code is visible by all the cards to the left
+//This code is visible by all the cards
+//The code of a direction also assumes
+//the other three directions to be
+//declared as shown in the exercises before
 Direction:{.turn:Direction,}
 """)
         // code with title, group img, img num

@@ -55,7 +55,8 @@ public class Gather {
       .map(Card::body)
       .collect(Collectors.joining("\n"));
     return name.htmlNextLevel(File.Gather_html.text)
-      .replace("[###BODY###]", pre+body+"\n</div>\n");
+      .replace("[###BODY###]", pre+body
+        +"<p>End of items — drag one back to compare their code, but leave it empty at the finish. Press the button at the botton to check your solution.</p></div>\n");
   }
   public enum Kind{
     BrownMushroom("BrownM",21),

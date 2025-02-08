@@ -48,7 +48,7 @@ public class DirectInstructions {
       .replace("/*]*/", "");
     String start= Pattern.quote("/*[*/");
     String end= Pattern.quote("/*]*/");
-    String original= annotatedOriginal.replaceAll(start+".*?"+end,"[???]");
+    String original= annotatedOriginal.replaceAll(start+".*?"+end,"_____");
     return area(minX,maxX,minY,maxY,original,solution);
     }
   public String build(){    

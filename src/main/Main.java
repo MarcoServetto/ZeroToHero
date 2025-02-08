@@ -14,8 +14,8 @@ public class Main {
     d.add(new GatherPre1());
     d.add(new GatherPre2());
     d.add(new GatherPre3());
-    d.add(new GatherTrue1());
-    d.add(new GatgherTrue2());
+    d.add(new GatgherTrueExpr());
+    d.add(new GatherTrueDecl());
     d.add(new ExplainReverse());
     d.add(new WalkingBack());
     d.addLast(new Day1Outro());
