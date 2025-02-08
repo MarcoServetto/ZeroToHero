@@ -20,7 +20,9 @@ public class Main {
     d.add(new WalkingBack());
     d.addLast(new Day1Outro());
     d.add(new BookIntro());
-    d.add(new BookArchery());
+    d.add(new BookArchery1());
+    d.add(new Archery1());
+    d.add(new BookArchery1());
   }
 }
 /*

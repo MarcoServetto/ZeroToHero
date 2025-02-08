@@ -42,13 +42,22 @@ public class DirectInstructions {
     current.areas().add(new TArea(original,solution,alts,new Range(minX,maxX,minY,maxY)));
     return this;
     }
-  public DirectInstructions area(double minX, double maxX, double minY, double maxY,String annotatedOriginal){
-    String solution= annotatedOriginal
-      .replace("/*[*/", "")
-      .replace("/*]*/", "");
+  public static String intoSolution(String s){
+    return s.replace("/*[*/", "").replace("/*]*/", ""); 
+    }
+  public record Location(double minX, double maxX, double minY, double maxY){}
+  public DirectInstructions area(Location l, String annotatedOriginal){
+    return area(l.minX,l.maxX,l.minY,l.maxY,annotatedOriginal);
+  }
+  public DirectInstructions area(Location l, String original, String solution){
+    return area(l.minX,l.maxX,l.minY,l.maxY,original,solution);
+  }
+  public DirectInstructions area(double minX, double maxX, double minY, double maxY, String annotatedOriginal){
+    String solution= intoSolution(annotatedOriginal);
     String start= Pattern.quote("/*[*/");
     String end= Pattern.quote("/*]*/");
-    String original= annotatedOriginal.replaceAll(start+".*?"+end,"_____");
+    Pattern pattern= Pattern.compile(start + ".*?" + end, Pattern.DOTALL);
+    String original= pattern.matcher(annotatedOriginal).replaceAll("_____");
     return area(minX,maxX,minY,maxY,original,solution);
     }
   public String build(){    
