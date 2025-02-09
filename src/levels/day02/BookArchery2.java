@@ -36,10 +36,10 @@ because it is more concise and does not restrict its role to only making
 instances.
 ```
 <#[1|#|Direction:{|#|Archers: {|#|Archers {|#|Archer:{]#>
-  #(heading: Direction, aiming: Direction): Archer->
+  #(heading: Direction, aiming: Direction): Archer ->
     Archer: {
-      .heading: Direction->heading,
-      .aiming: Direction->aiming,
+      .heading: Direction -> heading,
+      .aiming: Direction -> aiming,
       }
   }
 ```

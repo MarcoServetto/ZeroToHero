@@ -7,20 +7,23 @@ import main.Days;
 public class Archery2 implements Function<Days.LevelName,String>{
   Location l= new Location(2, 97, 0.5, 40.5);
   String intro="""
-      //Code to make an archer
-      //shooting and then moving
-      //to hit the targets
-      //Use 'methName -> MethBody,'
-      
+      //Call method Archers# to make
+      //an archer shoot and move
       Direction:{ .turn: Direction }
       North:Direction{ East  }
       East: Direction{ South }
       South:Direction{ West  }
       West: Direction{ North }
-      Archer:{
-        .heading: Direction,
-        .aiming:  Direction,
-        }      
+      Archers:{#(
+          heading: Direction, 
+          aiming:  Direction): Archer ->
+        Archer: {
+          .heading: Direction -> heading,
+          .aiming:  Direction -> aiming,
+          }
+        }
+
+
       """;
   String acc(String annotated){
     String question= intro + annotated;
@@ -30,63 +33,34 @@ public class Archery2 implements Function<Days.LevelName,String>{
   @Override public String apply(Days.LevelName name){
     return new htmlMangle.DirectInstructions(name)
     // topStart/end   leftStart/end
-    .image(8)
+    .image(5)
     .area(l, intro+"""
-      Archer1:Archer{
-        .heading-> _____,
-        .aiming -> _____, 
-        }
+      Archers#(_____,_____)
       """,intro+"""
-      Archer1:Archer{
-        .heading-> North,
-        .aiming -> South, 
-        }""")
+      Archers#( North, South ) 
+      """)
     .image(2).area(l, intro+"""
-      Archer2:Archer{
-        .heading-> _____,
-        ________________, 
-        }
+      Archers__(_____,_____)
       """,intro+"""
-      Archer2:Archer{
-        .heading-> North,
-        .aiming -> West, 
-        }
-    """)
+      Archers#(North,West)
+      """)
     .image(2).area(l, acc("""
-      Archer3:Archer{/*[*/
-        .heading-> East,
-        .aiming -> West, 
-      /*]*/}
+      Archers/*[*/#(East,West)/*]*/
       """))
     .image(2).area(l, acc("""
-      Archer4:Archer{/*[*/
-        .heading-> East,
-        .aiming -> North, 
-      /*]*/}
+      /*[*/Archers#(East,North)/*]*/
       """))
     .image(2).area(l, acc("""
-      Archer5:Archer{/*[*/
-        .heading-> East,
-        .aiming -> South, 
-      /*]*/}
+      /*[*/Archers#(East,South)/*]*/
       """))
     .image(2).area(l, acc("""
-      Archer6:Archer{/*[*/
-        .heading-> South,
-        .aiming -> North, 
-      /*]*/}
+      /*[*/Archers#(South,North)/*]*/
       """))
     .image(2).area(l, acc("""
-      Archer7:Archer{/*[*/
-        .heading-> South,
-        .aiming -> East, 
-      /*]*/}
+      /*[*/Archers#(South,East)/*]*/
       """))
     .image(2).area(l, acc("""
-      Archer8:Archer{/*[*/
-        .heading-> West,
-        .aiming -> East, 
-      /*]*/}
+      /*[*/Archers#(West,East)/*]*/
       """))
-    .image(3)
+    .image(14)
     .build(); } }
