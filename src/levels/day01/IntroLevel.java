@@ -16,9 +16,23 @@ public class IntroLevel implements Function<Days.LevelName,String>{
     return new htmlMangle.DirectInstructions(name)
     // topStart/end   leftStart/end
     .image(12)
-      .area(15, 30,     3, 48, "", "Hear:{}")
+      .area(15, 30,     3, 48, "", "Hear:{}",List.of(
+        "Hear{}", "You forgot the colon (:)",
+        "Hear:()","Curly parenthesis, not round ones",
+        "Hear:[]","Curly parenthesis, not square ones",
+        "'Hear:{}'", "Do not insert the (')",
+        "`Hear:{}`", "Do not insert the (')",
+        "hear:{}", "You need Hear with uppercase H"
+        ))
     .image(2)
-      .area(15, 30,     3, 48, "", "See:{}")
+      .area(15, 30,     3, 48, "", "See:{}",List.of(
+        "See{}", "You forgot the colon (:)",
+        "See:()","Curly parenthesis, not round ones",
+        "See:[]","Curly parenthesis, not square ones",
+        "'See:{}'", "Do not insert the (')",
+        "`See:{}`", "Do not insert the (')",
+        "see:{}", "You need See with uppercase S"
+        ))
     .image()
       .area(33, 80,    45, 98, "\nSee:{}\nHear:{}",last=
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}",List.of(

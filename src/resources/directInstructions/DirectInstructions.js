@@ -1,5 +1,6 @@
-const initSlides = () => {
-  let currentIndex = 0;
+const initSlides= () => {
+  let currentIndex= 0;
+  let customErrorMessage= "";
   const prev = document.getElementById('prevBtn');
   const next = document.getElementById('nextBtn');
   const nextLevelUrl = MetaData.str(document.body,'next');
@@ -114,14 +115,29 @@ const initSlides = () => {
       tokenLastInput = currentInput;/*update token*/
       t.classList.remove("correctGlow", "incorrectGlow");
       let msg= checkSolutionTA(t);
+      customErrorMessage= "";
       if (msg === defaultMsg){ return; }
-      if (msg === "") { t.classList.add("correctGlow"); return; }      
+      if (msg === "") { t.classList.add("correctGlow"); return; }
+      customErrorMessage= msg;      
       setTimeout(() => {
         if (tokenLastInput !== currentInput){ return; }
-        t.classList.add("incorrectGlow");        
-        }, 1500);      
+        t.classList.add("incorrectGlow");
+        displayPanicMessage(msg,15000);  
+        }, 500);      
       });
     };
+  let panicToHideId= null;
+  const displayPanicMessage= (msg,duration) => {
+    clearTimeout(panicToHideId);
+    const hintChar= document.getElementById("hintCharacter");
+    const speechBubble= hintChar.querySelector(".speechBubble");
+    speechBubble.textContent = msg;
+    hintChar.hidden = false;
+    panicToHideId = setTimeout(()=>{
+      customErrorMessage = "";
+      hintChar.hidden = true;
+      }, duration);          
+    };  
   //init
   for (let i= 0; i <= maxIndex; i++){ allTextArea(i).forEach(textInit); }
   updateContent();
@@ -129,11 +145,8 @@ const initSlides = () => {
   const InactiveNudge= inactiveNudge(Buttons.isFrozen,30000,()=>{
     const tas= allTextArea(currentIndex);
     if (tas.length === 0) { return; }
-    const hintChar = document.getElementById("hintCharacter");
-    const speechBubble = hintChar.querySelector(".speechBubble");
-    speechBubble.textContent = nextHint();
-    hintChar.hidden = false;
-    setTimeout(() => hintChar.hidden = true, 8000);
+    if (customErrorMessage !== ""){ return; }
+    displayPanicMessage(nextHint(),8000);
     });
   let messageIndex = 0;
   const hintMessages = [
