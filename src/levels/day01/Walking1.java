@@ -40,7 +40,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
       @[Just press @@error :-)]@ 
       """,Error)
     .question("""
-      @[//@@Ok, if you answer all correct, the]@
+      @[//@@Ok, if you answered all correct, the]@
       //next level button will appear after you
       //answer this one.
       //Otherwise, you will be asked to do      

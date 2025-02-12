@@ -18,8 +18,12 @@ const Walking= () => {
     resetAnimationSpeed();
     });
   const speedUp= ()=>{ streak = streak + 1; };
+  const currentSpeed=()=>{
+    const highSpeed= streak > 0 ? Math.pow(0.3981,streak) : 10000;      
+    return Math.max(highSpeed,Math.pow(0.3981,4));//4 is the max visualized speed
+    };
   const resetAnimationSpeed= () => {
-    const speed= streak > 0 ? Math.pow(0.3981,streak) : 0;
+    const speed= currentSpeed();
     backLayer.style.animationDuration = (1000000 * speed + 's');
     frontLayer.style.animationDuration = (500000 * speed + 's');
     if (speed > 0){
@@ -33,12 +37,20 @@ const Walking= () => {
       smallCharacter.style.animationPlayState = 'paused';
       }
     };
+  const adjustScoreFontSize = () => {
+    const baseFontSize= 5;
+    const minFontSize= 1;
+    const scoreLength= score.toString().length;
+    const newFontSize= Math.max(minFontSize, baseFontSize - (scoreLength * 0.3));
+    scoreDisplayElem.style.fontSize = `${newFontSize}ex`;
+    };
   const showScoreAnimation= (increment) => {
     const incrementElem = document.createElement('span');
     incrementElem.classList.add('scoreIncrement');
     incrementElem.textContent = `+${increment}`;
     const scoreCounter = document.querySelector('.scoreCounter');
     scoreCounter.appendChild(incrementElem);
+    adjustScoreFontSize();
     setTimeout(() => incrementElem.remove(), 3000);
     setTimeout(() => scoreDisplayElem.textContent = score,1000);
     setTimeout(() => {    
@@ -51,6 +63,7 @@ const Walking= () => {
     '<span class="emoji">🎉</span>',
     () => window.location.href = nextLevelUrl
     );
+  let rightAfterPass= 0; 
   const handleCorrectAnswer= () => {
     questions[currentQuestionIndex].solved = streak > 0;
     score += increment();
@@ -58,7 +71,8 @@ const Walking= () => {
     speedUp();
     currentBonusElem.textContent = increment();
     currentPointsElem.textContent = score;    
-    if (score >= requiredPoints){ showNextLevelButton(); }
+    if (score >= requiredPoints){ showNextLevelButton(); rightAfterPass += 1; }
+    if (rightAfterPass > 5){ rightAfterPass = 3; setTimeout(Utils.flashGreen, 900); }
     };
   const handleIncorrectAnswer= Log.tag('handleIncorrectAnswer', (currentQuestion) => {
     //Log.log(true,'showing answer for incorrect Q' + getQuestionNumber(currentQuestion));
@@ -79,7 +93,7 @@ const Walking= () => {
     const msg =`
     <div>
       <p><strong>You stumble and fall.</strong></p>
-    <p>See the text currently selected.</p>
+    <p>The correct highlight/selection is now shown.</p>
     <p>The right button was "<strong>${explanation}</strong>".</p>
     <hr>
       <p>Minigame explanation:</p>
