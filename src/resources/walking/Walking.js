@@ -1,9 +1,5 @@
-//import { InitQuestions } from './Question.js';
-//import { OptionExplanations } from './GameOptions.js';
-
-const Walking= () => {
-  const nextQuestion= Log.tag('nextQuestion', () => {
-    if (streak === 0){streak = 1; }    
+const Walking= (score) => {
+  const nextQuestion= () => {
     const completed= questions.every(q => q.solved);
     if (completed){ questions.forEach(q => q.solved = false); }
     let i = (currentQuestionIndex + 1) % totalQuestions;
@@ -12,71 +8,41 @@ const Walking= () => {
     questions.forEach(q => q.active(false));
     questions[currentQuestionIndex].active(true);
     updateContent();
-    });
-  const updateContent= Log.tag('updateContent',() => {
+    };
+  const updateContent= () => {
     requiredPointsElem.textContent = requiredPoints;
     resetAnimationSpeed();
-    });
-  const speedUp= ()=>{ streak = streak + 1; };
+    };
+  const speedUp= ()=>{
+    questions[currentQuestionIndex].solved = !score.justFailed();
+    if (score.justFailed()){ score.doMootSuccess(); return; }
+    score.doSuccess();
+    };
   const currentSpeed=()=>{
-    const highSpeed= streak > 0 ? Math.pow(0.3981,streak) : 10000;      
+    const highSpeed= score.streak() > 0 ? Math.pow(0.3981,score.streak()) : 10000;      
     return Math.max(highSpeed,Math.pow(0.3981,4));//4 is the max visualized speed
     };
-  const resetAnimationSpeed= () => {
+  const resetAnimationSpeed=() => {
     const speed= currentSpeed();
     backLayer.style.animationDuration = (1000000 * speed + 's');
     frontLayer.style.animationDuration = (500000 * speed + 's');
-    if (speed > 0){
-      character.style.animationPlayState = 'running';
-      smallCharacter.style.animationPlayState = 'running';
-      character.style.animationDuration = ((1.5 + 50 * speed) + 's');
-      smallCharacter.style.animationDuration = ((1.5 + 50 * speed) + 's');
-      }
-    else {
-      character.style.animationPlayState = 'paused';
-      smallCharacter.style.animationPlayState = 'paused';
-      }
-    };
-  const adjustScoreFontSize = () => {
-    const baseFontSize= 5;
-    const minFontSize= 1;
-    const scoreLength= score.toString().length;
-    const newFontSize= Math.max(minFontSize, baseFontSize - (scoreLength * 0.3));
-    scoreDisplayElem.style.fontSize = `${newFontSize}ex`;
-    };
-  const showScoreAnimation= (increment) => {
-    const incrementElem = document.createElement('span');
-    incrementElem.classList.add('scoreIncrement');
-    incrementElem.textContent = `+${increment}`;
-    const scoreCounter = document.querySelector('.scoreCounter');
-    scoreCounter.appendChild(incrementElem);
-    adjustScoreFontSize();
-    setTimeout(() => incrementElem.remove(), 3000);
-    setTimeout(() => scoreDisplayElem.textContent = score,1000);
-    setTimeout(() => {    
-      scoreDisplayElem.classList.add('animate-glow');
-      setTimeout(() => scoreDisplayElem.classList.remove('animate-glow'), 3000);
-      },500);
+    character.style.animationDuration = ((1.5 + 50 * speed) + 's');
+    smallCharacter.style.animationDuration = ((1.5 + 50 * speed) + 's');
     };
   const showNextLevelButton= () => Utils.showNextLevelButton(
     document.querySelector('.scoreText'),
     '<span class="emoji">🎉</span>',
-    () => window.location.href = nextLevelUrl
+    ()=>window.location.href = nextLevelUrl
     );
   let rightAfterPass= 0; 
-  const handleCorrectAnswer= () => {
-    questions[currentQuestionIndex].solved = streak > 0;
-    score += increment();
-    showScoreAnimation(increment());
+  const handleCorrectAnswer= ()=>{
     speedUp();
-    currentBonusElem.textContent = increment();
-    currentPointsElem.textContent = score;    
-    if (score >= requiredPoints){ showNextLevelButton(); rightAfterPass += 1; }
+    currentBonusElem.textContent = score.nextIncrement();
+    if (score.score() >= requiredPoints){ showNextLevelButton(); rightAfterPass += 1; }
     if (rightAfterPass > 5){ rightAfterPass = 3; setTimeout(Utils.flashGreen, 900); }
     };
-  const handleIncorrectAnswer= Log.tag('handleIncorrectAnswer', (currentQuestion) => {
-    //Log.log(true,'showing answer for incorrect Q' + getQuestionNumber(currentQuestion));
-    streak = 0;
+  const handleIncorrectAnswer= (currentQuestion) => {
+    score.doFailure()
     currentBonusElem.textContent = 0;
     currentQuestion.toSolution();
     currentQuestion.selectionEvent();
@@ -85,9 +51,8 @@ const Walking= () => {
       questions.forEach(q => q.active(false));
       questions[currentQuestionIndex].active(true);
       updateContent();
-      streak = 0;
       });
-    });
+    };
   const displayExplanationMessage = (requiredOption, onDismiss) => {
     const explanation = OptionExplanations[requiredOption] || Utils.error('bad button id '+requiredOption);
     const msg =`
@@ -109,8 +74,7 @@ const Walking= () => {
     </div>
     `;
     Utils.showMessageBox(msg, 4000, true, Buttons.freezeToken, onDismiss);
-    };
-  const increment= ()=>streak > 0 ? Math.pow(2, streak - 1) : 0;  
+    };  
   const handleButtonClick = Log.tag('handleButtonClick', (option) => {
     Buttons.freezeFor(500);
     const currentQuestion = questions[currentQuestionIndex];
@@ -131,18 +95,14 @@ const Walking= () => {
   };
   //init code
   let currentQuestionIndex= 0;
-  let score= 0;
-  let streak= 1;
   const Buttons= initButtons(updateContent, buttonActions);
-  Buttons.freezeFor(1500);
-  const questions= InitQuestions(Buttons);
+  //Buttons.freezeFor(1500);
+  const questions= InitQuestions(Buttons.isFrozen);
   const totalQuestions= questions.length;
-  const currentPointsElem= document.getElementById('currentPoints');
-  const currentBonusElem= document.getElementById('currentBonus');
+  const currentBonusElem= Utils.getElementById('currentBonus');
   const requiredPoints= MetaData.int(document.body,'required');
   const nextLevelUrl= MetaData.str(document.body,'next');
-  const requiredPointsElem= document.getElementById('requiredPoints');
-  const scoreDisplayElem= document.querySelector('.scoreDisplay');
+  const requiredPointsElem= Utils.getElementById('requiredPoints');
   const backLayer= document.querySelector('.back-layer');
   const frontLayer= document.querySelector('.front-layer');
   const character = document.querySelector('.character');
@@ -161,4 +121,6 @@ const Walking= () => {
     resetAnimationSpeed();
     });
   };
-Walking();
+Walking(Score(
+  (streak)=>streak > 0 ? Math.pow(2, streak - 1) : 0
+  ));

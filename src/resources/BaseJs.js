@@ -45,12 +45,13 @@ const Utils= {
     alert(text);
     throw new Error(text);
     },
-  checkExists:(value)=>{
+  checkExists: (value)=>{
     const err= value === null || value === undefined || Number.isNaN(value);
     if(!err){ return value; }
     Utils.error("Value does not exists");
     },
-  check:(cond,text) =>{ if(!cond){ Utils.error(text); } },
+  getElementById: (id)=>Utils.checkExists(document.getElementById(id)),
+  check: (cond,text) =>{ if(!cond){ Utils.error(text); } },
   normalize: (text) => (' ' + text + ' ')
     .replace(/\s+(?=[^a-zA-Z0-9])/g, '') // Remove spaces before symbols
     .replace(/(?<=[^a-zA-Z0-9])\s+/g, '') // Remove spaces after symbols
@@ -72,22 +73,23 @@ const Utils= {
     });
     const timeOutF=autoMsg ? endMsg : ()=>messageBox.addEventListener('click', endMsg, { once: true });
     setTimeout(timeOutF, timeOut);
-  },  
-  flashGreen:()=> {
+  },
+  flashImage:(color,image)=>{
     const overlay = document.getElementById('screenOverlay').style;
     overlay.transition = 'none';
-    overlay.backgroundColor = 'rgba(0,255,0,0.7)';
+    overlay.backgroundColor = color;
     void overlay.offsetWidth;
     overlay.animation = 'flashEffect 6s ease-out';
-    
-    const character= document.getElementById('levelEndCharacter');
+    const character= document.getElementById(image);
     character.hidden = false;
     character.style.animation = 'levelEndAppear 3s ease-in-out forwards';
     setTimeout(() => {
       character.hidden = true;
       character.style.animation = '';
       }, 4000);
-    }, 
+    },
+  flashGreen:()=> Utils
+    .flashImage('rgba(0,255,0,0.7)','levelEndCharacter'),
   showNextLevelButton: (target, innerHTML, onClick ) => {
     if (!target){ return; }//Most times we want to show it and keep it shown
     setTimeout(Utils.flashGreen, 1500);

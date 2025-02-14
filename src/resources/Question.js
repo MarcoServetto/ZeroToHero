@@ -1,12 +1,12 @@
-/*export*/ const InitQuestions = (Buttons)=>
+/*export*/ const InitQuestions = (isFrozen)=>
   _postInit(Deck.list('question')
-    .map(q=>QuestionText(q,Buttons)));
+    .map(q=>QuestionText(q,isFrozen)));
     const _postInit = Log.tagAsync('postInit', (Questions) => {
   setTimeout(()=>_postInit(Questions),100);
   Questions.forEach((q)=>q.keepFocus());
   return Questions;
   });
-const QuestionText = (q,Buttons) => {
+const QuestionText = (q,isFrozen) => {
   //Log.log(true,`QuestionText initialization for ${q.id}`);
   const redChar= MetaData.int(q, 'red');
   const requiredOption= MetaData.int(q, 'option');
@@ -15,10 +15,12 @@ const QuestionText = (q,Buttons) => {
   const originalText= MetaData.str(q,'original');
   let startFix= redChar;
   let endFix= redChar + 1;
+  const noRedChar= ()=>Number.isNaN(redChar);
+  const extractStr= (str)=>MetaData.str(q, str);
+  const extractInt= (str)=>MetaData.int(q, str);
   const toSolution= ()=>{ startFix = startOk; endFix = endOk; };
   const toSingle= ()=>{ startFix = redChar; endFix = redChar + 1; };
-  const isCorrectAnswer= (option)=>{
-    const isErrorType= requiredOption === 8;
+  const currentSelectionRange= ()=>{
     let start = q.selectionStart;
     let end = q.selectionEnd;    
     let trimmedStart = start;
@@ -27,7 +29,19 @@ const QuestionText = (q,Buttons) => {
       i >= start && i< end && (q.value[i] === '\n' || q.value[i] === ' ');
     while (trimMe(trimmedStart)){ trimmedStart += 1; }
     while (trimMe(trimmedEnd - 1)){ trimmedEnd -= 1; }
-    const selectionOk= trimmedStart === startOk && trimmedEnd === endOk;
+    return {start:trimmedStart,end:trimmedEnd};  
+  };
+  const currentSelection= ()=>{
+    const range= currentSelectionRange();
+    return q.value.slice(range.start, range.end);
+    };
+  const isCorrectSelection= ()=>{
+    const range= currentSelectionRange();
+    return range.start === startOk && range.end === endOk;          
+    };
+  const isCorrectAnswer= (option)=>{
+    const isErrorType= requiredOption === 8;
+    const selectionOk=isCorrectSelection();
     return option === requiredOption && (isErrorType || selectionOk);
   };
   const active= Log.tag('active',(flag)=>{
@@ -38,20 +52,21 @@ const QuestionText = (q,Buttons) => {
     highlight();
   });
   const highlightRange= Log.tag('highlightRange', (a, b)=>{
-    Log.log(true, `Highlighting range ${startFix}-${endFix}`);
+    //Log.log(true, `Highlighting range ${a}-${b}`);
     setTimeout(() => { q.focus(); q.setSelectionRange(a, b); }, 0);
     //timeout needed: the mouse event can clear the selection at the end of the event management
     return false;
     });
   const highlight= ()=> highlightRange(startFix, endFix);
   const selectionEvent= ()=>{
-    Log.log(true,'selectionEvent for  '+q.id+' '+startFix+ '-'+endFix);
-    if (Buttons.isFrozen()){ return highlight(); }
+    //Log.log(true,'selectionEvent for  '+q.id+' '+startFix+ '-'+endFix+' is frozen?'+isFrozen());
+    if (isFrozen()){ return highlight(); }
     const start= Number(q.selectionStart) || 0;
     const end= Number(q.selectionEnd) || 0;
-    const included= start <= redChar && end > redChar;
+    //Log.log(true,'test highlight for  '+q.id+' '+startFix+ '-'+endFix+' -- '+start+' '+end);
+    const included= noRedChar() || (start <= redChar && end > redChar);
     if (!included){ return highlight(); }
-    Log.log(true,'no highlight for  '+q.id+' '+startFix+ '-'+endFix+' -- '+start+' '+end);
+    //Log.log(true,'no highlight for  '+q.id+' '+startFix+ '-'+endFix+' -- '+start+' '+end);
     return highlightRange(start,end);
     };
   const keepFocus= Log.tag('keepFocus',() => {
@@ -60,11 +75,16 @@ const QuestionText = (q,Buttons) => {
     q.focus();
     selectionEvent();
     });
-  const selectionEventMouse= Log.tag('userEvent:mouseUp',selectionEvent);
+  const addClass= (str)=> q.classList.add(str);
+  const removeClass= (str)=> q.classList.remove(str); 
+  const selectionEventMouse= selectionEvent;
   q.addEventListener('mouseup', selectionEventMouse);
   q.addEventListener('keydown', (e) => e.preventDefault());
   return {
-    toSolution,toSingle,isCorrectAnswer,active,
-    keepFocus,selectionEvent,
-    solved:false,requiredOption};
+    toSolution, toSingle, currentSelection,
+    isCorrectAnswer, isCorrectSelection,
+    active, keepFocus, selectionEvent,
+    extractStr, extractInt,
+    addClass, removeClass,
+    solved:false, requiredOption};
 };
