@@ -37,6 +37,7 @@ const QuestionText = (q,isFrozen) => {
     };
   const isCorrectSelection= ()=>{
     const range= currentSelectionRange();
+    Log.log(true,"selectedRange=["+range.start+"]["+range.end+"]");
     return range.start === startOk && range.end === endOk;          
     };
   const isCorrectAnswer= (option)=>{
@@ -59,15 +60,11 @@ const QuestionText = (q,isFrozen) => {
     });
   const highlight= ()=> highlightRange(startFix, endFix);
   const selectionEvent= ()=>{
-    //Log.log(true,'selectionEvent for  '+q.id+' '+startFix+ '-'+endFix+' is frozen?'+isFrozen());
     if (isFrozen()){ return highlight(); }
     const start= Number(q.selectionStart) || 0;
     const end= Number(q.selectionEnd) || 0;
-    //Log.log(true,'test highlight for  '+q.id+' '+startFix+ '-'+endFix+' -- '+start+' '+end);
     const included= noRedChar() || (start <= redChar && end > redChar);
     if (!included){ return highlight(); }
-    //Log.log(true,'no highlight for  '+q.id+' '+startFix+ '-'+endFix+' -- '+start+' '+end);
-    return highlightRange(start,end);
     };
   const keepFocus= Log.tag('keepFocus',() => {
     if (q.hidden){ return; }
@@ -76,15 +73,23 @@ const QuestionText = (q,isFrozen) => {
     selectionEvent();
     });
   const addClass= (str)=> q.classList.add(str);
-  const removeClass= (str)=> q.classList.remove(str); 
-  const selectionEventMouse= selectionEvent;
+  const removeClass= (str)=> q.classList.remove(str);
+  let postSelect= ()=>{};
+  const setPostSelect= (callBack)=>postSelect=callBack;
+  const selectionEventMouse = () => {
+    setTimeout(selectionEvent, 10);
+    setTimeout(postSelect, 11);
+    };
   q.addEventListener('mouseup', selectionEventMouse);
+  q.addEventListener('mouseleave', selectionEventMouse);
   q.addEventListener('keydown', (e) => e.preventDefault());
+  q.addEventListener('mousedown', (e)=>{ q.selectionStart = q.selectionEnd = 0; });
+
   return {
     toSolution, toSingle, currentSelection,
     isCorrectAnswer, isCorrectSelection,
     active, keepFocus, selectionEvent,
     extractStr, extractInt,
-    addClass, removeClass,
+    addClass, removeClass, setPostSelect,
     solved:false, requiredOption};
 };

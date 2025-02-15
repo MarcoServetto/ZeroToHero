@@ -87,23 +87,19 @@ const Climb= (score) => {
   const hideRockCode = () => codeUnderRock.hidden = true;
 
   const questionMouseUp= ()=>{
-    Log.log(true, 'MouseUp event begin');
     if (!getDraggedHidden()) { return; }
     const q= currentQuestion();
+    const sel= q.currentSelection();
+    if(sel === ""){ return; }
     const correctSelection= q.isCorrectSelection();
-    Log.log(true, 'MouseUp event' +correctSelection);
-    if (correctSelection){ startDragPhase(q.currentSelection()); return; }
+    if (correctSelection){ startDragPhase(sel); return; }
     q.addClass('incorrectGlow');
     wrongAttempts++;
     setTimeout(()=>q.removeClass('incorrectGlow'), 1000);
     if (wrongAttempts % 5 !== 0) { return; }
     currentQuestion().toSolution();
-    //currentQuestion().selectionEvent();//what this does?
-    Buttons.freezeFor(4050);//should I have a Buttons just for the freeze, without any buttons?
-    //how to reset the selection using the Question API?
-    };
-  Deck.list('question')
-    .forEach(q=>q.addEventListener('mouseup',questionMouseUp));
+    };  
+  questions.forEach(q=>q.setPostSelect(questionMouseUp));
   const startDragPhase= (selText)=>{
     currentQuestion().addClass('noSelection');    
     dragged.textContent = selText;

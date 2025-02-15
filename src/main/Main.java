@@ -47,7 +47,7 @@ public class RealMain {
  walking error message barely out of screen
  
  Try to use Escape.norm instead of replaceAll in walking generator
- 
+ Climb draggable code too small on small-resized windows
  Check that screenOverlay can be last instead of first in the gameArea and if so
  make a constant string for all the stuff to close the game areas. 
  

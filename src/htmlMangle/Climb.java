@@ -62,6 +62,6 @@ record CQuestion(String context, String text, int start, int end, List<String> r
       "    data-rock"+i[0]+"Img=\"Rock"+Climb.nextRock()+".png\""
     + "    data-rock"+(i[0]++)+"Code= \""+r+"\"")
       .collect(Collectors.joining("\n"))          
-    + "    autocomplete=\"off\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" readonly hidden></textarea>";
+    + "    autocomplete=\"off\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" readonly hidden draggable=\"false\"></textarea>";
   }
 }
