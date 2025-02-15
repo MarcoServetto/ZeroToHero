@@ -16,7 +16,7 @@ public class Climb {
   private List<CQuestion> qs= new ArrayList<>();
   private void commit(CQuestion q){ qs.add(q); }
   public Climb question(String context, String text, List<String> rocks, int option){
-    text = Escape.norm(text);
+    text = Escape.cleanUp(text);
     context = Escape.norm(context);
     rocks = rocks.stream().map(Escape::norm).toList();
     int start= text.indexOf("@[");
@@ -26,7 +26,7 @@ public class Climb {
     assert end >= 0:text;
     text = text.replace("]@","");
     assert option >= 0 && option < rocks.size();
-    commit(new CQuestion(context,text,start,end,rocks,option));
+    commit(new CQuestion(context,Escape.escapeForHtmlAttribute(text),start,end,rocks,option));
     return this;
   }
   String pre(){

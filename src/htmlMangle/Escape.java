@@ -4,10 +4,16 @@ import java.util.stream.Collectors;
 
 public class Escape {
   public static String norm(String s){
-    s= s.replaceAll("[ \t\r]+\n", "\n");
+    //s= s.replaceAll("[ \t\r]+\n", "\n");
+    //s = s.replaceAll("\\s+\n", "\n");
+    //if (s.endsWith("\n")){ s = s.substring(0, s.length() - 1); }
+    return Escape.escapeForHtmlAttribute(cleanUp(s));
+    }
+  public static String cleanUp(String s){
+    s = s.replaceAll("\\s+\n", "\n").replaceAll("\r","");
     if (s.endsWith("\n")){ s = s.substring(0, s.length() - 1); }
-    return Escape.escapeForHtmlAttribute(s);
-    }  
+    return s;
+    }
   public static String escapeForHtmlAttribute(String input) {
     return input.chars()
       .mapToObj(c -> switch (c) {

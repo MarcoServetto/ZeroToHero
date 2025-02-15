@@ -8,7 +8,9 @@ import java.util.function.Function;
 
 import resources.File;
 public class Days{
-  public record LevelName(String currentLevel, String nextLevel){
+  String assetsDest;
+  public Days(String assetsDest){ this.assetsDest= assetsDest; }
+  public record LevelName(String currentLevel, String nextLevel,String assetsDest){
     public String htmlNextLevel(String html){ return htmlNextLevel(html,""); }
     public String htmlNextLevel(String html, String more){ return html
       .replace("<body>","<body "+more+" data-next=\"../"
@@ -18,7 +20,7 @@ public class Days{
     public Path directoryName(){
       return File.startPath()
       .getParent()
-      .resolve("assetsDest")
+      .resolve(assetsDest)
       .resolve(currentLevel);
       }
     }
@@ -37,7 +39,7 @@ public class Days{
     return "Level"+day+(level <= 9 ? "0" : "") + level; 
     }
   private void write(Function<LevelName,String> l){
-    var ln= new LevelName(this.currentLevel(),this.nextLevel());
+    var ln= new LevelName(this.currentLevel(),this.nextLevel(),assetsDest);
     new FileWriter().writeFile(ln,l.apply(ln));
   }
   public void add(Function<LevelName,String> l){ next(); write(l); }
@@ -47,7 +49,7 @@ class FileWriter{
   void writeFile(Days.LevelName name, String s){
     Path p= File.startPath()
       .getParent()
-      .resolve("assetsDest")
+      .resolve(name.assetsDest())
       .resolve(name.currentLevel())
       .resolve(name.currentLevel()+".html");
     try {

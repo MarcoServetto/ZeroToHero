@@ -7,6 +7,7 @@ const ensureStrictMode = () => {//To put in utils?
 ensureStrictMode();
 
 const Climb= (score) => {
+  const gameArea= Utils.getElementById('gameArea');
   const questionHelp= Utils.getElementById('questionHelp');
   const mountainWall= Utils.getElementById('climbRight');
   const scoreCounter= Utils.getElementById('scoreCounter');
@@ -20,15 +21,14 @@ const Climb= (score) => {
   let currentOffset       = 0;
   let draggingIsHidden= true;//sadly dragged.hidden can be set but not read
   const setDraggedHidden= (flag)=>{
-    //Log.log(true,"set as "+flag)
     draggingIsHidden= flag;
     dragged.hidden= flag;
+    updateDraggedHeight();
     };
   const getDraggedHidden= ()=>draggingIsHidden;
   
   const currentQuestion= ()=>questions[currentQuestionIndex];
   const nextLevel= ()=>{
-    Log.log(true,"GoingNext");
     Utils.flashGreen();
     setTimeout(()=>window.location.href = nextLevelUrl, 2500);
     };
@@ -71,18 +71,17 @@ const Climb= (score) => {
       }
     };    
   const showRockCode = (rock, code) => {
-    codeUnderRock.textContent = code; 
+    codeUnderRock.hidden = false;
+    codeUnderRock.textContent = code;     
     const width= code.length + 3;
     codeUnderRock.style.width = width + 'ch';
-    codeUnderRock.style.height = 'auto';
-    codeUnderRock.style.height = ((codeUnderRock.scrollHeight / 16) - 1) + 'em';
+    updateCodeUnderRockHeight();
     const rockRect = rock.getBoundingClientRect();
-    const containerRect = document.querySelector('.gameArea').getBoundingClientRect();
+    const containerRect = gameArea.getBoundingClientRect();
     const relativeTop = ((rockRect.bottom - containerRect.top + 5) / containerRect.height) * 100;
     const relativeLeft = ((rockRect.left - containerRect.left) / containerRect.width) * 100;
     codeUnderRock.style.top = (relativeTop-18) + '%';
     codeUnderRock.style.left = relativeLeft + '%';
-    codeUnderRock.hidden = false;
     };
   const hideRockCode = () => codeUnderRock.hidden = true;
 
@@ -96,8 +95,10 @@ const Climb= (score) => {
     q.addClass('incorrectGlow');
     wrongAttempts++;
     setTimeout(()=>q.removeClass('incorrectGlow'), 1000);
-    if (wrongAttempts % 5 !== 0) { return; }
-    currentQuestion().toSolution();
+    //if (wrongAttempts % 5 !== 0) { return; }//TODO: remove wrong attempts or make this work
+    //currentQuestion().toSolution();
+    //currentQuestion().selectionEvent();
+    //setTimeout(()=>q.someCallToRemoveSelection(), 1000);
     };  
   questions.forEach(q=>q.setPostSelect(questionMouseUp));
   const startDragPhase= (selText)=>{
@@ -106,14 +107,11 @@ const Climb= (score) => {
     setDraggedHidden(false);
     };
   const dragClone = e => {
-    const container= document.querySelector('.gameArea');
-    const containerRect= container.getBoundingClientRect();
+    const containerRect= gameArea.getBoundingClientRect();
     const relativeTop= ((e.clientY - containerRect.top + 1) / containerRect.height) * 100;
     const relativeLeft= ((e.clientX - containerRect.left) / containerRect.width) * 100;
-    dragged.style.height = 'auto';
     const width= dragged.value.length + 3;
     dragged.style.width = width + 'ch';
-    dragged.style.height = ((dragged.scrollHeight / 16)-1)+'em';
     const draggedRect = dragged.getBoundingClientRect();
     const widthPercentage = (draggedRect.width / containerRect.width) * 100;
     dragged.style.top = relativeTop + '%';
@@ -184,16 +182,19 @@ const Climb= (score) => {
     .flashImage('rgba(200,20,0,0.9)','fallEndCharacter');
   const flashEnd= ()=>Utils
     .flashImage('rgba(170,60,10,0.7)','fallStarsCharacter');
-     
-
+  const textAreaContainerHeight= (textArea,container)=>{
+    textArea.style.height = 'auto';
+    const heightPercentage= (textArea.scrollHeight / container.clientHeight) * 100;
+    Log.log(true,"id= "+textArea.id+" "+heightPercentage+" "+textArea.scrollHeight+" "+container.clientHeight);
+    textArea.style.height = heightPercentage+'%';
+    };
   const updateApiHeight= ()=>{
     const api= Utils.getElementById('api');
-    const container= Utils.getElementById('apiContainer');
-    const rootFontSize= parseFloat(getComputedStyle(document.documentElement).fontSize);//`1em` in pixels
-    const heightPercentage= (api.scrollHeight / container.clientHeight) * 100;
-    const heightEm = api.scrollHeight / rootFontSize;
-    api.style.minHeight = Math.max(98, heightPercentage) + '%';
+    textAreaContainerHeight(api,Utils.getElementById('apiContainer'));
+    api.style.minHeight = '99%';
     };
+  const updateDraggedHeight= ()=> textAreaContainerHeight(dragged,gameArea);
+  const updateCodeUnderRockHeight= ()=> textAreaContainerHeight(codeUnderRock,gameArea);
   loadQuestion(questions[0]);
   updateApiHeight();
   };

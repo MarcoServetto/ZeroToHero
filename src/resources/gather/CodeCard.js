@@ -1,6 +1,6 @@
 /*export*/ const initDragging = (isFrozen)=> {
-  const dragDropImg= document.getElementById('dragDropImg');
-  const gameArea = document.getElementById('gameArea');
+  const gameArea = Utils.getElementById('gameArea');
+  const dragDropImg= Utils.getElementById('dragDropImg');
   let dragging= false;
   let draggingE= null;
   const mouseMove = Log.tag('mouseMove', e => {

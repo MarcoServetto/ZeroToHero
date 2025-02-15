@@ -1,5 +1,6 @@
 const Book = () => {
-  const clockEl = document.getElementById('countDownClock');
+  const gameArea= Utils.getElementById('gameArea');
+  const clockEl=  Utils.getElementById('countDownClock');
   clockEl.addEventListener('click', () => {
     if (!clockEl.classList.contains('ready')) { return; }
     Utils.showMessageBox(
@@ -82,7 +83,7 @@ const Book = () => {
     hole.addEventListener('click', () => {
       if (freeze.isLocked()){ return showTimeoutMessage(); }
       if (currentPopup){ 
-        document.querySelector('.gameArea').removeChild(currentPopup);
+        gameArea.removeChild(currentPopup);
         currentPopup = null;
         }
       showHoleOptions(hole);
@@ -94,7 +95,7 @@ const Book = () => {
     btn.style.display = 'block';
     btn.addEventListener('click', () => {
       if (popup && popup.parentNode){
-        document.querySelector('.gameArea').removeChild(popup);
+        gameArea.removeChild(popup);
         if (currentPopup === popup){ currentPopup = null; }
       }
       if (!isCorrect){ freeze.onMistake(); updateTimerDisplay(); return; }
@@ -111,8 +112,7 @@ const Book = () => {
     popup.classList.add('bookPopup');
     popup.style.position = 'absolute';
     popup.style.zIndex = '10';
-    const container = document.querySelector('.gameArea');
-    const containerRect = container.getBoundingClientRect();
+    const containerRect = gameArea.getBoundingClientRect();
     const holeRect = hole.getBoundingClientRect();
     const relativeTop = ((holeRect.top - containerRect.top + holeRect.height + 1) / containerRect.height) * 100;
     const relativeLeft = ((holeRect.left - containerRect.left) / containerRect.width) * 100;
@@ -122,7 +122,7 @@ const Book = () => {
       const btn = makeOptionEntry(hole, opt, opt === correct, popup);
       popup.appendChild(btn);
       });
-    container.appendChild(popup);
+    gameArea.appendChild(popup);
     currentPopup = popup;
     };
   const showTimeoutMessage = () => {

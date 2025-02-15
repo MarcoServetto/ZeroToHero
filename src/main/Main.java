@@ -5,9 +5,13 @@ import levels.day02.*;
 import levels.day03.*;
 
 public class Main {
-  public static final boolean debug= false;
+  public static final boolean debug= true;
   public static void main(){//see comment below
-    Days d= new Days();
+    leoLevels();
+    fearlessLevels();
+    }
+  public static void fearlessLevels(){
+    Days d= new Days("assetsDest");
     d.add(new IntroLevel());
     d.add(new Walking1());
     d.add(new Walking2());
@@ -24,8 +28,13 @@ public class Main {
     d.add(new BookArchery1());
     d.add(new Archery1());
     d.add(new BookArchery2());
-    d.addLast(new Archery2());
-    d.add(new ClimbBase());
+    d.addLast(new Archery2());    
+    }
+  public static void leoLevels(){
+    Days d= new Days("assetsLeo");
+    d.add(new Leo1());
+    d.add(new Leo2());
+    d.add(new Leo3());
   }
 }
 /*
@@ -44,20 +53,6 @@ public class RealMain {
 /*---feedback notes
 'can you stand' but he is shown standing before...
  
- walking error message barely out of screen
- 
- Try to use Escape.norm instead of replaceAll in walking generator
- Climb draggable code too small on small-resized windows
- Check that screenOverlay can be last instead of first in the gameArea and if so
- make a constant string for all the stuff to close the game areas. 
- 
-   climbing game:
-   grab a selection and drag it to a rock representing a reduction for it
-   need to be the smallest selection and the smallest reduction possible with the
-   given rocks
-   graphically: man left/right arm up, wall in position,
-   on click man disappear, wall slides down (we go up)
-   man appear with flipped image
-   on error, display as for 'we did it' but with falling man image
-   then display stars around head image, then restart
+ The "show solution after 5 attempts never worked..."
+
 */

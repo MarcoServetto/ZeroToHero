@@ -18,8 +18,7 @@ public class Walking {
     qs.add(q);
   }
   public Walking question(String text, Option option){
-    text = text.replaceAll("[ \t\r]+\n", "\n");   
-    if (text.endsWith("\n")){ text = text.substring(0, text.length() - 1); }
+    text = Escape.cleanUp(text);
     int start= text.indexOf("@[");
     assert start >= 0:text;
     text = text.replace("@[","");    
@@ -29,7 +28,7 @@ public class Walking {
     int end= text.indexOf("]@");
     assert end >= 0:text;
     text = text.replace("]@","");
-    commit(new WQuestion(text, sel,start,end,option));
+    commit(new WQuestion(Escape.escapeForHtmlAttribute(text), sel,start,end,option));
     return this;
   }
   public Walking question(String text,int sel, int start, int end, Option option){

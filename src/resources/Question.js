@@ -7,7 +7,6 @@
   return Questions;
   });
 const QuestionText = (q,isFrozen) => {
-  //Log.log(true,`QuestionText initialization for ${q.id}`);
   const redChar= MetaData.int(q, 'red');
   const requiredOption= MetaData.int(q, 'option');
   const startOk= MetaData.int(q, 'selectionstart');
@@ -37,7 +36,6 @@ const QuestionText = (q,isFrozen) => {
     };
   const isCorrectSelection= ()=>{
     const range= currentSelectionRange();
-    Log.log(true,"selectedRange=["+range.start+"]["+range.end+"]");
     return range.start === startOk && range.end === endOk;          
     };
   const isCorrectAnswer= (option)=>{
@@ -53,7 +51,6 @@ const QuestionText = (q,isFrozen) => {
     highlight();
   });
   const highlightRange= Log.tag('highlightRange', (a, b)=>{
-    //Log.log(true, `Highlighting range ${a}-${b}`);
     setTimeout(() => { q.focus(); q.setSelectionRange(a, b); }, 0);
     //timeout needed: the mouse event can clear the selection at the end of the event management
     return false;
