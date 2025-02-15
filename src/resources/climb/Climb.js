@@ -52,7 +52,7 @@ const Climb= (score) => {
     const rock = document.createElement('img');
     rock.classList.add('rock');
     rock.src = "../../resources/climb/images/rocks/"+img;
-    rock.style.left = (index*20-12)+'%';
+    rock.style.left = (index*20)+'%';
     rock.addEventListener('mouseenter', ()=>showRockCode(rock,code));
     rock.addEventListener('mouseleave',  ()=>hideRockCode());
     rock.addEventListener('click', ()=>handleRockSelection(index));
@@ -61,7 +61,7 @@ const Climb= (score) => {
   const loadQuestion= (q)=>{
     q.active(true);
     questionHelp.textContent = q.extractStr('context'); 
-    let index= 1;
+    let index= 0;
     while (true){
       const img = q.extractStr('rock'+index+'img');
       const code = q.extractStr('rock'+index+'code');

@@ -2,6 +2,7 @@ package main;
 
 import levels.day01.*;
 import levels.day02.*;
+import levels.day03.*;
 
 public class Main {
   public static final boolean debug= false;
@@ -24,6 +25,7 @@ public class Main {
     d.add(new Archery1());
     d.add(new BookArchery2());
     d.addLast(new Archery2());
+    d.add(new ClimbBase());
   }
 }
 /*
@@ -43,6 +45,8 @@ public class RealMain {
 'can you stand' but he is shown standing before...
  
  walking error message barely out of screen
+ 
+ Try to use Escape.norm instead of replaceAll in walking generator
  
  Check that screenOverlay can be last instead of first in the gameArea and if so
  make a constant string for all the stuff to close the game areas. 

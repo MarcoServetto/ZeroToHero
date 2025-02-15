@@ -13,8 +13,8 @@ public class Walking {
     this.required= required;
     this.name= name;
     }
-  private List<Question> qs= new ArrayList<>();
-  private void commit(Question q){
+  private List<WQuestion> qs= new ArrayList<>();
+  private void commit(WQuestion q){
     qs.add(q);
   }
   public Walking question(String text, Option option){
@@ -29,11 +29,11 @@ public class Walking {
     int end= text.indexOf("]@");
     assert end >= 0:text;
     text = text.replace("]@","");
-    commit(new Question(text, sel,start,end,option));
+    commit(new WQuestion(text, sel,start,end,option));
     return this;
   }
   public Walking question(String text,int sel, int start, int end, Option option){
-    commit(new Question(text, sel,start,end,option));
+    commit(new WQuestion(text, sel,start,end,option));
     return this;
   }
   public String build(){    
@@ -55,7 +55,7 @@ public class Walking {
     Error;
   }
 }
-record Question(String text, int sel, int start, int end, htmlMangle.Walking.Option option) {
+record WQuestion(String text, int sel, int start, int end, htmlMangle.Walking.Option option) {
   String body(int index) {
       return "<textarea class=\"overlayTextarea\"\n"
           + "    id=\"question" + index + "\"\n"

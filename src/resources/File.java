@@ -14,6 +14,7 @@ public enum File{
   DirectInstructions_html,
   Gather_html,
   Walking_html,
+  Climb_html,
   Book_html;
   public final String text;
   File(){text= loadText(this.name());}
