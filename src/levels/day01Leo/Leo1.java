@@ -1,4 +1,4 @@
-package levels.day03;
+package levels.day01Leo;
 
 import java.util.List;
 import java.util.function.Function;

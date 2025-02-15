@@ -7,66 +7,52 @@ import main.Days;
 
 public class ClimbBase implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
-    return new htmlMangle.Climb(name,bools)
+    return new htmlMangle.Climb(name,directions)
     .question("""
       This is the climbing minigame
       Highlight/Select all the code below and click on the first rock
       """,
-      "@[3 + 4]@",
-      List.of("7","12","3"),
+      "@[North.turn]@",
+      List.of("East","North",".turn","Direction"),
       0)
     .question("""
-        Here Highlight/Select only the first operation.
-        Select the rock with the correct result
-        """,
-        "(@[1 + 2]@)*4",
-        List.of("0","3","5","1"),
-        1)
+      Here Highlight/Select only the first operation.
+      Select the rock with the correct result
+      """,
+      "@[East.turn]@.turn",
+      List.of("Direction","South","North","Panic","<completed>"),
+      1)
     .question("""
-        Here Highlight/Select the first operation that
-        need to be executed
-        """,
-        "5*(@[6 - 4]@)",
-        List.of("0","1","2"),
-        2)
+      Great, now select the next reduction step!
+      """,
+      "@[South.turn]@",
+      List.of("Direction","South","North","West","<completed>"),
+      3)
     .question("""
-        Here we use some of the boolean.
-        Follow the behaviour shown above
-        """,
-        "T and (@[T or F]@)",
-        List.of("0","T","F"),
-        1)
-    .question("""
-        Here we continue reducing from before
-        You see, the code is as before but one step further
-        """,
-        "@[T and T]@",
-        List.of("F","T","3", "T or F"),
-        1)
+      This is it. We have reduced `East.turn.turn`
+      Now just select <completed>
+      """,
+      "@[West]@",
+      List.of("Direction","South","North","West","<completed>"),
+      4)
     .build(); }
-  String bools="""
-    T and T -> T
-    T and F -> F
-    F and T -> F
-    F and F -> F
-
-    T or T -> T
-    T or F -> T
-    F or T -> T
-    F or F -> F
-
-    not T -> F
-    not F -> T
-    
-    N1 + N2 -> N
-    N1 * N2 -> N
-    N1 - N2 -> N
-    N1 / N2 -> N
-    
-    N1 = N2 -> B
-    N1 > N2 -> B
-    N1 < N2 -> B
-    N1 <= N2 -> B
-    N1 => N2 -> B
-    """;  
+  public static final String directions= """
+//Below here is all the relevant code
+Direction:{
+  .turn: Direction,
+  .reverse: Direction -> this.turn.turn,
+  }
+North:Direction{ East  }
+East: Direction{ South }
+South:Direction{ West  }
+West: Direction{ North }
+Archers:{#(
+  heading: Direction, 
+  aiming:  Direction): Archer ->
+  Archer: {
+    .heading: Direction -> heading,
+    .aiming:  Direction -> aiming,
+    }
+  }
+""";
 }

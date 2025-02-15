@@ -1,6 +1,7 @@
 package main;
 
 import levels.day01.*;
+import levels.day01Leo.*;
 import levels.day02.*;
 import levels.day03.*;
 
@@ -28,7 +29,10 @@ public class Main {
     d.add(new BookArchery1());
     d.add(new Archery1());
     d.add(new BookArchery2());
-    d.addLast(new Archery2());    
+    d.addLast(new Archery2());
+    d.add(new WalkingExplainClimb());
+    d.add(new ClimbBase());
+    d.add(new ClimbBase2());
     }
   public static void leoLevels(){
     Days d= new Days("assetsLeo");
@@ -53,6 +57,6 @@ public class RealMain {
 /*---feedback notes
 'can you stand' but he is shown standing before...
  
- The "show solution after 5 attempts never worked..."
+The "show solution after 5 attempts never worked..."
 
 */

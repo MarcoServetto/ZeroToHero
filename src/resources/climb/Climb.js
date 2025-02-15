@@ -72,14 +72,17 @@ const Climb= (score) => {
     };    
   const showRockCode = (rock, code) => {
     codeUnderRock.hidden = false;
-    codeUnderRock.textContent = code;     
-    const width= code.length + 3;
+    codeUnderRock.textContent = " "+code;     
+    const width= (code.length+3.5) *1.1;
     codeUnderRock.style.width = width + 'ch';
+    codeUnderRock.offsetWidth;
     updateCodeUnderRockHeight();
     const rockRect = rock.getBoundingClientRect();
     const containerRect = gameArea.getBoundingClientRect();
     const relativeTop = ((rockRect.bottom - containerRect.top + 5) / containerRect.height) * 100;
-    const relativeLeft = ((rockRect.left - containerRect.left) / containerRect.width) * 100;
+    const codeWidthPx = codeUnderRock.getBoundingClientRect().width;
+    const codeWidthPercent = (codeWidthPx / containerRect.width) * 100;
+    const relativeLeft = ((rockRect.left - containerRect.left) / containerRect.width) * 100 - codeWidthPercent;
     codeUnderRock.style.top = (relativeTop-18) + '%';
     codeUnderRock.style.left = relativeLeft + '%';
     };
