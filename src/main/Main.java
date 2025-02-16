@@ -39,6 +39,7 @@ public class Main {
     d.add(new Leo1());
     d.add(new Leo2());
     d.add(new Leo3());
+    d.add(new Leo4());
   }
 }
 /*

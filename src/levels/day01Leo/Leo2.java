@@ -7,7 +7,7 @@ import main.Days;
 
 public class Leo2 implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
-    return new htmlMangle.Climb(name,bools)
+    return new htmlMangle.Climb(name,Leo1.bools)
     .question("""
       Now we use "not"
       """,
@@ -67,29 +67,4 @@ public class Leo2 implements Function<Days.LevelName,String>{
       List.of("<completed>","T","3", "T or F"),
       0)
     .build(); }
-  String bools="""
-    T and T -> T
-    T and F -> F
-    F and T -> F
-    F and F -> F
-
-    T or T -> T
-    T or F -> T
-    F or T -> T
-    F or F -> F
-
-    not T -> F
-    not F -> T
-    
-    N1 + N2 -> N
-    N1 * N2 -> N
-    N1 - N2 -> N
-    N1 / N2 -> N
-    
-    N1 = N2 -> B
-    N1 > N2 -> B
-    N1 < N2 -> B
-    N1 <= N2 -> B
-    N1 => N2 -> B
-    """;  
 }

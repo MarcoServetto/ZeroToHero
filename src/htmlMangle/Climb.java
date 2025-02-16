@@ -17,7 +17,7 @@ public class Climb {
   private void commit(CQuestion q){ qs.add(q); }
   public Climb question(String context, String text, List<String> rocks, int option){
     text = Escape.cleanUp(text);
-    context = Escape.norm(context);
+    context = Escape.norm(context+"\n\n");
     rocks = rocks.stream().map(Escape::norm).toList();
     int start= text.indexOf("@[");
     assert start >= 0:text;

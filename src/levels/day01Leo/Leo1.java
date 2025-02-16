@@ -44,7 +44,7 @@ public class Leo1 implements Function<Days.LevelName,String>{
         List.of("F","T","3", "T or F"),
         1)
     .build(); }
-  String bools="""
+  public static final String bools="""
     T and T -> T
     T and F -> F
     F and T -> F
