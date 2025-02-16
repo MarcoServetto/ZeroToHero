@@ -69,12 +69,15 @@ const Climb= (score) => {
       addRock(img, code, index);
       index++;
       }
-    };    
+    };
+  const codeWidth= (code)=>{
+    const width= (code.length+2.5) *1.1;
+    return width + 'ch'
+    };
   const showRockCode = (rock, code) => {
     codeUnderRock.hidden = false;
-    codeUnderRock.textContent = " "+code;     
-    const width= (code.length+3.5) *1.1;
-    codeUnderRock.style.width = width + 'ch';
+    codeUnderRock.textContent = " "+code;
+    codeUnderRock.style.width = codeWidth(" "+code);
     codeUnderRock.offsetWidth;
     updateCodeUnderRockHeight();
     const rockRect = rock.getBoundingClientRect();
@@ -106,15 +109,14 @@ const Climb= (score) => {
   questions.forEach(q=>q.setPostSelect(questionMouseUp));
   const startDragPhase= (selText)=>{
     currentQuestion().addClass('noSelection');    
-    dragged.textContent = selText;
+    dragged.textContent = " "+selText;
+    dragged.style.width = codeWidth(" "+selText);
     setDraggedHidden(false);
     };
   const dragClone = e => {
     const containerRect= gameArea.getBoundingClientRect();
     const relativeTop= ((e.clientY - containerRect.top + 1) / containerRect.height) * 100;
     const relativeLeft= ((e.clientX - containerRect.left) / containerRect.width) * 100;
-    const width= dragged.value.length + 3;
-    dragged.style.width = width + 'ch';
     const draggedRect = dragged.getBoundingClientRect();
     const widthPercentage = (draggedRect.width / containerRect.width) * 100;
     dragged.style.top = relativeTop + '%';
