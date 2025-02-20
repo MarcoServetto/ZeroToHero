@@ -15,8 +15,15 @@ public class Climb {
   public Climb(Days.LevelName name,String api){ this.name= name; this.api= api;}
   private List<CQuestion> qs= new ArrayList<>();
   private void commit(CQuestion q){ qs.add(q); }
+  private String lastContext= "";
+  public Climb question(String text, List<String> rocks, int option){
+    return question(lastContext,text,rocks,option);
+  }
   public Climb question(String context, String text, List<String> rocks, int option){
+    lastContext= context;
     text = Escape.cleanUp(text);
+    boolean isContinuation= text.startsWith("##");
+    if (isContinuation){ text= text.substring(2); }
     context = Escape.norm(context+"\n\n");
     rocks = rocks.stream().map(Escape::norm).toList();
     int start= text.indexOf("@[");
@@ -26,8 +33,18 @@ public class Climb {
     assert end >= 0:text;
     text = text.replace("]@","");
     assert option >= 0 && option < rocks.size();
-    commit(new CQuestion(context,Escape.escapeForHtmlAttribute(text),start,end,rocks,option));
+    text= Escape.escapeForHtmlAttribute(text);
+    if(isContinuation){ checkContinuation(text); }
+    commit(new CQuestion(isContinuation,context,text,start,end,rocks,option));
     return this;
+  }
+  void checkContinuation(String text){
+    var last= qs.getLast();
+    var sol= last.rocks().get(last.option());
+    var prefix= last.text().substring(0,last.start());
+    var suffix= last.text().substring(last.end(),last.text().length());
+    var next= prefix+sol+suffix;
+    assert next.equals(text): next+" -- "+text;
   }
   String pre(){
     return """
@@ -46,7 +63,7 @@ public class Climb {
       .replace("[###BODY###]", pre()+body);
   }
 }
-record CQuestion(String context, String text, int start, int end, List<String> rocks, int option){
+record CQuestion(boolean isContinuation, String context, String text, int start, int end, List<String> rocks, int option){
   String body(int index) {
     int[] i={0};
     return 
@@ -58,6 +75,7 @@ record CQuestion(String context, String text, int start, int end, List<String> r
     + "    data-selectionstart=\"" + start + "\"\n"
     + "    data-selectionend=\"" + end + "\"\n"
     + "    data-option=\"" + option + "\"\n"
+    + "    data-iscontinuation=\"" + isContinuation + "\"\n"
     + rocks.stream().map(r->
       "    data-rock"+i[0]+"Img=\"Rock"+Climb.nextRock()+".png\""
     + "    data-rock"+(i[0]++)+"Code= \""+r+"\"")

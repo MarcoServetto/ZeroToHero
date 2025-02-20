@@ -1,3 +1,4 @@
+'use strict';
 /*export*/ const OptionExplanations = {
   1: '<span class="emoji">🏷️</span> a parameter',
   2: '<span class="emoji">🏃🏾</span> a method call',

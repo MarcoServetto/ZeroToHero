@@ -1,3 +1,4 @@
+'use strict';
 const Walking= (score) => {
   const nextQuestion= () => {
     const completed= questions.every(q => q.solved);

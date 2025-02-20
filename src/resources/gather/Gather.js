@@ -1,3 +1,4 @@
+'use strict';
 const CheckSolution= (freezeToken,allCards)=>{
   const getBasketIds= (id)=>Deck
     .list('basketSlot_'+id+'_')

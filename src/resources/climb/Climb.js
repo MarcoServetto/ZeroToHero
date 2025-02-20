@@ -1,11 +1,4 @@
 'use strict';
-const ensureStrictMode = () => {//To put in utils?
-  try { undeclaredVar = 10;}// ReferenceError in strict mode
-  catch (e) { return; }
-  throw new Error("Strict mode somehow disabled");
-  };
-ensureStrictMode();
-
 const Climb= (score) => {
   const gameArea= Utils.getElementById('gameArea');
   const questionHelp= Utils.getElementById('questionHelp');
@@ -33,12 +26,13 @@ const Climb= (score) => {
     setTimeout(()=>window.location.href = nextLevelUrl, 2500);
     };
   const nextQuestion= ()=>{
+    const oldQ= currentQuestion();
     if (currentQuestionIndex === questions.length - 1){ nextLevel(); return; }
-    currentQuestionIndex += 1;    
+    currentQuestionIndex += 1;
     questions.forEach(q => q.active(false));
     currentQuestion().active(true);
     removeFloaters();
-    loadQuestion(currentQuestion());
+    loadQuestion(currentQuestion(),oldQ);
     };
   const removeFloaters= ()=>{
     setDraggedHidden(true);
@@ -58,9 +52,12 @@ const Climb= (score) => {
     rock.addEventListener('click', ()=>handleRockSelection(index));
     mountainWall.appendChild(rock);
     };    
-  const loadQuestion= (q)=>{
+  const loadQuestion= (q,oldQ)=>{
+    const isContinuation= q.extractStr('iscontinuation')==="true";
     q.active(true);
-    questionHelp.textContent = q.extractStr('context'); 
+    if(!isContinuation){ animateBaseTransition(q.inner()); }
+    else{ animateTextTransition(oldQ, q, q.inner()); }    
+    questionHelp.value = q.extractStr('context'); 
     let index= 0;
     while (true){
       const img = q.extractStr('rock'+index+'img');
@@ -76,7 +73,7 @@ const Climb= (score) => {
     };
   const showRockCode = (rock, code) => {
     codeUnderRock.hidden = false;
-    codeUnderRock.textContent = " "+code;
+    codeUnderRock.value = " "+code;
     codeUnderRock.style.width = codeWidth(" "+code);
     codeUnderRock.offsetWidth;
     updateCodeUnderRockHeight();
@@ -109,7 +106,7 @@ const Climb= (score) => {
   questions.forEach(q=>q.setPostSelect(questionMouseUp));
   const startDragPhase= (selText)=>{
     currentQuestion().addClass('noSelection');    
-    dragged.textContent = " "+selText;
+    dragged.value = " "+selText;
     dragged.style.width = codeWidth(" "+selText);
     setDraggedHidden(false);
     };
@@ -128,7 +125,7 @@ const Climb= (score) => {
     if (getDraggedHidden()){ return; }
     const q = currentQuestion();
     if (rockIndex !== q.requiredOption){ fallDown(); return; }
-    dragged.textContent = "";
+    dragged.value = "";
     setDraggedHidden(true);
     score.doSuccess();
     moveUp();
@@ -190,7 +187,7 @@ const Climb= (score) => {
   const textAreaContainerHeight= (textArea,container)=>{
     textArea.style.height = 'auto';
     const heightPercentage= (textArea.scrollHeight / container.clientHeight) * 100;
-    Log.log(true,"id= "+textArea.id+" "+heightPercentage+" "+textArea.scrollHeight+" "+container.clientHeight);
+    //Log.log(true,"id= "+textArea.id+" "+heightPercentage+" "+textArea.scrollHeight+" "+container.clientHeight);
     textArea.style.height = heightPercentage+'%';
     };
   const updateApiHeight= ()=>{
@@ -200,7 +197,87 @@ const Climb= (score) => {
     };
   const updateDraggedHeight= ()=> textAreaContainerHeight(dragged,gameArea);
   const updateCodeUnderRockHeight= ()=> textAreaContainerHeight(codeUnderRock,gameArea);
-  loadQuestion(questions[0]);
+  //--------------- next step animation
+  const revealTime= 500;
+  const stepTime= 100;
+  const animateBaseTransition= (container)=>{
+    const txt= container.value;
+    const oldBg= container.style.backgroundColor;
+    container.style.backgroundColor = 'rgba(241, 231, 211,0.6)';
+    container.value = '';
+    setTimeout(() => {
+      container.value = txt; container.style.backgroundColor = oldBg
+      }, revealTime);
+    };
+  const animateTextTransition= (oldQ, newQ, container)=>{
+    const oldText= oldQ.extractStr('original');
+    const start= oldQ.extractInt('selectionstart');
+    const end=   oldQ.extractInt('selectionend');
+    const newText= newQ.extractStr('original');
+    const prefix= oldText.slice(0, start);
+    const oldMiddle= oldText.slice(start, end);
+    const suffix= oldText.slice(end);
+    const newMiddle= newText.slice(prefix.length, newText.length - suffix.length);     
+    Utils.assertEqual(prefix + oldMiddle + suffix, oldText);
+    Utils.assertEqual(prefix + newMiddle + suffix, newText);
+    const padCount= Math.abs(newMiddle.length - oldMiddle.length);
+    const leftPad= Math.floor(padCount / 2);
+    const rightPad= padCount - leftPad;
+    const paddedNewMiddle = " ".repeat(leftPad) + newMiddle + " ".repeat(rightPad);
+    container.value = oldText;
+    const done= (unused)=> container.value = newText;
+    const doInsertSubs= ()=> animateInsertion(oldMiddle, leftPad, rightPad);
+    
+    const doSubsInsert= ()=> animateSubstitution(oldMiddle, paddedNewMiddle,
+      (intermediateM)=> animateRemoval(intermediateM, leftPad, rightPad));
+
+    const doSubs=()=> animateSubstitution(oldMiddle, newMiddle, done);
+
+    const animateSubstitution= (currentStr, targetStr, doneCallback)=>{
+      const current = currentStr.split('');
+      const target = targetStr.split('');
+      Utils.assertEqual(current.length, target.length);
+      let i = 0;
+      const step= ()=>{ //current.join('') is a padded text in SubsInsert
+        if (i >= current.length){ doneCallback(current.join('')); return; }
+        if (current[i] !== target[i]){ current[i] = target[i]; }
+        container.value = prefix + current.join('') + suffix;
+        i++;
+        setTimeout(step, stepTime);
+        };
+      setTimeout(step, stepTime);
+      };      
+    const animateInsertion= (current, left, right)=>{
+      let currentMiddle = current;
+      const step= ()=>{
+        if (left > 0){ left--; currentMiddle = " " + currentMiddle; }
+        if (right > 0){ right--; currentMiddle = currentMiddle + " "; }
+        container.value = prefix + currentMiddle + suffix;
+        if (left > 0 || right > 0){ setTimeout(step, stepTime); return; }
+        animateSubstitution(currentMiddle, newMiddle, done);
+        };
+        setTimeout(step, stepTime);
+      };
+    const animateRemoval= (current, left, right)=>{
+      let currentMiddle = current;
+      const step= ()=>{
+        const remLeft= left > 0 && currentMiddle[0] === ' ';
+        const remRight= right > 0 && currentMiddle[currentMiddle.length - 1] === ' ';
+        if (remLeft){ currentMiddle = currentMiddle.slice(1); left--; }
+        if (remRight){ currentMiddle = currentMiddle.slice(0, -1); right--; }
+        container.value = prefix + currentMiddle + suffix;
+        if (left > 0 || right > 0){ setTimeout(step, stepTime); return; }
+        done("");
+        };
+      container.value = prefix + currentMiddle + suffix;
+      setTimeout(step, stepTime);
+      };
+    if(newMiddle.length > oldMiddle.length){ doInsertSubs(); return; }
+    if(newMiddle.length < oldMiddle.length){ doSubsInsert(); return; }
+    doSubs();
+    };
+  //------------Init
+  loadQuestion(questions[0],questions[0]);
   updateApiHeight();
   };
 Climb(Score( (streak)=>1 ));

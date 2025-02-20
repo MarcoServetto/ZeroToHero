@@ -1,3 +1,4 @@
+'use strict';
 const Deck= {
   list: (str) => {
     const res = [];
@@ -49,6 +50,10 @@ const Utils= {
     const err= value === null || value === undefined || Number.isNaN(value);
     if(!err){ return value; }
     Utils.error("Value does not exists");
+    },
+  assertEqual: (actual, expected)=>{
+    if (actual === expected){ return; }
+    throw new Error("expected ["+expected+"], got ["+actual+"]");
     },
   getElementById: (id)=>Utils.checkExists(document.getElementById(id)),
   check: (cond,text) =>{ if(!cond){ Utils.error(text); } },

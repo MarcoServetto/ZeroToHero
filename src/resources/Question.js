@@ -1,3 +1,4 @@
+'use strict';
 /*export*/ const InitQuestions = (isFrozen)=>
   _postInit(Deck.list('question')
     .map(q=>QuestionText(q,isFrozen)));
@@ -88,5 +89,5 @@ const QuestionText = (q,isFrozen) => {
     active, keepFocus, selectionEvent,
     extractStr, extractInt,
     addClass, removeClass, setPostSelect,
-    solved:false, requiredOption};
+    solved:false, requiredOption,inner:()=>q};
 };

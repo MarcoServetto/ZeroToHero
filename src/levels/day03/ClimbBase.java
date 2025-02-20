@@ -25,14 +25,14 @@ public class ClimbBase implements Function<Days.LevelName,String>{
     .question("""
       Great, now select the next reduction step!
       """,
-      "@[South.turn]@",
+      "##@[South.turn]@",
       List.of("Direction","South","North","West","<completed>"),
       3)
     .question("""
       This is it. We have reduced `East.turn.turn`
       Now just select <completed>
       """,
-      "@[West]@",
+      "##@[West]@",
       List.of("Direction","South","North","West","<completed>"),
       4)
     .build(); }

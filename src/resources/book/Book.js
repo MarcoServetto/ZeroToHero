@@ -1,3 +1,4 @@
+'use strict';
 const Book = () => {
   const gameArea= Utils.getElementById('gameArea');
   const clockEl=  Utils.getElementById('countDownClock');

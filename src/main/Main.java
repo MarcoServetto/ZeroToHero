@@ -32,7 +32,9 @@ public class Main {
     d.addLast(new Archery2());
     d.add(new WalkingExplainClimb());
     d.add(new ClimbBase());
-    d.add(new ClimbBase2());
+    d.add(new ClimbBaseArcher());
+    d.add(new ClimbStone());
+    d.add(new ClimbFood());
     }
   public static void leoLevels(){
     Days d= new Days("assetsLeo");

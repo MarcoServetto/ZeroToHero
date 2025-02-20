@@ -1,3 +1,4 @@
+'use strict';
 const Score= (incrementFun) => {
   const scoreDisplayElem= Utils.getElementById('scoreDisplay');
   let score= 0;

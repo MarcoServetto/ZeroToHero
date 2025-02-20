@@ -1,3 +1,4 @@
+'use strict';
 /*export*/ const initDragging = (isFrozen)=> {
   const gameArea = Utils.getElementById('gameArea');
   const dragDropImg= Utils.getElementById('dragDropImg');
