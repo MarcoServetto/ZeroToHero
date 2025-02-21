@@ -6,7 +6,7 @@ import levels.day02.*;
 import levels.day03.*;
 
 public class Main {
-  public static final boolean debug= true;
+  public static final boolean debug= false;
   public static void main(){//see comment below
     leoLevels();
     fearlessLevels();
