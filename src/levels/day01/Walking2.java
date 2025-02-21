@@ -32,7 +32,8 @@ public class Walking2 implements Function<Days.LevelName,String>{
     .question("@[So@@uth]@.turn\n//Remember, you need to select the smallest\n//syntactical unit around the highlighted character", ObjectLiteral)
     .question("@[Ea@@st]@.turn", ObjectLiteral)
     .question("@[North@@:]@", Error)
-    .question("Direction:{.turn:@[Dir@@ection]@,}", Type)
+    .question("Direction:{.turn:@[Dir@@ection]@,}\n"
+      +"//Direction here is in a 'role' that\n//is not object literal", Type)
     .question("North:Direction{@[.turn@@->East,]@}\n//The arrow (->) means 'method body is here'", MethodDeclaration)
     .question("North:@[Dire@@ction]@{.turn->East,}\n//If you are stuck, make a mistake and read the error!", Type)
     .question("South:@[Dire@@ction]@{.turn->West,}\n//Learn by trial and error!", Type)
@@ -44,4 +45,7 @@ public class Walking2 implements Function<Days.LevelName,String>{
     .question("North: Direction{ .turnTwice->@[North.turn@@.turn]@, }", MethodCall)
     .question("North:Direction{ .turnTwice -> @[North@@.turn]@.turn }", MethodCall)
     .question("North:Direction { @[.turnTwi@@ce -> North.turn.turn,]@ }", MethodDeclaration)
+    .question("@[South@@.turn]@.turn.turn", MethodCall)
+    .question("@[South.turn@@.turn]@.turn", MethodCall)
+    .question("@[South.turn.turn@@.turn]@", MethodCall)
     .build(); } }

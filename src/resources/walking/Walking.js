@@ -20,11 +20,12 @@ const Walking= (score) => {
     score.doSuccess();
     };
   const currentSpeed=()=>{
-    const highSpeed= score.streak() > 0 ? Math.pow(0.3981,score.streak()) : 10000;      
+    const highSpeed= score.justFailed() ? 10000: Math.pow(0.3981,score.streak());      
     return Math.max(highSpeed,Math.pow(0.3981,4));//4 is the max visualized speed
     };
   const resetAnimationSpeed=() => {
     const speed= currentSpeed();
+    Log.log(true,speed);
     backLayer.style.animationDuration = (1000000 * speed + 's');
     frontLayer.style.animationDuration = (500000 * speed + 's');
     character.style.animationDuration = ((1.5 + 50 * speed) + 's');

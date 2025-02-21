@@ -59,7 +59,14 @@ public class RealMain {
 */
 /*---feedback notes
 'can you stand' but he is shown standing before...
- 
+
+walking: 
+  Consider extending text area in walking?
+  alcuni non vedono che --> e' un errore
+  
+Correct: font size in walking and gather is different
+gather, black border on top of trash and other basket names?
 The "show solution after 5 attempts never worked..."
+
 
 */
