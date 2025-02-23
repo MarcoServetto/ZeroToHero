@@ -42,28 +42,19 @@ public class Leo2 implements Function<Days.LevelName,String>{
       Here we make a chain of reductions
       What do you think the final result is going to be?
       """,
-      "@[12 > 4]@ and  5 = 3",
+      "@[12 > 4]@ and 5 = 3",
       List.of("F","T","3", "T or F"),
       1)
-    .question("""
-      Here we make a chain of reductions
-      What do you think the final result is going to be?
-      """,
-      "T and @[5 = 3]@",
+    .question(
+      "##T and @[5 = 3]@",
       List.of("F","T","3", "T or F"),
       0)
-    .question("""
-      Here we make a chain of reductions
-      What do you think the final result is going to be?
-      """,
-      "@[T and F]@",
+    .question(
+      "##@[T and F]@",
       List.of("F","T","3", "T or F"),
       0)
-    .question("""
-      Here we make a chain of reductions
-      What do you think the final result is going to be?
-      """,
-      "@[F]@",
+    .question(
+      "##@[F]@",
       List.of("<completed>","T","3", "T or F"),
       0)
     .build(); }

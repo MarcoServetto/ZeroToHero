@@ -35,6 +35,7 @@ public class Main {
     d.add(new ClimbBaseArcher());
     d.add(new ClimbStone());
     d.add(new ClimbFood());
+    //waking on the way home uses the new kind of named parameters
     }
   public static void leoLevels(){
     Days d= new Days("assetsLeo");
@@ -60,6 +61,25 @@ public class RealMain {
 /*---feedback notes
 'can you stand' but he is shown standing before...
 
+background nero fuori da gameArea, e centrare la game area
+
+direct instructions il messaggio per errori personalizzati sopravvive il verde e perfino il next
+
+dragging: safari does not prevent selection of images
+matter max-height+max-width alle celle immagini
+
+-book squares in the message, but xxx in the book
+
+dragging: on safari dragging mushrooms make them '3 tall' somehow
+and selects all the 3 cells in the basket
+
+-meth --> method
+
+-climb: rimuovere spazion in typename [
+
+Card 7-West out of screen for comment
+
+walking one: select all the line and press the key 'comment'
 walking: 
   Consider extending text area in walking?
   alcuni non vedono che --> e' un errore

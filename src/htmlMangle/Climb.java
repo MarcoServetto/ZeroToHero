@@ -24,8 +24,8 @@ public class Climb {
     text = Escape.cleanUp(text);
     boolean isContinuation= text.startsWith("##");
     if (isContinuation){ text= text.substring(2); }
-    context = Escape.norm(context+"\n\n");
-    rocks = rocks.stream().map(Escape::norm).toList();
+    context = Escape.cleanUp(context+"\n\n");
+    rocks = rocks.stream().map(Escape::cleanUp).toList();
     int start= text.indexOf("@[");
     assert start >= 0:text;
     text = text.replace("@[","");    
@@ -33,7 +33,6 @@ public class Climb {
     assert end >= 0:text;
     text = text.replace("]@","");
     assert option >= 0 && option < rocks.size();
-    text= Escape.escapeForHtmlAttribute(text);
     if(isContinuation){ checkContinuation(text); }
     commit(new CQuestion(isContinuation,context,text,start,end,rocks,option));
     return this;
@@ -44,7 +43,8 @@ public class Climb {
     var prefix= last.text().substring(0,last.start());
     var suffix= last.text().substring(last.end(),last.text().length());
     var next= prefix+sol+suffix;
-    assert next.equals(text): next+" -- "+text;
+    assert next.equals(text): 
+      next+" -- "+text;
   }
   String pre(){
     return """
@@ -70,15 +70,15 @@ record CQuestion(boolean isContinuation, String context, String text, int start,
       "<textarea class=\"overlayTextarea questionText\"\n"
     + "    id=\"question" + index + "\"\n"
     + "    name=\"Question_" + index + "\"\n"
-    + "    data-original=\"" + text + "\"\n"
-    + "    data-context=\"" + context + "\"\n"
+    + "    data-original=\"" + Escape.escapeForHtmlAttribute(text) + "\"\n"
+    + "    data-context=\"" + Escape.escapeForHtmlAttribute(context) + "\"\n"
     + "    data-selectionstart=\"" + start + "\"\n"
     + "    data-selectionend=\"" + end + "\"\n"
     + "    data-option=\"" + option + "\"\n"
     + "    data-iscontinuation=\"" + isContinuation + "\"\n"
     + rocks.stream().map(r->
       "    data-rock"+i[0]+"Img=\"Rock"+Climb.nextRock()+".png\""
-    + "    data-rock"+(i[0]++)+"Code= \""+r+"\"")
+    + "    data-rock"+(i[0]++)+"Code= \""+Escape.escapeForHtmlAttribute(r)+"\"")
       .collect(Collectors.joining("\n"))          
     + "    autocomplete=\"off\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" readonly hidden draggable=\"false\"></textarea>";
   }

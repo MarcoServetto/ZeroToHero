@@ -12,20 +12,20 @@ public class Leo3 implements Function<Days.LevelName,String>{
        "not (@[not T]@ and not T)",
        List.of("T","F","G","0","0/0"),
        1)
-    .question("Hard mode",
-       "not (F and @[not T]@)",
+    .question(
+       "##not (F and @[not T]@)",
        List.of("T","F","G","0","0/0"),
        1)
-    .question("Hard mode",
-       "not (@[F and F]@)",
+    .question(
+       "##not (@[F and F]@)",
        List.of("T","F","G","0","0/0"),
        1)
-    .question("Hard mode",
-       "not @[(F)]@",
+    .question(
+       "##not @[(F)]@",
        List.of("T","F","G","0","0/0"),
        1)
-    .question("Hard mode",
-       "@[not F]@",
+    .question(
+       "##@[not F]@",
        List.of("T","F","G","0","0/0"),
        0)    
     
