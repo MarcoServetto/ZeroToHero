@@ -80,8 +80,6 @@ const Gather= Log.tagAsync('Gather', () => {
     const cardId = MetaData.int(slot,'card_id');
     const imgUrl = slot.src; 
     return { cardId:()=>cardId, imgUrl:()=>imgUrl };//to be refactored into a card as below
-//    const cardId = MetaData.int(slot,'card_id');
-//    return CodeCard(document.getElementById('card_' + cardId), (e)=>{});
     };
   const setSlotItem = (slot, item) => {
     slot.dataset.card_id = '' + item.cardId();
@@ -159,7 +157,8 @@ const Gather= Log.tagAsync('Gather', () => {
     s.addEventListener('mouseenter', slotMouseEnter);
     s.addEventListener('mouseleave', slotMouseLeave);
     });
-  Utils.check(allCards.cards().length!==0,"No cards in init")
+  Utils.check(allCards.cards().length!==0,"No cards in init");
+  TextAreaSize.updateApiHeight();
   const submitBtn= e=>CheckSolution(Buttons.freezeToken,allCards);
   const buttonActions = {
     submitBtn,

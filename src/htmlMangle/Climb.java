@@ -49,10 +49,14 @@ public class Climb {
   String pre(){
     return """
       <div id="apiContainer">
-      <textarea id="api" class="overlayTextarea noSelection" readonly>
+      <textarea readonly id="api" class="overlayTextarea noSelection"
+       autocomplete="off" spellcheck="false"
+       autocorrect="off" autocapitalize="off">
       """ + this.api + """
       </textarea></div>
-      <textarea id="questionHelp" class="overlayTextarea noSelection" readonly></textarea>
+      <textarea readonly id="questionHelp" class="overlayTextarea noSelection"
+       autocomplete="off" spellcheck="false"
+       autocorrect="off" autocapitalize="off"></textarea>
       """;
     }
   public String build(){    

@@ -184,19 +184,8 @@ const Climb= (score) => {
     .flashImage('rgba(200,20,0,0.9)','fallEndCharacter');
   const flashEnd= ()=>Utils
     .flashImage('rgba(170,60,10,0.7)','fallStarsCharacter');
-  const textAreaContainerHeight= (textArea,container)=>{
-    textArea.style.height = 'auto';
-    const heightPercentage= (textArea.scrollHeight / container.clientHeight) * 100;
-    //Log.log(true,"id= "+textArea.id+" "+heightPercentage+" "+textArea.scrollHeight+" "+container.clientHeight);
-    textArea.style.height = heightPercentage+'%';
-    };
-  const updateApiHeight= ()=>{
-    const api= Utils.getElementById('api');
-    textAreaContainerHeight(api,Utils.getElementById('apiContainer'));
-    api.style.minHeight = '99%';
-    };
-  const updateDraggedHeight= ()=> textAreaContainerHeight(dragged,gameArea);
-  const updateCodeUnderRockHeight= ()=> textAreaContainerHeight(codeUnderRock,gameArea);
+  const updateDraggedHeight= ()=> TextAreaSize.textAreaContainerHeight(dragged,gameArea);
+  const updateCodeUnderRockHeight= ()=> TextAreaSize.textAreaContainerHeight(codeUnderRock,gameArea);
   //--------------- next step animation
   const revealTime= 500;
   const stepTime= 100;
@@ -278,6 +267,6 @@ const Climb= (score) => {
     };
   //------------Init
   loadQuestion(questions[0],questions[0]);
-  updateApiHeight();
+  TextAreaSize.updateApiHeight();
   };
 Climb(Score( (streak)=>1 ));

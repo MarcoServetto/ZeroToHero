@@ -1,6 +1,8 @@
 package htmlMangle;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 import java.util.stream.Collectors;
 
 import main.Days;
@@ -29,6 +31,13 @@ public class Gather {
     cs.add(new Card(name.currentLevel(),code,group,loc,cs.size(),title));
     return this;
   }
+  public Gather shuffle(){
+    Collections.shuffle(cs, new Random(10));
+    for(int i= 0; i < cs.size(); i++){
+      cs.set(i, cs.get(i).withId(i));
+    }
+    return this;
+  }
   public String build(){
     var diffCode= cs.stream().map(Card::code).map(String::trim).distinct().count() == cs.size();
     var diffTitle= cs.stream().map(Card::title).map(String::trim).distinct().count() == cs.size();
@@ -39,10 +48,11 @@ public class Gather {
 
     String pre="""
     <div class="commonCode">
-      <div class="cardCode">
-        <textarea readonly class="overlayTextarea"
+      <div id="apiContainer" class="cardCode">
+        <textarea readonly id="api" class="overlayTextarea noSelection"
         autocomplete="off" spellcheck="false"
         autocorrect="off" autocapitalize="off">
+
     """
 +common
 +   """
@@ -59,7 +69,7 @@ public class Gather {
         +"<p>End of items — drag one back to compare their code, but leave it empty at the finish. Press the button at the botton to check your solution.</p></div>\n");
   }
   public enum Kind{
-    BrownMushroom("BrownM",21),
+    BrownMushroom("BrownM",20),
     Eggplant("EggP",25),
     YellowFlower("YellowF",29),
     RedFlower("RedF",21),
@@ -75,6 +85,7 @@ record Card(
     String fileName, String code,
     int group, String loc,
     int id, String title){
+  Card withId(int id){ return new Card(fileName,code,group,loc,id,title); }
   String body(){ return 
     "<div class=\"card\" id=\"card_"+id+"\"\n"
    +"data-card_id=\""+id+"\"\n"

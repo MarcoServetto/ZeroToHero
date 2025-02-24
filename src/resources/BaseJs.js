@@ -10,6 +10,18 @@ const Deck= {
     },
   hideAll: (str) => Deck.list(str).forEach(c=>c.hidden = true),
   };
+const TextAreaSize= {
+  textAreaContainerHeight: (textArea,container)=>{
+    textArea.style.height = 'auto';
+    const heightPercentage= (textArea.scrollHeight / container.clientHeight) * 100;
+    textArea.style.height = heightPercentage+'%';
+    },
+  updateApiHeight: ()=>{
+    const api= Utils.getElementById('api');
+    TextAreaSize.textAreaContainerHeight(api,Utils.getElementById('apiContainer'));
+    api.style.minHeight = '99%';
+    }
+  };
 const MetaData= {
   str: (t, str) => {
     //console.log("["+t.dataset[str]+"]");
@@ -53,7 +65,7 @@ const Utils= {
     },
   assertEqual: (actual, expected)=>{
     if (actual === expected){ return; }
-    throw new Error("expected ["+expected+"], got ["+actual+"]");
+    Utils.error("expected ["+expected+"], got ["+actual+"]");
     },
   getElementById: (id)=>Utils.checkExists(document.getElementById(id)),
   check: (cond,text) =>{ if(!cond){ Utils.error(text); } },

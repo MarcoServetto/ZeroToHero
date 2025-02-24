@@ -35,7 +35,9 @@ public class Main {
     d.add(new ClimbBaseArcher());
     d.add(new ClimbStone());
     d.add(new ClimbFood());
+    d.add(new GatherOnTop());
     //waking on the way home uses the new kind of named parameters
+    //Panic: we arrived on the plateau! Here there are mushrooms, flowers, and no monsters
     }
   public static void leoLevels(){
     Days d= new Days("assetsLeo");
