@@ -10,7 +10,7 @@ const Book = () => {
         <h2>How to Play</h2>
         <p>
           This is the Book Minigame! Your goal
-          is to click on the missing words (the ■■■■■■)
+          is to click on the missing words (the XXXXXXXX)
           and select the correct option.
           When you select a word, if it's right, the word is
           filled in. A wrong guess will make you wait a bit

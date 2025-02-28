@@ -113,6 +113,7 @@ const initSlides= () => {
     t.addEventListener('input', () => {
       const currentInput= {};
       tokenLastInput = currentInput;/*update token*/
+      if (t.classList.contains("incorrectGlow")){ displayPanicMessage("",1); }      
       t.classList.remove("correctGlow", "incorrectGlow");
       let msg= checkSolutionTA(t);
       customErrorMessage= "";

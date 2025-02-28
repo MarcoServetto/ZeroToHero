@@ -35,9 +35,10 @@ public class Main {
     d.add(new ClimbBaseArcher());
     d.add(new ClimbStone());
     d.add(new ClimbFood());
+    d.add(new ClimbArcherAimTo());
     d.add(new GatherOnTop());
-    //waking on the way home uses the new kind of named parameters
-    //Panic: we arrived on the plateau! Here there are mushrooms, flowers, and no monsters
+    d.add(new WalkingBoomerangParam());
+    d.add(new Day3Outro());
     }
   public static void leoLevels(){
     Days d= new Days("assetsLeo");
@@ -61,34 +62,27 @@ public class RealMain {
 }
 */
 /*---feedback notes
-'can you stand' but he is shown standing before...
+-Intro 101: 'can you stand' but he is shown standing before...
 
-background nero fuori da gameArea, e centrare la game area
+-background nero fuori da gameArea, e centrare la game area
 
-direct instructions il messaggio per errori personalizzati sopravvive il verde e perfino il next
+-meth --> method //can not find where is this meth, is it an image?
 
-dragging: safari does not prevent selection of images
-matter max-height+max-width alle celle immagini
+-Card 7-West out of screen for comment //where is this card?
 
--book squares in the message, but xxx in the book
+-walking: Consider extending text area in walking?
 
-dragging: on safari dragging mushrooms make them '3 tall' somehow
+-Climbing: The "show solution after 5 attempts never worked..." and it may not be needed
+  
+Safari specific bugs:
+-dragging: safari does not prevent selection of images
+try setting max-height+max-width alle celle immagini
+-dragging: on safari dragging mushrooms make them '3 tall' somehow
 and selects all the 3 cells in the basket
 
--meth --> method
 
--climb: rimuovere spazion in typename [
-
-Card 7-West out of screen for comment
-
-walking one: select all the line and press the key 'comment'
-walking: 
-  Consider extending text area in walking?
-  alcuni non vedono che --> e' un errore
-  
-Correct: font size in walking and gather is different
-gather, black border on top of trash and other basket names?
-The "show solution after 5 attempts never worked..."
-
+Ok facts not to fix:
+- font size in walking and gather is different
+- alcuni non vedono che --> e' un errore, ok anyway?
 
 */

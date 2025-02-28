@@ -21,7 +21,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
     .question("""
       @[//This is a @@single line comment]@
       //Select all and only the line with
-      //the highlighted character.
+      //the highlighted character and press 'comment'.
       //The highlighted character is
       //the currently selected character.
       """,Comment)
