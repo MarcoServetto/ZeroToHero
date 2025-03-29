@@ -23,7 +23,7 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
       ]@""",Error)
     .question("""
         @[//Let me repeat: We need to @@CLIMB the hill nearby]@
-        //Climbing is tricky, hope you are ready!
+        //Climbing is tricky, I hope you are ready!
         ]@""",Comment)
     .question("""
       As we have seen, operations move forward into results.
@@ -56,4 +56,28 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
       //Here it is the
       @[Hill@@:{}]@
       """, TypeDeclaration)
+    .question("""
+  Archer: {
+    .heading: Direction -> heading,
+    .aiming:  Direction -> aiming,
+    .aimTo(d: Direction):Archer -> Archers#(heading, @[@@d]@),
+    .headTo(d: Direction):Archer -> Archers#(d, aiming),
+    }
+""", Parameter)
+    .question("""
+  Archer: {
+    .heading: Direction -> heading,
+    .aiming:  Direction -> aiming,
+    .aimTo(d: Direction):Archer -> Archers#(heading, d),
+    @[.headTo(@@d: Direction):Archer -> Archers#(d, aiming),]@
+    }
+""", MethodDeclaration)
+    .question("""
+  Archer: {
+    .heading: Direction -> heading,
+    .aiming:  Direction -> aiming,
+    .aimTo(d: Direction):Archer -> Archers#(heading, d),
+    .headTo(d: @[D@@irection]@):Archer -> Archers#(d, aiming),
+    }
+""", Type)
     .build(); } }

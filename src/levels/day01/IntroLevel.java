@@ -38,7 +38,9 @@ public class IntroLevel implements Function<Days.LevelName,String>{
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}",List.of(
                                "See:{}\nHear:{}\nSense:{}\nSee:Sense{}\nHear:Sense{}",noAdd,
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nSee:{}\nHear:{}",noAdd,
-                               "See:Sense{}Hear:Sense{}","You also need to declare Sense"))
+                               "See:Sense{}Hear:Sense{}","You also need to declare Sense",
+                               "See:Sense{}Hear:Sense{}Sense:{}","It looks better with Sense on top"
+                               ))
     .image(5)
       .area(15, 85,     1, 46, last,last=
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nNorth:{}",List.of(
@@ -72,6 +74,7 @@ public class IntroLevel implements Function<Days.LevelName,String>{
       .area(27, 85,     1, 41, last,last=
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}",List.of(
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn,}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}","Add the result of turning!",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}","You forgot the comma!",
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}","Add the result of turning!"))
     .image()
       .area(27, 85,     1, 41, last,last=

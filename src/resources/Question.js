@@ -2,9 +2,17 @@
 /*export*/ const InitQuestions = (isFrozen)=>
   _postInit(Deck.list('question')
     .map(q=>QuestionText(q,isFrozen)));
-    const _postInit = Log.tagAsync('postInit', (Questions) => {
+    let count= 0;
+    const _postInit = Log.tagAsync('postInit', (Questions)=>{
   setTimeout(()=>_postInit(Questions),100);
+  count = (count + 1) % 7;
   Questions.forEach((q)=>q.keepFocus());
+  Questions
+    .filter(q=>q.isBlinking())
+    .forEach((q)=>{
+      count!==0?q.toSolution():q.toSingle();
+      q.selectionEvent();
+    });
   return Questions;
   });
 const QuestionText = (q,isFrozen) => {
@@ -15,10 +23,11 @@ const QuestionText = (q,isFrozen) => {
   const originalText= MetaData.str(q,'original');
   let startFix= redChar;
   let endFix= redChar + 1;
+  let isBlinking= false;
   const noRedChar= ()=>Number.isNaN(redChar);
   const extractStr= (str)=>MetaData.str(q, str);
   const extractInt= (str)=>MetaData.int(q, str);
-  const toSolution= ()=>{ startFix = startOk; endFix = endOk; };
+  const toSolution= ()=>{ startFix = startOk; endFix = endOk; isBlinking = true; };
   const toSingle= ()=>{ startFix = redChar; endFix = redChar + 1; };
   const currentSelectionRange= ()=>{
     let start = q.selectionStart;
@@ -48,6 +57,7 @@ const QuestionText = (q,isFrozen) => {
     if(!flag){ q.hidden = true; return; }
     q.hidden = false;
     q.value = originalText;
+    isBlinking = false;
     toSingle();
     highlight();
   });
@@ -89,5 +99,6 @@ const QuestionText = (q,isFrozen) => {
     active, keepFocus, selectionEvent,
     extractStr, extractInt,
     addClass, removeClass, setPostSelect,
+    isBlinking: () => isBlinking,
     solved:false, requiredOption,inner:()=>q};
 };

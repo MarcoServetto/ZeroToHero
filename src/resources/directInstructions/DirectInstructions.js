@@ -124,7 +124,7 @@ const initSlides= () => {
         if (tokenLastInput !== currentInput){ return; }
         t.classList.add("incorrectGlow");
         displayPanicMessage(msg,15000);  
-        }, 500);      
+        }, 1300);      
       });
     };
   let panicToHideId= null;

@@ -20,6 +20,13 @@ Archer:{
   <#[0|#|.aiming:Direction,|#|eating tomatoes|#|.shoot->North|#|.aiming->this]#>
   }
 ```
+
+A <#[1|#|carismatic|#|carefull|#|careless]#> reader
+may have noticed that we are declaring `.heading` before
+`.aiming`, even if the archer is supposed to shoot (`.aiming`)
+and then move (`.heading`).
+However, this is fine:
+The order of the declarations is irrelevant.
 """)
       .right("""
 We can then write specific kinds of Archers.
@@ -30,5 +37,7 @@ ArcherNE:{
   .heading -> North, .aiming -> <#[1|#|North|#|East|#|South|#|potato|#|this.aiming|#|this.heading]#>,
   }
 ```
+
+(Are you stuck? click on the xxx up ⬆️ above)
 """)
     .build(); } }

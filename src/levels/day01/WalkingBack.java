@@ -17,12 +17,17 @@ public class WalkingBack implements Function<Days.LevelName,String>{
         .turn: Direction,
         @[.reverse: Direction @@-> this.turn.turn,]@
         }
+      //remember, if there is the ->
+      //then it is not a 'method call'
       """,MethodDeclaration)
     .question("""
         Direction:{ 
           .turn: Direction,
           .reverse: Direction -> @[th@@is]@.turn.turn,
           }
+        //Writing code on multiple lines in this way
+        //is called indentation. Indentation makes
+        //code more readable.
         """,Parameter)
     .question("@[No@@rth:{East}]@",TypeDeclaration)
     .question("North:{@[Ea@@st]@}",ObjectLiteral)

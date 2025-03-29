@@ -14,14 +14,14 @@ public class GatgherTrueExpr implements Function<Days.LevelName,String>{
     return new htmlMangle.Gather(name,"""
 //This code is visible by all the cards
 //here '.turn->' can be omitted, thus we can write
-//North:Direction {East,} instead of the longer
-//North:Direction {.turn->East,}
+//North: Direction { East } instead of the longer
+//North: Direction { .turn->East, }
 
-Direction:{.turn:Direction,}
-North:Direction {East,}
-East:Direction{South}
-South:Direction{West}
-West:Direction{North}
+Direction: { .turn: Direction }
+North: Direction { East  }
+East:  Direction { South }
+South: Direction { West  }
+West:  Direction { North }
 """)
         // code with title, group img, img num
     .card("North\nNorth",1,BrownMushroom,1)

@@ -28,6 +28,8 @@ public class Gather {
     assert split!=-1;
     var code= text.substring(split+1,text.length());
     var title= text.substring(0,split);
+    assert title.length()>3 && title.length()< 30;
+    assert code.lines().allMatch(l->l.length()<60);
     cs.add(new Card(name.currentLevel(),code,group,loc,cs.size(),title));
     return this;
   }

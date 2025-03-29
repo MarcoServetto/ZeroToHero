@@ -81,7 +81,8 @@ const Book = () => {
   setInterval(updateTimerDisplay, 1000);
   
   holes.forEach(hole =>
-    hole.addEventListener('click', () => {
+    hole.addEventListener('click', (event) => {
+      event.stopPropagation();
       if (freeze.isLocked()){ return showTimeoutMessage(); }
       if (currentPopup){ 
         gameArea.removeChild(currentPopup);
@@ -117,8 +118,8 @@ const Book = () => {
     const holeRect = hole.getBoundingClientRect();
     const relativeTop = ((holeRect.top - containerRect.top + holeRect.height + 1) / containerRect.height) * 100;
     const relativeLeft = ((holeRect.left - containerRect.left) / containerRect.width) * 100;
-    popup.style.top = relativeTop + '%';
-    popup.style.left = relativeLeft + '%';
+    popup.style.top = (relativeTop + 3) + '%';
+    popup.style.left = (relativeLeft + 2) + '%';
     list.forEach(opt => {
       const btn = makeOptionEntry(hole, opt, opt === correct, popup);
       popup.appendChild(btn);
@@ -144,5 +145,10 @@ const Book = () => {
     };
   //init
   updateMissingWordsCount();
+  document.body.addEventListener('click', (e)=>{
+    if (!currentPopup) { return; }
+    gameArea.removeChild(currentPopup);
+    currentPopup = null;
+    });
   };
 Book();

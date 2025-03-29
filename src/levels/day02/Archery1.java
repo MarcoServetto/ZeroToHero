@@ -10,7 +10,7 @@ public class Archery1 implements Function<Days.LevelName,String>{
       //Code to make an archer
       //shooting and then moving
       //to hit the targets
-      //Use 'methName -> MethBody,'
+      //Use 'methodName -> methodBody,'
       
       Direction:{ .turn: Direction }
       North:Direction{ East  }
@@ -57,6 +57,7 @@ public class Archery1 implements Function<Days.LevelName,String>{
         .heading-> East,
         .aiming -> West, 
       /*]*/}
+      //Remember to use the ->
       """))
     .image(2).area(l, acc("""
       Archer4:Archer{/*[*/

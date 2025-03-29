@@ -24,12 +24,18 @@ public class GatherOnTop implements Function<Days.LevelName,String>{
 
 .card("Near the cliff\nArchers#(South, North)",4,BrownMushroom,11) // south, north =4
 .card("Inside a tree hole\nArchers#(South, North).headTo(South)",4,BrownMushroom,10)
-.card("Under the grass\nArchers#(South, West.turn).headTo(North.turn.turn)",4,BrownMushroom,12)
+.card("""
+  Under the grass
+  Archers#(South, West.turn).headTo(North.turn.turn)
+  """,4,BrownMushroom,12)
 .card("On the side of the cliff\nArchers#(South, South).aimTo(North)",4,BrownMushroom,13)
 
 .cardTrash("Inside a pond\nArchers#(South, North).move(South)",BrownMushroom,14) // error
 .cardTrash("Between two branches\nArchers#(archer.heading)",BrownMushroom,15)
-.cardTrash("In the mud\nArchers#(South:Rotation, West.turn).headTo(North.rotate)",Tomato,2)
+.cardTrash("""
+  In the mud
+  Archers#(South:Rotation, West.turn).headTo(North.rotate)
+  """,Tomato,2)
 .cardTrash("On the side of a dead tree\nArchers:#(South, South).aimTo(North)",BrownMushroom,16)
 .shuffle()
 .build(); } }

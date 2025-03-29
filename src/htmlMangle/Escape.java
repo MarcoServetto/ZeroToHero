@@ -10,7 +10,7 @@ public class Escape {
     return Escape.escapeForHtmlAttribute(cleanUp(s));
     }
   public static String cleanUp(String s){
-    s = s.replaceAll("\\s+\n", "\n").replaceAll("\r","");
+    s = s.replaceAll("\r","").replaceAll(" +\n", "\n");
     if (s.endsWith("\n")){ s = s.substring(0, s.length() - 1); }
     return s;
     }

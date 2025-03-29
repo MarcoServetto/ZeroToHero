@@ -48,7 +48,7 @@ const Walking= (score) => {
     currentBonusElem.textContent = 0;
     currentQuestion.toSolution();
     currentQuestion.selectionEvent();
-    Buttons.freezeFor(4050);
+    Buttons.freezeFor(4050);    
     displayExplanationMessage(currentQuestion.requiredOption,()=>{
       questions.forEach(q => q.active(false));
       questions[currentQuestionIndex].active(true);

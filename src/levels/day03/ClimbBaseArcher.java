@@ -13,6 +13,7 @@ public class ClimbBaseArcher implements Function<Days.LevelName,String>{
       Reduction produces values that are better represented
       in a more abstract and compact way (not valid syntax)
       We will use 【...】 or typename【...】 for those values
+      For example, 【🚶⬆️, 🎯⬇️】
       We can not write those notations directly in the code,
       but they are useful to visualize the reduction.
       """,

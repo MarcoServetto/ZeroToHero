@@ -7,7 +7,7 @@ import main.Days;
 
 public class ClimbArcherAimTo implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
-    return new htmlMangle.Climb(name,ClimbBase.directions)
+    return new htmlMangle.Climb(name,ClimbBase.directionsAimTo)
     .question("""
       Now we use methods Archer.headTo and Archer.aimTo
       Look to the code above to see the implementation.

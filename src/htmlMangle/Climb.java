@@ -19,12 +19,22 @@ public class Climb {
   public Climb question(String text, List<String> rocks, int option){
     return question(lastContext,text,rocks,option);
   }
+  private static final String endContext= Escape.cleanUp("\n_______________\n");
+  
+  private String handleContinuations(boolean isContinuation, String context, String text){
+    if(!isContinuation){ return context + endContext; }
+    checkContinuation(text);
+    int i= context.indexOf(endContext);
+    if (i==-1){ i = context.length(); context += endContext; }
+    String part1= context.substring(0,i+endContext.length());
+    String part2= context.substring(i+endContext.length(),context.length());    
+    return part1+"\n"+text+part2;
+  }
   public Climb question(String context, String text, List<String> rocks, int option){
-    lastContext= context;
     text = Escape.cleanUp(text);
     boolean isContinuation= text.startsWith("##");
-    if (isContinuation){ text= text.substring(2); }
-    context = Escape.cleanUp(context+"\n\n");
+    if (isContinuation){ text= text.substring(2); }    
+    context = Escape.cleanUp(context);
     rocks = rocks.stream().map(Escape::cleanUp).toList();
     int start= text.indexOf("@[");
     assert start >= 0:text;
@@ -33,7 +43,8 @@ public class Climb {
     assert end >= 0:text;
     text = text.replace("]@","");
     assert option >= 0 && option < rocks.size();
-    if(isContinuation){ checkContinuation(text); }
+    context = handleContinuations(isContinuation,context,text);
+    lastContext = context;
     commit(new CQuestion(isContinuation,context,text,start,end,rocks,option));
     return this;
   }

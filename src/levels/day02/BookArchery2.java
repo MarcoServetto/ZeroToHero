@@ -49,9 +49,12 @@ inside of a method
 
 
 The syntax `heading: Direction` defines `heading` as a **parameter**
-of the method called `#`.
-This introduces `heading` as a parameter,
-only visible inside the method body of `#`. 
+of the method called `#` (hash).
+Overall, the method declaration introduces `heading` and `aiming`
+as parameters only visible inside the method body of `#`.
+
+The method body is the code after `->`, and defines the method behaviour in function of the parameters. 
+  
 The `this` parameter we all know is implicitly
 declared by the type declaration.
 `heading` is an example of an 

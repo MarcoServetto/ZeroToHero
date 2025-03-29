@@ -25,11 +25,13 @@ public class Main {
     d.add(new ExplainReverse());
     d.add(new WalkingBack());
     d.addLast(new Day1Outro());
+    
     d.add(new BookIntro());
     d.add(new BookArchery1());
     d.add(new Archery1());
     d.add(new BookArchery2());
     d.addLast(new Archery2());
+    
     d.add(new WalkingExplainClimb());
     d.add(new ClimbBase());
     d.add(new ClimbBaseArcher());
@@ -62,27 +64,27 @@ public class RealMain {
 }
 */
 /*---feedback notes
--Intro 101: 'can you stand' but he is shown standing before...
 
 -background nero fuori da gameArea, e centrare la game area
-
--meth --> method //can not find where is this meth, is it an image?
-
--Card 7-West out of screen for comment //where is this card?
-
--walking: Consider extending text area in walking?
+-direct instructions: disable tab action in text area
+-upgrade walking: when error displayed, the text could include an additional 'comment' in the bottom
+to explain the nature of the error, as a comment under the code
+  
 
 -Climbing: The "show solution after 5 attempts never worked..." and it may not be needed
-  
+
+
 Safari specific bugs:
 -dragging: safari does not prevent selection of images
 try setting max-height+max-width alle celle immagini
 -dragging: on safari dragging mushrooms make them '3 tall' somehow
 and selects all the 3 cells in the basket
 
+Edge only: 
+-can we suppress the text selected help and the image 'visual search'? may be not?
 
 Ok facts not to fix:
 - font size in walking and gather is different
 - alcuni non vedono che --> e' un errore, ok anyway?
-
+- gather: the card text does not appear on the 'just dropped' item.
 */
