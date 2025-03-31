@@ -52,7 +52,7 @@ East.tarn
 East?
 East[]{}
 //This also goes East
-//object literals have optional [..] and {..}
-//after them, we will see their use later.
-""",1,Eggplant,4)
+//object literals can end with [..] and {..}
+//We will see their use later
+""",2,Eggplant,4)
 .build(); } }

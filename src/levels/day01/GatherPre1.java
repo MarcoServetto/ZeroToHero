@@ -16,13 +16,15 @@ Direction:{.turn:Direction,}
 .card("""
 Yes Good
 East:Direction{.turn->South,}
-//This code is correct: it says turning from East we get South
+//This code is correct: 
+//it says turning from East we get South
 //Put this code in any basket
 """,1,BrownMushroom,3)
 .cardTrash("""
 Nope, Bad
 West:Direction{.turn->West,}
-//This code is wrong:  it says turning from West we get West
+//This code is wrong:
+//it says turning from West we get West
 //Put this code in the trash basket.
 //Then press the next level button.
 """,BrownMushroom,5)

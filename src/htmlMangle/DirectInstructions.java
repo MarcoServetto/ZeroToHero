@@ -17,9 +17,11 @@ import resources.File;
 public class DirectInstructions {
   private Days.LevelName name;
   private Map<Integer, String> map;
-  public DirectInstructions(Days.LevelName name){
-    this.name= name;
-    this.map= loadImageMap();    
+  private final String imageFolder;
+  public DirectInstructions(Days.LevelName name, String imageFolder){
+    this.name = name;
+    this.imageFolder = imageFolder;
+    this.map = loadImageMap();    
     }
   private List<Image> images= new ArrayList<>();
   private Image current;
@@ -70,19 +72,21 @@ public class DirectInstructions {
     }
   private static final Pattern ImagePattern= Pattern.compile("(.+?)-0?(\\d+)\\.jpg");
   private Map<Integer, String> loadImageMap(){
-    Map<Integer, String> map= new HashMap<>();
-    List<Path> paths; try(var s=Files.walk(name.directoryName())){ paths=s.toList(); }
-    catch(IOException ioe){ throw new UncheckedIOException(ioe); }
+    Map<Integer, String> map= new HashMap<>();   
+    Path imagesDir= name.directoryName().getParent().resolve(imageFolder);
+    assert imagesDir!= null;
+    List<Path> paths; try(var s= Files.walk(imagesDir)) { paths= s.toList(); }
+    catch(IOException ioe) {throw new UncheckedIOException(ioe); }
     for (var p : paths){
       String filename= p.getFileName().toString();
       var matcher= ImagePattern.matcher(filename);
       if (!matcher.matches()){ continue; }
       int number= Integer.parseInt(matcher.group(2));
       assert !map.containsKey(number)
-        :"Multiple images found for number " + number 
+        : "Multiple images found for number " + number 
         + ": " + map.get(number) + " and " + filename;        
-      map.put(number, filename);
-      }
+      map.put(number, "../" + imageFolder + "/" + filename);
+    }
     return map;
   }
 }
@@ -91,9 +95,6 @@ record Image(Days.LevelName name, List<TArea> areas, Map<Integer, String> map){
     if(!map.containsKey(index)){ System.err.println("Image "+index+" is missing in "+name.directoryName()); }
     return map.getOrDefault(index,"ImageNotFound.jpg");
     }
-  /*String indexToName(int index){
-    return name.currentLevel()+(index>9?"-":"-0")+index+".jpg";
-    }*/
   String body(int index){ return
      "<div class=\"contentItem\" id=\"content"+index+"\" hidden>\n"
     +"<img class=\"img_16_9\" src=\""+indexToName(index+1)+"\" draggable=\"false\"/>\n"

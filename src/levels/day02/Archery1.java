@@ -28,7 +28,7 @@ public class Archery1 implements Function<Days.LevelName,String>{
     return question;
   }
   @Override public String apply(Days.LevelName name){
-    return new htmlMangle.DirectInstructions(name)
+    return new htmlMangle.DirectInstructions(name,this.getClass().getSimpleName())
     // topStart/end   leftStart/end
     .image(8)
     .area(l, intro+"""

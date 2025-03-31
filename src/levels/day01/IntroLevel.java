@@ -13,7 +13,7 @@ public class IntroLevel implements Function<Days.LevelName,String>{
     String noComma= "You forgot the comma! In this case that comma could indeed be omitted, but for now please write it down anyway";
     String hold= "Hold your horses, we are doing one direction at a time!";
     String methInCurly="Declare the method BETWEEN the curly {..}";
-    return new htmlMangle.DirectInstructions(name)
+    return new htmlMangle.DirectInstructions(name,this.getClass().getSimpleName())
     // topStart/end   leftStart/end
     .image(12)
       .area(15, 30,     3, 48, "", "Hear:{}",List.of(

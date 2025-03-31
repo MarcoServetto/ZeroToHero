@@ -67,6 +67,9 @@ public class RealMain {
 */
 /*---feedback notes
 
+- climbing: if changing text, the history is lost.
+- do not insert skipping steps yet? check what steps are we skipping
+
 -background nero fuori da gameArea, e centrare la game area
 -direct instructions: disable tab action in text area
 -upgrade walking: when error displayed, the text could include an additional 'comment' in the bottom
