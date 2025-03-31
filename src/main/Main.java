@@ -18,9 +18,11 @@ public class Main {
     d.add(new Walking2());
     d.add(new ExplainGather());
     d.add(new GatherPre1());
+    d.add(new GatherPre1b());
+    d.add(new GatherPreTrueExpr());
+    d.add(new GatherTrueExpr());
     d.add(new GatherPre2());
-    d.add(new GatherPre3());
-    d.add(new GatgherTrueExpr());
+    d.add(new GatherPre3());   
     d.add(new GatherTrueDecl());
     d.add(new ExplainReverse());
     d.add(new WalkingBack());
@@ -70,7 +72,6 @@ public class RealMain {
 -upgrade walking: when error displayed, the text could include an additional 'comment' in the bottom
 to explain the nature of the error, as a comment under the code
   
-
 -Climbing: The "show solution after 5 attempts never worked..." and it may not be needed
 
 

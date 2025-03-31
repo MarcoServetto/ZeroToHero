@@ -8,16 +8,22 @@ import main.Days;
 public class GatherPre1 implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Gather(name,"""
-//Drag and drop items into baskets
-//Bad code in the trash
-//Good code in a basket
-//This code is visible by all the cards
-//The code of a direction also assumes
-//the other three directions to be
-//declared as shown in the exercises before
+//Follow the instructions in the comments
+//to understand how this game works
 Direction:{.turn:Direction,}
 """)
-        // code with title, group img, img num
-    .card("GoodOrBad 1\nNorth:Direction{.turn->East,}",1,BrownMushroom,1)
-    .cardTrash("GoodOrBad 2\nNorth:Direction{.turn->North,}",BrownMushroom,13)
-    .build(); } }
+         // code with title, group img, img num
+.card("""
+Yes Good
+East:Direction{.turn->South,}
+//This code is correct: it says turning from East we get South
+//Put this code in any basket
+""",1,BrownMushroom,3)
+.cardTrash("""
+Nope, Bad
+West:Direction{.turn->West,}
+//This code is wrong:  it says turning from West we get West
+//Put this code in the trash basket.
+//Then press the next level button.
+""",BrownMushroom,5)
+.build(); } }
