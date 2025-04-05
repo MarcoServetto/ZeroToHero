@@ -48,20 +48,23 @@ const Walking= (score) => {
     currentBonusElem.textContent = 0;
     currentQuestion.toSolution();
     currentQuestion.selectionEvent();
-    Buttons.freezeFor(4050);    
-    displayExplanationMessage(currentQuestion.requiredOption,()=>{
+    Buttons.freezeFor(4050);
+    const opt= currentQuestion.requiredOption;
+    const motivation= currentQuestion.extractStr('motivation');
+    displayExplanationMessage(opt,motivation,()=>{
       questions.forEach(q => q.active(false));
       questions[currentQuestionIndex].active(true);
       updateContent();
       });
     };
-  const displayExplanationMessage = (requiredOption, onDismiss) => {
+  const displayExplanationMessage = (requiredOption,motivation,onDismiss) => {
     const explanation = OptionExplanations[requiredOption] || Utils.error('bad button id '+requiredOption);
     const msg =`
     <div>
       <p><strong>You stumble and fall.</strong></p>
     <p>The correct highlight/selection is now shown.</p>
     <p>The right button was "<strong>${explanation}</strong>".</p>
+    <p> ${motivation}</p>
     <hr>
       <p>Minigame explanation:</p>
       <ul>
@@ -85,16 +88,10 @@ const Walking= (score) => {
     handleCorrectAnswer();
     nextQuestion();
     });
-  const buttonActions = {
-    btnParameter: () => handleButtonClick(1),
-    btnMethodCall: () => handleButtonClick(2),
-    btnObjectLiteral: () => handleButtonClick(3),
-    btnMethodDeclaration: () => handleButtonClick(4),
-    btnTypeDeclaration: () => handleButtonClick(5),
-    btnType: () => handleButtonClick(6),
-    btnComment: () => handleButtonClick(7),
-    btnError: () => handleButtonClick(8),
-  };
+  const buttonActions = {};
+  for (const index in OptionExplanations){
+    buttonActions['btn' + index]= ()=>handleButtonClick(Number(index));
+  }
   //init code
   let currentQuestionIndex= 0;
   const Buttons= initButtons(updateContent, buttonActions);

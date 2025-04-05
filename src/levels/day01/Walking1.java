@@ -17,7 +17,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
       Indeed, this code is a multiline comment.
       Text useful for explanation but
       ignored in execution@@.
-      */]@""",Comment)
+      */]@""",Comment,"Occasionally, some text here can explain more details.")
     .question("""
       @[//This is a @@single line comment]@
       //Select all and only the line with
