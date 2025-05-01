@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chapter 2 :: Tanks Game</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="sidebar">
+  <div class="sidebar-entry"><a href="01_01.html">Preface :: Fearless: Zero to Hero</a></div>
+<div class="sidebar-entry"><a href="02_01.html">Chapter 1 :: Directions</a></div>
+<div class="sidebar-entry"><a href="03_01.html">Chapter 1 :: Basic code reuse</a></div>
+<div class="sidebar-entry"><a href="04_01.html">Chapter 1 :: Rotations</a></div>
+<div class="sidebar-entry"><a href="05_01.html">Chapter 1 :: Finite numbers</a></div>
+<div class="sidebar-entry"><a href="06_01.html">Chapter 1 :: Strings</a></div>
+<div class="sidebar-entry"><a href="07_01.html">Chapter 1 :: Types and Meaning</a></div>
+<div class="sidebar-entry"><a href="08_01.html">Chapter 1 :: Terminology Recap</a></div>
+<div class="sidebar-entry"><a href="09_01.html">Chapter 2 :: Generic Types</a></div>
+<div class="sidebar-entry"><a href="10_01.html">Chapter 2 :: Booleans</a></div>
+<div class="sidebar-entry"><a href="11_01.html">Chapter 2 :: Optionals</a></div>
+<div class="sidebar-entry"><a href="12_01.html">Chapter 2 :: Peano numbers</a></div>
+<div class="sidebar-entry"><a href="13_01.html">Chapter 2 :: Stack</a></div>
+<div class="sidebar-entry"><a href="14_01.html">Chapter 2 :: Operations on Sequences</a></div>
+<div class="sidebar-entry"><a href="15_01.html">Chapter 2 :: Locals</a></div>
+<div class="sidebar-entry"><a href="16_01.html">Chapter 2 :: Tanks Game</a></div>
+<div class="sidebar-entry"><a href="17_01.html">Chapter 3 :: ImplementingFromScratch</a></div>
+<div class="sidebar-entry"><a href="18_01.html">Chapter 3 :: Promotions</a></div>
+<div class="sidebar-entry"><a href="19_01.html">Chapter 3 :: Packages</a></div>
+<div class="sidebar-entry"><a href="20_01.html">Chapter 3 :: ObjectCapabilities</a></div>
+<div class="sidebar-entry"><a href="21_01.html">Chapter 3 :: NewOptBool</a></div>
+
+  </div>
+  <div id="content" class="markdown-content">
+<h3>Tanks game</h3>
+<p>Now we have enough understanding about Fearless that we can implement a simple game in fearless.</p>
+<p>We start by repeating some of the code we discussed above:</p>
+<pre><code>Points:{ #(x: Int, y: Int): Point -&gt; Point:{'self
+  .x: Int -&gt; x,
+  .y: Int -&gt; y,
+  +(other: Point): Point -&gt; Points#(other.x + x, other.y + y),
+  .move(d: Direction): Point -&gt; self + ( d.point ),
+  ==(other: Point): Bool -&gt; self.x == (other.x)  .and (self.y == (other.y) ),
+  }}
+Direction: { .turn: Direction, .point:Point, }
+North: Direction {.turn -&gt; East,  .point -&gt; Points#(-1, +0), }
+East : Direction {.turn -&gt; South, .point -&gt; Points#(+0, +1), }
+South: Direction {.turn -&gt; West,  .point -&gt; Points#(+1, +0), }
+West : Direction {.turn -&gt; North, .point -&gt; Points#(+0, -1), }
+Tank: {
+  .heading: Direction,
+  .aiming: Direction,
+  .position:Point,
+  .move:Tank -&gt; Tanks#(
+    this.heading,
+    this.aiming,
+    this.position.move(this.heading)
+    ),
+  }
+Tanks: { #(heading: Direction, aiming: Direction, position: Point): Tank-&gt;
+  { .heading -&gt; heading, .aiming -&gt; aiming, .position -&gt; position } }
+</code></pre>
+<p>We have points, directions and tanks with positions.
+Tanks can move in directions.
+Note how we added an <code>==</code> method on Point.</p>
+<p>The state of the game will be represented by a <code>Stack[Tank]</code>.
+The game is implemented by a <code>NextState</code> function.
+<code>NextState#</code> is implemented with a <code>Let</code>, and uses some sub methods for readability.</p>
+<p>The idea is that first all the tanks shoot, and all of the tanks in the direction of fire are eliminated.
+Then, all the surviving tanks move in their heading position, but only if that position is free.
+A position is free if it is neither the current position or the destination of another tank.</p>
+<pre><code>NextState: F[Stack[Tank],Stack[Tank]]{
+  #(tanks) -&gt; Let#
+    .let danger    = { tanks.map{ t -&gt; t.position.move(t.aiming) } }
+    .let survivors = { tanks.filter{t -&gt; this.notIn(t,danger)} }
+    .let occupied  = { (survivors.map{::position}) ++ (survivors.map{::move.position}) }
+    .return { survivors.map{t -&gt; this.moveIfFree(t,occupied)} },
+ 
+ .notIn(t: Tank, ps: Stack[Point]): Bool -&gt; 
+    ps.fold(True,{acc, p -&gt; acc .and  ( t.position == p .not) }),
+
+  .moveIfFree(t: Tank, occuied: Stack[Point]): Tank -&gt; this.notIn(t.move, occupied).if{
+    .then -&gt; t.move,
+    .else -&gt; t,
+    },
+  }
+</code></pre>
+<p>In the code above we implement <code>NextState#</code> with a let. We define all the danger positions.
+We filter only the tanks not in a dangerous location using method <code>.notIn</code>.
+We collect the space occupied by the survivor tanks: this is the union of the space occupied by the survivors in their current position and the space occupied by the survivors after they move in their heading direction.
+Finally we move our tanks if the space they want to go into is free using the method <code>.moveIfFree</code>.
+We conclude returning the new Stack of moved tanks.</p>
+<p>Method <code>.notIn</code> uses a <code>.fold</code>:
+Starting with <code>True</code>, we accumulate with <code>.and</code>, checking that our tank is not in any of the positions <code>p</code> inside <code>ps</code>.
+This method only exists because we are using our little minimal implementation of a <code>Stack</code>.
+Sequences in the standard library do offer much more natural ways to check if specific elements are present inside.</p>
+<p>Method <code>.moveIfFree</code> uses a <code>.notIn</code> and <code>.if</code>:
+if the moved tank would not be in an occupied position, we return the moved tank; otherwise we return the original tank.</p>
+<p>In the code above, there is a subtle logical bug. Can you find it?</p>
+<ul>
+<li>Hint 1: This bug makes so that no tank will ever move</li>
+<li>Hint 2: We collect the occupied positions for all Tanks.</li>
+</ul>
+<p><strong>Solution coming soon</strong></p>
+<p><strong>Solution coming soon</strong></p>
+<p><strong>Solution:</strong> By checking if our specific <code>Tank</code> wants to move in an occupied position, we also check against the position this very tank wants to move into.
+With the code as written, every <code>Tank</code> will want to move in an occupied position, since we count the position they want to move in as an occupied position.
+If some other tank wants to also go in the same position, then there would be two different points in the occupied Stack that are in conflict with the point our current tank wants to go in.
+Thus, we can fix the bug by counting the number of points present in our desidered next location.</p>
+<p>Note how we used the word &quot;our&quot; there. By doing so, we are imagining us to be the tank that is moving. This is a useful psychological technique we can use as programmers to better visualise code execution.</p>
+<p>To fix this bug we can simply edit the <code>.moveIfFree</code> method as follows:</p>
+<pre><code>  .moveIfFree(t: Tank, occupied: Stack[Point]): Tank -&gt; occupied
+    .fold(0, {acc, p -&gt; t.move.position == p .if{ .then 1, .else 0,} + acc })
+    == 1 .if { .then-&gt; t.move, .else-&gt; t, },
+</code></pre>
+<p>Or, with two methods:</p>
+<pre><code>  .moveIfFree(t: Tank, occupied: Stack[Point]): Tank -&gt; 
+    this.countHits(t,occupied) == 1
+      .match { .true-&gt; t.move, .false-&gt; t, }, //arguably more readable than if/then/else?
+
+  .countHits(t: Tank, occupied: Stack[Point]): Tank -&gt; occupied.fold(0, {acc, p -&gt;
+    t.move.position == p .if{ .then 1, .else 0,} + acc 
+    }),
+</code></pre>
+<p>There are many other ways to check this, and if the stack had a 'size' method, we could just do</p>
+<pre><code>  .moveIfFree(t: Tank, occupied: Stack[Point]): Tank -&gt; occupied
+    .filter{ ::== t.move.position}
+    .size
+    == 1 
+    .if{ .then-&gt; t.move, .else-&gt; t, },
+</code></pre>
+<p>This second way is more common in practical Fearless, but exercising on using .fold is very educational.
+Alternatively, we can look at those two ways to implement <code>.moveIfFree</code> and realize that <code>.size</code> is actually a very good abstraction, since</p>
+<ul>
+<li>it has a clear name with an obvious behaviour</li>
+<li>it is useful independently</li>
+<li>it allows us to simplify the method <code>.moveIfFree</code> quite a lot.</li>
+<li>probably, there are a lot of other methods like <code>.moveIfFree</code>, that are easier to define if we have <code>.size</code>.
+Those are iconic features of good abstractions!</li>
+</ul>
+<h4>Reflecting on our progress</h4>
+<p>Pause for a moment and appreciate the depth of our journey so far.</p>
+<p>We started from just the capacity of declaring types and methods, and we have constructed meaningful code from first principles.
+We defined our own representations of booleans, numbers, stacks, and optionals, patiently assembling them from minimal concepts.</p>
+<p>The little tank game we have just built is not trivial. It demonstrates how complexity emerges naturally and cleanly from minimal building blocks.
+By mastering this foundational thinking, you've already gained the ability to envision and construct software in ways many programmers never deeply experience.</p>
+<p>This chapter marks a milestone: You have begun to see the beauty in the minimalistic design of Fearless. As we continue, you will find these insights becoming not just a guide to coding, but a  lens through which all programming becomes clearer.</p>
+<p>Let's keep going.</p>
+      <div class="nav-links">
+      <a href="15_01.html">Previous</a> <a href="17_01.html">Next</a>
+      </div>
+    </div>
+  </body>
+</html>

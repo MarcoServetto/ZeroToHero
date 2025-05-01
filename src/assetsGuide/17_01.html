@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chapter 3 :: ImplementingFromScratch</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="sidebar">
+  <div class="sidebar-entry"><a href="01_01.html">Preface :: Fearless: Zero to Hero</a></div>
+<div class="sidebar-entry"><a href="02_01.html">Chapter 1 :: Directions</a></div>
+<div class="sidebar-entry"><a href="03_01.html">Chapter 1 :: Basic code reuse</a></div>
+<div class="sidebar-entry"><a href="04_01.html">Chapter 1 :: Rotations</a></div>
+<div class="sidebar-entry"><a href="05_01.html">Chapter 1 :: Finite numbers</a></div>
+<div class="sidebar-entry"><a href="06_01.html">Chapter 1 :: Strings</a></div>
+<div class="sidebar-entry"><a href="07_01.html">Chapter 1 :: Types and Meaning</a></div>
+<div class="sidebar-entry"><a href="08_01.html">Chapter 1 :: Terminology Recap</a></div>
+<div class="sidebar-entry"><a href="09_01.html">Chapter 2 :: Generic Types</a></div>
+<div class="sidebar-entry"><a href="10_01.html">Chapter 2 :: Booleans</a></div>
+<div class="sidebar-entry"><a href="11_01.html">Chapter 2 :: Optionals</a></div>
+<div class="sidebar-entry"><a href="12_01.html">Chapter 2 :: Peano numbers</a></div>
+<div class="sidebar-entry"><a href="13_01.html">Chapter 2 :: Stack</a></div>
+<div class="sidebar-entry"><a href="14_01.html">Chapter 2 :: Operations on Sequences</a></div>
+<div class="sidebar-entry"><a href="15_01.html">Chapter 2 :: Locals</a></div>
+<div class="sidebar-entry"><a href="16_01.html">Chapter 2 :: Tanks Game</a></div>
+<div class="sidebar-entry"><a href="17_01.html">Chapter 3 :: ImplementingFromScratch</a></div>
+<div class="sidebar-entry"><a href="18_01.html">Chapter 3 :: Promotions</a></div>
+<div class="sidebar-entry"><a href="19_01.html">Chapter 3 :: Packages</a></div>
+<div class="sidebar-entry"><a href="20_01.html">Chapter 3 :: ObjectCapabilities</a></div>
+<div class="sidebar-entry"><a href="21_01.html">Chapter 3 :: NewOptBool</a></div>
+
+  </div>
+  <div id="content" class="markdown-content">
+<h1>Chapter 3</h1>
+<h3>Implementing all from scratch versus just using standard library code</h3>
+<p>Up to now we tried to show you nearly all the implementation of all the concepts we introduced.
+We think this a very good way to learn to code, and hopefully you have learned a lot.</p>
+<p>However, this was possible since all of those concepts could be expressed with just a few lines of code.
+We will keep showing you the full code of concepts that can be expressed concisely, but as we discussed before, many useful programs and libraries are composed of millions of lines.
+For those, we will only show you how to use them.</p>
+<p>Moreover, certain operations simply can not be done in the language directly.
+All that we discussed lives in the world of the language itself. If we want our code to have any impact at all on the world outside of the program itself, we need something more.</p>
+<p>For example, no matter how many generics, types and methods we write from scratch, we will not be able to draw an image on the screen, or to save a file, or to read information from the internet.
+Those are examples of external side effects.</p>
+<p>Similarly, there are a few cases where we want to modify the behaviour of our code itself. This is possible using internal side effects.</p>
+<p>We call <strong>Magic methods</strong> the methods from the standard library giving direct access to operations that would not be possible in plain Fearless.</p>
+<h3>Var: the first bit of magic</h3>
+<p>The following code introduces updatable local variables, and uses a few new features.</p>
+<pre><code>Void:{}
+Var[E: imm,mut,read]:{
+  mut .set(v: E): Void -&gt; Magic!,
+  mut .get: E,
+  read .get: read/imm E,
+  }
+Vars: {
+  #[E: imm,mut,read](var: E): mut Var[E] -&gt; { 
+    .get -&gt; var,
+    }
+  }
+</code></pre>
+<p>The description below explains how the code above works, but will only mention <code>mut</code>, <code>imm</code>, <code>read</code> and <code>read/imm</code> without explaining how they work in the details yet.
+First we define a type <code>Void:{}</code>. Nothing special here, just a type that does nothing. <code>Void</code> is often used to represent an operation that has no meaningful result, and simply performs side effects, and to do so it will have to use magic methods internally.
+Then we define <code>Var[E]</code> as a generic type.
+The type <code>E</code> has a constraint: it can only be <code>imm</code>,<code>mut</code> or <code>read</code>.
+Those are keywords called reference capabilities: they describe how values can interact with magic.
+An instance of <code>Var</code> will store an object of type <code>E</code>. The crucial bit is that such a value can change over time.
+Method <code>.set</code> takes a new value, and magically changes the current object to store that new value instead of the old one.
+Note how this method starts with the <code>mut</code> keyword.
+In Fearless types and methods can have a keyword in front to track how they interact with magic.
+Crucially, the type system tracks those types and provides extensive guarantees on how the flow of magic interacts with the program at large.
+Then we define two variants of the method <code>.get</code>, one for <code>mut</code> and one for <code>read</code> receivers. You can think of those two variants as two different methods that just so happen to have the same name.
+They will both return the current value, but with different types:</p>
+<ul>
+<li>If we have a <code>mut</code> receiver we produce the value with type <code>E</code>.</li>
+<li>If we have a <code>read</code> receiver, we produce the value with a  weakened type <code>read/imm E</code>.</li>
+</ul>
+<p>Finally <code>Vars</code> is a factory type making new <code>Var[E]</code> originally containing the value provided by the user.
+The syntax <code>.get -&gt; var,</code> implements both .get methods with the same exact body.
+In this case, both methods will simply return the value of <code>var</code> provided while calling <code>Vars#</code>.
+However, the magic <code>.set</code> will impact those methods: when <code>.set</code> is called, the implementations of <code>.get</code> will change to return the new result instead.</p>
+<p>With <code>Var[E]</code> we can now encode mutable objects, like in the following <code>Animal</code> example:</p>
+<pre><code>Points:{ #(x: Nat, y: Nat): Point -&gt; Point:{.x: Nat -&gt; x, .y: Nat -&gt; y} }
+
+Animals: {
+  #(start: Point): mut Animal -&gt; Block#
+   .var loc= {start}
+   .return{ mut Animal: {
+      read .location: Point -&gt; loc.get,  
+      mut .run(x:Nat): Void -&gt;
+        loc.set(Points#(loc.get.x + x, loc.get.y)),
+    }}}
+</code></pre>
+<p>As you can see, the code above defines <code>Point</code> and <code>Points</code> using features we understand well, and then defines <code>Animal</code> and <code>Animals</code>.
+Method <code>Animals#</code> uses <code>Block</code>.
+<code>Block</code> is a type in the standard library supporting fluent programming and the <code>=</code> sugar pretty much like our <code>Let</code>, but with many more features and utilities.
+In particular, <code>Block</code> offers a <code>.let</code> method working exactly like <code>Let.let</code> and a <code>.var</code> method that instead wraps the value  into a <code>Var[E]</code>.
+That is, in this case the local parameter <code>loc</code> is of type <code>mut Var[Point]</code>.
+In this way, it is easy to create either local parameters or local variables. Local variables are just local parameters of type <code>mut Var[..]</code>.</p>
+<p>An <code>Animal</code> is created <code>mut</code>: it can change state by updating <code>loc</code> using <code>loc.set</code> inside the method <code>.run</code>.
+In this simple example, when an <code>Animal</code> runs, it moves across the <code>x</code> coordinate.
+Note how to access the value inside of <code>loc</code> we need to use <code>.get</code>.</p>
+<p>While location is a <code>mut Var[Point]</code>, the <code>Point</code> itself is immutable.
+As a sugar, any typename without a modifier in front is implicitly <code>imm</code>.
+To clarify this, here is the code from above with all the imm keywords explicitly added:</p>
+<pre><code>Points:{ imm #(x: imm Nat, y: imm Nat): imm Point -&gt;
+  imm Point:{.x: imm Nat -&gt; x, .y: imm Nat -&gt; y} }
+
+Animals: {
+  imm #(start: imm Point): mut Animal -&gt; imm Block#
+   .var loc= {start}
+   .return{ mut Animal: {
+      read .location: imm Point -&gt; loc.get,  
+      mut .run(x: imm Nat): imm Void -&gt;
+        loc.set(imm Points#(loc.get.x + x, loc.get.y)),
+    }}}
+</code></pre>
+<h3>Aliasing</h3>
+<p>Now that we have mutation, we can have aliasing.
+Aliasing is both the best feature of mutation, and the very reason mutation needs to be kept under control.
+Aliasing is like a nuclear power plant:</p>
+<ul>
+<li>Very powerful</li>
+<li>Very dangerous if misused</li>
+<li>Some people are very vocal against it</li>
+<li>What happens inside feels like (dark) magic</li>
+<li>Working with it requires a great level of competence</li>
+</ul>
+<p>Using aliasing in the appropriate way can make our code much more efficient, and in some conditions even easier to read and understand.
+However, when aliasing and mutation are misused or run outside of our control, the code will behave in ways that most humans find very hard to predict.</p>
+<p>Consider the code below, showing a simple example of Aliasing.</p>
+<pre><code>AliasingExample: {#: Num -&gt; Block#
+  .let bunny= { Animals#(Points#(10,20)) }
+  .let mammal= { bunny }
+  .do { bunny.run(15) }
+  .return { mammal.location.x }
+  }
+
+</code></pre>
+<p>Here we use a <code>Block</code> to declare two local paramters for animals.
+One is a <code>bunny</code> and the other one is the same animal (aliased) but called <code>mammal</code>.
+The crucial point here is that those two local parameter are the same <code>mut Animal</code>.
+Mutating <code>bunny</code> will affect <code>mammal</code> and vice versa.
+Then we use <code>.do</code> to run code returning <code>Void</code>.
+Finally, we return the <code>x</code> coordinate of <code>mammal</code>.
+Here, calling <code>AliasingExample#</code> will return <code>25</code>.
+That is, only one <code>Animal</code> has been created by that code, and by making the two bindings refer to the same animal object, we can observe mutation happened over <code>bunny</code> by looking at the state of <code>mammal</code>.</p>
+<p>Note how we use <code>.let</code> and not <code>.var</code>.
+<code>bunny</code> and <code>mammal</code> are not variables. They are local parameters referring to objects that (indirectly) contain a variable inside.</p>
+      <div class="nav-links">
+      <a href="16_01.html">Previous</a> <a href="18_01.html">Next</a>
+      </div>
+    </div>
+  </body>
+</html>

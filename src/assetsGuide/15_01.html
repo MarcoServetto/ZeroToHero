@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chapter 2 :: Locals</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="sidebar">
+  <div class="sidebar-entry"><a href="01_01.html">Preface :: Fearless: Zero to Hero</a></div>
+<div class="sidebar-entry"><a href="02_01.html">Chapter 1 :: Directions</a></div>
+<div class="sidebar-entry"><a href="03_01.html">Chapter 1 :: Basic code reuse</a></div>
+<div class="sidebar-entry"><a href="04_01.html">Chapter 1 :: Rotations</a></div>
+<div class="sidebar-entry"><a href="05_01.html">Chapter 1 :: Finite numbers</a></div>
+<div class="sidebar-entry"><a href="06_01.html">Chapter 1 :: Strings</a></div>
+<div class="sidebar-entry"><a href="07_01.html">Chapter 1 :: Types and Meaning</a></div>
+<div class="sidebar-entry"><a href="08_01.html">Chapter 1 :: Terminology Recap</a></div>
+<div class="sidebar-entry"><a href="09_01.html">Chapter 2 :: Generic Types</a></div>
+<div class="sidebar-entry"><a href="10_01.html">Chapter 2 :: Booleans</a></div>
+<div class="sidebar-entry"><a href="11_01.html">Chapter 2 :: Optionals</a></div>
+<div class="sidebar-entry"><a href="12_01.html">Chapter 2 :: Peano numbers</a></div>
+<div class="sidebar-entry"><a href="13_01.html">Chapter 2 :: Stack</a></div>
+<div class="sidebar-entry"><a href="14_01.html">Chapter 2 :: Operations on Sequences</a></div>
+<div class="sidebar-entry"><a href="15_01.html">Chapter 2 :: Locals</a></div>
+<div class="sidebar-entry"><a href="16_01.html">Chapter 2 :: Tanks Game</a></div>
+<div class="sidebar-entry"><a href="17_01.html">Chapter 3 :: ImplementingFromScratch</a></div>
+<div class="sidebar-entry"><a href="18_01.html">Chapter 3 :: Promotions</a></div>
+<div class="sidebar-entry"><a href="19_01.html">Chapter 3 :: Packages</a></div>
+<div class="sidebar-entry"><a href="20_01.html">Chapter 3 :: ObjectCapabilities</a></div>
+<div class="sidebar-entry"><a href="21_01.html">Chapter 3 :: NewOptBool</a></div>
+
+  </div>
+  <div id="content" class="markdown-content">
+<h3>Local parameters (Locals)</h3>
+<p>Up to now, all the parameters we have seen are method parameters; either the receiver (parameter zero) or one of the others.
+This can encourage us to write repetitive and hard to read code.</p>
+<p>For example, we show below a difficult to read method computing the distance between two points; using the square root function (sqrt) present on <code>Nat</code>:</p>
+<pre><code>.distance(p1: Point, p2: Point): Nat-&gt;
+  p1.x - (p2.x) * (p1.x - (p2.x)) + (p1.y - (p2.y) * (p1.y - (p2.y)))  .sqrt  
+</code></pre>
+<p>Note that those are the needed parenthesis:
+<code>p1.x - p2.x</code> would be interpreted as <code>(p1.x - p2).x</code>
+This method uses the pythagorean theorem, but it is not ideal:</p>
+<ul>
+<li>we duplicate code for <code>p1.x - (p2.x)</code> and <code>p1.y - (p2.y)</code></li>
+<li>all the code is in a single hard to read line.</li>
+</ul>
+<p>What if we want to have more bindings?
+We can define a method on the fly and call it, as shown below:</p>
+<pre><code>.distance(p1: Point, p2: Point): Nat-&gt;
+  {#(diffX: Nat, diffY: Nat): Nat-&gt;
+     (diffX * diffX) + (diffY * diffY).sqrt }
+  #( p1.x - (p2.x), p1.y - (p2.y) )
+</code></pre>
+<p>Theoretically, this new code achieves our goals, but most humans find this new version even harder to read.
+We think this is mostly because</p>
+<ol>
+<li>The values for <code>diffX</code> and <code>diffY</code> are very far in the code from the declaration point of <code>diffX</code> and <code>diffX</code>.</li>
+<li>This new version is just much longer: we have to add the types for <code>diffX</code>, <code>diffY</code>, the method name <code>#</code> and the return type of such method.</li>
+<li>This version is only working for two new bindings defined at the same time. What if we wanted to give a name to the result before <code>.sqrt</code>?</li>
+</ol>
+<p>We first show how to solve those 3 issues in the core language, then we show a new form of syntactic sugar making this approach more readable.
+We can define a standard <code>Let</code> type allowing to define local parameters by generalising the idea of the code above:</p>
+<pre><code>Let:{ #[T,R](x: T, f: F[T,R]): R -&gt; f#x }
+</code></pre>
+<p>With this Let type we can define our .distance method as follows:</p>
+<pre><code>.distance(p1: Point, p2: Point): Nat-&gt;
+  Let#(p1.x - (p2.x), {diffX -&gt;
+  Let#(p1.y - (p2.y), {diffY -&gt;
+  Let#((diffX * diffX) + (diffY * diffY), {res -&gt;
+  res.sqrt
+  })})})
+</code></pre>
+<p>now we can use any amount of lets to declare local bindings and use them in the rest of the code.
+However, the code is now kind of noisy: every <code>Let</code> introduces a new layer of object literals, and thus we end up with a lot of closed parenthesis at the end.</p>
+<p>Also, this code does not follow the 'fluent' pattern we discussed before.
+In particular, while most lines start by telling you what that line is doing (<code>Let#</code>) the last one just computes an expression.
+We will now refactor our Let to follow the fluent pattern:</p>
+<pre><code>Continuation[T,C,R]: { #(x: T, self: C): R }
+Let[R]: {
+  .let[T](x: F[T], c: Continuation[T,Let[R],R]): R-&gt; c#(x#,this),
+  .return(f: F[R]): R -&gt; f#,
+  }
+Let: { #[R]: Let[R] -&gt; {} }
+//...
+.distance(p1: Point, p2: Point): Nat-&gt;Let#
+  .let({p1.x - (p2.x)}, {diffX, self0 -&gt; self0
+  .let({p1.y - (p2.y)}, {diffY, self1 -&gt; self1
+  .let({(diffX * diffX) + (diffY * diffY)}, {res, self2 -&gt; self2
+  .return {res.sqrt}
+  })})})
+</code></pre>
+<p>I guess you are now very confused about the code above, and you may be thinking this is not much of an improvement.
+You may be thinking this is actually much worse!
+However, this new form is very regular. Every line is kind of self similar, and everything is expressed via method calls.
+Regular code expressed via method calls is fertile ground for both code reuse and syntactic sugar.</p>
+<h3>The = sugar.</h3>
+<p>We are now going to show one crucial form of syntactic sugar in Fearless.
+Any method with two parameters (three counting also the receiver) can be called using this sugar. In particular this includes the '.let' method defined above.</p>
+<p>Consider the call
+<code>Let#.let({p1.x - (p2.x)}, {diffX, self0 -&gt; self0 ...})</code>
+Here the receiver is <code>Let#</code>, the first parameter is <code>{p1.x - (p2.x)}</code>
+and the second parameter is <code>{diffX, self0 -&gt; self0 ...}</code></p>
+<p>With the <code>=</code> sugar we can rewrite that call as follows:
+<code>Let#.let diffX= {p1.x - (p2.x)} ...</code></p>
+<p>The distance method can use this sugar three times and becomes as follows:</p>
+<pre><code>.distance(p1: Point, p2: Point): Nat -&gt; Let#
+  .let diffX = {p1.x - (p2.x)}
+  .let diffY = {p1.y - (p2.y)}
+  .let res   = {(diffX * diffX) + (diffY * diffY)}
+  .return {res.sqrt}
+</code></pre>
+<p>That is, the <code>=</code> takes the binding name on its left and uses it to forge an object literal implementing a single method with two arguments.
+The body of such a method is whatever method chain follows.
+By using a two argument method, the <code>Let</code> library can specify the receiver for the continuation of the call chain.
+In the case of the <code>Let[R]</code>, it is just the same <code>Let[R]</code> object; we will see later cases where it is useful to change the receiver to a different value or type.</p>
+<p>Let see again this code, comparing line by line to see what changes thanks to this sugar</p>
+<pre><code>.distance(p1:Point, p2:Point):Nat-&gt;Let#
+  .let diffX= {p1.x - (p2.x)}           | .let({p1.x - (p2.x)}, {diffX, self0 -&gt; self0
+  .let diffY= {p1.y - (p2.y)}           | .let({p1.y - (p2.y)}, {diffY, self1 -&gt; self1
+  .let res={(diffX*diffX)+(diffY*diffY)}| .let({(diffX*diffX)+(diffY*diffY)},{res,self2-&gt;self2
+  .return {res.sqrt}                    | .return {res.sqrt}
+                                        | })})}) 
+</code></pre>
+<p>In the code above, we call <code>diffX</code>, <code>diffY</code> and <code>res</code> local parameters, or <strong>locals</strong> for short.
+Local parameters are a staple of most programming language, but in Fearless they are represented
+via syntactic sugar instead of being a core language feature.
+In other languages they are often known by one (or more) of the following names:
+local bindings, bindings, let-bindings, lets, local variables, variables.</p>
+      <div class="nav-links">
+      <a href="14_01.html">Previous</a> <a href="16_01.html">Next</a>
+      </div>
+    </div>
+  </body>
+</html>

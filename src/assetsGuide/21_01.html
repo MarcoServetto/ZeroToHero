@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chapter 3 :: NewOptBool</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="sidebar">
+  <div class="sidebar-entry"><a href="01_01.html">Preface :: Fearless: Zero to Hero</a></div>
+<div class="sidebar-entry"><a href="02_01.html">Chapter 1 :: Directions</a></div>
+<div class="sidebar-entry"><a href="03_01.html">Chapter 1 :: Basic code reuse</a></div>
+<div class="sidebar-entry"><a href="04_01.html">Chapter 1 :: Rotations</a></div>
+<div class="sidebar-entry"><a href="05_01.html">Chapter 1 :: Finite numbers</a></div>
+<div class="sidebar-entry"><a href="06_01.html">Chapter 1 :: Strings</a></div>
+<div class="sidebar-entry"><a href="07_01.html">Chapter 1 :: Types and Meaning</a></div>
+<div class="sidebar-entry"><a href="08_01.html">Chapter 1 :: Terminology Recap</a></div>
+<div class="sidebar-entry"><a href="09_01.html">Chapter 2 :: Generic Types</a></div>
+<div class="sidebar-entry"><a href="10_01.html">Chapter 2 :: Booleans</a></div>
+<div class="sidebar-entry"><a href="11_01.html">Chapter 2 :: Optionals</a></div>
+<div class="sidebar-entry"><a href="12_01.html">Chapter 2 :: Peano numbers</a></div>
+<div class="sidebar-entry"><a href="13_01.html">Chapter 2 :: Stack</a></div>
+<div class="sidebar-entry"><a href="14_01.html">Chapter 2 :: Operations on Sequences</a></div>
+<div class="sidebar-entry"><a href="15_01.html">Chapter 2 :: Locals</a></div>
+<div class="sidebar-entry"><a href="16_01.html">Chapter 2 :: Tanks Game</a></div>
+<div class="sidebar-entry"><a href="17_01.html">Chapter 3 :: ImplementingFromScratch</a></div>
+<div class="sidebar-entry"><a href="18_01.html">Chapter 3 :: Promotions</a></div>
+<div class="sidebar-entry"><a href="19_01.html">Chapter 3 :: Packages</a></div>
+<div class="sidebar-entry"><a href="20_01.html">Chapter 3 :: ObjectCapabilities</a></div>
+<div class="sidebar-entry"><a href="21_01.html">Chapter 3 :: NewOptBool</a></div>
+
+  </div>
+  <div id="content" class="markdown-content">
+<h3>Updating F, Opt and matches. Capturing reference capabilities.</h3>
+<p>Up to now we have seen a simplified form of <code>F</code>, <code>Opt</code>, <code>ThenElse</code> and other kinds of matchers.
+The code we have shown before is not wrong, just limited.
+Since we were not using reference capabilities explicitly, everything was immutable.
+Immutable object literals can capture immutable bindings, so everything worked.
+But, when we add mutability in the mix, the world gets more complicated. More colourful, if you prefer.</p>
+<p>An <code>imm</code> method in an immutable object literal can only capture <code>imm</code> parameters.
+Also <code>iso</code> parameters can be captured, but this is because they are transparently converted into <code>imm</code> parameters.
+This means that with the type <code>F</code> as we defined it before:</p>
+<pre><code>  F[R]:{ #: R }
+  F[A,R]:{ #(a: A): R }
+  F[A,B,R]:{ #(a: A,b:B): R }
+</code></pre>
+<p>Method <code>F#</code> can not capture <code>mut</code> and <code>read</code> parameters.</p>
+<p>To work flexibly with RCs, we need to modify <code>F</code> as below:</p>
+<pre><code>F[R:**]: {read #: R}
+F[A:**,R:**]: {read #(a: A): R}
+F[A:**,B:**,R:**]: {read #(a: A, b: B): R} //and a few more overloads
+
+MF[R:**]: {mut #: R}
+MF[A:**,R:**]: {mut #(a: A): R}
+MF[A:**,B:**,R:**]: {mut #(a: A, b: B): R} //and a few more overloads
+</code></pre>
+<p>Note the use of <code>T:**</code>. We can use <code>*</code> and <code>**</code> as shortcut for large generic bounds:
+<code>*</code> is equivalent to <code>imm,mut,read</code>; <code>**</code> is equivalent to all of the reference capabilities; including some more unusual ones that we have not discussed yet.</p>
+<p><code>F#</code> sees the world as <code>read</code> and supports generics with any RC. In particular, this means that a
+<code>read F[X]</code> can capture mut references as <code>read</code>. <code>MF</code> (mutable function) sees the world as <code>mut</code>. This
+means that it can capture <code>mut</code> references as <code>mut</code>.
+Those two types are present in the Fearless standard library.
+A method requiring a function as a parameter can leverage RCs to enforce different guarantees
+on it.</p>
+<ol>
+<li>The behaviour of <code>imm F[X]</code> can not observe or perform any mutation.</li>
+<li>The behaviour of
+<code>read F[X]</code> can not cause mutation, but could observe mutation in the outer scope.</li>
+<li>The behaviour
+of <code>mut MF[X]</code> can actively mutate captured references.</li>
+</ol>
+<h3>Common interfaces</h3>
+<p>Boolean, numbers, strings and many other widely used types from the standard library implement
+a bunch of common types to make them usable in common situations.
+We are going to explain those in the details later, but we shall summarize them here.
+Do not worry, we are going to discuss all those types in details later!</p>
+<pre><code>ToStr:{ read .str: Str }
+ToStr[T]:{ read .str(f: F[T,Str]): Str }
+ToInfo:{ read .info: Info }
+ToInfo[T]:{ read .info(f: F[T,Info]): Info }
+Info:{ /*explained later; exposes information for communicating across programs*/ }
+Order[T]:{ .. /*explained later; provides methods ==, !=, &lt;=, &gt;= etc*/ }
+OrderHash[T]:Order[T]{ .hash(h:Hasher): Nat }
+OrderHash[T,E]:{ .order(f: F[E,OrderHash[E]]): OrderHash[T] }
+Hasher:{ .. /*explained later*/}
+ToImm[T]:{ read .imm: T }
+</code></pre>
+<p>Method <code>HasStr.str</code> represents an object as a string.
+Method <code>HasInfo.info</code> represents an object in a structured data format (similar to JSON) useful for communication across programs.
+Type <code>OrderHash[T]</code> provides hashing and comparisions methods to a type <code>T</code> extending it. Objects extending <code>OrderHash[T]</code> can easly be organized in efficient data structures.
+Method <code>HasImm[T].imm</code> converts an object of any reference capabilities into an immutable version of the same object. For objects that can only ever be immutable, this method simply returns the object itself.</p>
+<p>Note how many of those types have a generic variant, like <code>ToStr</code> and <code>ToStr[T]</code>. This is because for generic containers we need a way to convert the contained objects to be able to conver the container itself.</p>
+<h3>Full code for Bool</h3>
+<p>Here we can show the full code for <code>Bool</code>.</p>
+<pre><code>Bool: Sealed, ToStr, ToInfo, ToImm[Bool], OrderHash[Bool]{
+  .and(b: Bool): Bool,
+  &amp;&amp;(b: mut MF[Bool]): Bool,
+  .or(b: Bool): Bool,
+  ||(b: mut MF[Bool]): Bool,
+  .not: Bool,
+  .if[R:**](f: mut ThenElse[R]): R,
+  ?[R:**](f: mut ThenElse[R]): R -&gt; this.if(f),
+  .match[R](m:BoolMatch):R -&gt; this?{.then-&gt;m.true, .else-&gt;m.false},
+  .info-&gt; Infos.msg(this.str),
+  &amp;(b: Bool): Bool -&gt; this.and(b),
+  |(b: Bool): Bool -&gt; this.or(b),
+  }
+True: Bool{
+  .and(b) -&gt; b,
+  .or(b) -&gt; this,
+  &amp;&amp;(b)  -&gt; b#,
+  ||(b)  -&gt; this,
+  .not -&gt; False,
+  .if(f) -&gt; f.then,
+  .str -&gt; `True`,
+  .imm -&gt; True,
+   &lt;=&gt;(other) -&gt; other?{.then -&gt; OrderEq, .else -&gt; OrderGt},
+   .hash(h)-&gt; 1,
+  }
+False: Bool{
+  .and(b) -&gt; this,
+  .or(b) -&gt; b,
+  &amp;&amp;(b)  -&gt; this,
+  ||(b)  -&gt; b#,
+  .not -&gt; True,
+  .if(f) -&gt; f.else,
+  .str -&gt; `False`,
+  .imm -&gt; False,
+   &lt;=&gt;(other) -&gt; other?{.then -&gt; OrderLt, .else -&gt; OrderEq},
+  .hash(h)-&gt; 0,
+  }
+ThenElse[R:**]: {
+  mut .then: R,
+  mut .else: R,
+  }
+BoolMatch[R:**]:{
+  mut .true: R,
+  mut .false: R,
+  }
+</code></pre>
+<p>As you can see, <code>Bool</code> is quite similar to what we have seen already.
+There are a few new methods, in particular <code>&lt;=&gt;</code> is needed to implement <code>Order[T]</code>.</p>
+<p>The most crucial change is the <code>ThenElse</code> matcher type:
+Note how the two methods <code>.then</code> and <code>.else</code> take a <code>mut</code> receiver.
+We are not requiring the boolean to be <code>mut</code>. This is about the <code>ThenElse</code> object that is usually
+created in order to call the <code>.if</code> (or <code>?</code>) method.</p>
+<p>With <code>mut .then</code> and <code>mut .else</code>, the operation inside the <code>.match</code> is able to mutate external state if need be.
+We also add a more standard <code>BoolMatch</code> allowing to see <code>True</code> and <code>False</code> as the two cases of <code>Bool</code>. It is just like the <code>.if</code>, but uses different terminology.</p>
+<p>Overall, as you can see, we are chosing to support many different ways to do the same conceptual thing: see methods <code>.or</code> and <code>|</code>, <code>.if</code>, <code>?</code> and <code>.match</code>.
+We do this to support different programming styles instead to impose our preferences.</p>
+<h3>Full code for <code>Opt[T]</code></h3>
+<p>Below we show the full standard library code for optionals.
+You may not be able to understand all the details yet, but it is good to familiarize yourself with it.</p>
+<pre><code>Opts: {
+  #[T:*](x: T): mut Opt[T] -&gt; { .match(m) -&gt; m.some(x) },
+  }
+OptMatch[T:*, R:**]: {
+  mut .some(x: T): R,
+  mut .empty: R
+  }
+</code></pre>
+<p><code>Opts</code> is the factory for <code>Opt[T]</code>. This is exactly what we have seen bebore. Note how <code>Opts#</code> returns a <code>mut Opt[T]</code>.
+This is what gives the most flexibility to the user.
+If the user needs an <code>imm Opt[T]</code>, promotion can be transparently used.</p>
+<p>Also Opt Match is pretty much what we would expect.
+Note how the two methods <code>.some</code> and <code>.empty</code> takes a <code>mut</code> receiver.
+We are not requiring the optional to be <code>mut</code>. This is about the <code>OptMatch</code> object that is usually
+created in order to call the <code>.match</code> method.
+With <code>mut .some</code> and <code>mut .empty</code>, the operation inside the <code>.match</code> is able to mutate external state if need be.</p>
+<pre><code>Opt[T:*]: _Opt[T], Sealed, ToStr[T], ToInfo[T], OrderHash[Opt[T],T]{
+  .match(m)   -&gt; m.empty,
+
+  .isEmpty    -&gt; this.match{.some(_)  -&gt; False, .empty -&gt; True},
+  .isSome     -&gt; this.match{.some(_) -&gt; True, .empty -&gt; False},
+  
+  !           -&gt; this.match{.some(x) -&gt; x, .empty -&gt; Error.msg &quot;Opt was empty&quot;},
+  
+  .or(default)-&gt; this.match{.some(x) -&gt; x, .empty -&gt; default},
+  ||(default) -&gt; this.match{.some(x) -&gt; x, .empty -&gt; default#},
+  
+  .flow       -&gt; this.match{.empty -&gt; Flow#, .some(x) -&gt; Flow#x},
+
+  .as(f)      -&gt; this.match{.some(x)-&gt;f#x .empty-&gt;{}},
+  
+  .ifSome(f)  -&gt; this.match{.some(x) -&gt; f#x, .empty -&gt; {}},
+  .ifEmpty(f) -&gt; this.match{.some(_) -&gt; {}, .empty -&gt; f#},
+
+  .str(f) -&gt; this.match{ .some(x) -&gt; `Opt[`+f#x+`]`, .empty -&gt; `Opt[]` },
+  .info(f) -&gt; this.match{ .some(x) -&gt; Infos.list(f#x), .empty -&gt; Infos.empty },
+  .order(f) -&gt; { 
+    .hash(h) -&gt; this.match{ .some(x)-&gt; f#(x).hash(h) + 1, .empty -&gt; 0 },
+    &lt;=&gt;(other) -&gt; this.match{
+      .some(x) -&gt; other.match{.some(y)-&gt; f#(x) &lt;=&gt; y, .empty -&gt; OrderGt },
+      .empty   -&gt; other.match{ .some(y)-&gt; OrderLt, .empty -&gt; OrderEq },
+      },
+    },
+  }
+</code></pre>
+<p>Via <code>T:*</code>, <code>Opt</code> works for <code>imm,read,mut</code> references.
+<code>_Opt[T]</code> is used to separate the type signatures from the method implementations. It is a common pattern in Fearless code; it helps to focus on the behaviours and the types separatly,
+and, as we will show while discussing <code>_Opt[T]</code>, it avoids a lot of repeated code.</p>
+<p>In addition to <code>.match</code>, the full <code>Opt[T]</code> supports other useful methods
+<code>.isEmpty</code> and <code>.isSome</code> simply returns a boolean stating if the optional was empty or not.
+<code>!</code> is a convenience method that returns the optional content or produces and error.
+Calling this method is equivalent to claim</p>
+<blockquote>
+<p>I, the programmer, know that in this case the optional will definitivelly have a value inside.
+If not, this is an observed bug.</p>
+</blockquote>
+<p>The two methods <code>Opt[T].or</code> and <code>Opt[T]||</code> are similar to <code>Bool.or</code> and <code>Bool||</code>:</p>
+<ul>
+<li><code>Opt[T].or</code> returns the value stored in the optional,
+or the parameter value as a default result if the optional is empty.</li>
+<li><code>Opt[T]||</code> returns the value stored in the optional,
+or it executes the lazy parameter value to get a default result if the optional is empty.</li>
+</ul>
+<p>Method <code>.flow</code> returns a <code>Flow[T]</code>. Flows are a very important data type in the fearless standard libraries and we will discuss them later.</p>
+<p>The method <code>.as</code> is used to change the type of the optional, taking a function to map the content to a new type.</p>
+<p>Finally, methods  <code>.ifSome</code> and <code>.ifEmpty</code> execute some <code>Void</code> returning computation in case the optional has a value or not.</p>
+<p>To make optionals integrate with other standard library conventions, we have a
+.str method, allowing to easly turn optional of anything implementing <code>ToStr</code> into a string.
+For example
+<code>myOptPerson.str{::}</code> will convert the optional person into a string,
+assuming the person implements <code>ToStr</code>.
+Indeed, resolving sugar and inference we get the following code:</p>
+<pre><code>myOptPerson.str(F[Person,ToStr]{#(p: Person): ToStr -&gt; p})
+</code></pre>
+<p>As you can see, the <code>{::}</code> sugar is very useful in those cases.
+But, what if we have an <code>data: Opt[Opt[Person]]</code>?
+No problem, we can just do <code>data.str{::str{::}}</code> and get our string.
+This pattern of using nested <code>{::}</code> is quite common as we will see more and more.</p>
+<p><code>Opt[T].info</code> works exactly in the same way of <code>.str</code>, but to produce an <code>Info</code> object.</p>
+<p><code>Opt[T].order</code> is more complex, and it uses the <code>Order</code> type that we have not discussed yet, but overall follows the same idea: we need to take in input a function <code>f</code> to turn the <code>T</code> into the appropriate type.</p>
+<p>We can now see the type signature for <code>Opt[T]</code>, as declared in <code>_Opt[T]</code>.</p>
+<pre><code>_Opt[T:*]:{
+  mut  .match[R:**](m: mut OptMatch[T, R]): R,
+  read .match[R:*](m: mut OptMatch[read/imm T, R]): R,
+  imm  .match[R:*](m: mut OptMatch[imm T, R]): R,
+
+  mut  .map[R:*](f: mut OptMap[T, R]): mut Opt[R],
+  read .map[R:*](f: mut OptMap[read/imm T, R]): mut Opt[R],
+  imm  .map[R:*](f: mut OptMap[imm T, R]): mut Opt[R],
+
+  mut  .flatMap[R:*](f: mut OptFlatMap[T, R]): mut Opt[R],
+  read .flatMap[R:*](f: mut OptFlatMap[read/imm T, R]): mut Opt[R],
+  imm  .flatMap[R:*](f: mut OptFlatMap[imm T, R]): mut Opt[R],
+
+  mut  ||(default: mut MF[T]): T,
+  read ||(default: mut MF[read/imm T]): read/imm T,
+  imm  ||(default: mut MF[imm T]): imm T,
+
+  mut  |(default: T): T,
+  read |(default: read/imm T): read/imm T,
+  imm  |(default: imm T): imm T,
+
+  mut  !: T,
+  read !: read/imm T,
+  imm  !: imm T,
+
+  mut  .flow: mut Flow[T],
+  read .flow: mut Flow[read/imm T],
+  imm  .flow: mut Flow[imm T],
+
+  mut  .ifSome(f: mut MF[T, Void]): Void,
+  read .ifSome(f: mut MF[read/imm T, Void]): Void,
+  imm  .ifSome(f: mut MF[imm T, Void]): Void,
+
+  read .isEmpty: Bool,
+  read .isSome: Bool,
+  read .ifEmpty(f: mut MF[Void]): Void,
+  read .as[R:imm](f: mut MF[read/imm E, R]): Opt[R],  
+  }
+</code></pre>
+<p>As you can see, this is where the major difference lies with respect to the optional seen in Chapter 2: Here most methods come in three variants, one for <code>T</code>, one for <code>read/imm T</code> and one for <code>imm T</code>.</p>
+<p>Opt is an example of a generic continer type: a type whose main goal is to contain any kind of <code>T</code>, where <code>T</code> can be <code>read,imm,mut</code>.
+As you can see, designing generic container types supporting a range of reference capabilities is not a beginner friendly task. However, this pattern is quite consistent, and many generic containers follow this same structure, with many methods offering exactly those three type variants.</p>
+      <div class="nav-links">
+      <a href="20_01.html">Previous</a> <span class="disabled">Next</span>
+      </div>
+    </div>
+  </body>
+</html>

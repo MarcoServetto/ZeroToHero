@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chapter 2 :: Operations on Sequences</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="sidebar">
+  <div class="sidebar-entry"><a href="01_01.html">Preface :: Fearless: Zero to Hero</a></div>
+<div class="sidebar-entry"><a href="02_01.html">Chapter 1 :: Directions</a></div>
+<div class="sidebar-entry"><a href="03_01.html">Chapter 1 :: Basic code reuse</a></div>
+<div class="sidebar-entry"><a href="04_01.html">Chapter 1 :: Rotations</a></div>
+<div class="sidebar-entry"><a href="05_01.html">Chapter 1 :: Finite numbers</a></div>
+<div class="sidebar-entry"><a href="06_01.html">Chapter 1 :: Strings</a></div>
+<div class="sidebar-entry"><a href="07_01.html">Chapter 1 :: Types and Meaning</a></div>
+<div class="sidebar-entry"><a href="08_01.html">Chapter 1 :: Terminology Recap</a></div>
+<div class="sidebar-entry"><a href="09_01.html">Chapter 2 :: Generic Types</a></div>
+<div class="sidebar-entry"><a href="10_01.html">Chapter 2 :: Booleans</a></div>
+<div class="sidebar-entry"><a href="11_01.html">Chapter 2 :: Optionals</a></div>
+<div class="sidebar-entry"><a href="12_01.html">Chapter 2 :: Peano numbers</a></div>
+<div class="sidebar-entry"><a href="13_01.html">Chapter 2 :: Stack</a></div>
+<div class="sidebar-entry"><a href="14_01.html">Chapter 2 :: Operations on Sequences</a></div>
+<div class="sidebar-entry"><a href="15_01.html">Chapter 2 :: Locals</a></div>
+<div class="sidebar-entry"><a href="16_01.html">Chapter 2 :: Tanks Game</a></div>
+<div class="sidebar-entry"><a href="17_01.html">Chapter 3 :: ImplementingFromScratch</a></div>
+<div class="sidebar-entry"><a href="18_01.html">Chapter 3 :: Promotions</a></div>
+<div class="sidebar-entry"><a href="19_01.html">Chapter 3 :: Packages</a></div>
+<div class="sidebar-entry"><a href="20_01.html">Chapter 3 :: ObjectCapabilities</a></div>
+<div class="sidebar-entry"><a href="21_01.html">Chapter 3 :: NewOptBool</a></div>
+
+  </div>
+  <div id="content" class="markdown-content">
+<h3>General operations on sequences</h3>
+<p>Above, we have shown how to make an operation over the stack using match</p>
+<pre><code>.sum(ns: Stack[Nat]): Nat -&gt; ns.match{
+  .empty -&gt; 0,
+  .elem(top, tail) -&gt; top + ( this.sum(tail) ),
+  }
+</code></pre>
+<p>What if we want to multiply all the numbers together instead of summing them?</p>
+<pre><code>.times(ns: Stack[Nat]): Nat -&gt; ns.match{
+  .empty -&gt; 1,
+  .elem(top, tail) -&gt; top * ( this.times(tail) ),
+  }
+</code></pre>
+<p>As you can see, there could be many different operations done following the same pattern.
+Repeating this pattern over and over would make the code quite long.
+We can abstract over this pattern with the idea of folding values on top of each other starting from a beginning point:</p>
+<pre><code>StackMatch[T,R]: { .empty: R, .elem(top:T, tail: Stack[T]): R, }
+Stack[T]: {
+  .match[R](m: StackMatch[T,R]): R -&gt; m.empty,
+  .fold[R](start: R, f: F[T,R,R]): R -&gt; start,
+  +(e: T): Stack[T] -&gt; { 
+    .match(m) -&gt; m.elem(e, this),
+    .fold(start, f) -&gt; f#(e, this.fold(start, f)),
+    },
+  }
+ExampleSum: { #(ns: Stack[Nat]): Nat -&gt; ns.fold(0, { n1,n2 -&gt; n1 + n2 })  }
+ExampleTimes: { #(ns: Stack[Nat]): Nat -&gt; ns.fold(1, { n1,n2 -&gt; n1 * n2 })  }
+</code></pre>
+<p>Another icon operation over sequences is to map all the values to the result of an operation, for example adding 5 to all the numbers.
+Of course this can be implemented with the match as shown below:</p>
+<pre><code>Example:{
+  .add5(ns: Stack[Nat]): Stack[Nat] -&gt; ns.match{
+    .empty -&gt; {},
+    .elem(top, tail) -&gt; Example.add5(tail) + (top + 5),
+    }
+}
+</code></pre>
+<p>But again, operations like this one are going to be very common, so we better define a generic support for it in the Stack type:</p>
+<pre><code>StackMatch[T,R]: { .empty: R, .elem(top:T, tail: Stack[T]): R, }
+Stack[T]: {
+  .match[R](m: StackMatch[T,R]): R -&gt; m.empty,
+  .fold[R](start:R, f: F[R,T,R]): R -&gt; start,
+  .map[R](f: F[T, R]): Stack[R] -&gt; {},
+  +(e: T): Stack[T] -&gt; { 
+    .match(m) -&gt; m.elem(e, this),
+    .fold(start, f) -&gt; f#(this.fold(start, f), e),
+    .map(f) -&gt; this.map(f) + ( f#(e) ),
+    },
+  }
+ExampleSum5: {   #(ns: Stack[Nat]): Stack[Nat] -&gt; ns.map { n -&gt; n + 5 }  }
+ExampleTimes2: { #(ns: Stack[Nat]): Stack[Nat] -&gt; ns.map { n -&gt; n * 2 }  }
+</code></pre>
+<p>By adding fold and map to stacks, we have now unlocked a surprising amount of expressive power.
+Do you want to add 10 to all the numbers, multiply the result for 3 and then get the sum of all of them?
+Easy!</p>
+<pre><code>ExampleFluent: { #(ns: Stack[Nat]): Nat -&gt; ns
+  .map { n -&gt; n + 10 }
+  .map { n -&gt; n *  3 }
+  .fold(0, { n1,n2 -&gt; n1 + n2 })//would work with .fold[Nat]
+  }
+</code></pre>
+<p>This is the first example we see of fluent programming.
+Fluent programming is a big deal in practical Fearless code.
+The general idea is that some data types (Stack in this case) can have many useful/flexible methods, returning instances of types with many useful/flexible methods.
+Usually, those methods are so useful and flexible because they take as a parameter instructions telling them what to do.</p>
+<p>That is, a large amount of fearless code looks like the following</p>
+<pre><code>UsefulBox#(keep,all,my,data,in,the,box)
+  .transformData{dataElement -&gt; use.the(dataElement).andGetNewElement }
+  .transformData{dataElement -&gt; .. }
+  .removeData{dataElement -&gt; use.the(dataElement).toGetBoolean }
+  .addData{dataElement -&gt; use.the(dataElement).toGetManyElements }
+  .extractResult{ .. }
+</code></pre>
+<p>What is this <code>UsefulBox</code>? What does <code>.transformData</code> do?
+<strong>Anything you want</strong>, the above is just example code.
+The idea is that in the Fearless standard library there are many different types that work like <code>UsefulBox</code> and programmers often define their own types working in a similar way.
+While the idea of defining your own types supporting useful/flexible methods may feel overwhelming, remember that we just did it for <code>Stack</code>.</p>
+<h4>Exercise: filter</h4>
+<p>Now as an exercise, we try to define a method <code>.filter</code> that removes elements from the stack</p>
+<p>But again, operations like this one are going to be very common, so we better define a generic support for it in the Stack type:</p>
+<pre><code>Stack[T]: {
+  .match[R](m: StackMatch[T,R]): R -&gt; m.empty,
+  .fold[R](start:R, f: F[R,T,R]): R -&gt; start,
+  .map[R](f: F[T, R]): Stack[R] -&gt; {}
+  .filter ???, //Base case
+  +(e: T): Stack[T] -&gt; { 
+    .match(m) -&gt; m.elem(e, this),
+    .fold(start, f) -&gt; f#(this.fold(start, f), e),
+    .map(f) -&gt; this.map(f) + ( f#(e) ),
+    .filter ???, //Inductive case
+    },
+  }
+</code></pre>
+<p>So, what do we write instead of ??? in the code above?</p>
+<pre><code>  .filter ???, //Base case
+  ...
+    .filter ???, //Inductive case
+</code></pre>
+<p>Well, first we need to figure out the type. Method <code>Stack[T].filter</code> does not transform the elements, it just selects which one to keep. Thus the return type is going to be the same: <code>Stack[T]</code>.
+As an argument, we need to take a function that tells <code>.filter</code> if the element should be kept or removed.
+We can use a function returning a <code>Bool</code>: <code>True</code> will mean &quot;keep the element&quot; and <code>False</code> will mean &quot;discard the element&quot;.
+So, the first filter is going to be</p>
+<pre><code>  .filter(f: F[T,Bool]): Stack[T]-&gt; {},
+</code></pre>
+<p>We return the empty stack because there are no elements to remove from the empty stack... it is already as empty as it can be.
+What about the second <code>.filter</code>? there we have <code>this</code> and <code>e</code> in scope.</p>
+<pre><code>  .filter(f) -&gt; f#(e).if{
+    .then -&gt; this.filter(f) + e,
+    .else -&gt; this.filter(f),
+    },
+</code></pre>
+<p>Here we can use an <code>.if</code> on the result of <code>f#(e)</code>.
+In the <code>.then</code> case, we propagate the operation on the stack tail and we sum the current element.
+In the <code>.else</code> case, we just propagate the operation on the stack tail.</p>
+<p>Here is the full code again.</p>
+<pre><code>StackMatch[T,R]: {
+  .empty: R,
+  .elem(top:T, tail: Stack[T]): R,
+  }
+Stack[T]: {
+  .match[R](m: StackMatch[T,R]): R -&gt; m.empty,
+  .fold[R](start:R, f: F[R,T,R]): R -&gt; start,
+  .map[R](f: F[T, R]): Stack[R] -&gt; {},
+  .filter(f: F[T,Bool]): Stack[T]-&gt; {},
+  +(e: T): Stack[T] -&gt; { 
+    .match(m) -&gt; m.elem(e, this),
+    .fold(start, f) -&gt; f#(this.fold(start, f), e),
+    .map(f) -&gt; this.map(f) + ( f#(e) ),
+    .filter(f) -&gt; f#(e).if{
+      .then -&gt; this.filter(f) + e,
+      .else -&gt; this.filter(f),
+      },
+    },
+  }
+</code></pre>
+<p>Should you pause here, absorb every detail, and even commit this little snippet to memory?</p>
+<p>Absolutely yes.</p>
+<p>This compact piece of code is not just another programming example. Within it lies the distilled essence of the core ideas we've been exploring.</p>
+<p>What you're looking at is a mental blueprint. One that can become a key part of your intuitive programming toolkit. Once internalized, it fundamentally reshapes your thinking about problems. You'll begin seeing opportunities everywhere to elegantly apply these patterns, and clearly express yourself via code.</p>
+<p>This snippet is fundational for a powerful mental model, that will guide you toward cleaner solutions, clearer abstractions, and more maintainable code.</p>
+      <div class="nav-links">
+      <a href="13_01.html">Previous</a> <a href="15_01.html">Next</a>
+      </div>
+    </div>
+  </body>
+</html>
