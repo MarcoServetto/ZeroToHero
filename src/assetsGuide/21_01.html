@@ -89,7 +89,7 @@ ToImm[T]:{ read .imm: T }
 Method <code>HasInfo.info</code> represents an object in a structured data format (similar to JSON) useful for communication across programs.
 Type <code>OrderHash[T]</code> provides hashing and comparisions methods to a type <code>T</code> extending it. Objects extending <code>OrderHash[T]</code> can easly be organized in efficient data structures.
 Method <code>HasImm[T].imm</code> converts an object of any reference capabilities into an immutable version of the same object. For objects that can only ever be immutable, this method simply returns the object itself.</p>
-<p>Note how many of those types have a generic variant, like <code>ToStr</code> and <code>ToStr[T]</code>. This is because for generic containers we need a way to convert the contained objects to be able to conver the container itself.</p>
+<p>Note how many of those types have a generic variant, like <code>ToStr</code> and <code>ToStr[T]</code>. As we will see later, this is because for generic containers we need a way to convert the contained objects to be able to convert the container itself.</p>
 <h3>Full code for Bool</h3>
 <p>Here we can show the full code for <code>Bool</code>.</p>
 <pre><code>Bool: Sealed, ToStr, ToInfo, ToImm[Bool], OrderHash[Bool]{
@@ -139,7 +139,7 @@ BoolMatch[R:**]:{
   }
 </code></pre>
 <p>As you can see, <code>Bool</code> is quite similar to what we have seen already.
-There are a few new methods, in particular <code>&lt;=&gt;</code> is needed to implement <code>Order[T]</code>.</p>
+There are a few new methods and changes that we will now explain.</p>
 <p>The most crucial change is the <code>ThenElse</code> matcher type:
 Note how the two methods <code>.then</code> and <code>.else</code> take a <code>mut</code> receiver.
 We are not requiring the boolean to be <code>mut</code>. This is about the <code>ThenElse</code> object that is usually
@@ -148,6 +148,7 @@ created in order to call the <code>.if</code> (or <code>?</code>) method.</p>
 We also add a more standard <code>BoolMatch</code> allowing to see <code>True</code> and <code>False</code> as the two cases of <code>Bool</code>. It is just like the <code>.if</code>, but uses different terminology.</p>
 <p>Overall, as you can see, we are chosing to support many different ways to do the same conceptual thing: see methods <code>.or</code> and <code>|</code>, <code>.if</code>, <code>?</code> and <code>.match</code>.
 We do this to support different programming styles instead to impose our preferences.</p>
+<p>For now, do not worry about the method <code>&lt;=&gt;</code>; it is needed to implement <code>Order[T]</code> as we will explain later.</p>
 <h3>Full code for <code>Opt[T]</code></h3>
 <p>Below we show the full standard library code for optionals.
 You may not be able to understand all the details yet, but it is good to familiarize yourself with it.</p>
@@ -176,6 +177,7 @@ With <code>mut .some</code> and <code>mut .empty</code>, the operation inside th
   !           -&gt; this.match{.some(x) -&gt; x, .empty -&gt; Error.msg &quot;Opt was empty&quot;},
   
   .or(default)-&gt; this.match{.some(x) -&gt; x, .empty -&gt; default},
+  |(default)-&gt; this.or(default),
   ||(default) -&gt; this.match{.some(x) -&gt; x, .empty -&gt; default#},
   
   .flow       -&gt; this.match{.empty -&gt; Flow#, .some(x) -&gt; Flow#x},
@@ -199,9 +201,9 @@ With <code>mut .some</code> and <code>mut .empty</code>, the operation inside th
 <p>Via <code>T:*</code>, <code>Opt</code> works for <code>imm,read,mut</code> references.
 <code>_Opt[T]</code> is used to separate the type signatures from the method implementations. It is a common pattern in Fearless code; it helps to focus on the behaviours and the types separatly,
 and, as we will show while discussing <code>_Opt[T]</code>, it avoids a lot of repeated code.</p>
-<p>In addition to <code>.match</code>, the full <code>Opt[T]</code> supports other useful methods
-<code>.isEmpty</code> and <code>.isSome</code> simply returns a boolean stating if the optional was empty or not.
-<code>!</code> is a convenience method that returns the optional content or produces and error.
+<p>In addition to <code>.match</code>, the full <code>Opt[T]</code> supports other useful methods.</p>
+<p>Methods <code>.isEmpty</code> and <code>.isSome</code> simply return a boolean stating if the optional was empty or not.</p>
+<p>Method <code>!</code> is a convenience method that returns the optional content or produces and error.
 Calling this method is equivalent to claim</p>
 <blockquote>
 <p>I, the programmer, know that in this case the optional will definitivelly have a value inside.
@@ -214,6 +216,7 @@ or the parameter value as a default result if the optional is empty.</li>
 <li><code>Opt[T]||</code> returns the value stored in the optional,
 or it executes the lazy parameter value to get a default result if the optional is empty.</li>
 </ul>
+<p>Exactly as for <code>Bool</code>, method <code>|</code> is just an alias for <code>.or</code>.</p>
 <p>Method <code>.flow</code> returns a <code>Flow[T]</code>. Flows are a very important data type in the fearless standard libraries and we will discuss them later.</p>
 <p>The method <code>.as</code> is used to change the type of the optional, taking a function to map the content to a new type.</p>
 <p>Finally, methods  <code>.ifSome</code> and <code>.ifEmpty</code> execute some <code>Void</code> returning computation in case the optional has a value or not.</p>
@@ -245,13 +248,17 @@ This pattern of using nested <code>{::}</code> is quite common as we will see mo
   read .flatMap[R:*](f: mut OptFlatMap[read/imm T, R]): mut Opt[R],
   imm  .flatMap[R:*](f: mut OptFlatMap[imm T, R]): mut Opt[R],
 
-  mut  ||(default: mut MF[T]): T,
-  read ||(default: mut MF[read/imm T]): read/imm T,
-  imm  ||(default: mut MF[imm T]): imm T,
+  mut  .or(default: T): T,
+  read .or(default: read/imm T): read/imm T,
+  imm  .or(default: imm T): imm T,
 
   mut  |(default: T): T,
   read |(default: read/imm T): read/imm T,
   imm  |(default: imm T): imm T,
+
+  mut  ||(default: mut MF[T]): T,
+  read ||(default: mut MF[read/imm T]): read/imm T,
+  imm  ||(default: mut MF[imm T]): imm T,
 
   mut  !: T,
   read !: read/imm T,
