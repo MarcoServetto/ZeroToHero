@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chapter 4 :: Errors are good!</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="sidebar">
+  <div class="sidebar-entry"><a href="01_01.html">Preface :: Fearless: Zero to Hero</a></div>
+<div class="sidebar-entry"><a href="02_01.html">Chapter 1 :: Directions</a></div>
+<div class="sidebar-entry"><a href="03_01.html">Chapter 1 :: Basic code reuse</a></div>
+<div class="sidebar-entry"><a href="04_01.html">Chapter 1 :: Rotations</a></div>
+<div class="sidebar-entry"><a href="05_01.html">Chapter 1 :: Finite numbers</a></div>
+<div class="sidebar-entry"><a href="06_01.html">Chapter 1 :: Strings</a></div>
+<div class="sidebar-entry"><a href="07_01.html">Chapter 1 :: Types and Meaning</a></div>
+<div class="sidebar-entry"><a href="08_01.html">Chapter 1 :: Terminology Recap</a></div>
+<div class="sidebar-entry"><a href="09_01.html">Chapter 2 :: Generic Types</a></div>
+<div class="sidebar-entry"><a href="10_01.html">Chapter 2 :: Booleans</a></div>
+<div class="sidebar-entry"><a href="11_01.html">Chapter 2 :: Optionals</a></div>
+<div class="sidebar-entry"><a href="12_01.html">Chapter 2 :: Peano numbers</a></div>
+<div class="sidebar-entry"><a href="13_01.html">Chapter 2 :: Stack</a></div>
+<div class="sidebar-entry"><a href="14_01.html">Chapter 2 :: Operations on Sequences</a></div>
+<div class="sidebar-entry"><a href="15_01.html">Chapter 2 :: Locals</a></div>
+<div class="sidebar-entry"><a href="16_01.html">Chapter 2 :: Tanks Game</a></div>
+<div class="sidebar-entry"><a href="17_01.html">Chapter 3 :: ImplementingFromScratch</a></div>
+<div class="sidebar-entry"><a href="18_01.html">Chapter 3 :: Promotions</a></div>
+<div class="sidebar-entry"><a href="19_01.html">Chapter 3 :: Packages</a></div>
+<div class="sidebar-entry"><a href="20_01.html">Chapter 3 :: ObjectCapabilities</a></div>
+<div class="sidebar-entry"><a href="21_01.html">Chapter 3 :: NewOptBool</a></div>
+<div class="sidebar-entry"><a href="22_01.html">Chapter 3 :: Show Tanks</a></div>
+<div class="sidebar-entry"><a href="23_01.html">Chapter 3 :: Show All Tanks</a></div>
+<div class="sidebar-entry"><a href="24_01.html">Chapter 3 :: Collections</a></div>
+<div class="sidebar-entry"><a href="25_01.html">Chapter 4 :: Errors are good!</a></div>
+<div class="sidebar-entry"><a href="26_01.html">Chapter 4 :: Errors are good!</a></div>
+<div class="sidebar-entry"><a href="27_01.html">Chapter 4 :: Errors are good!</a></div>
+<div class="sidebar-entry"><a href="28_01.html">Chapter 4 :: Serialising Tanks</a></div>
+
+  </div>
+  <div id="content" class="markdown-content">
+<h3>Fearless errors and actions.</h3>
+<p>In Fearless, some methods throw errors.
+As discussed, errors are not part of the basic semantics of Fearless, and they can be thrown using the magic method <code>Error!(Info)</code>.
+That is, any code anywhere can write <code>Error!(someInfo)</code> and throw that <code>Info</code> object as a structured error message.</p>
+<blockquote>
+<p>TODO: Error.msg returns {msg:text, stackTrace:[...]}</p>
+</blockquote>
+<p>Before we discussed the convenience method <code>Error.msg</code> that takes a simple string, converts it into an <code>Info</code> object mapping that
+string to the <code>`msg`</code> key and adds more debugging information.
+The method <code>Map.get</code> either returns the mapped value or uses <code>Error.msg(..)</code> to report the lookup failure.</p>
+<p>When a method throws an error the computation stops and the error is reported outside of the program.
+This behaviour can be overridden using <code>Try#{ ../*code that can fail*/.. }</code>.
+The method <code>Try#</code> takes a function returning a result of type <code>R</code> and (without executing the function in input) produces an <code>Action[R]</code> object.
+Fearless actions are a way to handle behaviour that can fail while recovering potential errors.</p>
+<p>Let's make this more concrete.</p>
+<ul>
+<li>Code 1: <code>Directions.map.get(`Nope`)</code> raises an error with a readable error message.</li>
+<li>Code 2: <code>Try#{Directions.map.get(`Nope`)}</code> returns an object of type <code>Action[Direction]</code>.</li>
+<li>Code 3: <code>Directions.map.tryGet(`Nope`)</code> behaves identically to Code 2, but could be faster.</li>
+</ul>
+<p>We can use code 1 when we trust that the error will not raise, or because if the error condition happens, then what we want is for the program to terminate with a good error message.
+When we want to consciously extract an element that may or may not be there, with the intention that the element being missing does not represent an error, we can use the method <code>.opt</code>, as in <code>Directions.map.opt(</code>Nope<code>)</code>, returning an <code>Opt[Direction]</code>.</p>
+<p>Using <code>Try#</code> or <code>.tryGet</code> means that we suspect that the value may not be there because of some buggy logic or input.</p>
+<h2>Actions</h2>
+<p><code>Action[R]</code> is conceptually similar to <code>Opt[E]</code>, but</p>
+<ul>
+<li>the empty case has an associated <code>Info</code> object.</li>
+<li>the contained value has not been computed yet. While an <code>Opt[E]</code> stores an element of type <code>E</code>, an <code>Action[R]</code> stores a computation that can create such an <code>R</code> result.</li>
+</ul>
+<p>The code of <code>Action[R]</code> is not very long and it uses Fearless in interesting ways, thus we will read and explain the implementation of <code>Action[R]</code> as present in the standard library:</p>
+<pre><code>ActionMatch[T:*,R:**]: {//NOTE: should be T:* or T:**? actually unobvious
+  mut .ok(x: T): R,
+  mut .info(info: Info): R,
+  }
+</code></pre>
+<p>The <code>ActionMatch[T,R]</code> type is unsurprising. Very similar to <code>OptMatch[T,R]</code> or <code>StackMatch[T,R]</code>.
+As we discussed before, remember that <code>T:*</code> stays for <code>T:imm,mut,read</code> and <code>T:**</code> includes all of the reference capabilities.</p>
+<p>At its core, Action has a very simple implementation:</p>
+<pre><code>MF[R:**]: { mut #: R }
+Action[R:**]: {
+  mut .run[RR:**](m: mut ActionMatch[R,RR]): RR,
+  }
+</code></pre>
+<p>We call the generic parameters <code>R</code> and <code>RR</code> to suggest that <code>R</code> is the result of the action, while <code>RR</code> is the result of processing either the action result or the error <code>Info</code>.</p>
+<p>If you remember from before, <code>MF</code> is similar to <code>F</code>, but it is mutable. That is, it is a function that can make mutations while it runs.
+<code>Action[R]</code> has a single abstract <code>.run</code> method that takes an <code>ActionMatch[R,RR]</code>.
+Note how everything is either <code>mut</code> or <code>**</code>. This is because actions are often used together with side effects and mutations.
+The actual implementation of <code>Action[R]</code> also offers some convenience methods (<code>.map</code>,<code>.mapInfo</code>, <code>.andThen</code>, <code>!</code> and <code>.context</code>).
+Methods <code>!</code> and <code>.context</code> are widely used and beginner friendly, while method <code>.map</code>, and <code>.andThen</code> are used more rarely.
+Here we exam those methods one by one:</p>
+<blockquote>
+<p>Note: Action.mapInfo is also present, but we do not discuss it in the guide</p>
+</blockquote>
+<h4>Method <code>Action[R]!</code></h4>
+<pre><code>Action[R:**]: {
+  mut .run[RR:**](m: mut ActionMatch[R,RR]): RR,
+  ..
+  mut !: R -&gt; this.run{.ok(x) -&gt; x, .info(i) -&gt; Error!i},
+  }
+</code></pre>
+<p>Method <code>Action!</code> returns the <code>R</code> value, or throws an error with the provided info.
+That is, <code>!</code> is actually the opposite of <code>Try#</code>.
+For example,</p>
+<ul>
+<li><code>Try#{ Direction.map.get(`Nope`) }!</code></li>
+</ul>
+<p>is equivalent to</p>
+<ul>
+<li><code>Direction.map.get(`Nope`)</code></li>
+</ul>
+<p>In the same way,</p>
+<ul>
+<li><code>Try#{ myAction! }</code></li>
+</ul>
+<p>is equivalent to</p>
+<ul>
+<li><code>myAction</code></li>
+</ul>
+<p>Note how in the first example the <code>!</code> is outside of the <code>Try</code> and in the second example the <code>!</code> is inside of the <code>Try</code>.</p>
+<h4>Method <code>Action[R].context</code></h4>
+<pre><code>Action[R:**]: {
+  mut .run[RR:**](m: mut ActionMatch[R,RR]): RR,
+  ..
+  mut .context(msg: read F[Str]): mut Action[R] -&gt; {m -&gt; this.run{
+    .ok(x) -&gt; m.ok(x),
+    .info(i) -&gt; m.info(Infos.msg(msg#) + i),
+    }},
+  }
+</code></pre>
+<p>Method <code>.context</code> is a convenience method to add contextual information to actions.
+Internally, it uses method <code>Info+</code>, that we have not seen yet:
+The method <code>Info+</code> makes it easy to compose information together.
+Two <code>Info</code> messages are concatenated, two <code>Info</code> lists are concatenated and two <code>Info</code> maps are merged:</p>
+<ul>
+<li>If a key is present in only one of the two sources, the key-&gt;element mapping will be present in the resulting information.</li>
+<li>If the key is present in both sources, the resulting information will map that key to the sum of the two elements using <code>Info+</code> recursively.</li>
+</ul>
+<p>Finally, if the two infos are not of the same kind, they are lifted to maps with a single mapping containing the original information:</p>
+<ul>
+<li>A message info is lifted to a map with a single mapping <code>`msg`</code>.</li>
+<li>A list info is lifted to a map with a single mapping <code>`list`</code>.</li>
+</ul>
+<p>Often we use <code>.context</code> to add context to our actions.
+Consider the code below where <code>persons</code> is a <code>List[Person]</code>:</p>
+<pre><code>persons.tryGet(5).context{`The list persons was too small when\n`}
+</code></pre>
+<p>This code would add the information that we were looking into the list of persons, and the error would look like</p>
+<blockquote>
+<p>The list persons was too small when<br />
+attempted access in position 5 over a list of size 3</p>
+</blockquote>
+<p>Note that the computation required to format this extra information will only be executed if the <code>Action[R]</code> actually fails. This is often a big win in terms of performance, since nicely formatted error messages may be quite slow to compute.</p>
+<h4>Method <code>Action[R].map</code></h4>
+<pre><code>Action[R:**]: {
+  mut .run[RR:**](m: mut ActionMatch[R,RR]): RR,
+  mut .map[RR:**](f: mut MF[R,RR]): mut Action[RR] -&gt; {m -&gt; this.run{
+    .ok(x) -&gt; m.ok(f#x),
+    .info(i) -&gt; m.info(i),
+    }},
+  ...
+  }
+</code></pre>
+<p>Method <code>.map</code> takes another mutating function <code>f</code> and returns a <code>mut Action[RR]</code> object that when a matcher 'm' is provided, calls the <code>.run</code> method on the outer <code>Action[R]</code> and delegates the behaviour of <code>.ok</code> and <code>.info</code> to <code>m.ok</code> and <code>m.info</code>.</p>
+<ul>
+<li><code>m.ok</code> will take in input not the original value <code>x</code>, but the result of applying <code>f</code> to <code>x</code>.
+Method <code>.map</code> is useful to transform the type of actions without actually executing any code at that moment.
+For example</li>
+</ul>
+<pre><code>persons.tryGet(3).map{::name}
+</code></pre>
+<p>would return an <code>Action[Str]</code> containing the name of the person in position 3.</p>
+<h4>Method <code>Action[R].andThen</code></h4>
+<pre><code>Action[R:**]: {
+  mut .run[RR:**](m: mut ActionMatch[R,RR]): RR,
+  mut .andThen[RR:**](f: mut MF[R,mut Action[RR]]): mut Action[RR] -&gt; {m -&gt; this.run{
+    .ok(x) -&gt; f#x.run(m),
+    .info(i) -&gt; m.info(i),
+    }},
+..
+  }
+</code></pre>
+<p>We can see <code>.andThen</code> as a version of <code>.map</code> allowing more control over how the resulting <code>Action[RR]</code> is created.</p>
+<p>The <code>.map</code> method takes a function that transforms a value of type <code>R</code> into a new value of type <code>RR</code>. This transformation is straightforward and direct. If <code>Action[R]</code> contains a value, that value is transformed using the provided function to produce an <code>Action[RR]</code>.
+If the original <code>Action[R]</code> is successful (i.e., produces a value), <code>.map</code> applies the function to this value and wraps the result in a new <code>Action[RR]</code>. If the original <code>Action[R]</code> is a failure (i.e., produces an <code>Info</code> object), <code>.map</code> does nothing to the failure information—it simply carries it forward unchanged.</p>
+<p><code>.andThen</code> extends the functionality of <code>.map</code> by allowing the transformation function itself to produce the new <code>Action[RR]</code>. This is useful when the transformation’s outcome isn’t just a value, but a new computation or action that might itself succeed or fail.
+The function used in <code>.andThen</code> takes a value of type <code>R</code> and returns a new <code>Action[RR]</code>.
+Method <code>.andThen</code> is designed to handle nested actions. If the original <code>Action[R]</code> is successful, <code>.andThen</code> uses the value to generate a new <code>Action[RR]</code> using the provided function. This new Action is then executed as part of the overall computation. If the original <code>Action[R]</code> is a failure, both <code>.map</code> and <code>.andThen</code> simply propagate the failure information.
+Method andThen is particularly useful in scenarios where subsequent actions depend on the results of previous ones.
+For example, the code below</p>
+<pre><code>persons.tryGet(3).andThen{p-&gt;
+  jobs.tryGet(p.name).map{ j-&gt;`Person `+p+` works as a `+j } }
+</code></pre>
+<p>does two different actions: extracts person <code>3</code> and connects their name with their job using <code>jobs: Map[Str,Job]</code>.
+Finally it uses the job <code>j</code> and the person <code>p</code> to produce an <code>Action[Str]</code>. Note how this is only needed if we want to get a detailed error message in case of failure. We can encode the same idea with optionals with the more conventional flow code below:</p>
+<pre><code>persons.opt(3).flow.flatMap{p-&gt;
+  jobs.opt(p.name).flow.map{ j-&gt;`Person ` + p + ` works as a ` + j } }.opt
+</code></pre>
+<p>Here, if the person or the job is not present, we would simply get an empty optional.
+Note: if we expect the person and the job to be there, and it should be an observed bug if this is not the case, then we should write the simpler code</p>
+<pre><code>  Block#
+    .let p= {persons.get(3)}
+    .return { `Person ` + p + ` works as a `+ jobs.get(p.name) }
+</code></pre>
+<p>In this way our code will correctly fail as soon as an error is detected.</p>
+<h3>Errors or Actions?</h3>
+<p>In Fearless, Actions and errors can be used together to handle computation that can potentially fail.
+The idea is that the code will have layers of responsibility:
+Code with less responsibility can simply throw errors, while code with higher responsibility will use actions.</p>
+<p>For example, consider <code>Point</code>: before we chose to visualise only tanks in locations from 0-10; but the <code>Point</code> objects can have any kind of coordinates.
+We could use errors to enforce that whenever a <code>Point</code> is observed, the <code>.x</code> and <code>.y</code> coordinates are in the 0-10 range.</p>
+<blockquote>
+<p>Note: we do not show     .assert { x.inRange(0,10) } since it would make a bad error message.
+should we have a general Bool.orMsg(<code>...</code>)
+if we want disableable assertions, we could have .assert taking a void like do.
+then we get to write .asser{ x.checkInRange(0,10) } taking an read F[Void]
+read F[Void] is a very unusual type, but this seems to be the good use case: it guarantees no side effects visible AND no value created</p>
+</blockquote>
+<pre><code>Points: F[Nat,Nat,Point], FromInfo[Point] {
+
+  .fromInfo(i) -&gt; Points#(i.map.get(`x`).msg.nat, i.map.get(`y`).msg.nat),
+
+  #(x, y) -&gt;Block#
+    .do { x.checkInRange(0,10) }
+    .do { y.checkInRange(0,10) }
+    .return{ Point: ToInfo,ToStr,OrderHash[Point]{'self
+      .x: Nat -&gt; x,
+      .y: Nat -&gt; y,
+      +(other: Point): Point -&gt; Points#(other.x + x, other.y + y),
+      .move(d: Direction): Point -&gt; self + ( d.point ),
+      &lt;=&gt;(other) -&gt; other.x &lt;=&gt; x  &amp;&amp; { other.y &lt;=&gt; y },
+      &lt;=&gt;{x,y}1 -&gt; x &lt;=&gt; x1  &amp;&amp; { y &lt;=&gt; y1 },//other application of the sugar? also on + and .move
+      .hash(h)-&gt; h#(x, y),
+      .info -&gt; Infos.map(`x`,x,  `y`,y),
+      .str -&gt; `[` + x + `, ` + y + `]`,
+      }}}
+</code></pre>
+<p>Here Points has a <code>.fromInfo</code> method creating a point using the <code>.x</code> and <code>.y</code> coordinate stored in an <code>Info</code> object.
+Then, method <code>Points#</code> takes the <code>x</code> and <code>y</code> <code>Nat</code> coordinates and creates the resulting <code>Point</code>.
+However, before the point is created, we use <code>Nat.checkInRange</code> to check that <code>x</code> and <code>y</code> are in the desired range.
+<code>Nat.checkInRange</code> will use <code>Error!</code> if the condition is false.</p>
+<blockquote>
+<p>//TODO: what is the current state in Fearless for those kinds of assertions?</p>
+</blockquote>
+<p>This means that if we try to create a <code>Point</code> object, either manually or from an <code>Info</code>, we either get a valid <code>Point</code> or an error.
+The idea is that most of the code can create points assuming that the creation would succeed.
+From the perspective of that code, a failure to create a <code>Point</code> object is an observed bug.</p>
+<p>Then, if the program as a whole does not want to consider failing to create points an observed bug, it can wrap a function making a lot of computations about points into a <code>Try#{..}</code>, thus producing an action that can be safely handled.</p>
+<p>In a complex program we can have a few layers of responsibility like this, where some code works as a supervisor of some other code that is allowed to fail.</p>
+<h2>Offensive programming</h2>
+<p>We must ensure that code fails fast and visibly when undesired situations occur. The goal is to have the code fail as soon as a fault is introduced. This approach helps in quickly pinpointing the source of an error, making it easier to debug and fix.
+The reality is that all code, at any moment, may fail at run time. Perfection will likely always elude us.
+While striving for perfection in coding is admirable, it is nearly impossible to achieve flawlessness. We acknowledge this reality and instead focus on managing imperfections effectively.
+When failures occur, it is crucial that they produce clear and understandable error messages. This will help us to understand issues quickly and accurately.</p>
+<p>The primary adversary here is the silent failure: code that continues to run despite broken assumptions or invalid data. Such failures can lead to unpredictable behaviour and can corrupt the system insidiously, affecting increasingly larger portions of the application.</p>
+<p>By inserting run time checks as shown above, we can minimise the lifetime of faulty executions, and ensure that the code only receives correct data. We need to be proactive rather than reactive, preventing issues from going unnoticed and causing further complications down the line.
+With immutable objects like <code>Point</code>, it is usually sufficient to insert appropriate checks during object creation.
+We will later see other techniques supporting offensive programming when working with mutable data.</p>
+<p>Some programmers think the code should simply never fail by construction; basically it should encode the proof of it's own correctness inside it's structure.
+While amazing in theory, this mindset causes issues in the real world, where programmers are negotiating their code quality with time and skill constraints.
+Bob, the stressed programmer would probably chose to somehow twist the intended behaviour in subtle ways so that the code compiles and he does not get fired.<br />
+The offensive programming philosophy instead gives plenty of escape hatches to Bob:
+he can produce code working correctly in most real situations, while failing with observed bugs when needed. This explicitly and sincerely communicate what is going on.</p>
+      <div class="nav-links">
+      <a href="26_01.html">Previous</a> <a href="28_01.html">Next</a>
+      </div>
+    </div>
+  </body>
+</html>
