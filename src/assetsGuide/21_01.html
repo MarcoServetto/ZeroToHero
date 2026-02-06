@@ -45,7 +45,6 @@ Since we were not using reference capabilities explicitly, everything was immuta
 Immutable object literals can capture immutable bindings, so everything worked.
 But, when we add mutability in the mix, the world gets more complicated. More colourful, if you prefer.</p>
 <p>An <code>imm</code> method in an immutable object literal can only capture <code>imm</code> parameters.
-Also <code>iso</code> parameters can be captured, but this is because they are transparently converted into <code>imm</code> parameters.
 This means that with the type <code>F</code> as we defined it before:</p>
 <pre><code>  F[R]:{ #: R }
   F[A,R]:{ #(a: A): R }
@@ -64,7 +63,7 @@ MF[A:**,B:**,R:**]: {mut #(a: A, b: B): R} //and a few more overloads
 <p>Note the use of <code>T:**</code>. We can use <code>*</code> and <code>**</code> as shortcut for large generic bounds:
 <code>*</code> is equivalent to <code>imm,mut,read</code>; <code>**</code> is equivalent to all of the reference capabilities; including some more unusual ones that we have not discussed yet.</p>
 <p><code>F#</code> sees the world as <code>read</code> and supports generics with any RC. In particular, this means that a
-<code>read F[X]</code> can capture mut references as <code>read</code>. <code>MF</code> (mutable function) sees the world as <code>mut</code>. This
+<code>read F[X]</code> can capture <code>mut</code> references as <code>read</code>. <code>MF</code> (mutable function) sees the world as <code>mut</code>. This
 means that it can capture <code>mut</code> references as <code>mut</code>.
 Those two types are present in the Fearless standard library.
 A method requiring a function as a parameter can leverage RCs to enforce different guarantees
@@ -79,18 +78,29 @@ of <code>mut MF[X]</code> can actively mutate captured references.</li>
 <h3>Common interfaces</h3>
 <p>Boolean, numbers, strings and many other widely used types from the standard library implement
 a bunch of common types to make them usable in common situations.
-We are going to explain those in the details later, but we shall summarize them here.
+We are going to explain those in the details later, but we shall summarise them here.
 Do not worry, we are going to discuss all those types in details later!</p>
 <pre><code>ToStr:{ read .str: Str }
-ToStr[A]:{ read .str(f: F[A,ToStr]): Str }
+ToStr[E:*]:{ read .str(ToStrBy[imm E]): Str }
+ToStrBy[T]:{ #(read T): read ToStr }
+
 ToInfo:{ read .info: Info }
-ToInfo[A]:{ read .info(f: F[A,ToInfo]): Info }
+ToInfoBy[E]:{ #(read E):read ToInfo }
+ToInfo[E:*]:{ read .info(ToInfoBy[imm E]): Info }
 Info:{ /*explained later; exposes information for communicating across programs*/ }
-Order[T]:{ .. /*explained later; provides methods ==, !=, &lt;=, &gt;= etc*/ }
-OrderHash[T]:Order[T]{ .hash(h:Hasher): Nat }
-OrderHash[T,E]:{ .order(f: F[E,OrderHash[E]]): OrderHash[T] }
-Hasher:{ .. /*explained later*/}
-ToImm[T]:{ read .imm: T }
+
+ToImm[T0]:{ read .imm: T0 }
+ToImmBy[E,E0]:{#(t: read E):read ToImm[E0]}
+ToImm[E:*,E0,T0]:{ read .imm(by: ToImmBy[imm E,E0]): T0 }
+
+Order[T]:{ /*explained later; provides methods ==, !=, &lt;=, &gt;= etc*/ }
+Order[T,E:*]:{ /*explained later; like order but for generics */ }
+OrderHash[T]:Order[T],ToStr{ /*explained later; Order plus mappings*/ }
+OrderHash[T,E:*]:Order[T,E],ToStr[E]{ /*explained later; like OrderHash but for generics */ }
+
+DataType[T,T0]:ToInfo,ToImm[T0],WidenTo[T],OrderHash[T],Extensible[T]{ read .close(t: read T): read DataType[T,T0]; }
+DataType[T,T0,E:*,E0]:ToInfo[E],ToImm[E,E0,T0],WidenTo[T],OrderHash[T,E],Extensible[T]{ read .close(t: read T): read DataType[T,T0,E,E0]; /*...*/ }
+DataTypeBy[E,K,K0]:ToInfoBy[E],ToImmBy[E,K0],OrderHashBy[E,K]{ #(e: read E): read DataType[K,K0]; /*...*/ }
 </code></pre>
 <p>Method <code>ToStr.str</code> represents an object as a string.
 Method <code>ToInfo.info</code> represents an object in a structured data format (similar to JSON) useful for communication across programs.
