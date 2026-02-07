@@ -75,229 +75,275 @@ on it.</p>
 <li>The behaviour
 of <code>mut MF[X]</code> can actively mutate captured references.</li>
 </ol>
-<h3>Common interfaces</h3>
-<p>Boolean, numbers, strings and many other widely used types from the standard library implement
-a bunch of common types to make them usable in common situations.
-We are going to explain those in the details later, but we shall summarise them here.
-Do not worry, we are going to discuss all those types in details later!</p>
-<pre><code>ToStr:{ read .str: Str }
-ToStr[E:*]:{ read .str(ToStrBy[imm E]): Str }
-ToStrBy[T]:{ #(read T): read ToStr }
-
-ToInfo:{ read .info: Info }
-ToInfoBy[E]:{ #(read E):read ToInfo }
-ToInfo[E:*]:{ read .info(ToInfoBy[imm E]): Info }
-Info:{ /*explained later; exposes information for communicating across programs*/ }
-
-ToImm[T0]:{ read .imm: T0 }
-ToImmBy[E,E0]:{#(t: read E):read ToImm[E0]}
-ToImm[E:*,E0,T0]:{ read .imm(by: ToImmBy[imm E,E0]): T0 }
-
-Order[T]:{ /*explained later; provides methods ==, !=, &lt;=, &gt;= etc*/ }
-Order[T,E:*]:{ /*explained later; like order but for generics */ }
-OrderHash[T]:Order[T],ToStr{ /*explained later; Order plus mappings*/ }
-OrderHash[T,E:*]:Order[T,E],ToStr[E]{ /*explained later; like OrderHash but for generics */ }
-
-DataType[T,T0]:ToInfo,ToImm[T0],WidenTo[T],OrderHash[T],Extensible[T]{ read .close(t: read T): read DataType[T,T0]; }
-DataType[T,T0,E:*,E0]:ToInfo[E],ToImm[E,E0,T0],WidenTo[T],OrderHash[T,E],Extensible[T]{ read .close(t: read T): read DataType[T,T0,E,E0]; /*...*/ }
-DataTypeBy[E,K,K0]:ToInfoBy[E],ToImmBy[E,K0],OrderHashBy[E,K]{ #(e: read E): read DataType[K,K0]; /*...*/ }
+<h3>DataType, later!</h3>
+<p>Boolean, numbers, strings and many other widely used types from the standard library implement <code>DataType</code>.
+<code>DataType</code> contains a lot of useful functionalities, and we will see them in the details later. For now you just need to know that this interface exists and that we need to implement a few method from it.</p>
+<h3>Bool, as actually declared</h3>
+<p>Here you can see the full code of Bool, as it is in the actual Fearless standard library.
+First, two matcher types:</p>
+<pre><code>ThenElse[R:**]: { mut .then: R; mut .else: R; }
+BoolMatch[R:**]:{ mut .true: R; mut .false: R; }
 </code></pre>
-<p>Method <code>ToStr.str</code> represents an object as a string.
-Method <code>ToInfo.info</code> represents an object in a structured data format (similar to JSON) useful for communication across programs.
-Type <code>OrderHash[T]</code> provides hashing and comparisons methods to a type <code>T</code> extending it. Objects extending <code>OrderHash[T]</code> can easily be organised in efficient data structures.
-Method <code>ToImm[T].imm</code> converts an object of any reference capabilities into an immutable version of the same object. For objects that can only ever be immutable, this method simply returns the object itself.</p>
-<p>Note how many of those types have a generic variant, like <code>ToStr</code> and <code>ToStr[T]</code>. As we will see later, this is because for generic containers we need a way to convert the contained objects to be able to convert the container itself.</p>
-<h3>Full code for Bool</h3>
-<p>Here we can show the full code for <code>Bool</code>.</p>
-<pre><code>Bool: Sealed, ToStr, ToInfo, ToImm[Bool], OrderHash[Bool]{
-  .and(b: Bool): Bool,
-  &amp;&amp;(b: mut MF[Bool]): Bool,
-  .or(b: Bool): Bool,
-  ||(b: mut MF[Bool]): Bool,
-  .not: Bool,
-  .if[R:**](f: mut ThenElse[R]): R,
-  ?[R:**](f: mut ThenElse[R]): R -&gt; this.if(f),
-  .match[R](m: mut BoolMatch[R]): R -&gt; this?{.then-&gt;m.true, .else-&gt;m.false},
-  .info-&gt; Infos.msg(this.str),
-  &amp;(b: Bool): Bool -&gt; this.and(b),
-  |(b: Bool): Bool -&gt; this.or(b),
-  }
-True: Bool{
-  .and(b) -&gt; b,
-  .or(b) -&gt; this,
-  &amp;&amp;(b)  -&gt; b#,
-  ||(b)  -&gt; this,
-  .not -&gt; False,
-  .if(f) -&gt; f.then,
-  .str -&gt; `True`,
-  .imm -&gt; True,
-   &lt;=&gt;(other) -&gt; other?{.then -&gt; OrderEq, .else -&gt; OrderGt},
-   .hash(h)-&gt; 1,
-  }
-False: Bool{
-  .and(b) -&gt; this,
-  .or(b) -&gt; b,
-  &amp;&amp;(b)  -&gt; this,
-  ||(b)  -&gt; b#,
-  .not -&gt; True,
-  .if(f) -&gt; f.else,
-  .str -&gt; `False`,
-  .imm -&gt; False,
-   &lt;=&gt;(other) -&gt; other?{.then -&gt; OrderLt, .else -&gt; OrderEq},
-  .hash(h)-&gt; 0,
-  }
-ThenElse[R:**]: {
-  mut .then: R,
-  mut .else: R,
-  }
-BoolMatch[R:**]:{
-  mut .true: R,
-  mut .false: R,
-  }
+<p>We have seen <code>ThenElse[R]</code> before; <code>BoolMatch[R]</code> is the same but with names for the two cases. They work in the same way, but sometime one of the two is more readable then the other.
+Note how we take any kind of <code>R</code> by using <code>R:**</code> and the methods require a <code>mut</code> receiver.
+We are not requiring the boolean to be <code>mut</code>. This is about the <code>ThenElse</code> object that is usually created in order to call the <code>.if</code> (or <code>?</code>) method.
+With <code>mut .then</code> and <code>mut .else</code>, the operation inside the <code>.match</code> is able to mutate external state if need be.
+We also add a more standard <code>BoolMatch</code> allowing to see <code>.true</code> and <code>.false</code> as the two cases of <code>Bool</code>. It is just like the <code>.if</code>, but uses different terminology.</p>
+<p>Then we can see the Bool type declaration itself.
+It is implementing <code>Sealed</code> and <code>DataType[Bool,Bool]</code>.
+We discussed <code>Sealed</code> before: it just means that user code can not define new kinds of booleans like <code>MayBe</code> <code>NotToday</code> etc.</p>
+<pre><code>Bool:Sealed,DataType[Bool,Bool]{
+  .and(b: Bool): Bool;
+  &amp;(b: Bool): Bool -&gt; this.and(b);
+  &amp;&amp;(b: mut MF[Bool]): Bool;
+
+  .or(b: Bool): Bool;
+  |(b: Bool): Bool -&gt; this.or(b);
+  ||(b: mut MF[Bool]): Bool;
+
+  .if[R:**](f: mut ThenElse[R]): R;
+  ?[R:**](f: mut ThenElse[R]): R -&gt; this.if(f);
+  .match[R:**](m: mut BoolMatch[R]): R -&gt; this?{.then-&gt;m.true; .else-&gt;m.false};
+
+  .not: Bool;
+  ==&gt; (b: mut MF[Bool]): Bool -&gt; this.not || b;
 </code></pre>
-<p>As you can see, <code>Bool</code> is quite similar to what we have seen already.
-There are a few new methods and changes that we will now explain.</p>
-<p>The most crucial change is the <code>ThenElse</code> matcher type:
-Note how the two methods <code>.then</code> and <code>.else</code> take a <code>mut</code> receiver.
-We are not requiring the boolean to be <code>mut</code>. This is about the <code>ThenElse</code> object that is usually
-created in order to call the <code>.if</code> (or <code>?</code>) method.</p>
-<p>With <code>mut .then</code> and <code>mut .else</code>, the operation inside the <code>.match</code> is able to mutate external state if need be.
-We also add a more standard <code>BoolMatch</code> allowing to see <code>True</code> and <code>False</code> as the two cases of <code>Bool</code>. It is just like the <code>.if</code>, but uses different terminology.</p>
-<p>Overall, as you can see, we are chosing to support many different ways to do the same conceptual thing: see methods <code>.or</code> and <code>|</code>, <code>.if</code>, <code>?</code> and <code>.match</code>.
+<p>We then proceed with the methods we have seen before, implemented exactly as before, or trivial extensions:</p>
+<ul>
+<li><code>.and</code>, <code>&amp;</code> (alias for <code>.and</code>), <code>&amp;&amp;</code> (computing other only when needed)</li>
+<li><code>.or</code>, <code>|</code> (alias for <code>.pr</code>), <code>||</code> (computing other only when needed)</li>
+<li><code>.if</code>, <code>?</code> (alias for <code>.if</code>), <code>.match</code> (taking the other matcher for more regular naming)</li>
+<li><code>.not</code>, returning the other boolean</li>
+<li><code>==&gt;</code>, logical implication; defined with <code>.not</code> and <code>||</code>.</li>
+</ul>
+<p>Overall, as you can see, we are choosing to support many different ways to do the same conceptual thing: see methods <code>.or</code> and <code>|</code>, <code>.if</code>, <code>?</code> and <code>.match</code>.
 We do this to support different programming styles instead to impose our preferences.</p>
-<p>For now, do not worry about the method <code>&lt;=&gt;</code>; it is needed to implement <code>Order[T]</code> as we will explain later.</p>
-<h3>Full code for <code>Opt[T]</code></h3>
-<p>Below we show the full standard library code for optionals.
-You may not be able to understand all the details yet, but it is good to familiarize yourself with it.</p>
-<pre><code>Opts: {
-  #[T:*](x: T): mut Opt[T] -&gt; { .match(m) -&gt; m.some(x) },
-  }
-OptMatch[T:*, R:**]: {
-  mut .some(x: T): R,
-  mut .empty: R
-  }
+<p>Next we are going to see some new methods. They all either come from <code>DataType</code> or use features coming from <code>DataType</code></p>
+<pre><code>  .str -&gt; this.imm?{ .then-&gt;`True`; .else-&gt;`False` };//this as Str, from DataType
+
+  .assertTrue: Void -&gt; this.assertEq True;
+  .assertFalse: Void -&gt; this.assertEq False;
+
+  .info -&gt; Infos.msg(this.str); //methods from DataType here and below
+  .close -&gt; this; .close -&gt; ::;
+  .hash -&gt; this.imm?{ .then-&gt;1; .else-&gt;0 };
+  .cmp a, b, m -&gt; a.imm?{
+    .then-&gt;b.imm?{ .then-&gt;m.eq; .else-&gt;m.gt };
+    .else-&gt;b.imm?{ .then-&gt;m.lt; .else-&gt;m.eq };
+    };
+}
 </code></pre>
-<p><code>Opts</code> is the factory for <code>Opt[T]</code>. This is exactly what we have seen bebore. Note how <code>Opts#</code> returns a <code>mut Opt[T]</code>.
+<ul>
+<li>
+<p><code>.str</code> produces a string representation of our <code>Bool</code>.
+<code>.str</code> is declared as a <code>read</code> method in <code>DataType</code>; <code>Bool</code> values are always immutable, but the type system does not know it; so we need to call <code>.imm</code> to turn a potentially <code>read Bool</code> into an <code>imm Bool</code> before matching.</p>
+</li>
+<li>
+<p><code>.assertTrue</code>, <code>.assertFalse</code>
+Assert methods are very useful to add additional checks and to trigger additional errors.
+Many times in the code we have conditions that we expect to hold, and by using those methods we can verify them.
+For example
+<code>customer.age &gt;= 18 .assertTrue</code>
+would stop the execution with a readable message if the age is under 18.<br />
+<code>drink.hasAlcohol ==&gt; {customer.age &gt;= 18} .assertTrue</code>
+would stop the execution if a customer under 18 tries to buy an alcoholic drink.
+How does this work?</p>
+<ul>
+<li>If <code>drink.hasAlcohol</code> is <code>False</code>, the whole <code>drink.hasAlcohol ==&gt; {...}</code> returns <code>True</code> and the assertion passes.</li>
+<li>If <code>drink.hasAlcohol</code> is <code>True</code>, then we check <code>{...}</code> and return it.</li>
+</ul>
+<p>Methods <code>.assertTrue</code>/<code>.assertFalse</code> are implemented on top of <code>DataType.assertEq</code>.</p>
+</li>
+<li>
+<p><code>.info</code>, <code>.close</code>, <code>.hash</code> and <code>.cmp</code> are methods from DataType to represent the boolean in a serialisable format and to allow booleans to be compared and organized into data structures.</p>
+</li>
+</ul>
+<pre><code>True:Bool{
+  .and b -&gt; b;
+  &amp;&amp;   b -&gt; b#;
+  .or  b -&gt; this;
+  ||   b -&gt; this;
+  .not   -&gt; False;
+  .if m  -&gt; m.then;
+  .imm   -&gt; True;
+}
+False:Bool{
+  .and b -&gt; this;
+  &amp;&amp;   b -&gt; this;
+  .or  b -&gt; b;
+  ||   b -&gt; b#;
+  .not   -&gt; True;
+  .if  m -&gt; m.else;
+  .imm   -&gt; False;
+}
+</code></pre>
+<p>Finally, the declaration for <code>True</code> and <code>False</code> is exactly what we have seen before.
+Note how we can implement the <code>read .imm: imm Bool</code> method by just returning <code>True</code> or <code>False</code>. An object literal summoned by name can be of any RC, of course including <code>imm</code>.</p>
+<h3>Full code for <code>Opt[T]</code></h3>
+<p>Below we show the full standard library code for optionals.</p>
+<p><code>Opts</code> is the factory for <code>Opt[T]</code>. This is exactly what we have seen before. Note how <code>Opts#</code> returns a <code>mut Opt[T]</code>.
 This is what gives the most flexibility to the user.
 If the user needs an <code>imm Opt[T]</code>, promotion can be transparently used.</p>
+<pre><code>Opts:{
+  #[E:*](x: E): mut Opt[E] -&gt; { .match m -&gt; m.some(x) };
+}
+OptMatch[E:*, R:**]:{
+  mut .some(E): R;
+  mut .empty: R;
+}
+</code></pre>
 <p>Also <code>OptMatch</code> is pretty much what we would expect.
 Note how the two methods <code>.some</code> and <code>.empty</code> takes a <code>mut</code> receiver.
 We are not requiring the optional to be <code>mut</code>. This is about the <code>OptMatch</code> object that is usually
 created in order to call the <code>.match</code> method.
 With <code>mut .some</code> and <code>mut .empty</code>, the operation inside the <code>.match</code> is able to mutate external state if need be.</p>
-<pre><code>Opt[T:*]: _Opt[T], Sealed, ToStr[T], ToInfo[T], OrderHash[Opt[T],T]{
-  .match(m)   -&gt; m.empty,
+<p>Via <code>E:*</code>, <code>Opt</code> works for <code>imm,read,mut</code> references.
+<code>_Opt[E]</code> is used to separate the type signatures from the method implementations. It is a common pattern in Fearless code; it helps to focus on the behaviours and the types separately.
+As we will show while discussing <code>_Opt[E]</code>, it also avoids a lot of repeated code.
+In turn, <code>_Opt[E]</code> implements <code>DataType</code>, thus <code>Opt</code> also implements <code>DataType</code>. However, there are two kinds of <code>DataType</code>: <code>Bool</code> implements <code>DataType</code>, <code>Opt</code> implements the generic version of <code>DataType</code>, since <code>Opt</code> is a generic type.</p>
+<p>In addition to <code>.match</code>, the full <code>Opt[E]</code> supports other useful methods.</p>
+<pre><code>Opt[E:*]: _Opt[E]{
+  .match m    -&gt; m.empty;
+  .isEmpty    -&gt; this.match{.some _ -&gt; False; .empty -&gt; True};
+  .isSome     -&gt; this.match{.some _ -&gt; True; .empty -&gt; False};  
+  !           -&gt; this.match{.some x -&gt; x; .empty -&gt; Error.msg `Opt was empty`};  
 
-  .isEmpty    -&gt; this.match{.some(_)  -&gt; False, .empty -&gt; True},
-  .isSome     -&gt; this.match{.some(_) -&gt; True, .empty -&gt; False},
+  .or default -&gt; this.match{.some x -&gt; x; .empty -&gt; default};
   
-  !           -&gt; this.match{.some(x) -&gt; x, .empty -&gt; Error.msg &quot;Opt was empty&quot;},
+  |   default -&gt; this.or(default);
+  ||  default -&gt; this.match{.some x -&gt; x; .empty -&gt; default#};
   
-  .or(default)-&gt; this.match{.some(x) -&gt; x, .empty -&gt; default},
-  |(default)-&gt; this.or(default),
-  ||(default) -&gt; this.match{.some(x) -&gt; x, .empty -&gt; default#},
-  
-  .flow       -&gt; this.match{.empty -&gt; Flow#, .some(x) -&gt; Flow#x},
+  .flow       -&gt; this.match{.empty -&gt; Flows#; .some x -&gt; Flows#(x)};
 
-  .as(f)      -&gt; this.match{.some(x)-&gt;f#x .empty-&gt;{}},
+  .as[R] f    -&gt; this.match{.some x-&gt;Opts#(f#x); .empty-&gt;{}};
   
-  .ifSome(f)  -&gt; this.match{.some(x) -&gt; f#x, .empty -&gt; {}},
-  .ifEmpty(f) -&gt; this.match{.some(_) -&gt; {}, .empty -&gt; f#},
-
-  .str(f) -&gt; this.match{ .some(x) -&gt; `Opt[`+f#x+`]`, .empty -&gt; `Opt[]` },
-  .info(f) -&gt; this.match{ .some(x) -&gt; Infos.list(f#x), .empty -&gt; Infos.empty },
-  .order(f) -&gt; { 
-    .hash(h) -&gt; this.match{ .some(x)-&gt; f#(x).hash(h) + 1, .empty -&gt; 0 },
-    &lt;=&gt;(other) -&gt; this.match{
-      .some(x) -&gt; other.match{.some(y)-&gt; f#(x) &lt;=&gt; y, .empty -&gt; OrderGt },
-      .empty   -&gt; other.match{ .some(y)-&gt; OrderLt, .empty -&gt; OrderEq },
-      },
-    },
-  }
+  .ifSome  f  -&gt; this.match{.some x -&gt; f#x; .empty -&gt; {}};
+  .ifEmpty f  -&gt; this.match{.some _ -&gt; {}; .empty -&gt; f#};
 </code></pre>
-<p>Via <code>T:*</code>, <code>Opt</code> works for <code>imm,read,mut</code> references.
-<code>_Opt[T]</code> is used to separate the type signatures from the method implementations. It is a common pattern in Fearless code; it helps to focus on the behaviours and the types separately.
-As we will show while discussing <code>_Opt[T]</code>, it also avoids a lot of repeated code.</p>
-<p>In addition to <code>.match</code>, the full <code>Opt[T]</code> supports other useful methods.</p>
 <p>Methods <code>.isEmpty</code> and <code>.isSome</code> simply return a boolean stating if the optional was empty or not.</p>
 <p>Method <code>!</code> is a convenience method that returns the optional content or produces and error.
 Calling this method is equivalent to claim</p>
 <blockquote>
-<p>I, the programmer, know that in this case the optional will definitivelly have a value inside.
+<p>I, the programmer, know that in this case the optional will definitively have a value inside.
 If not, this is an observed bug.</p>
 </blockquote>
-<p>The two methods <code>Opt[T].or</code> and <code>Opt[T]||</code> are similar to <code>Bool.or</code> and <code>Bool||</code>:</p>
+<p>Note how this is conceptually similar to the <code>.assertTrue</code> method we have seen before. Indeed, the internal call <code>Error.msg `..`</code> is pretty much what the body of <code>.assertEq</code> from <code>DataType</code> does.</p>
+<p>The two methods <code>Opt[E].or</code> and <code>Opt[E]||</code> are similar to <code>Bool.or</code> and <code>Bool||</code>:</p>
 <ul>
-<li><code>Opt[T].or</code> returns the value stored in the optional,
+<li><code>Opt[E].or</code> returns the value stored in the optional,
 or the parameter value as a default result if the optional is empty.</li>
-<li><code>Opt[T]||</code> returns the value stored in the optional,
+<li><code>Opt[E]||</code> returns the value stored in the optional,
 or it executes the lazy parameter value to get a default result if the optional is empty.</li>
 </ul>
 <p>Exactly as for <code>Bool</code>, method <code>|</code> is just an alias for <code>.or</code>.</p>
-<p>Method <code>.flow</code> returns a <code>Flow[T]</code>. Flows are a very important data type in the fearless standard libraries and we will discuss them later.</p>
+<p>Method <code>.flow</code> returns a <code>Flow[E]</code>. Flows are a very important data type in the fearless standard libraries and we will discuss them later.</p>
 <p>The method <code>.as</code> is used to change the type of the optional, taking a function to map the content to a new type.</p>
 <p>Finally, methods  <code>.ifSome</code> and <code>.ifEmpty</code> execute some <code>Void</code> returning computation in case the optional has a value or not.</p>
-<p>To make optionals integrate with other standard library conventions, we have a
-<code>.str</code> method, allowing to easily turn optional of anything implementing <code>ToStr</code> into a string.
-For example
+<p>The methods below are just to implement <code>DataType</code>.
+We have a <code>.str</code> method, allowing to easily turn optionals into a string.</p>
+<pre><code>  .str  by  -&gt; this.match{
+    .empty -&gt; `Opt[]`;
+    .some x -&gt; `Opt[`+(by#x)+`]`;
+  };
+</code></pre>
+<p>The code above shows <code>.str</code> taking a parameter <code>by</code>.
+Then we match on the <code>this</code> optional; on <code>.empty</code> we return a constant string, but on <code>.some x</code> we need to turn <code>x</code> into a string and then join some other strings before and after to forge the expected output.
+Crucially, <code>x</code> is of type <code>E</code>; thus we do not know anything about <code>x</code> and we can not call any method on it to turn it into a string.
+This is where <code>by</code> comes into place. <code>by</code> takes the <code>x</code> and turn it, not into a <code>Str</code> but in a <code>ToStr</code>.</p>
+<p>String concatenation operations like <code>+</code> take a <code>ToStr</code> and call <code>.str</code> internally.
+<code>DataType</code> implements <code>ToStr</code>, so we can <code>.str</code> numbers, booleans, etc.</p>
+<p>For example
+<code>myOptNat.str{::}</code> will convert the optional <code>Nat</code> into a <code>Str</code>.
+Similarly,
 <code>myOptPerson.str{::}</code> will convert the optional person into a string,
 assuming the person implements <code>ToStr</code>.
 Indeed, resolving sugar and inference we get the following code:</p>
-<pre><code>myOptPerson.str(F[Person,ToStr]{#(p: Person): ToStr -&gt; p})
+<pre><code>myOptPerson.str(ToStrBy[Person]{#(p: read Person): read ToStr -&gt; p})
 </code></pre>
 <p>As you can see, the <code>{::}</code> sugar is very useful in those cases.
 But, what if we have a <code>data: Opt[Opt[Person]]</code>?
 No problem, we can just do <code>data.str{::str{::}}</code> and get our string.
-This pattern of using nested <code>{::}</code> is quite common as we will see more and more.</p>
-<p><code>Opt[T].info</code> works exactly in the same way of <code>.str</code>, but to produce an <code>Info</code> object.</p>
-<p><code>Opt[T].order</code> is more complex, and it uses the <code>Order</code> type that we have not discussed yet, but overall follows the same idea: we need to take in input a function <code>f</code> to turn the <code>T</code> into the appropriate type.</p>
-<p>We can now see the type signature for <code>Opt[T]</code>, as declared in <code>_Opt[T]</code>.</p>
-<pre><code>_Opt[T:*]:{
-  mut  .match[R:**](m: mut OptMatch[T, R]): R,
-  read .match[R:*](m: mut OptMatch[read/imm T, R]): R,
-  imm  .match[R:*](m: mut OptMatch[imm T, R]): R,
-
-  mut  .map[R:*](f: mut OptMap[T, R]): mut Opt[R],
-  read .map[R:*](f: mut OptMap[read/imm T, R]): mut Opt[R],
-  imm  .map[R:*](f: mut OptMap[imm T, R]): mut Opt[R],
-
-  mut  .flatMap[R:*](f: mut OptFlatMap[T, R]): mut Opt[R],
-  read .flatMap[R:*](f: mut OptFlatMap[read/imm T, R]): mut Opt[R],
-  imm  .flatMap[R:*](f: mut OptFlatMap[imm T, R]): mut Opt[R],
-
-  mut  .or(default: T): T,
-  read .or(default: read/imm T): read/imm T,
-  imm  .or(default: imm T): imm T,
-
-  mut  |(default: T): T,
-  read |(default: read/imm T): read/imm T,
-  imm  |(default: imm T): imm T,
-
-  mut  ||(default: mut MF[T]): T,
-  read ||(default: mut MF[read/imm T]): read/imm T,
-  imm  ||(default: mut MF[imm T]): imm T,
-
-  mut  !: T,
-  read !: read/imm T,
-  imm  !: imm T,
-
-  mut  .flow: mut Flow[T],
-  read .flow: mut Flow[read/imm T],
-  imm  .flow: mut Flow[imm T],
-
-  mut  .ifSome(f: mut MF[T, Void]): Void,
-  read .ifSome(f: mut MF[read/imm T, Void]): Void,
-  imm  .ifSome(f: mut MF[imm T, Void]): Void,
-
-  read .isEmpty: Bool,
-  read .isSome: Bool,
-  read .ifEmpty(f: mut MF[Void]): Void,
-  read .as[R:imm](f: mut MF[read/imm E, R]): Opt[R],  
+This pattern of using nested <code>{::}</code> is quite common as we will see more and more.
+Here are the three types used by this mechanism:</p>
+<pre><code>ToStr:{ read .str: Str }
+ToStr[E:*]:{ read .str(ToStrBy[imm E]): Str }
+ToStrBy[T]:{ #(read T): read ToStr }
+</code></pre>
+<p>This structure is really important and we have many occurrences of this same pattern in Fearless:</p>
+<ul>
+<li>A basic type offering a functionality (<code>ToStr</code>)</li>
+<li>A generic version of that type, with a generic parameter (<code>ToStr[E]</code>)</li>
+<li>A <strong>by</strong> type able to turn any <code>read T</code> into the basic type (<code>read ToStr</code>)</li>
+</ul>
+<p>Here below you can see the other <code>Opt[E]</code> methods. Note how <code>.info</code>, <code>.imm</code> and <code>.hash</code> are using the same exact construction of <code>.str</code>, with <code>.cmp</code> also taking a <code>by</code> argument for the same reason and using it in the same way.</p>
+<pre><code>  .info by  -&gt; this.match{ .some x -&gt; Infos.list(by#x); .empty -&gt; {} };
+  .imm by     -&gt; this.match{.some x -&gt; Opts#(by#x.imm); .empty-&gt;{} };
+  .hash by -&gt; this.match{
+    .empty  -&gt; 0;
+    .some e -&gt; 31.aluAddWrap(by#e.hash);
+    };
+  .cmp by, a, b, m -&gt; a.match{
+    .empty -&gt; b.match{ .empty -&gt; m.eq; .some _ -&gt; m.lt; };
+    .some ea -&gt; b.match{
+      .empty   -&gt; m.gt;
+      .some eb -&gt; by#ea&lt;=&gt;(by#eb, m);
+      }
+    };
+  .close-&gt;this; .close-&gt;::;
   }
 </code></pre>
-<p>As you can see, this is where the major difference lies with respect to the optional seen in Chapter 2: Here most methods come in three variants, one for <code>T</code>, one for <code>read/imm T</code> and one for <code>imm T</code>.</p>
-<p><code>Opt[T]</code> is an example of a generic continer type: a type whose main goal is to contain any kind of <code>T</code>, where <code>T</code> can be <code>read,imm,mut</code>.
-As you can see, designing generic container types supporting a range of reference capabilities is not a beginner friendly task. However, this pattern is quite consistent, and many generic containers follow this same structure, with many methods offering exactly those three type variants.</p>
+<p>Finally, here we can see in the type <code>_Opt[E:*]</code> all the gory type signatures. You might find them quite surprising.</p>
+<pre><code>_Opt[E:*]:DataType[Opt[E],Opt[imm E],E,imm E],_AssertEmpty{
+  mut  .match[R:**](mut OptMatch[E, R]): R;
+  read .match[R:**](mut OptMatch[read/imm E, R]): R;
+  imm  .match[R:**](mut OptMatch[imm E, R]): R;
+
+  mut  .or(E): E;
+  read .or(read/imm E): read/imm E;
+
+  mut  |(E): E;
+  read |(read/imm E): read/imm E;
+
+  mut  ||(mut MF[E]): E;
+  read ||(mut MF[read/imm E]): read/imm E;
+  imm  ||(mut MF[imm E]): imm E;
+
+  mut  !: E;
+  read !: read/imm E;
+
+  mut  .flow: mut Flow[E];
+  read .flow: mut Flow[read/imm E];
+  imm  .flow: mut Flow[imm E];
+
+  mut  .ifSome(mut MF[E, Void]): Void;
+  read .ifSome(mut MF[read/imm E, Void]): Void;
+  imm  .ifSome(mut MF[imm E, Void]): Void;
+
+  read .ifEmpty(mut MF[Void]): Void;
+
+  read .isEmpty: Bool;
+  read .isSome: Bool;
+  read .as[R:imm](mut MF[read/imm E, R]): Opt[R];  
+}
+</code></pre>
+<p>As you can see, this is where the major difference lies with respect to the optional seen in Chapter 2: Here most methods come in two or three variants, one for <code>E</code>, one for <code>read/imm E</code> and one for <code>imm E</code>.
+The core idea is that when we implement <code>.match</code> in <code>Opt[E]</code> we are using the same implementation to satisfy all 3 type signatures.</p>
+<p><code>Opt[E]</code> is an example of a generic container type: a type whose main goal is to contain any kind of <code>E</code>, where <code>E</code> can be <code>read,imm,mut</code>.
+As you can see, designing generic container types supporting a range of reference capabilities is not a beginner friendly task. However, this pattern is quite consistent, and many generic containers follow this same structure, with many methods offering exactly those type variants.</p>
+<h3>The Reality of Production Code</h3>
+<p>You may have noticed a shift in tone. The code for <code>_Opt[E]</code> looks significantly more intimidating than the conceptual <code>Opt[T]</code> we wrote in Chapter 2.</p>
+<p>We are crossing the bridge from <strong>conceptual logic</strong> to <strong>production engineering</strong>.
+The logic remains identical: an Optional is still just &quot;something or nothing.&quot; However, a production-grade library seamlessly handle <code>mut</code>,<code>imm</code> and <code>read</code> data.</p>
+<p>Up to now we pushed to make sure to explain every single details when first used. We will eventually provide all the details and teach you the ins and outs of every corner; but there is no more a clear linear path to follow.
+Here we are showing you the real implementation of those very useful types, and by their nature of being used in all contexts of the language, they are interconnected with every aspect of the language.</p>
+<p>We could have hidden this complexity from you. Alternatively, we could have kept showing you more and more layers of simplified toy versions of the standard library.</p>
+<p><strong>Do not panic if the type signatures above look dense.</strong>
+You do not need to master writing generic containers with reference capabilities right now.
+For now, take away two key realisations:</p>
+<ol>
+<li><strong>It is reachable:</strong> The standard library is just code. It uses the same methods and matches you already understand, just decorated with more precise type constraints.</li>
+<li><strong>It is robust:</strong> The verbosity exists to guarantee that when you use <code>Opt</code> in your own simple programs, it behaves exactly as you expect, regardless of whether your data is mutable or immutable.</li>
+</ol>
       <div class="nav-links">
       <a href="20_01.html">Previous</a> <a href="22_01.html">Next</a>
       </div>
