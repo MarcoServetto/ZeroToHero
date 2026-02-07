@@ -54,29 +54,32 @@ Then, we could just write a <code>.str</code> method simply calling those 3 meth
 <p>Thus, we will use the standard library type <code>base.ToStr</code> shown before.</p>
 <pre><code>ToStr:{ read .str: Str }
 </code></pre>
-<p>Note how <code>.</code>str` is 'read': In this way it can be called on both mutable and immutable objects.</p>
+<p>Note how <code>.str</code> is <code>read</code>: In this way it can be called on both mutable and immutable objects.</p>
 <h1>The new code for the tanks game</h1>
 <p>The reworked code would look like this, nicely divided into files.</p>
 <p>The following file defines all our aliases.</p>
 <pre><code>//File _tank_game/_rank_app.fear
 use base.Main as Main;
+use base.Str as Str;
 use base.Int as Int;
 use base.Bool as Bool;
 use base.F as F;
-use base.Str as Str;
 use base.ToStr as ToStr;
 use base.List as List;
+use base.Block as Block;
+use base.Sealed as Sealed;
+use base.WidenTo as WidenTo;
 </code></pre>
+<p>We have meet all of those types except <code>List</code>, similar to <code>Stack</code> but part of the standard library, and <code>WidenTo</code>, that we will discuss soon.</p>
 <p>The following file defines <code>Point</code>. We will implement <code>ToStr</code> also for <code>Point</code>.
-The code below uses the novel syntax <code>'self</code>, to name the current <code>Point</code> object. Since <code>Point</code> is defined inside of <code>Points</code>, the <code>this</code> in scope would be an instance of <code>Points</code>, not <code>Point</code>. Using <code>'someName</code> at the beginning of an object literal, allows to name the current object.
-That is, all the top level object literals implicitly use <code>'this</code>.</p>
+Note again the syntax <code>'self</code>, to name the current <code>Point</code> object. Since <code>Point</code> is defined inside of <code>Points</code>, the <code>this</code> in scope would be an instance of <code>Points</code>, not <code>Point</code>.</p>
 <pre><code>//File _tank_game/point.fear
 Points:{#(x: Int, y: Int): Point -&gt; Point: ToStr{ 'self
   .x: Int -&gt; x;
   .y: Int -&gt; y;
   +(other: Point): Point -&gt; Points#(other.x + x, other.y + y);
-  .move(d: Direction): Point -&gt; self + ( d.point );
-  ==(other:Point): Bool -&gt; self.x == (other.x)  .and (self.y == (other.y) );
+  .move(d: Direction): Point -&gt; d.point + self;
+  ==(other:Point): Bool -&gt; other.x == x  .and (other.y == y );
   .str -&gt; `[x=` + x + `, y=` + y + `]`;
   }}
 </code></pre>
@@ -90,8 +93,8 @@ East : Direction {::.east}
 South: Direction {::.south}
 West : Direction {::.west}
 DirectionMatch[R:**]: { mut .north: R; mut .east: R; mut .south: R; mut .west: R; }
-Direction: ToStr {
-  .match[R: **](mut DirectionMatch[R]): R;
+Direction: ToStr, Sealed, WidenTo[Direction] {
+  read .match[R: **](mut DirectionMatch[R]): R;
   .turn: Direction -&gt; this.match{
     .north -&gt; East;
     .east  -&gt; South;
@@ -112,6 +115,28 @@ Direction: ToStr {
     };
   }
 </code></pre>
+<p>Note how now <code>Direction</code> implements <code>ToStr</code>, <code>Sealed</code> and the mysterious <code>WidenTo[Direction]</code>.</p>
+<p>Type <code>WidenTo[S]</code> is defined in the standard library and is similar to <code>Sealed</code>.</p>
+<ul>
+<li><code>Sealed</code> means that code in other packages would not be able to define new kinds of <code>Direction</code>. Implementing <code>Sealed</code> makes the type system check this extra condition.</li>
+<li><code>WidenTo[Direction]</code> means that the type inference will always
+infer <code>Direction</code> instead of any type implementing <code>Direction</code>.
+Basically, <code>WidenTo[Direction]</code> makes so that the inference would never infer <code>North</code>.</li>
+</ul>
+<blockquote>
+<p><code>DataType</code> does use <code>WidenTo[S]</code> internally, and this is why
+the inference will always infer <code>Bool</code> instead of <code>True</code>/<code>False</code> and <code>Nat</code> instead of <code>42</code>.</p>
+</blockquote>
+<p>Here, if we were to omit <code>WidenTo[Direction]</code>, the code</p>
+<pre><code>  .turn: Direction -&gt; this.match{
+    .north -&gt; East;
+    .east  -&gt; South;
+    .south -&gt; West;
+    .west  -&gt; North;
+    };
+</code></pre>
+<p>May fail to compile:
+the inference would see <code>.north -&gt; East;</code> and may conclude that the method <code>.north</code> is returning <code>East</code> of type <code>East</code>, thus this match should return an <code>East</code> instead of a direction.</p>
 <p>We define <code>DirectionMatch[R]</code> to be mutable. This is because we want to allow the execution of <code>.match</code> to mutate the state of objects captured by the running operation. In some cases we will want our matchers to be more restrictive and to only support operations that do not perform mutations, but in most cases we will use the shown signature.
 Note how assuming the intention of defining an enumeration, the three lines</p>
 <pre><code>DirectionMatch[R:**]: { mut .north: R; mut .east: R; mut .south: R; mut .west: R; }
@@ -129,7 +154,7 @@ Tank: ToStr {
   .repr1: Str -&gt; ` / | \ `;
   .repr2: Str -&gt; ` | &lt; | `;
   .repr3: Str -&gt; ` \ _ / `;
-  .str -&gt; `` | this.repr1 |this.repr2 | this.repr3 |;
+  .str -&gt; `` | (this.repr1) | (this.repr2) | (this.repr3) |;
   }
 Tanks: { #(heading: Direction, aiming: Direction, position: Point): Tank -&gt;
   { .heading -&gt; heading; .aiming -&gt; aiming; .position -&gt; position; }
@@ -138,7 +163,7 @@ Tanks: { #(heading: Direction, aiming: Direction, position: Point): Tank -&gt;
 <p>The code above is wrong in two different ways:</p>
 <ul>
 <li>We do not check our aiming/heading direction and simply show a predefined representation. This is intentional at this point, so that we could show the structure of the code before going into the details. Writing a skeleton of the code is often a good technique to start our coding tasks.</li>
-<li>The code as written does not compile. The method .str reports 3 errors:
+<li>The code as written does not compile. The method <code>.str</code> reports 3 errors:
 We can not call <code>this.repr1</code>, <code>this.repr2</code> and <code>this.repr3</code> from <code>.str</code>.</li>
 </ul>
 <p>This is because the <code>.str</code> method is <code>read</code> and we declared those repr methods as <code>imm</code>.
@@ -148,21 +173,33 @@ From the point of view of the type system, future programmers may write new type
 We remove the line implementing <code>.str</code> in <code>Tank</code> and we write <code>Tanks</code> as follows:</p>
 <pre><code>Tanks: { #(heading: Direction, aiming: Direction, position: Point): Tank -&gt; {'self
   .heading -&gt; heading; .aiming -&gt; aiming; .position -&gt; position;
-  .str -&gt; ``| self.repr1 | self.repr2 | self.repr3 |;
+  .str -&gt; ``| (self.repr1) | (self.repr2) | (self.repr3) |;
   }}
 </code></pre>
 <p>Here <code>self</code> is always immutable since it is created as an <code>imm Tank</code>.</p>
 <p>Now we need to implement the repr methods.
 The challenge is that we need to synthesise the right character <code>&lt;</code>,<code>&gt;</code>,<code>V</code>,<code>A</code>,<code>-</code>,<code>|</code> for the various cases.
-We can do it using <code>DirectionMatch</code>.</p>
-<pre><code>Tank: ToStr {
-  .heading: Direction;
-  .aiming: Direction;
-  .position:Point;
-  .move:Tank -&gt; Tanks#(this.heading, this.aiming, this.position.move(this.heading));
-  .repr1:Str-&gt; this.aiming .match AimingRepr1;
-  .repr2:Str-&gt; this.aiming .match AimingRepr2{this.heading .match HeadingChar};
-  .repr3:Str-&gt; this.aiming .match AimingRepr3;
+We can do it using <code>DirectionMatch</code>.
+The first and the last line (<code>AimingRepr1</code>/<code>AimingRepr3</code>) simply depend on the direction we are going.
+The centre line (<code>AimingRepr2</code>) is a little harder since it also depends on the heading direction.</p>
+<pre><code>AimingRepr1: DirectionMatch[Str]{
+  .north -&gt; ` / | \ `;
+  .east  -&gt; ` / - \ `; 
+  .south -&gt; ` / - \ `;
+  .west  -&gt; ` / - \ `;
+  }
+AimingRepr3: DirectionMatch[Str]{
+  .north -&gt; ` \ _ / `;
+  .east  -&gt; ` \ _ / `; 
+  .south -&gt; ` \ | / `;
+  .west  -&gt; ` \ _ / `;
+  }
+AimingRepr2: DirectionMatch[Str]{
+  mut .centre: Str;
+  .north -&gt; ` | ` + (this.centre) + ` | `;
+  .east  -&gt; ` - ` + (this.centre) + ` | `;
+  .south -&gt; ` | ` + (this.centre) + ` | `;
+  .west  -&gt; ` | ` + (this.centre) + ` - `;
   }
 HeadingChar: DirectionMatch[Str]{
   .north -&gt; `A`;
@@ -170,24 +207,14 @@ HeadingChar: DirectionMatch[Str]{
   .south -&gt; `V`;
   .west  -&gt; `&gt;`;
   }
-AimingRepr1: DirectionMatch[Str]{
-  .north -&gt; ` / | \ `;
-  .east  -&gt; ` / - \ `; 
-  .south -&gt; ` / - \ `;
-  .west  -&gt; ` / - \ `;
-  }
-AimingRepr2: DirectionMatch[Str]{
-  .centre:Str;
-  .north -&gt; ` | ` + this.centre + ` |  `;
-  .east  -&gt; ` - ` + this.centre + ` |  `;
-  .south -&gt; ` | ` + this.centre + ` |  `;
-  .west  -&gt; ` | ` + this.centre + ` -  `;
-  }
-AimingRepr3: DirectionMatch[Str]{
-  .north -&gt; ` \ _ / `;
-  .east  -&gt; ` \ _ / `; 
-  .south -&gt; ` \ | / `;
-  .west  -&gt; ` \ _ / `;
+Tank: ToStr {
+  .heading:  Direction;
+  .aiming:   Direction;
+  .position: Point;
+  .move:     Tank -&gt; Tanks#(this.heading, this.aiming, this.position.move(this.heading));
+  .repr1:    Str  -&gt; this.aiming .match AimingRepr1;
+  .repr2:    Str  -&gt; this.aiming .match mut AimingRepr2{this.heading .match HeadingChar};
+  .repr3:    Str  -&gt; this.aiming .match AimingRepr3;
   }
 </code></pre>
 <p>We think this code is very clear, declarative and self explanatory.
@@ -198,31 +225,32 @@ We could have alternatively made a factory capturing the missing information in 
 <pre><code>... 
   .repr2: Str -&gt; this.aiming .match (AimingRepr2#(this.heading .match HeadingChar));
 ...
-AimingRepr2: Function[Str, DirectionMatch[Str]]:{ centre-&gt;{
-  .north -&gt; ` | ` + centre + ` |  `;
-  .east  -&gt; ` - ` + centre + ` |  `;
-  .south -&gt; ` | ` + centre + ` |  `;
-  .west  -&gt; ` | ` + centre + ` -  `;
+AimingRepr2: Function[Str, mut DirectionMatch[Str]]:{ centre-&gt;{
+  .north -&gt; ` | ` + centre + ` | `;
+  .east  -&gt; ` - ` + centre + ` | `;
+  .south -&gt; ` | ` + centre + ` | `;
+  .west  -&gt; ` | ` + centre + ` - `;
   }}
 
 </code></pre>
 <p>Both styles are perfectly valid and good Fearless code. We just like the first one a little more.</p>
 <p>Now we can represent tanks as strings.
 We can test our code as follows:</p>
-<pre><code>Test:Main {sys -&gt; sys.out.println(  Tanks#(North, West, Points#(1, 2))  )}
+<pre><code>Test:Main {sys -&gt; sys.out.println(  Tanks#(North, West, Points#(+1, +2))  )}
 </code></pre>
 <p>This code will print</p>
 <pre><code> / - \ 
  - A |
  \ _ /   
 </code></pre>
-<p>We can now rewrite state change using features from the standard library instead of our poor man stack.</p>
+<p>We can now rewrite state change using features from the standard library instead of our poor man <code>Stack[E]</code>.</p>
 <pre><code>//File _tank_game/next_state.fear
 NextState:F[List[Tank],List[Tank]]{
   #(tanks)-&gt;Block#
     .let danger= { tanks.flow.map{ t -&gt; t.position.move(t.aiming) }.list }
     .let survivors= { tanks.flow.filter{t -&gt; danger.flow.filter{::==(t.position)}.isEmpty } .list }
-    .let occupied= { (survivors.flow.map{::.position}) ++ (survivors.flow.map{::.move.position}) .list }
+    .let occupied= {
+      (survivors.flow.map{::.position}) ++ (survivors.flow.map{::.move.position}) .list }
     .return { survivors.flow.map{t -&gt; this.moveIfFree(t,occupied)} };
  
   .moveIfFree(t: Tank, occupied: List[Point]): Tank-&gt; occupied.flow
@@ -251,6 +279,7 @@ use base.F as F;
 use base.ToStr as ToStr;
 use base.List as List;
 use base.Block as Block;
+use base.Sealed as Sealed;
 use base.WidenTo as WidenTo;
 //----------------------------------
 //File _tank_game/point.fear
@@ -258,8 +287,8 @@ Points:{#(x: Int, y: Int): Point -&gt; Point: ToStr{ 'self
   .x: Int -&gt; x;
   .y: Int -&gt; y;
   +(other: Point): Point -&gt; Points#(other.x + x, other.y + y);
-  .move(d: Direction): Point -&gt; self + ( d.point );
-  ==(other:Point): Bool -&gt; self.x == (other.x)  .and (self.y == (other.y) );
+  .move(d: Direction): Point -&gt; d.point + self;
+  ==(other:Point): Bool -&gt; other.x == x  .and (other.y == y );
   .str -&gt; `[x=` + x + `, y=` + y + `]`;
   }}
 //----------------------------------
@@ -269,7 +298,7 @@ East : Direction {::.east}
 South: Direction {::.south}
 West : Direction {::.west}
 DirectionMatch[R:**]: { mut .north: R; mut .east: R; mut .south: R; mut .west: R; }
-Direction: ToStr, WidenTo[Direction] {
+Direction: ToStr, Sealed, WidenTo[Direction] {
   read .match[R: **](mut DirectionMatch[R]): R;
   .turn: Direction -&gt; this.match{
     .north -&gt; East;
@@ -319,10 +348,10 @@ AimingRepr1: DirectionMatch[Str]{
   }
 AimingRepr2: DirectionMatch[Str]{
   mut .centre: Str;
-  .north -&gt; ` | ` + (this.centre) + ` |  `;
-  .east  -&gt; ` - ` + (this.centre) + ` |  `;
-  .south -&gt; ` | ` + (this.centre) + ` |  `;
-  .west  -&gt; ` | ` + (this.centre) + ` -  `;
+  .north -&gt; ` | ` + (this.centre) + ` | `;
+  .east  -&gt; ` - ` + (this.centre) + ` | `;
+  .south -&gt; ` | ` + (this.centre) + ` | `;
+  .west  -&gt; ` | ` + (this.centre) + ` - `;
   }
 AimingRepr3: DirectionMatch[Str]{
   .north -&gt; ` \ _ / `;
@@ -336,7 +365,8 @@ NextState:F[List[Tank],List[Tank]]{
   #(tanks)-&gt;Block#
     .let danger= { tanks.flow.map{ t -&gt; t.position.move(t.aiming) }.list }
     .let survivors= { tanks.flow.filter{t -&gt; danger.flow.filter{::==(t.position)}.isEmpty } .list }
-    .let occupied= { (survivors.flow.map{::.position}) ++ (survivors.flow.map{::.move.position}) .list }
+    .let occupied= { 
+      (survivors.flow.map{::.position}) ++ (survivors.flow.map{::.move.position}) .list }
     .return { survivors.flow.map{t -&gt; this.moveIfFree(t,occupied)} .list };
  
   read .moveIfFree(t: Tank, occupied: List[Point]): Tank-&gt; occupied.flow
@@ -346,6 +376,12 @@ NextState:F[List[Tank],List[Tank]]{
       .else -&gt; t;
     };
   }
+Test:Main {sys -&gt; sys.out.println(  Tanks#(North, West, Points#(+1, +2))  )}
+//PRINT|
+//PRINT| / - \ 
+//PRINT| | A - 
+//PRINT| \ _ / 
+//PRINT|
 </code></pre>
       <div class="nav-links">
       <a href="21_01.html">Previous</a> <a href="23_01.html">Next</a>
