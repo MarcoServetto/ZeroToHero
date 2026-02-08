@@ -48,7 +48,9 @@ To do this, we will use mutation:</p>
 </ul>
 <p>Since each tanks is represented as 3 lines, we will have a grid 30 * 10.
 Initially, every cell will contain <code></code>: six spaces, representing the absence of a tank. This is because each tank line is 6 characters.</p>
-<pre><code>TanksToS: F[List[Tank],Str]{ ts -&gt; Block#
+<pre><code>//----------------------------------
+//File _tank_game/print_game.fear
+TanksToS: F[List[Tank],Str]{ ts -&gt; Block#
   .let res = {0.rangeUntil(30).map{_-&gt;this.newLine}.list }
   .do{ ts.flow.forEach{ t -&gt; Block#
     .let x= { t.position.x }
@@ -60,8 +62,8 @@ Initially, every cell will contain <code></code>: six spaces, representing the a
     .do{ res.get(y * 3 + 2).get(x).set(t.repr3) }
     .done
     }}
-  .return { res.flow.map{::.flow.join(``)}.join(``|) };
-  .newLine: mut List[mut Var[Str]] -&gt; 0.rangeUntil(10).map{ _ -&gt; Vars#(`      `)}.list;
+  .return { res.flow.map{::.flow.map{::.get}.join(``)}.join(``|) };
+  read .newLine: mut List[mut Var[Str]] -&gt; 0.rangeUntil(10).map{ _ -&gt; Vars#(`      `)}.list;
   }
 PrintGame: {
   mut .out: mut Output;
@@ -69,29 +71,30 @@ PrintGame: {
   mut .lines(rounds: Nat, ts: List[Tank]): Void -&gt; Block#
     .var current= {ts}
     .return{ 0.rangeUntil(rounds).forEach{step -&gt; Block#(
-      this.fs.println(`Step `+step|),
-      this.fs.println(`------------------------------------------------------------`|),
-      this.singleLine(ts.get),
-      this.fs.println(`------------------------------------------------------------`|),
-      ts.set(NextState#(ts.get))
+      this.out.println(`Step `+step|),
+      this.out.println(`------------------------------------------------------------`|),
+      this.singleLine(current.get),
+      this.out.println(`------------------------------------------------------------`|),
+      current.set(NextState#(current.get))
       )}}
   }
-//ReadGame: { ... }
-ReadGame: { .cap[T]:T; .read:List[Tank]-&gt;{};}
+//----------------------------------
+//File _tank_game/_rank_app.fear
 Test: Main {sys -&gt; Block#
   .let out= {sys.out}
-//  .let in= {sys.inputFile}
-  .let game= ReadGame{20}.read
-  .return{ PrintGame{out}.lines(50,game) }
+  .let in= {sys.inputCursor# !}
+  .let game= {mut ReadGame{in}.read}//ReadGame omitted for now
+  .return{ mut PrintGame{out}.lines(50,game) }
   }
 </code></pre>
 <p>As you can see, we omitted the code reading the initial game state.
 This is because in order to read data from files there is still quite some content that we need to learn. We will handle that in Chapter 4.
 Assuming a properly implemented <code>ReadGame</code>, this code could print something like the following:</p>
-<pre><code>Step 5
+<pre class="code-50"><code>
+Step 5
 ------------------------------------------------------------
  / - \       / - \
- | &gt; |       - V |
+ | > |       - V |
  \ | /       \ _ /
 
 
@@ -100,29 +103,29 @@ Assuming a properly implemented <code>ReadGame</code>, this code could print som
        | V | 
        \ | / 
                                      / - \
-                                     | &lt; |
+                                     | < |
                                      \ | /
              / | \ 
-             | &gt; | 
+             | > | 
              \ _ / 
 
 
 
  / - \       / - \
- | &gt; |       - V |
+ | > |       - V |
  \ | /       \ _ /
 
 
 
                                      / - \
-                                     | &lt; |
+                                     | < |
                                      \ | /
 ------------------------------------------------------------
 
 Step 6
 ------------------------------------------------------------
        / - \     
-       | &gt; |     
+       | > |     
        \ | /     
              / - \
              - V |
@@ -131,36 +134,56 @@ Step 6
 
 
        / - \                   / - \
-       | V |                   | &lt; |
+       | V |                   | < |
        \ | /                   \ | /
                    / | \  
-                   | &gt; | 
+                   | > | 
                    \ _ / 
 
 
 
        / - \
-       | &gt; |
+       | > |
        \ | /
              / - \
              - V |
              \ _ /
                                / - \
-                               | &lt; |
+                               | < |
                                \ | /
 ------------------------------------------------------------
-
 </code></pre>
 <p>Where tanks can be displayed on the screen, showing the various steps of the game</p>
-<p>We now focus on this line:</p>
-<pre><code>.let res = {0.range(30).map{_-&gt;this.newLine}.list }
+<p>We now focus on those two lines:</p>
+<pre><code>  .let res = {0.rangeUntil(30).map{_-&gt;this.newLine}.list }
+  ...
+  read .newLine: mut List[mut Var[Str]] -&gt; 0.rangeUntil(10).map{ _ -&gt; Vars#(`      `)}.list;
 </code></pre>
 <ul>
-<li>Here we use <code>.range</code> to create a flow containing the numbers 0..29.</li>
+<li>Here we use <code>.rangeUntil</code> to create a flow containing the numbers 0..29.</li>
 <li>Then we use <code>.map</code> to call <code>this.newLine</code> 30 times.
 Note how we use the <code>_</code> to show that we do not need the current element of the flow (a number in 0..29).</li>
 <li>Finally, we use <code>.list</code> to turn the flow into a list.</li>
+<li><code>.newLine</code> internally does a very similar work:
+We range from 0..9 and for each of those we create a <code>Var</code> initialised with six spaces.
+That is, the type of <code>res</code> is <code>mut List[mut List[mut Var[Str]]]</code>.
+This is a large and intricate type, representing a list of list of variable strings.
+The code shown below uses <code>res</code> to represent a grid of information, that can be updated as needed.</li>
 </ul>
+<pre><code>    .let x= { t.position.x }
+    .let y= { t.position.y }
+    .if {x.inRange(0,10).not} .done
+    .if {y.inRange(0,10).not} .done
+    .do{ res.get(y * 3)    .get(x).set(t.repr1) }
+    .do{ res.get(y * 3 + 1).get(x).set(t.repr2) }
+    .do{ res.get(y * 3 + 2).get(x).set(t.repr3) }
+</code></pre>
+<p>This code runs <code>.forEach</code> of the tanks <code>t</code> in <code>ts</code>
+<code>x/y</code> are just short names for the coordinates of <code>t</code>.
+If <code>x</code> or <code>y</code> are <code>.not</code> in the visualized range, we do not represent tank <code>t</code> on our board <code>res</code>.
+Otherwise, we write the three lines representing <code>t</code> on the appropriate position on <code>res</code>.
+Note how we call <code>.get(..).get(..).set(..)</code>
+to access two layers of <code>List</code> and then set a new value in our variable.</p>
 <p>The next section will discuss <code>List</code>s and <code>Flow</code>s in the detail.</p>
       <div class="nav-links">
       <a href="22_01.html">Previous</a> <a href="24_01.html">Next</a>
