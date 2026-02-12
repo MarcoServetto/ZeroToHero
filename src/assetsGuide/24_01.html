@@ -88,7 +88,7 @@ AllNames: { #(ps: List[Person]): Str -&gt; ps.flow.map{::.name }.join `, ` }
 <p>We can also compute the sum of the size of all the names as follows:</p>
 <pre><code>Person:{ .name: Str }
 ...
-SumSizes:{ #(ps: List[Person]): Str -&gt; ps.flow.map{::.name.size }.sum 0 }
+SumSizes:{ #(ps: List[Person]): Nat -&gt; ps.flow.map{::.name.size }.sum 0 }
 </code></pre>
 <p>This sums all the sizes of all the names starting from zero.
 That is, methods <code>.join</code> and <code>.sum</code> only work on flows of certain types.
@@ -189,9 +189,9 @@ integer division: <code>13 .rem 5 = 3</code></p>
 <h3>The <code>.as</code> method</h3>
 <p><code>List[E].as</code> is a method creating a new list where the elements have gone through some kind of transformation.
 That is, the following three expressions are equivalent:</p>
-<pre><code>  List#(`3`,`4`,`5`)
-  List#(1,2,3).as{::+ 2 .str}
-  List#(1,2,3).flow.map{::+ 2 .str}.list
+<pre><code>  Lists#(`3`,`4`,`5`)
+  Lists#(1,2,3).as{::+ 2 .str}
+  Lists#(1,2,3).flow.map{::+ 2 .str}.list
 </code></pre>
 <p>While method <code>List[E].as</code> mostly behaves as <code>.flow.map.list</code>, the compiler can optimise it to run faster in a few crucial cases.</p>
 <h3>Lists and mutability</h3>
@@ -234,19 +234,22 @@ This last case often emerges from promotion: we may start with a <code>mut List[
 <p>We can concatenate lists and elements using methods <code>++</code> and <code>+</code>.
 The expression below are all equivalent:</p>
 <pre><code>Lists#(1,2,3,4)
-Lists#(1,2) + 3 + 4
+Lists#(1,2) +&gt; 3 +&gt; 4
 Lists#(1,2) ++ Lists#(3,4)
 Lists#(1) ++ Lists#(2,3,4)
 </code></pre>
 <p>As you can see, we use <code>+</code> to concatenate list and element, and <code>++</code> to concatenate two lists.
 Since <code>+</code> is a method of list, the following code does not work:</p>
-<pre><code>1 + Lists#(2,3,4)
+<pre><code>1 &lt;+ Lists#(2,3,4)
 </code></pre>
-<p>We need to instead wrap the <code>1</code> in a singleton list, as shown above.</p>
+<p>We need to instead wrap the <code>1</code> in a singleton list, as shown above, or use</p>
+<pre><code>Lists#(2,3,4) &lt;+ 1 
+</code></pre>
+<p>where <code>&lt;+</code> appends to the left and <code>+&gt;</code> appends to the right.</p>
 <p>Finally, we can use <code>.subList(start,end)</code> to get a sub part of a list. Method <code>.subList</code> does not clone the list, but creates a minimal wrapper object referring to the transformed indexes; thus using <code>.subList</code> on a very, very long list is still a cheap operation.</p>
 <h3>List and withers: <code>.with</code>, <code>.without</code>, <code>.withAlso</code></h3>
 <p>Suppose we have a list of 10 tanks, and we want to insert a new tank in the middle.
-We could do <code>tanks.sublist(0,5) + newTank ++ (tanks.sublist(5,10))</code>, but it is verbose and counter intuitive.
+We could do <code>tanks.subList(0,5) + newTank ++ (tanks.subList(5,10))</code>, but it is verbose and counter intuitive.
 The <code>List[E]</code> type offers dedicated methods for those kinds of operation.
 To obtain the desired result we can just write <code>tanks.withAlso(5,newTank)</code>.
 If we wanted to replace the tank in position 5, we could write <code>tanks.with(5,newTank)</code>; and if we wanted to remove the tank in position 5 to get a list of only 9 tanks, we could write <code>tanks.without(5)</code>.</p>
@@ -358,8 +361,6 @@ Order[T]:{
   }
 Points:{#(x: Nat, y: Nat): Point -&gt; Point: Order[Point]{ 'self
   .x: Nat -&gt; x; .y: Nat -&gt; y;
-  .cmp t0, t1, m -&gt; Points:{#(x: Nat, y: Nat): Point -&gt; Point: Order[Point]{ 'self
-  .x: Nat -&gt; x; .y: Nat -&gt; y;
   .cmp t0, t1, m -&gt; t0.x&lt;=&gt;(t1.x,m &amp;&amp;{t0.y&lt;=&gt;(t1.y,m)});
   .close-&gt;self;
   }}
@@ -413,7 +414,7 @@ On the other side, if we want to give a top level name for a specific way to ord
 </code></pre>
 <ul>
 <li>Method <code>.then</code> lexicographically composes the <code>OrderBy</code> with another one.
-Example usage: <code>{::.age}.then{::.name}</code> would compare a person by age first and name second. <code>{::.age}.then ByCats</code> would compare by name first and by total cats weight second.</li>
+Example usage: <code>{::.age}.then{::.name}</code> would compare a person by age first and name second. <code>{::.age}.then ByCats</code> would compare by age first and by total cats weight second.</li>
 <li>Method <code>.view</code> allows to compare entities of type <code>A</code> if we can convert them into a <code>T</code> for witch we have an <code>OrderBy</code>.
 Example usage: <code>ByCats.view{::.driver}</code>
 would compare a <code>Car</code> by the total cats weight of its <code>.driver</code>.</li>
@@ -443,11 +444,11 @@ myCars.flow
   .max({::driver}.then Older) //here we check using the Older comparator
   .opt//this requires that there is exactly zero or one max
 myCars.flow
-  .max(OrderByCaseUnsensitive.view{::driver.name}.then {::driver.age}) //here names ignoring case
-  .first //this gives us an Optional[Car] and allows for further max cars to be discarded.
+  .max(OrderByCaseInsensitive.view{::driver.name}.then {::driver.age}) //here names ignoring case
+  .first //this gives us an Opt[Car] and allows for further max cars to be discarded.
 
 myCars.flow
-  .max(OrderByCaseUnsensitive.view{::driver.name})
+  .max(OrderByCaseInsensitive.view{::driver.name})
   .max{::driver.age}//this example has the same behaviour of the one above
   .first//like with .filter: we can divide two conditions on two calls if we prefer
 
@@ -497,69 +498,58 @@ Note how we also add <code>.close</code> in the other direction: before we have 
 <code>.close:T</code> allowing to turn <code>Order[T]</code> into <code>T</code>. This one allows to turn a <code>T</code> parameter into an <code>OrderHash[T]</code>. With this we can convert in both directions.
 Again, needed in the error messages to turn a <code>T</code> into an <code>OrderHash[T]</code> that possess a <code>.str</code> method.</p>
 <pre><code>//usage
-Persons: { #(age: Num, name: Str):Person -&gt; Person: OrderHash[Person]{
+Persons: { #(age: Num, name: Str):Person -&gt; Person: OrderHash[Person]{'self
   .age: Nat    -&gt; age;
   .name: Str   -&gt; name;
   .cmp p1,p2,m -&gt; p1.age &lt;=&gt; (p2.age, m &amp;&amp; { p1.name &lt;=&gt; (p2.name,m) });
-  .hash h      -&gt; this.age.hash.hashWith(this.name.hash);
-  .str         -&gt; `Person[age=`+this.age+`, name=`+this.name+`]`;
+  .hash        -&gt; age.hash.hashWith(name.hash);
+  .str         -&gt; `Person[age=`+age+`, name=`+name+`]`;
+  .close-&gt;self; .close-&gt;::;
   }
 }
-```
-With such a `Person` type, we can define a map from persons to address:
-
-```
-Maps#({::},   // this {::} is expanded as OrderHashBy[Person]{x-&gt;x}
+</code></pre>
+<p>With such a <code>Person</code> type, we can define a map from persons to address:</p>
+<pre><code>Maps#({::},   // this {::} is expanded as OrderHashBy[Person]{x-&gt;x}
   Persons#(25,`Bob`),`Toronto 34b Warden St.`,
   Persons#(34,`Alice`),`Wellington 134 Kelburn parade`,
   ...
   )
-```
-As you can see, maps take an `OrderHashBy` exactly like we have seen with `OrderBy` and `ToStrBy`.
-`Map[K,E]` has many operations, similarly to `List[E]`.
-We have `.size`, `.isEmpty` and `.get`.
-However, `.get` does not take an index of type `Nat` but a key of type `K`.
-For example, with the map declared above
-
-```
-myMap.isEmpty //false
+</code></pre>
+<p>As you can see, maps take an <code>OrderHashBy</code> exactly like we have seen with <code>OrderBy</code> and <code>ToStrBy</code>.
+<code>Map[K,E]</code> has many operations, similarly to <code>List[E]</code>.
+We have <code>.size</code>, <code>.isEmpty</code> and <code>.get</code>.
+However, <code>.get</code> does not take an index of type <code>Nat</code> but a key of type <code>K</code>.
+For example, with the map declared above</p>
+<pre><code>myMap.isEmpty //false
 myMap.size //2
 myMap.get(Persons#(34,`Alice`)) // `Wellington 134 Kelburn parade`
-```
-If the key is not present in the map, `.get` will cause an error.
-We can instead use `.opt` to extract an optional `Opt[E]` result. For example
-```
-myMap.get(Persons#('Neil Armstrong',38)) // error
-myMap.opt(Persons#('Neil Armstrong',38)).or 'Moon' // alternative default value.
-```
-
-Maps can have `mut`, `imm` or `read` elements; but only immutable keys. This is because the implementation of `Map[K,E]` needs to assume that the result of `.hash` and `==` is consistent over time.
-
-We can flow on a map, but since both keys and elements are present, the flow method takes a function mapping keys and elements in some value.
+</code></pre>
+<p>If the key is not present in the map, <code>.get</code> will cause an error.
+We can instead use <code>.opt</code> to extract an optional <code>Opt[E]</code> result. For example</p>
+<pre><code>myMap.get(Persons#(`Neil Armstrong`,38)) // error
+myMap.opt(Persons#(`Neil Armstrong`,38)).or `Moon` // alternative default value.
+</code></pre>
+<p>Maps can have <code>mut</code>, <code>imm</code> or <code>read</code> elements; but only immutable keys. This is because the implementation of <code>Map[K,E]</code> needs to assume that the result of <code>.hash</code> and <code>==</code> is consistent over time.</p>
+<p>We can flow on a map, but since both keys and elements are present, the flow method takes a function mapping keys and elements in some value.
 For example
-```myMap.flow{k,e-&gt; k.name + e }.list```
+<code>myMap.flow{k,e-&gt; k.name + e }.list</code>
 will return
-```List#(`BobToronto 34b Warden St.`,`AliceWellington 134 Kelburn parade`)```
-
-Note how the order of the flow is the same as the insertion order.
-
-We can also create a map from a flow, using method `.mapping` as shown below:
-```
-myPersons.flow
+<code>Lists#(`BobToronto 34b Warden St.`,`AliceWellington 134 Kelburn parade`)</code></p>
+<p>Note how the order of the flow is the same as the insertion order.</p>
+<p>We can also create a map from a flow, using method <code>.mapping</code> as shown below:</p>
+<pre><code>myPersons.flow
   .map{..}
   .filter{..}
   .mapping({::},{
     .key e  -&gt; e.name;
     .elem e -&gt; e;
     })
-```
-Here we pass two parameters: a `OrderHashBy`, that as usual can be the identity if our keys implement `OrderHash[K]`, and a literal specifying how to create the key and the element from the objects inside the flow.
-
-Finally, sets of type `Set[K]` are another application of hashing. Instead of mapping keys to elements, it simply remembers if a key is present or not. That is, `Set[K]` most important methods are `.size`, `.isEmpty` and `.contains`.
-Sets also support `.flow`, working exactly as for lists. Again, the order of the flow is the same as the insertion order.
-See below some examples of using sets.
-```
-Sets#({::},1,2,3,4,5)//set of 5 numbers
+</code></pre>
+<p>Here we pass two parameters: a <code>OrderHashBy</code>, that as usual can be the identity if our keys implement <code>OrderHash[K]</code>, and a literal specifying how to create the key and the element from the objects inside the flow.</p>
+<p>Finally, sets of type <code>Set[K]</code> are another application of hashing. Instead of mapping keys to elements, it simply remembers if a key is present or not. That is, <code>Set[K]</code> most important methods are <code>.size</code>, <code>.isEmpty</code> and <code>.contains</code>.
+Sets also support <code>.flow</code>, working exactly as for lists. Again, the order of the flow is the same as the insertion order.
+See below some examples of using sets.</p>
+<pre><code>Sets#({::},1,2,3,4,5)//set of 5 numbers
 Sets#(OrderBy[Str]{s1,s2,m-&gt;...},'a','aa','aaaaa')//Does not compile.
 Sets#(StrSizeOrder,'a','aa','aaaaa')//good
 StrSizeOrder:OrderHashBy[Str]{
@@ -567,34 +557,28 @@ StrSizeOrder:OrderHashBy[Str]{
   .hash s-&gt;s.size.hash;
   .str s-&gt;s; 
   }//Here we manually define an ordering for strings using their size.
-```
-Note how our first attempt for a set with custom ordering does not compile.
-We need to use `OrderHashBy` and not just `OrderBy`.
-
-We can create a set from a flow by calling `.set{::}`, or passing a specific order.
-
-In the same way there is an `EList[E]` type that is an editable variant of `List[E]`, there are types `EMap[K,E]` and `ESet[E]`. As for `EList[E]`, they are rarely used so we will discuss them (much) later.
-
-### List, Opt and ordering.
-
-Finally, `List[E]` and `Opt[E]` do not implement `Order[E]` or `OrderHash[E]`.
+</code></pre>
+<p>Note how our first attempt for a set with custom ordering does not compile.
+We need to use <code>OrderHashBy</code> and not just <code>OrderBy</code>.</p>
+<p>We can create a set from a flow by calling <code>.set{::}</code>, or passing a specific order.</p>
+<p>In the same way there is an <code>EList[E]</code> type that is an editable variant of <code>List[E]</code>, there are types <code>EMap[K,E]</code> and <code>ESet[E]</code>. As for <code>EList[E]</code>, they are rarely used so we will discuss them (much) later.</p>
+<h3>List, Opt and ordering.</h3>
+<p>Finally, <code>List[E]</code> and <code>Opt[E]</code> do not implement <code>Order[E]</code> or <code>OrderHash[E]</code>.
 They do not need to and they may not contain ordered elements.
 If I want to sort a list of ordered elements I can do
 myList.flow
-  .sort{::}
-  .list
-
-However, how to sort a list of lists?
-
-### Introducing `Order[T,E]` and `OrderHash[T,E]`.
-
-To order a collection we need to reason on two generic types:
-- The type of the current collection `T`.
-- The type of the collection elements `E`.
-The idea is that by providing an `OrderBy` for the elements, we can produce an
-`Order` for the collection.
-```
-Order[T,E:*]: {
+.sort{::}
+.list</p>
+<p>However, how to sort a list of lists?</p>
+<h3>Introducing <code>Order[T,E]</code> and <code>OrderHash[T,E]</code>.</h3>
+<p>To order a collection we need to reason on two generic types:</p>
+<ul>
+<li>The type of the current collection <code>T</code>.</li>
+<li>The type of the collection elements <code>E</code>.
+The idea is that by providing an <code>OrderBy</code> for the elements, we can produce an
+<code>Order</code> for the collection.</li>
+</ul>
+<pre><code>Order[T,E:*]: {
   read .close: read T;
   read .cmp[K,R:**](by: OrderBy[imm E,K], t0: read T, t1: read T, m: mut OrderMatch[R]): R;
 
@@ -661,7 +645,7 @@ is a standard way to do this in fearless; implementing the two versions of <code
 <p><code>List[E]</code>, <code>Map[K,E]</code> and <code>Opt[E]</code> implement <code>OrderHash[List[E],E]</code>, <code>OrderHash[Map[K,E],E]</code>, and <code>OrderHash[Opt[E],E]</code>.
 Thus, we can use the method <code>List[E].order</code>, taking a function from <code>E</code> to <code>Order[E]</code>. That is, if myList is a <code>List[List[E]]</code> and <code>E</code> implements <code>Order[E]</code> or <code>OrderHash[E]</code>, we can simply write:</p>
 <pre><code>myList.flow
-  .sort{::order{::}}
+  .sort{::.order{::}}
   .list
 </code></pre>
 <p>The same exact code would work for a <code>List[Opt[E]]</code>.</p>
