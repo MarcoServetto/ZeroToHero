@@ -20,8 +20,8 @@ public class ClimbBaseArcher implements Function<Days.LevelName,String>{
       "@[Archers#(North,South)]@",
       List.of("Archer{..}",
           "【🚶⬆️, 🎯⬇️】",
-          "Anon:Archer{.heading->North, .aiming->South}",
-          "Archer{.heading->North, .aiming->South}"),
+          "Anon:Archer{.heading->North; .aiming->South}",
+          "Archer{.heading->North; .aiming->South}"),
       1)
     .question("""
       Now with a few more steps!

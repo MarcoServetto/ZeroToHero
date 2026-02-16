@@ -1,6 +1,5 @@
 package levels.day02;
 
-import java.util.List;
 import java.util.function.Function;
 
 import main.Days;
@@ -34,7 +33,7 @@ For example, this is an `Archer` that will head `North`
 after shooting `East`.
 ```
 ArcherNE:{
-  .heading -> North, .aiming -> <#[1|#|North|#|East|#|South|#|potato|#|this.aiming|#|this.heading]#>,
+  .heading -> North; .aiming -> <#[1|#|North|#|East|#|South|#|potato|#|this.aiming|#|this.heading]#>;
   }
 ```
 

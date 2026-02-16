@@ -41,91 +41,136 @@
 <h2>Serialising Tanks</h2>
 <p>With our understanding from before, we can reimplement <code>Tanks</code> as follow:</p>
 <pre><code>Tanks: F[Direction,Direction,Point,Tank], FromInfo[Tank] {
-  .fromInfo(i) -&gt; Tanks#(
-    Directions.fromInfo(i.map.get(`heading`)),
-    Directions.fromInfo(i.map.get(`aiming`)),
-    Points.fromInfo(i.map.get(`point`)),
-    ),
-  .fromInfo{map} -&gt; Tanks#(//with the new sugar
+  heading, aiming, point -&gt; Tank:ToInfo, ToStr,OrderHash[Tank]{'self
+    .heading: Direction -&gt; heading;
+    .aiming: Direction -&gt; aiming;
+    .info -&gt; Infos.map(`heading`, heading, `aiming`, aiming,   `point`, point);
+    .str  -&gt; ...;//includes repr1...repr3
+    .cmp t1,t2,m -&gt; t1.heading &lt;=&gt; (t2.heading,//This looks atrocious
+      m&amp;&amp;{t1.aiming &lt;=&gt; (t2.aiming, m&amp;&amp;{t1.point &lt;=&gt; (t2.point,m)})});
+    .cmp t1,t2,m -&gt; m.cmp({::.heading}.then{::.aiming}.then{::.point},t1,t2);
+    //can we get the above instead?
+    .hash -&gt; heading.hash.hashWith(aiming.hash).hashWith(point.hash);
+    };
+  .fromInfo {map} -&gt; Tanks#(
     Directions.fromInfo(map.get(`heading`)),
     Directions.fromInfo(map.get(`aiming`)),
     Points.fromInfo(map.get(`point`)),
-    ),
-  #(heading, aiming, point) -&gt; Tank:ToInfo, ToStr,OrderHash[Tank]{'self
-    .heading: Direction -&gt; heading,
-    .aiming: Direction -&gt; aiming,
-    .info -&gt; Infos.map(`heading`, heading, `aiming`, aiming,   `point`, point),
-    .str -&gt; ...,//includes repr1...repr3
-    &lt;=&gt;(o) -&gt; o.heading&lt;=&gt;heading &amp;&amp; {o.aiming &lt;=&gt; aiming} &amp;&amp; {o.point &lt;=&gt; point},
-    .hash(h)-&gt;h#(heading,aiming,point),
-  }}
+    );
+  }
 </code></pre>
 <p>As you can see, <code>Tank</code> is quite similar to <code>Point</code>.</p>
 <h4>Reading a <code>List[Tank]</code> from a file</h4>
-<p>Now that we have serializable and deserializable tanks, we can implement the type reading from file.
+<p>Now that we have serialisable and deserialisable tanks, we can implement the type reading from file.
 In chapter 3 we showed code</p>
-<pre><code>Test: Main {sys -&gt; Block#
-  .let fs= {UnrestrictedIO#sys}
-  .let game= ReadGame{fs}.read
-  .return{ PrintGame{fs}.lines(50,game) }
+<pre><code>//File _tank_game/_rank_app.fear
+Test: Main {sys -&gt; Block#
+  .let out= {sys.out}
+  .let in= {sys.inputCursor# !}
+  .let game= {mut ReadGame{in}.read}
+  .return{ mut PrintGame{out}.lines(50,game) }
+  }
 </code></pre>
 <p>Where we did not discuss how to write <code>ReadGame</code>.
 Now we can show such code!</p>
-<pre><code>ReadGame: {//Why UStr paths? what reading files really do? what takes in input and why?
-  mut .io: mut IO,
-  mut .read: List[Tank] -&gt; this.read(List.of(&quot;StartConfiguaration.txt&quot;))! 
-  mut .read(fileName: List[UStr]): mut Action[List[Tank]] -&gt; this.io
-    .accessR(fileName)             //mut ReadPath
-    .readStr                       //mut Action[Str]
-    .map{s -&gt; Infos.fromStr(s)}    //mut Action[Info]
-    .map{::list.flow.map{i-&gt;Tanks.fromInfo(i)}.list}
+<pre><code>ReadGame: {
+  mut .in: mut InputCursorNode,
+  mut .read : List[Tank] -&gt; Block#
+    .let[Str] text= {this.in.text!}
+    .let[Info] info= {Infos.fromStr(text)}
+    .return {info.list.flow.map{i-&gt;Tanks.fromInfo(i)}.list};
   }
 </code></pre>
-<p>As you can see, the no-args <code>.read</code> method delegates to a more reusable path -&gt; action method.
-This is a common way to handle reading external data: by defining a way to turn some kind of resource id into an action of data we can keep the abstraction levels separate and combine data sources when needed.
-Consider the following alternative implementation:</p>
-<pre><code>ReadGame: {..
+<p>As you can see, the no-args <code>.read</code> method takes the text of the file, parse it as an <code>Info</code> and then parse that <code>Info</code> as a list of <code>Tank</code>s</p>
+<p>You may be scratching your head about where this file comes from.
+We are not specifying a actual operation like read the file called <code>`input.txt`</code>. Where is this file coming from?
+It turns out that every single OS has ways to capture files intended as input, and
+this is exactly what <code>sys.inputCursor# !</code> is doing.
+The idea is that there can be many files intended as input, and more may be added at any time.
+This is the code of <code>InputCursor</code>.</p>
+<pre><code>InputCursor: ToIso[InputCursor], WidenTo[InputCursor]{
+  mut #: mut Opt[mut InputCursorNode];
+  mut .next: mut InputCursor;
+  }
+InputCursorNode: ToIso[InputCursorNode], WidenTo[InputCursorNode]{
+  mut .label: Str; /// best effort portable name to help debugging
+  mut .text: Opt[Str]; /// fresh read+decode each call; throws on I/O failure
+  mut .image: Opt[Image];
+  ...//many more methods for other kinds of files.
+  }
+```
+- `sys.inputCursor` is the capability to observe the files intended as input.
+- `sys.inputCursor#` gets the first input node.
+- `sys.inputCursor# !` extracts the actual `InputCursorNode`, throwing error if no input has been provided yet.
+- `this.in.text` then calls the text method. If the file has text, the optional will not be empty.
+- `this.in.text!` we extract the content from the optional with `!`.
+
+Note how this code simply leaks any kind of error anywhere it may raise.
+There are three many kinds of error here:
+- 1 Reading the string from file
+- 2 Deserializing the string into an `Info`
+- 3 Deserializing the info into a `List[Tank]`
+
+We may want to provide alternative behaviour ...
+&gt; not sure this would make for a good example.
+
+&gt; should the input node have a method .info directly?
+&gt; If so, what should happen if the file is valid text but not valid info? Opt empty or error? why? similar questions may pop up for malformed images.
+
+&gt; this text below was for a former API, that used action and we could discuss how to nest `.andThen`+`Try`
+```
+ReadGame: {..
   mut .read(fileName: List[UStr]): mut Action[List[Tank]] -&gt; this.io
     .accessR(fileName)                      //mut ReadPath
     .readStr                                //mut Action[Str]
     .andThen{s -&gt; Try#{Infos.fromStr(s)}}   //mut Action[Info]
     .andThen{i -&gt; Try#{i.list.flow.map{i-&gt;Tanks.fromInfo(i)}.list}}
   }
-</code></pre>
-<blockquote>
-<p>Note: could we have <code>Flow.tryMap</code>, and make it work also for <code>Action[mut T]</code>?<br />
-Also, should we have a variant of .andThen/.map that uses Try# on the argument, since it seems common?<br />
-Also, some way to go from Flow[Action[T]] into Action[List[T]] ? or Action[R] with a transformation function on the flow?</p>
-</blockquote>
-<p>Instead of <code>.map</code> we now use <code>.andThen</code> + <code>Try#</code>.
+```
+&gt; Note: could we have `Flow.tryMap`, and make it work also for `Action[mut T]`?  
+&gt; Also, should we have a variant of .andThen/.map that uses Try# on the argument, since it seems common?  
+
+Instead of `.map` we now use `.andThen` + `Try#`.
 The type is the same, but the error management is now very different.
-There are three many points of error:</p>
-<ul>
-<li>1 Reading the string from file</li>
-<li>2 Deserializing the string into an <code>Info</code></li>
-<li>3 Deserializing the info into a <code>List[Tank]</code></li>
-</ul>
-<p>Those three kinds of errors are handled differently when calling <code>.read(fileName).run{..}</code>.
-What errors are captured inside the <code>Info</code> of the <code>Action[List[Tank]]</code> returned by the <code>.read(fileName)</code> method?
+There are three many points of error:
+- 1 Reading the string from file
+- 2 Deserializing the string into an `Info`
+- 3 Deserializing the info into a `List[Tank]`
+
+Those three kinds of errors are handled differently when calling `.read(fileName).run{..}`.
+What errors are captured inside the `Info` of the `Action[List[Tank]]` returned by the `.read(fileName)` method?
 What errors just leak out?
-The errors from (1) are always handled by the action. This means that they always end up captured by the action <code>Info</code>.
-The errors in 2 and 3 leak out when using <code>.map</code> and are captured when using <code>.andThen</code> + <code>Try#</code>.</p>
-<p>Note that <code>ReadGame.read</code> body is <code>this.read(List.of(&quot;StartConfiguaration.txt&quot;))!</code>,
-thus the errors that we carefully separated in the second implementation ends up together again when we call the method <code>!</code> on the result of  <code>.read(fileName)</code>.
-This causes all the errors to become observed bugs and to stop our application.</p>
-<p>This is not always the desired behaviour. When writing larger applications it becomes important to distinguish which errors are recoverable situations (so that we can capture them into the action <code>Info</code>) and which  errors are observed bugs.
-Using  <code>.map</code> or <code>.andThen</code> + <code>Try#</code> we can choose how to classify such details.</p>
-<p>We can also add information to the error messages using code as below</p>
-<pre><code>    .andThen{s -&gt; Try#{Infos.fromStr(s)}
+The errors from (1) are always handled by the action. This means that they always end up captured by the action `Info`.
+The errors in 2 and 3 leak out when using `.map` and are captured when using `.andThen` + `Try#`.
+
+
+&gt; An interesting corner of design would be to offer some way to go from `Flow[Action[T]]` into `Action[List[T]]` ? or `Action[R]` with a transformation function on the flow?
+
+
+Note that `ReadGame.read` body is `this.read(List.of(&quot;StartConfiguaration.txt&quot;))!`,
+thus the errors that we carefully separated in the second implementation ends up together again when we call the method `!` on the result of  `.read(fileName)`.
+This causes all the errors to become observed bugs and to stop our application.
+
+This is not always the desired behaviour. When writing larger applications it becomes important to distinguish which errors are recoverable situations (so that we can capture them into the action `Info`) and which  errors are observed bugs.
+Using  `.map` or `.andThen` + `Try#` we can choose how to classify such details.
+
+We can also add information to the error messages using code as below
+```
+    .andThen{s -&gt; Try#{Infos.fromStr(s)}
       .context{`While deserializing Info from string`}}
     .andThen{i -&gt; Try#{i.list.flow.map{i-&gt;Tanks.fromInfo(i)}.list}
       .context{`While deserializing tanks from Info`}}
+```
+Note how the indentation helps seeing the context text becoming part of the action.
+
+#### Graduation
+This is the end of chapter 4.
+In those 4 chapters we used the tank game as an example on how to build simple behaviour.
+
+We are now going to move forward, toward other interesting examples.
+
+
 </code></pre>
-<p>Note how the indentation helps seeing the context text becoming part of the action.</p>
-<h4>Graduation</h4>
-<p>This is the end of chapter 4.
-In those 4 chapters we used the tank game as an example on how to build simple behaviour.</p>
-<p>We are now going to move forward, toward other interesting examples.</p>
       <div class="nav-links">
       <a href="27_01.html">Previous</a> <span class="disabled">Next</span>
       </div>

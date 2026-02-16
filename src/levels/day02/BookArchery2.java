@@ -18,8 +18,8 @@ Archer: {
   .aiming:  Direction,
   }
 <#[2|#|Archer: Archer{|#|ArcherNN: ArcherNN{|#|ArcherNN: Archer{|#|Archer; Archer{|#|ArcherNN: Archer:{]#>
-  .heading -> North,
-  .aiming  -> North,
+  .heading -> North;
+  .aiming  -> North;
   }
 ```
 It is very

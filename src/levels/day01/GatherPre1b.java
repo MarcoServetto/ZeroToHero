@@ -15,9 +15,9 @@ public class GatherPre1b implements Function<Days.LevelName,String>{
 //The code of a direction also assumes
 //the other three directions to be
 //declared as shown in the exercises before
-Direction:{.turn:Direction,}
+Direction:{.turn:Direction;}
 """)
         // code with title, group img, img num
-    .card("GoodOrBad 1\nNorth:Direction{.turn->East,}",1,BrownMushroom,1)
-    .cardTrash("GoodOrBad 2\nNorth:Direction{.turn->North,}",BrownMushroom,13)
+    .card("GoodOrBad 1\nNorth:Direction{.turn->East;}",1,BrownMushroom,1)
+    .cardTrash("GoodOrBad 2\nNorth:Direction{.turn->North;}",BrownMushroom,13)
     .build(); } }

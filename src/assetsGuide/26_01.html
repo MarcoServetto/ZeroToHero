@@ -44,7 +44,7 @@
 The standard library offers a simple way to add those common features to our enumerations: just implement the types <code>Enum</code> and <code>Enums</code> as shown below:</p>
 <pre><code>//Code we can write to declare our own enumerations
 Directions: Enums[Direction]{ List#(North,East,South,West) }
-Direction: Enum[Direction]{ .enums-&gt;Directions, }
+Direction: Enum[Direction]{ Directions }
 North: Direction{`North`}
 East:  Direction{`East`}
 South: Direction{`South`}
@@ -52,16 +52,15 @@ West:  Direction{`West`}
 </code></pre>
 <p>Or, if we want to also support our <code>.match</code> method:</p>
 <pre><code>Directions: Enums[Direction]{ List#(North,East,South,West) }
-Direction: Enum[Direction]{ .match[R:**](m: mut DirectionMatch[R]): R , .enums-&gt;Directions,}
-DirectionMatch[R:**]{ mut .north: R, mut .east: R, mut .south: R, mut .west: R }
-North: Direction{.match(m)-&gt;m.north, .str-&gt;`North`}
-East:  Direction{.match(m)-&gt;m.east,  .str-&gt;`East`}
-South: Direction{.match(m)-&gt;m.south, .str-&gt;`South`}
-West:  Direction{.match(m)-&gt;m.west,  .str-&gt;`West`}
-//alternatives
-West:  Direction{.match::west,  .str-&gt;`West`}
-West:  Direction{::west,  `West`}//if our syntax allows to override the only abstract method with xx arguments
-Even better, we could exclude any named method already, so the last unnamed abstract meth with n arguments is name-inferred. This would also allow to add new abstract methods while implementing old abstract ones
+Direction: Enum[Direction]{
+  Directions;
+  .match[R:**](m: mut DirectionMatch[R]): R;
+  }
+DirectionMatch[R:**]{ mut .north: R; mut .east: R; mut .south: R; mut .west: R }
+North: Direction{::.north; `North`}
+East:  Direction{::.east;  `East` }
+South: Direction{::.south; `South`}
+West:  Direction{::.west;  `West` }
 </code></pre>
 <p>As you can see, we list our directions and we define the matcher listing the direction in method form.
 Finally, we connect the direction-type with the direction-match-method and their string representation.</p>
@@ -69,78 +68,35 @@ Finally, we connect the direction-type with the direction-match-method and their
 However, in Fearless you can see how the whole mechanism works, and how simple method calls encode all the needed logic. In turn, this make it more natural to extend enumerations with other useful methods and features.</p>
 <p>The code of <code>Enum[E]</code> and <code>Enums[E]</code> is actually quite simple and educational:</p>
 <pre><code>//Code from the Fearless standard library
-FromInfo[T]: { .fromInfo(i: Info): T }
+FromInfo[E]: { .fromInfo(i: Info): E }
 
 Enums[E]: FromInfo[E]{
-  .list: List[E],
-  .map: Map[Str,E] -&gt; this.list.flow.mapping({::},{
-    .key(e) -&gt; e.str,
-    .elem(e) -&gt; e,
-    })
-  .fromInfo(i) -&gt; this.map.get(i.msg),
+  .list: List[E];
+  .map: Map[Str,E] -&gt; this.list.flow.mapping({::},{ ::; .key  e -&gt; e.str; });
+  .fromInfo i -&gt; this.map.get(i.msg);
   }
-Enum[E]: ToStr, ToInfo, OrderHash[E]{
-  .enums: Enums[E],
-  .info -&gt; Infos.msg(this.str),
-  .index: Nat -&gt; this.enums.list.enumerate.filter{ei-&gt;ei.e.str == (this.str)}.get.i
+Enum[E]: DataType[E,E]{
+  .enums: Enums[E];
+  .info -&gt; Infos.msg(this.str);
    //enumerate gives pair index/element
-  .index:Nat-&gt;this.enums.list.enumerate.filter{{e,i}-&gt;e.str == (this.str)}.get.i//potential new syntax sugar
-  &lt;=&gt;(other)-&gt;this.str&lt;=&gt;(other.str),
-  &lt;=&gt;{str}-&gt;this.str&lt;=&gt;str,//LOL?
-  &lt;=&gt;::str&lt;=&gt;(this.str),//LOL?
-  &lt;=&gt;(other)-&gt;this.index&lt;=&gt;(other.index),//or this version with index
-  .hash(h)-&gt;h#(this.str),//or on the index
-  .hash::#(this.index),//like this?
+  .index:Nat-&gt;this.enums.list.flow
+    .enumerate.filter{{.e.str}-&gt;this.str == str}.get.i
+  //alternative: .flatMapIndex give index,e
+  .index:Nat-&gt;this.enums.list.flow
+    .flatMapIndex{i,e-&gt;this.str == (e.str)? {Flows#i; .else-&gt; Flows#}.get
+  .cmp {.index}1, {.index}2, m -&gt; index1 &lt;=&gt; (index2,m);
+  .hash-&gt; this.index;
   }
 </code></pre>
-<hr />
-<blockquote>
-<p>variant with AutoMatch[E] and AutoToStr and generalized meth name inference
-and allowing nested types to be instantiated via name if context shows no capture</p>
-</blockquote>
-<pre><code>Direction: Enum[Direction]{ Directions, .match[R:**](m: mut DirectionMatch[R]): R}
-DirectionMatch[R:**]{ mut .north: R, mut .east: R, mut .south: R, mut .west: R }
-Directions: Enums[Direction], AutoMatch{ List#(
-  North: Direction{},
-  East:  Direction{},
-  South: Direction{},
-  West:  Direction{},
-) }
-//for n names, 7+n Direction, 2*n names, n mut:R
-FromInfo[T]: { .fromInfo(i: Info): T }
-
-Enums[E]: FromInfo[E]{
-  .list: List[E],
-  .map: Map[Str,E] -&gt; this.list.flow.mapping({::},{
-    .key(e) -&gt; e.str,
-    .elem(e) -&gt; e,
-    })
-  .fromInfo(i) -&gt; this.map.get(i.msg),
-  }
-Enum[E]: AutoStr[], ToInfo, OrderHash[E]{
-  .enums: Enums[E],
-  .info -&gt; Infos.msg(this.str),
-  .index:Nat-&gt;this.enums.list.enumerate.filter{{e,i}-&gt;e.str == (this.str)}.get.i
-  &lt;=&gt;(other)-&gt;this.index&lt;=&gt;(other.index),
-  .hash(h)-&gt;h#(this.index),
-  }
-</code></pre>
-<blockquote>
-<p>AutoStr[<code>.a.b.c</code>] would try to generate a method .str printing classname[a=this.a, b=..]
-for all and only the methods existing in 'this'.
-Note how this would go in stack overflow if .str is in the list.
-AutoMatch could try to implement a method .match with the lowecase version of the name of the type and simply propagate arguments, so
-.match(m)-&gt;m.name
-.match(m,a,b)-&gt;m.name(a,b)
-Note: it will not implement .match if the method with the right name/arity is not present</p>
-</blockquote>
-<hr />
 <p>Thanks to <code>Enums[Direction]</code> we get a <code>.map</code> method mapping names to directions.</p>
 <ul>
 <li>Method <code>.map</code> returns a <code>Map[Str,Direction]</code> linking the string names of directions
-(<code>North</code>, <code>East</code>, etc.) to their corresponding <code>Direction</code> objects. This allows us to look up a Direction by its name. This is computed by using the method <code>.mapping</code>; taking a literal with a <code>.key</code> method and an <code>.elem</code> method, converting the flow elements into the key and element values for the newly created map. We also need to provide the identity function to <em>confirm</em> that strings implement <code>OrderHash[Str]</code>.
+(<code>North</code>, <code>East</code>, etc.) to their corresponding <code>Direction</code> objects. This allows us to look up a Direction by its name. This is computed by using the method <code>.mapping</code>; taking a literal with a <code>.key</code> method and an <code>.elem</code> method, converting the flow elements into the key and element values for the newly created map. We also need to provide the identity function to <em>confirm</em> that strings implement <code>OrderHash</code>.
 That is, the result of <code>.map</code> will be equivalent to the result of <code>Maps#({::},`North`,North, `East`,East, `South`,South, `West`,West)</code>.</li>
 </ul>
+<blockquote>
+<p>Note: .enumerate and .flatMapIndex do not exist yet.</p>
+</blockquote>
 <p>Many enumeration types will have similar utility methods.
 Note how methods <code>.list</code> and <code>.map</code> are fully deterministic. They take no arguments: the receiver contains no information (since it is a singleton) and there are no other parameters. This means that every time that code is executed, it would produce the same result.
 Fearless will cache the result of such methods, so that the computation runs only one time.
@@ -152,6 +108,9 @@ In the case of <code>Map#(`North`,North, `East`,East, `South`,South, `West`,West
 So, how to extract an element from a map if we have a string that may or may not be a valid key?</p>
 <p>The <code>Map[K,E]</code> type from the standard library offers three different methods:
 <code>.get</code>, <code>.opt</code>, and <code>.tryGet</code>.</p>
+<blockquote>
+<p>Note: .tryGet should be added to both Map/List/Set</p>
+</blockquote>
 <p>Calling <code>Map#(`North`,North, `East`,East, `South`,South, `West`,West).opt(`North`)</code>
 will result in <code>Opts#(North)</code>: an <code>Opt[Direction]</code> containing the <code>North</code> direction.
 Calling <code>Map#(`North`,North, `East`,East, `South`,South, `West`,West).opt(`Nope`)</code>

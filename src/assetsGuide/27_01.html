@@ -42,11 +42,8 @@
 <p>In Fearless, some methods throw errors.
 As discussed, errors are not part of the basic semantics of Fearless, and they can be thrown using the magic method <code>Error!(Info)</code>.
 That is, any code anywhere can write <code>Error!(someInfo)</code> and throw that <code>Info</code> object as a structured error message.</p>
-<blockquote>
-<p>TODO: Error.msg returns {msg:text, stackTrace:[...]}</p>
-</blockquote>
 <p>Before we discussed the convenience method <code>Error.msg</code> that takes a simple string, converts it into an <code>Info</code> object mapping that
-string to the <code>`msg`</code> key and adds more debugging information.
+string to the <code>`msg`</code> key.
 The method <code>Map.get</code> either returns the mapped value or uses <code>Error.msg(..)</code> to report the lookup failure.</p>
 <p>When a method throws an error the computation stops and the error is reported outside of the program.
 This behaviour can be overridden using <code>Try#{ ../*code that can fail*/.. }</code>.
@@ -68,22 +65,19 @@ When we want to consciously extract an element that may or may not be there, wit
 <li>the contained value has not been computed yet. While an <code>Opt[E]</code> stores an element of type <code>E</code>, an <code>Action[R]</code> stores a computation that can create such an <code>R</code> result.</li>
 </ul>
 <p>The code of <code>Action[R]</code> is not very long and it uses Fearless in interesting ways, thus we will read and explain the implementation of <code>Action[R]</code> as present in the standard library:</p>
-<pre><code>ActionMatch[T:*,R:**]: {//NOTE: should be T:* or T:**? actually unobvious
-  mut .ok(x: T): R,
-  mut .info(info: Info): R,
+<pre><code>ActionMatch[R:**,RR:**]: {//NOTE: should be R:* or R:**? actually unobvious
+  mut .ok(R): RR;
+  mut .info(Info): RR;
   }
-</code></pre>
-<p>The <code>ActionMatch[T,R]</code> type is unsurprising. Very similar to <code>OptMatch[T,R]</code> or <code>StackMatch[T,R]</code>.
-As we discussed before, remember that <code>T:*</code> stays for <code>T:imm,mut,read</code> and <code>T:**</code> includes all of the reference capabilities.</p>
-<p>At its core, Action has a very simple implementation:</p>
-<pre><code>MF[R:**]: { mut #: R }
 Action[R:**]: {
-  mut .run[RR:**](m: mut ActionMatch[R,RR]): RR,
+  mut .run[RR:**](mut ActionMatch[R,RR]): RR;
   }
 </code></pre>
-<p>We call the generic parameters <code>R</code> and <code>RR</code> to suggest that <code>R</code> is the result of the action, while <code>RR</code> is the result of processing either the action result or the error <code>Info</code>.</p>
-<p>If you remember from before, <code>MF</code> is similar to <code>F</code>, but it is mutable. That is, it is a function that can make mutations while it runs.
-<code>Action[R]</code> has a single abstract <code>.run</code> method that takes an <code>ActionMatch[R,RR]</code>.
+<p>The <code>ActionMatch[R,RR]</code> type is unsurprising. Very similar to <code>OptMatch[T,R]</code> or <code>StackMatch[T,R]</code>.
+As we discussed before, remember that <code>R:*</code> stays for <code>R:imm,mut,read</code> and <code>R:**</code> includes all of the reference capabilities.
+At its core, Action has a very simple implementation.
+We call the generic parameters <code>R</code> and <code>RR</code> to suggest that <code>R</code> is the result of the action, while <code>RR</code> is the result of processing either the action result or the <code>Info</code>.</p>
+<p><code>Action[R]</code> has a single abstract <code>.run</code> method that takes an <code>ActionMatch[R,RR]</code>.
 Note how everything is either <code>mut</code> or <code>**</code>. This is because actions are often used together with side effects and mutations.
 The actual implementation of <code>Action[R]</code> also offers some convenience methods (<code>.map</code>,<code>.mapInfo</code>, <code>.andThen</code>, <code>!</code> and <code>.context</code>).
 Methods <code>!</code> and <code>.context</code> are widely used and beginner friendly, while method <code>.map</code>, and <code>.andThen</code> are used more rarely.
@@ -93,9 +87,9 @@ Here we exam those methods one by one:</p>
 </blockquote>
 <h4>Method <code>Action[R]!</code></h4>
 <pre><code>Action[R:**]: {
-  mut .run[RR:**](m: mut ActionMatch[R,RR]): RR,
+  mut .run[RR:**](mut ActionMatch[R,RR]): RR;
   ..
-  mut !: R -&gt; this.run{.ok(x) -&gt; x, .info(i) -&gt; Error!i},
+  mut !: R -&gt; this.run{.ok x -&gt; x; .info i -&gt; Error!i};
   }
 </code></pre>
 <p>Method <code>Action!</code> returns the <code>R</code> value, or throws an error with the provided info.
@@ -117,14 +111,20 @@ For example,</p>
 <li><code>myAction</code></li>
 </ul>
 <p>Note how in the first example the <code>!</code> is outside of the <code>Try</code> and in the second example the <code>!</code> is inside of the <code>Try</code>.</p>
+<p>That is, <code>Try#{ myAction! }</code> <strong>does not</strong> execute the action, it just creates an action that, when run, would execute the action <code>myAction</code>.
+To force the execution of an action and still get the action back, we should use the following code:</p>
+<pre><code>myAction.run{ .ok v-&gt;Actions.ok(v); .info i-&gt; Actions.info(i); }
+</code></pre>
+<p>Where <code>Actions.ok</code> and <code>Actions.info</code> create an always succeeding or always failing action.
+However, actions that do no actions when called are misleading, so the code above is better avoided.</p>
 <h4>Method <code>Action[R].context</code></h4>
 <pre><code>Action[R:**]: {
-  mut .run[RR:**](m: mut ActionMatch[R,RR]): RR,
+  mut .run[RR:**](mut ActionMatch[R,RR]): RR;
   ..
   mut .context(msg: read F[Str]): mut Action[R] -&gt; {m -&gt; this.run{
-    .ok(x) -&gt; m.ok(x),
-    .info(i) -&gt; m.info(Infos.msg(msg#) + i),
-    }},
+    .ok x   -&gt; m.ok(x);
+    .info i -&gt; m.info(Infos.msg(msg#) + i);
+    }};
   }
 </code></pre>
 <p>Method <code>.context</code> is a convenience method to add contextual information to actions.
@@ -132,7 +132,7 @@ Internally, it uses method <code>Info+</code>, that we have not seen yet:
 The method <code>Info+</code> makes it easy to compose information together.
 Two <code>Info</code> messages are concatenated, two <code>Info</code> lists are concatenated and two <code>Info</code> maps are merged:</p>
 <ul>
-<li>If a key is present in only one of the two sources, the key-&gt;element mapping will be present in the resulting information.</li>
+<li>If a key is present in only one of the two sources, the key -&gt; element mapping will be present in the resulting information.</li>
 <li>If the key is present in both sources, the resulting information will map that key to the sum of the two elements using <code>Info+</code> recursively.</li>
 </ul>
 <p>Finally, if the two infos are not of the same kind, they are lifted to maps with a single mapping containing the original information:</p>
@@ -151,12 +151,13 @@ attempted access in position 5 over a list of size 3</p>
 </blockquote>
 <p>Note that the computation required to format this extra information will only be executed if the <code>Action[R]</code> actually fails. This is often a big win in terms of performance, since nicely formatted error messages may be quite slow to compute.</p>
 <h4>Method <code>Action[R].map</code></h4>
-<pre><code>Action[R:**]: {
-  mut .run[RR:**](m: mut ActionMatch[R,RR]): RR,
+<pre><code>MF[R:**]: { mut #: R } //mutable function, seen before
+Action[R:**]: {
+  mut .run[RR:**](mut ActionMatch[R,RR]): RR,
   mut .map[RR:**](f: mut MF[R,RR]): mut Action[RR] -&gt; {m -&gt; this.run{
-    .ok(x) -&gt; m.ok(f#x),
-    .info(i) -&gt; m.info(i),
-    }},
+    .ok x   -&gt; m.ok(f#x);
+    .info i -&gt; m.info(i);
+    }};
   ...
   }
 </code></pre>
@@ -169,13 +170,19 @@ For example</li>
 <pre><code>persons.tryGet(3).map{::name}
 </code></pre>
 <p>would return an <code>Action[Str]</code> containing the name of the person in position 3.</p>
+<p>Note that if the map operation would fail by calling <code>Error.msg</code>;
+that error would not turn the action into a failed action with the <code>.info</code> containing the error; it would just leak out when we attempt to <code>.run</code> our action.</p>
+<blockquote>
+<p>TODO: should we design this alternative behaviour too and see how it looks?</p>
+</blockquote>
 <h4>Method <code>Action[R].andThen</code></h4>
-<pre><code>Action[R:**]: {
-  mut .run[RR:**](m: mut ActionMatch[R,RR]): RR,
+<pre><code>MF[R:**]: { mut #: R } //mutable function, seen before
+Action[R:**]: {
+  mut .run[RR:**](mut ActionMatch[R,RR]): RR;
   mut .andThen[RR:**](f: mut MF[R,mut Action[RR]]): mut Action[RR] -&gt; {m -&gt; this.run{
-    .ok(x) -&gt; f#x.run(m),
-    .info(i) -&gt; m.info(i),
-    }},
+    .ok x   -&gt; f#x.run(m);
+    .info i -&gt; m.info(i);
+    }};
 ..
   }
 </code></pre>
@@ -185,7 +192,7 @@ If the original <code>Action[R]</code> is successful (i.e., produces a value), <
 <p><code>.andThen</code> extends the functionality of <code>.map</code> by allowing the transformation function itself to produce the new <code>Action[RR]</code>. This is useful when the transformation’s outcome isn’t just a value, but a new computation or action that might itself succeed or fail.
 The function used in <code>.andThen</code> takes a value of type <code>R</code> and returns a new <code>Action[RR]</code>.
 Method <code>.andThen</code> is designed to handle nested actions. If the original <code>Action[R]</code> is successful, <code>.andThen</code> uses the value to generate a new <code>Action[RR]</code> using the provided function. This new Action is then executed as part of the overall computation. If the original <code>Action[R]</code> is a failure, both <code>.map</code> and <code>.andThen</code> simply propagate the failure information.
-Method andThen is particularly useful in scenarios where subsequent actions depend on the results of previous ones.
+Method <code>.andThen</code> is particularly useful in scenarios where subsequent actions depend on the results of previous ones.
 For example, the code below</p>
 <pre><code>persons.tryGet(3).andThen{p-&gt;
   jobs.tryGet(p.name).map{ j-&gt;`Person `+p+` works as a `+j } }
@@ -210,28 +217,27 @@ Code with less responsibility can simply throw errors, while code with higher re
 We could use errors to enforce that whenever a <code>Point</code> is observed, the <code>.x</code> and <code>.y</code> coordinates are in the 0-10 range.</p>
 <blockquote>
 <p>Note: we do not show     .assert { x.inRange(0,10) } since it would make a bad error message.
-should we have a general Bool.orMsg(<code>...</code>)
+should we have a general Bool.orMsg(<code>...</code>) ?
 if we want disableable assertions, we could have .assert taking a void like do.
-then we get to write .asser{ x.checkInRange(0,10) } taking an read F[Void]
+then we get to write .assert{ x.checkInRange(0,10) } taking an read F[Void]
 read F[Void] is a very unusual type, but this seems to be the good use case: it guarantees no side effects visible AND no value created</p>
 </blockquote>
 <pre><code>Points: F[Nat,Nat,Point], FromInfo[Point] {
 
-  .fromInfo(i) -&gt; Points#(i.map.get(`x`).msg.nat, i.map.get(`y`).msg.nat),
+  .fromInfo(i) -&gt; Points#(i.map.get(`x`).msg.nat, i.map.get(`y`).msg.nat);
 
-  #(x, y) -&gt;Block#
+  # x, y -&gt;Block#
     .do { x.checkInRange(0,10) }
     .do { y.checkInRange(0,10) }
-    .return{ Point: ToInfo,ToStr,OrderHash[Point]{'self
+    .return{ Point: DataType[Point,Point]{'self
       .x: Nat -&gt; x,
       .y: Nat -&gt; y,
       +(other: Point): Point -&gt; Points#(other.x + x, other.y + y),
       .move(d: Direction): Point -&gt; self + ( d.point ),
-      &lt;=&gt;(other) -&gt; other.x &lt;=&gt; x  &amp;&amp; { other.y &lt;=&gt; y },
-      &lt;=&gt;{x,y}1 -&gt; x &lt;=&gt; x1  &amp;&amp; { y &lt;=&gt; y1 },//other application of the sugar? also on + and .move
-      .hash(h)-&gt; h#(x, y),
-      .info -&gt; Infos.map(`x`,x,  `y`,y),
-      .str -&gt; `[` + x + `, ` + y + `]`,
+      .cmp {.x,.y}1, {.x,.y}2, m -&gt; x1 &lt;=&gt; (x1,m &amp;&amp; { y1 &lt;=&gt;(y2,m) };
+      .hash -&gt; x.hash.hashWith(y.hash);
+      .info -&gt; Infos.map(`x`,x,  `y`,y);
+      .str -&gt; `[` + x + `, ` + y + `]`;
       }}}
 </code></pre>
 <p>Here Points has a <code>.fromInfo</code> method creating a point using the <code>.x</code> and <code>.y</code> coordinate stored in an <code>Info</code> object.
@@ -239,27 +245,177 @@ Then, method <code>Points#</code> takes the <code>x</code> and <code>y</code> <c
 However, before the point is created, we use <code>Nat.checkInRange</code> to check that <code>x</code> and <code>y</code> are in the desired range.
 <code>Nat.checkInRange</code> will use <code>Error!</code> if the condition is false.</p>
 <blockquote>
-<p>//TODO: what is the current state in Fearless for those kinds of assertions?</p>
+<p>TODO: we need to decide if those are deterministic or non deterministic errors.
+Same for most errors in the std library right now.</p>
 </blockquote>
 <p>This means that if we try to create a <code>Point</code> object, either manually or from an <code>Info</code>, we either get a valid <code>Point</code> or an error.
 The idea is that most of the code can create points assuming that the creation would succeed.
 From the perspective of that code, a failure to create a <code>Point</code> object is an observed bug.</p>
 <p>Then, if the program as a whole does not want to consider failing to create points an observed bug, it can wrap a function making a lot of computations about points into a <code>Try#{..}</code>, thus producing an action that can be safely handled.</p>
 <p>In a complex program we can have a few layers of responsibility like this, where some code works as a supervisor of some other code that is allowed to fail.</p>
-<h2>Offensive programming</h2>
-<p>We must ensure that code fails fast and visibly when undesired situations occur. The goal is to have the code fail as soon as a fault is introduced. This approach helps in quickly pinpointing the source of an error, making it easier to debug and fix.
+<h3>Try, CapTry and exact shape of error messages.</h3>
+<p>We have seen that <code>Try#{...}</code> creates an <code>Action[R]</code> and that <code>myAction!</code> can do
+<code>Error#(info)</code>.
+But.. what happen next?
+Another <code>Try#{...}</code> can turn the leaked error into another <code>Action[R]</code>, or the whole program could fail. How does this failure looks?
+It will look something like this:</p>
+<pre><code>Error info: {.msg:`....`}
+stack trace:
+...//TODO: complete example with correct code.
+...
+...
+</code></pre>
+<p>The first chunk prints the info.
+it could be just <code>.msg</code> or could be richer if the info contained more data.
+But we also get this <strong>stack trace</strong> details.
+What is that about?
+It is about the set of active calls when the error leaked.</p>
+<p>For example</p>
+<pre><code>Stuff:{
+  .foo (myList)-&gt;myList.get(5);
+  .bar -&gt; try{this.foo};
+  .beer1 -&gt; this.bar!
+  .beer2 -&gt; this.bar.context `InBeer2`!
+  }
+</code></pre>
+<p><code>this.beer1</code> would have
+<code>list too short</code>
+stack trace <code>Stuff.beer1, Stuff.foo, List.get</code>.</p>
+<p><code>this.beer2</code> would have</p>
+<pre><code>InBeer2
+list too short
+</code></pre>
+<p>stack trace <code>Stuff.beer2</code>
+As you can see, the call to context added custom text but removed information from the stack trace.</p>
+<blockquote>
+<p>Is this what we want? big design decision. The other implementation where we keep the original stack trace must also be possible. (mutate the exception obj and re-throw it)</p>
+</blockquote>
+<p>We can capture this information programmatically with the capability <code>System.try</code></p>
+<pre><code>example.
+</code></pre>
+<p>Code <code>capTry#{...}</code> creates an <code>Action[R]</code> whose <code>Info</code> is going to be the sum of the
+normal <code>Info</code> and the info containing the stack trace.</p>
+<blockquote>
+<p>How? list of string or structured?</p>
+</blockquote>
+<p>Moreover, <code>System.try</code> allows to capture some sneaky errors, known as <strong>non deterministic errors</strong>.
+Non deterministic errors are errors that may change depending on the specific system limitations and set up.
+They include:</p>
+<ul>
+<li>Memory overflow: discuss</li>
+<li>Stack overflow: discuss</li>
+<li>Assertion errors (since they can be disabled? Discuss)</li>
+<li>Arithmetic errors (since they can be disabled? Discuss)</li>
+<li>Other? Discuss</li>
+</ul>
+<blockquote>
+<p>TODO: Right now _Throw does
+.msg[R:**](msg: Str): R -&gt; _Throw.deterministic(Infos.msg msg + (_Throw.stackTrace));
+.nonDeterministic[R:**](msg: Str): R -&gt; _Throw.nonDeterministic(Infos.msg msg + (_Throw.stackTrace));
+Instead, it should be in the catch:
+catch(Deterministic d){ return m.mut$info$1(d.i); }
+catch(NonDeterministic d){ return m.mut$info$1(d.i); }</p>
+</blockquote>
+<p>As you can imagine, it is quite rare to have to capture non deterministic errors; but there are many reasonable examples:</p>
+<ul>
+<li>Testing framework: this is code that runs and supervision tests.
+Any kind of failure should be captured and handled/recorded/logged in some way.</li>
+<li>Web server: It must run many different code serving web pages, and a page error, no matter how severe, should not terminate the whole web server.</li>
+<li>Try different strategies from a database of options to solve a problem. Then record statistical data about what option solved the problem better and faster to produce self improving programs.</li>
+<li>Airplane or nuclear plant supervision system: you probably do not want it to terminate, no matter the error.</li>
+<li>Videogame where users can somehow forge code either directly or by combining magic objects with standard effects.</li>
+</ul>
+<blockquote>
+<p>need a Cap that give you current line number and file name!</p>
+</blockquote>
+<h1>Offensive programming</h1>
+<blockquote>
+<p>should be a section of the guide
+We must ensure that code fails fast and visibly when undesired situations occur. The goal is to have the code fail as soon as a fault is introduced. This approach helps in quickly pinpointing the source of an error, making it easier to debug and fix.
 The reality is that all code, at any moment, may fail at run time. Perfection will likely always elude us.
 While striving for perfection in coding is admirable, it is nearly impossible to achieve flawlessness. We acknowledge this reality and instead focus on managing imperfections effectively.
 When failures occur, it is crucial that they produce clear and understandable error messages. This will help us to understand issues quickly and accurately.</p>
+</blockquote>
 <p>The primary adversary here is the silent failure: code that continues to run despite broken assumptions or invalid data. Such failures can lead to unpredictable behaviour and can corrupt the system insidiously, affecting increasingly larger portions of the application.</p>
 <p>By inserting run time checks as shown above, we can minimise the lifetime of faulty executions, and ensure that the code only receives correct data. We need to be proactive rather than reactive, preventing issues from going unnoticed and causing further complications down the line.
 With immutable objects like <code>Point</code>, it is usually sufficient to insert appropriate checks during object creation.
 We will later see other techniques supporting offensive programming when working with mutable data.</p>
 <p>Some programmers think the code should simply never fail by construction; basically it should encode the proof of it's own correctness inside it's structure.
 While amazing in theory, this mindset causes issues in the real world, where programmers are negotiating their code quality with time and skill constraints.
-Bob, the stressed programmer would probably chose to somehow twist the intended behaviour in subtle ways so that the code compiles and he does not get fired.<br />
+Bob, the stressed programmer would probably chose to somehow twist the intended behaviour in subtle ways so that the code compiles and he does not get fired.
 The offensive programming philosophy instead gives plenty of escape hatches to Bob:
 he can produce code working correctly in most real situations, while failing with observed bugs when needed. This explicitly and sincerely communicate what is going on.</p>
+<p>The whole idea of offensive programming is that code should fail immediately when an unexpected situation is detected.
+This does have a cost: the programmer must take an active role and write checks to detect unexpected situations.</p>
+<p>The standard library helps: methods like ...... all fail early.
+But, in a real program 90% of the code is new abstractions written by the programmer; those abstractions will have their own unexpected situations to check for.</p>
+<p>When programmers learn about offensive programming, they are usually scared about two issues:
+Performance and false positives.
+In Fearless both issues are solved at the same time by tunable assertion levels.</p>
+<h4>Tunable assertion levels:</h4>
+<p>There are many different layers of assertions:</p>
+<ul>
+<li>assert:  observed bug: the code of this package has a bug.</li>
+<li>assertPre: precondition violation: the code of this package has been called with parameters that violate it's requirements.</li>
+<li>assertSys: The program is fine but the system running this program does not support the needed requirements. For example, a file must be present for the application to work; memory or stack are insufficient; OS resources can not be obtained.</li>
+<li>assertNetwork: The program and the system are fine, but some needed remote service is unavailable.</li>
+<li>given that there are already 4 levels, we also have <code>.assert5</code>... <code>.assert16</code> to cover other user defined situations. <code>assert1</code>..<code>assert4</code> are aliases for those shown named assertion kinds.</li>
+</ul>
+<p>Each package can disable/enable each of those levels.
+That is,</p>
+<pre><code>//in file _foo/bar.fear
+Block#
+  .assertPre{ x.checkInRange(0,10) }
+  .do{...}
+  ..
+</code></pre>
+<p>would simply discard the literal <code>{ x.checkInRange(0,10) }</code> if the code is compiled with</p>
+<pre><code>disable foo.assertPre;
+</code></pre>
+<blockquote>
+<p>exact syntax to discuss</p>
+</blockquote>
+<p>Another form of assertions is useful when we want to provide alternative behaviour upon disabling:</p>
+<pre><code>//in file _foo/bar.fear
+Block# //many options for the actual API
+  .let content= {AssertSys.or({..readFile `foo.txt` ..},{..ask user for existing file with file choser..} }
+  .let foo= AssertPre#(foo.bar(),{::.inRange(3,25)},{_-&gt;10})
+  .do{...}
+  ..
+</code></pre>
+<p>Here if the file <code>foo.txt</code> is not present, we would give an error, or ask the user for another location if</p>
+<pre><code>disable foo.assertSys;
+</code></pre>
+<p>is present.</p>
+<p>This also works for numeric checks:</p>
+<pre><code>disable base.intOverflowChecks;
+</code></pre>
+<p>would make <code>+</code> behave exactly as the faster <code>.aluxxx</code> variant.</p>
+<pre><code>disable base.intOverflowChecks and caps;
+</code></pre>
+<p>this instead would suppress the overflow/underflow behaviour and cap the result to max/min <code>Int</code>.</p>
+<blockquote>
+<p>I'm just throwing ideas to the wall here.</p>
+</blockquote>
+<p>So if the condition is false/throws an assert can</p>
+<ul>
+<li>fail</li>
+<li>be ignored</li>
+<li>use a recovery expression (only available if recovery provided)</li>
+<li>write the failure on a log and continue</li>
+<li>use a recovery expression and write the failure on a log.(only available if recovery provided)</li>
+</ul>
+<p>This encompass the ignore/evaluate the check and ignore/evaluate the recovery.
+An assert without a recovery is equivalent to an assert where the recovery is the identity function, so we pass the same value, and an assert with no value is equivalent to having/returning <code>Void</code>.</p>
+<p>Under this, disabled is kind of ambiguous and we may want more names.</p>
+<p>The idea is that we want to have a Software produce line:
+Many different kinds of software are produced depending on the assertion profile, and some of those are better for testing instead of deployment.</p>
+<blockquote>
+<p>TODO: API: we need a matcher form of the int to float etc methods, where if the number can not be represented cleanly in the other format we get some info (delta?) to a dedicated method to provide alternative behaviour</p>
+</blockquote>
+<blockquote>
+<p>Discuss the various forms of match: match with datatype, match without data type (.cmp), match over data that exists (stack etc), match over computations (action); note how composing those two kinds of match is different; Finally matchers can carry extra parameters and pass / wire them around; consider CapTry with iso.</p>
+</blockquote>
       <div class="nav-links">
       <a href="26_01.html">Previous</a> <a href="28_01.html">Next</a>
       </div>

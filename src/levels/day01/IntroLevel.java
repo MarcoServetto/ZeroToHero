@@ -10,7 +10,7 @@ public class IntroLevel implements Function<Days.LevelName,String>{
   @Override public String apply(Days.LevelName name){
     String last;
     String noAdd= "You have to complete the provided text, not add new one. In this case, you redeclared See and Hear";
-    String noComma= "You forgot the comma! In this case that comma could indeed be omitted, but for now please write it down anyway";
+    String noSemicolon= "You forgot the semicolon! In this case that semicolon could indeed be omitted, but for now please write it down anyway";
     String hold= "Hold your horses, we are doing one direction at a time!";
     String methInCurly="Declare the method BETWEEN the curly {..}";
     return new htmlMangle.DirectInstructions(name,this.getClass().getSimpleName())
@@ -62,33 +62,33 @@ public class IntroLevel implements Function<Days.LevelName,String>{
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\nDirection:{}","Write Direction before North"))
     .image()
       .area(37, 90,     1, 41, last,last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}",List.of(
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}",noComma,
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}",List.of(
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}",noSemicolon,
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{turn:Direction}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}","You forgot the initial dot (.)",
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\n.turn:Direction,",methInCurly,
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\n.turn:Direction;",methInCurly,
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\n.turn:Direction",methInCurly,
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\n.turn",methInCurly,
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\nturn",methInCurly
                                ))
     .image(2)
       .area(27, 85,     1, 41, last,last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}",List.of(
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn,}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}","Add the result of turning!",
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}","You forgot the comma!",
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}","Add the result of turning!"))
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}",List.of(
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn;}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}","Add the result of turning!",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}","You forgot the semicolon!",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}","Add the result of turning!"))
     .image()
       .area(27, 85,     1, 41, last,last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{.turn->South,}\nWest:Direction{}\nSouth:Direction{}",List.of(
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East}\nEast:Direction{.turn->South,}\nWest:Direction{}\nSouth:Direction{}",noComma,
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{.turn->South,}\nWest:Direction{.turn->North,}\nSouth:Direction{.turn->West,}",hold))
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{}\nSouth:Direction{}",List.of(
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East}\nEast:Direction{.turn->South;}\nWest:Direction{}\nSouth:Direction{}",noSemicolon,
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{.turn->North;}\nSouth:Direction{.turn->West;}",hold))
     .image()
       .area(27, 85,     1, 41, last,last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{.turn->South,}\nWest:Direction{}\nSouth:Direction{.turn->West,}",List.of(
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{.turn->South,}\nWest:Direction{.turn->North,}\nSouth:Direction{}",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{}\nSouth:Direction{.turn->West;}",List.of(
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{.turn->North;}\nSouth:Direction{}",
                                "You just assumed We asked to complete West, right? Read slowly and carefully! :-)",
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{.turn->South,}\nWest:Direction{.turn->North,}\nSouth:Direction{.turn->West,}",hold))
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;\nEast:Direction{.turn->South;}\nWest:Direction{.turn->North;}\nSouth:Direction{.turn->West;}",hold))
     .image()
       .area(27, 85,     1, 41, last,last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction,}\nNorth:Direction{.turn->East,}\nEast:Direction{.turn->South,}\nWest:Direction{.turn->North,}\nSouth:Direction{.turn->West,}")
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{.turn->North;}\nSouth:Direction{.turn->West;}")
     .image(4)
     .build(); } }

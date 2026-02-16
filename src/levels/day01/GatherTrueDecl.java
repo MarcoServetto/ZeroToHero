@@ -12,23 +12,23 @@ public class GatherTrueDecl implements Function<Days.LevelName,String>{
 //The code of a direction also assumes
 //the other three directions to be
 //declared as shown in the exercises before 
-Direction: { .turn: Direction, }
+Direction: { .turn: Direction; }
 """)
 
         // code with title, group img, img num
-    .card("1-North\nNorth: Direction { .turn-> East, }",1,BrownMushroom,1)
-    .card("2-North\nNorth: Direction { East, }",1,BrownMushroom,3)
-    .card("3-South\nSouth: Direction { .turn-> West, }",3,Eggplant,11)
-    .card("4-West\nWest: Direction { .turn-> North, }",4,YellowFlower,7)    
+    .card("1-North\nNorth: Direction { .turn-> East; }",1,BrownMushroom,1)
+    .card("2-North\nNorth: Direction { East; }",1,BrownMushroom,3)
+    .card("3-South\nSouth: Direction { .turn-> West; }",3,Eggplant,11)
+    .card("4-West\nWest: Direction { .turn-> North; }",4,YellowFlower,7)    
     .card("5-East\nEast: Direction { South }",2,Tomato,1)
-    .card("6-East\nEast: Direction { .turn-> South, }",2,Tomato,10)
+    .card("6-East\nEast: Direction { .turn-> South; }",2,Tomato,10)
     .card("""
       7-West
-      West: Direction { .turn[]()-> North, }
+      West: Direction { .turn[]()-> North; }
       //Remember: [] and () can be omitted, thus
       //code with extra [] and () is still valid
       """,4,YellowFlower,1)    
-    .cardTrash("8-North\nNorth: Direction { ->East, }",BrownMushroom,13)
+    .cardTrash("8-North\nNorth: Direction { ->East; }",BrownMushroom,13)
     .card("""
       9-North
       North: Direction { East{}, }

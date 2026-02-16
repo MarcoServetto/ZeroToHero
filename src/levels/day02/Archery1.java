@@ -38,55 +38,55 @@ public class Archery1 implements Function<Days.LevelName,String>{
         }
       """,intro+"""
       Archer1:Archer{
-        .heading-> North,
-        .aiming -> South, 
+        .heading-> North;
+        .aiming -> South; 
         }""")
     .image(2).area(l, intro+"""
       Archer2:Archer{
-        .heading-> _____,
-        ________________, 
+        .heading-> _____;
+        ________________; 
         }
       """,intro+"""
       Archer2:Archer{
-        .heading-> North,
-        .aiming -> West, 
+        .heading-> North;
+        .aiming -> West; 
         }
     """)
     .image(2).area(l, acc("""
       Archer3:Archer{/*[*/
-        .heading-> East,
-        .aiming -> West, 
+        .heading-> East;
+        .aiming -> West; 
       /*]*/}
       //Remember to use the ->
       """))
     .image(2).area(l, acc("""
       Archer4:Archer{/*[*/
-        .heading-> East,
-        .aiming -> North, 
+        .heading-> East;
+        .aiming -> North; 
       /*]*/}
       """))
     .image(2).area(l, acc("""
       Archer5:Archer{/*[*/
-        .heading-> East,
-        .aiming -> South, 
+        .heading-> East;
+        .aiming -> South; 
       /*]*/}
       """))
     .image(2).area(l, acc("""
       Archer6:Archer{/*[*/
-        .heading-> South,
-        .aiming -> North, 
+        .heading-> South;
+        .aiming -> North; 
       /*]*/}
       """))
     .image(2).area(l, acc("""
       Archer7:Archer{/*[*/
-        .heading-> South,
-        .aiming -> East, 
+        .heading-> South;
+        .aiming -> East; 
       /*]*/}
       """))
     .image(2).area(l, acc("""
       Archer8:Archer{/*[*/
-        .heading-> West,
-        .aiming -> East, 
+        .heading-> West;
+        .aiming -> East; 
       /*]*/}
       """))
     .image(3)

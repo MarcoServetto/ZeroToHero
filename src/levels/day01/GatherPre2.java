@@ -17,12 +17,12 @@ public class GatherPre2 implements Function<Days.LevelName,String>{
 //The code of a direction also assumes
 //the other three directions to be
 //declared as shown in the exercises before
-Direction:{.turn:Direction,}
+Direction:{.turn:Direction;}
 """)
         // code with title, group img, img num
-    .card("Longer\nNorth:Direction{.turn:Direction->East,}",1,Eggplant,1)
+    .card("Longer\nNorth:Direction{.turn:Direction->East;}",1,Eggplant,1)
     .card("Long\nNorth:Direction{.turn->East}",1,Eggplant,4)
     .card("Short\nNorth:Direction{East}",1,Eggplant,2)
     .card("East\nEast:Direction{South}",2,YellowFlower,2)
-    .cardTrash("Alternative\nNorth:Direction{.turn:Direction,}",Eggplant,5)
+    .cardTrash("Alternative\nNorth:Direction{.turn:Direction;}",Eggplant,5)
     .build(); } }

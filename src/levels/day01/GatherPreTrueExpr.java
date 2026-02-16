@@ -14,7 +14,7 @@ public class GatherPreTrueExpr implements Function<Days.LevelName,String>{
 //This code is visible by all the cards
 //here '.turn->' can be omitted, thus we can write
 //North: Direction { East } instead of the longer
-//North: Direction { .turn->East, }
+//North: Direction { .turn->East; }
 
 Direction: { .turn: Direction }
 North: Direction { East  }

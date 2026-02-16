@@ -15,7 +15,7 @@ public class WalkingBack implements Function<Days.LevelName,String>{
     .question("""
       Direction:{ 
         .turn: Direction,
-        @[.reverse: Direction @@-> this.turn.turn,]@
+        @[.reverse: Direction @@-> this.turn.turn;]@
         }
       //remember, if there is the ->
       //then it is not a 'method call'
@@ -23,7 +23,7 @@ public class WalkingBack implements Function<Days.LevelName,String>{
     .question("""
         Direction:{ 
           .turn: Direction,
-          .reverse: Direction -> @[th@@is]@.turn.turn,
+          .reverse: Direction -> @[th@@is]@.turn.turn;
           }
         //Writing code on multiple lines in this way
         //is called indentation. Indentation makes
