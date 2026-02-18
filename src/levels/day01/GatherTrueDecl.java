@@ -31,7 +31,7 @@ Direction: { .turn: Direction; }
     .cardTrash("8-North\nNorth: Direction { ->East; }",BrownMushroom,13)
     .card("""
       9-North
-      North: Direction { East{}, }
+      North: Direction { East{}; }
       //Are omittable {} part of object literals?
       //Experiment to discover it!
       """,1,BrownMushroom,12)
@@ -52,7 +52,7 @@ Direction: { .turn: Direction; }
     .card("13-South\nSouth: Direction { .turn()-> West }",3,Eggplant,3)
     .cardTrash("""
      14-West
-     West: Direction { turn-> North, }
+     West: Direction { turn-> North; }
      //Something smells strange here.
      //Can you see the issue?
      """,YellowFlower,10)    

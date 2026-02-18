@@ -27,8 +27,11 @@ const QuestionText = (q,isFrozen) => {
   const noRedChar= ()=>Number.isNaN(redChar);
   const extractStr= (str)=>MetaData.str(q, str);
   const extractInt= (str)=>MetaData.int(q, str);
-  const toSolution= ()=>{ startFix = startOk; endFix = endOk; isBlinking = true; };
-  const toSingle= ()=>{ startFix = redChar; endFix = redChar + 1; };
+  
+  const toSolution= ()=>{ startFix = startOk; endFix = endOk; isBlinking = true; hintBlink(true); };
+  const toSingle= ()=>{ startFix = redChar; endFix = redChar + 1; hintBlink(false); };
+  let hintBlink= (on)=>{};
+  const setHintBlink= (cb)=> hintBlink= cb;
   const currentSelectionRange= ()=>{
     let start = q.selectionStart;
     let end = q.selectionEnd;    
@@ -54,7 +57,7 @@ const QuestionText = (q,isFrozen) => {
     return option === requiredOption && (isErrorType || selectionOk);
   };
   const active= Log.tag('active',(flag)=>{
-    if(!flag){ q.hidden = true; return; }
+    if(!flag){ q.hidden = true; hintBlink(false); return; }
     q.hidden = false;
     q.value = originalText;
     isBlinking = false;
@@ -98,7 +101,7 @@ const QuestionText = (q,isFrozen) => {
     isCorrectAnswer, isCorrectSelection,
     active, keepFocus, selectionEvent,
     extractStr, extractInt,
-    addClass, removeClass, setPostSelect,
+    addClass, removeClass, setPostSelect,setHintBlink,
     isBlinking: () => isBlinking,
     solved:false, requiredOption,inner:()=>q};
 };

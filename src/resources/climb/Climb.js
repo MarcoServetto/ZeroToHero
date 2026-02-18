@@ -68,7 +68,7 @@ const Climb= (score) => {
       }
     };
   const codeWidth= (code)=>{
-    const width= (code.length+2.5) *1.1;
+    const width= (code.length+2.5) *1.15;
     return width + 'ch'
     };
   const showRockCode = (rock, code) => {

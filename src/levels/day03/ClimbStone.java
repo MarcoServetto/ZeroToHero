@@ -8,10 +8,10 @@ import main.Days;
 public class ClimbStone implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Climb(name,"""
-    Stone:  { .break: Rock   -> Rock   }
-    Rock:   { .break: Pebble -> Pebble }
-    Pebble: { .break: Sand   -> Sand   }
-    Sand:   { .break: Sand   -> Sand   }                          
+    Stone:  { .break: Rock   -> Rock;   }
+    Rock:   { .break: Pebble -> Pebble; }
+    Pebble: { .break: Sand   -> Sand;   }
+    Sand:   { .break: Sand   -> Sand;   }                          
     """)
     .question("""
       Those stones are breaking.

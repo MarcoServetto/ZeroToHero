@@ -14,12 +14,12 @@ public class Archery2 implements Function<Days.LevelName,String>{
       East: Direction{ South }
       South:Direction{ West  }
       West: Direction{ North }
-      Archers:{#(
-          heading: Direction, 
+      Archers:{ #(
+          heading: Direction,
           aiming:  Direction): Archer ->
         Archer: {
-          .heading: Direction -> heading,
-          .aiming:  Direction -> aiming,
+          .heading: Direction -> heading;
+          .aiming:  Direction -> aiming;
           }
         }
 

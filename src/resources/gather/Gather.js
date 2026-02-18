@@ -158,7 +158,7 @@ const Gather= Log.tagAsync('Gather', () => {
     s.addEventListener('mouseleave', slotMouseLeave);
     });
   Utils.check(allCards.cards().length!==0,"No cards in init");
-  TextAreaSize.updateApiHeight();
+  setTimeout(()=>TextAreaSize.updateApiHeight(),100);
   const submitBtn= e=>CheckSolution(Buttons.freezeToken,allCards);
   const buttonActions = {
     submitBtn,

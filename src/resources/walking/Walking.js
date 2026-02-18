@@ -1,5 +1,14 @@
 'use strict';
 const Walking= (score) => {
+  const optBtns= [1,2,3,4,5,6,7,8].map(i=>Utils.getElementById('btn'+i));
+  const hintClear= ()=>optBtns.forEach(b=>b.classList.remove('hintDim','hintCorrect'));
+  const hintStart= (q,opt)=>{
+    const b= optBtns[opt-1] || Utils.error('bad opt '+opt);
+    optBtns.forEach(x=>x.classList.add('hintDim'));
+    q.setHintBlink(on=>b.classList.toggle('hintCorrect',on));
+    b.classList.add('hintCorrect');
+    };
+  const hintStop= (q)=>{ q.setHintBlink(on=>{}); hintClear(); };
   const nextQuestion= () => {
     const completed= questions.every(q => q.solved);
     if (completed){ questions.forEach(q => q.solved = false); }
@@ -46,18 +55,26 @@ const Walking= (score) => {
   const handleIncorrectAnswer= (currentQuestion) => {
     score.doFailure()
     currentBonusElem.textContent = 0;
-    currentQuestion.toSolution();
-    currentQuestion.selectionEvent();
-    Buttons.freezeFor(4050);
     const opt= currentQuestion.requiredOption;
     const motivation= currentQuestion.extractStr('motivation');
-    displayExplanationMessage(opt,motivation,()=>{
+    currentQuestion.toSolution();
+    currentQuestion.selectionEvent();
+    hintStart(currentQuestion,opt);
+    //Buttons.freezeFor(4050);
+    playFallAnimation(opt,motivation,()=>{ //displayExplanationMessage
+      hintStop(currentQuestion);
       questions.forEach(q => q.active(false));
       questions[currentQuestionIndex].active(true);
       updateContent();
       });
     };
-  const displayExplanationMessage = (requiredOption,motivation,onDismiss) => {
+  const playFallAnimation= (requiredOption,motivation,onDone)=>{//motivation is now dead code
+    Buttons.freezeFor(6500);
+    Utils.flashImage('rgba(200,20,0,0.9)','fallEndCharacter','translateY(30%) scale(0.65)');
+    setTimeout(()=>Utils.flashImage('rgba(170,60,10,0.7)','fallStarsCharacter','translateY(30%) scale(0.65)'),3500);
+    setTimeout(onDone,6500);
+  };
+  const displayExplanationMessage = (requiredOption,motivation,onDismiss) => {//this method is now dead code
     const explanation = OptionExplanations[requiredOption] || Utils.error('bad button id '+requiredOption);
     const msg =`
     <div>

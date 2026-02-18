@@ -43,7 +43,7 @@ public class ClimbBase implements Function<Days.LevelName,String>{
   public static final String directions= """
 //Below here is all the relevant code. Scroll down to see it all!
 Direction: {
-  .turn: Direction,
+  .turn: Direction;
   .reverse: Direction -> this.turn.turn;
   }
 North: Direction { East  }
@@ -52,8 +52,8 @@ South: Direction { West  }
 West:  Direction { North }
 Archers: { #(heading: Direction, aiming:  Direction): Archer ->
   Archer: {
-    .heading: Direction -> heading,
-    .aiming:  Direction -> aiming,
+    .heading: Direction -> heading;
+    .aiming:  Direction -> aiming;
     }
   }
 """;
@@ -61,7 +61,7 @@ Archers: { #(heading: Direction, aiming:  Direction): Archer ->
   public static final String directionsAimTo= """
 //Now with two more methods!
 Direction: {
-  .turn: Direction,
+  .turn: Direction;
   .reverse: Direction -> this.turn.turn;
   }
 North: Direction { East  }
@@ -70,10 +70,10 @@ South: Direction { West  }
 West:  Direction { North }
 Archers: { #(heading: Direction, aiming:  Direction): Archer ->
   Archer: {
-    .heading: Direction -> heading,
-    .aiming:  Direction -> aiming,
-    .aimTo(d:  Direction):  Archer -> Archers#(heading, d),
-    .headTo(d: Direction): Archer -> Archers#(d, aiming),
+    .heading: Direction -> heading;
+    .aiming:  Direction -> aiming;
+    .aimTo(d:  Direction):  Archer -> Archers#(heading, d);
+    .headTo(d: Direction): Archer -> Archers#(d, aiming);
     }
   }
 """;

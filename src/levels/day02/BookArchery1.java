@@ -15,8 +15,8 @@ In good archery, the archer first shoots and then <#[1|#|rests|#|moves|#|jumps|#
 We can represent an Archer as follows:
 ```
 Archer:{
-  .heading: Direction,
-  <#[0|#|.aiming:Direction,|#|eating tomatoes|#|.shoot->North|#|.aiming->this]#>
+  .heading: Direction;
+  <#[0|#|.aiming:Direction;|#|eating tomatoes|#|.shoot->North|#|.aiming->this]#>
   }
 ```
 

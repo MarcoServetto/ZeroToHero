@@ -14,8 +14,8 @@ public class BookArchery2 implements Function<Days.LevelName,String>{
 In the previous book, we introduced the Archer type.
 ```
 Archer: {
-  <#[0|#|.heading: Direction,|#|.hoarding; Desection,|#|.heading: Direction]#>
-  .aiming:  Direction,
+  <#[0|#|.heading: Direction;|#|.hoarding; Desection;|#|.heading: Direction]#>
+  .aiming:  Direction;
   }
 <#[2|#|Archer: Archer{|#|ArcherNN: ArcherNN{|#|ArcherNN: Archer{|#|Archer; Archer{|#|ArcherNN: Archer:{]#>
   .heading -> North;
@@ -38,8 +38,8 @@ instances.
 <#[1|#|Direction:{|#|Archers: {|#|Archers {|#|Archer:{]#>
   #(heading: Direction, aiming: Direction): Archer ->
     Archer: {
-      .heading: Direction -> heading,
-      .aiming: Direction -> aiming,
+      .heading: Direction -> heading;
+      .aiming: Direction -> aiming;
       }
   }
 ```
@@ -81,7 +81,7 @@ lowercase letter and any amount of letters and numbers;
 or 
  2. (2) <#[1|#|start with a non empty sequence of|#|be only composed of|#|start by composing off]#>
 operator symbols.
-That is, any symbols in this list `! ~ # & ^ + - * / < > = :`
+That is, any symbols in this list `! ~ # & ^ + - * / < > =`
 Indeed, this means that math operators like 
 <#[0|#|addition and multiplication|#|attrition and mortification|#|edition on multi licantron]#>
 are just method names. 

@@ -14,7 +14,7 @@ public class WalkingBack implements Function<Days.LevelName,String>{
     .question("@[this.turn.t@@urn]@",MethodCall)
     .question("""
       Direction:{ 
-        .turn: Direction,
+        .turn: Direction;
         @[.reverse: Direction @@-> this.turn.turn;]@
         }
       //remember, if there is the ->
@@ -22,7 +22,7 @@ public class WalkingBack implements Function<Days.LevelName,String>{
       """,MethodDeclaration)
     .question("""
         Direction:{ 
-          .turn: Direction,
+          .turn: Direction;
           .reverse: Direction -> @[th@@is]@.turn.turn;
           }
         //Writing code on multiple lines in this way
@@ -32,7 +32,7 @@ public class WalkingBack implements Function<Days.LevelName,String>{
     .question("@[No@@rth:{East}]@",TypeDeclaration)
     .question("North:{@[Ea@@st]@}",ObjectLiteral)
     .question("North:{.turn->@[Ea@@st]@}",ObjectLiteral)
-    .question("@[North{East@@}]@",Error)
+    .question("@[.north{East@@}]@",Error)
     .question("""
       //Single line comments start with two
       @[//slash (/) and en@@d with the end of line]@ 

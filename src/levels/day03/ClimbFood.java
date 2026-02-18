@@ -17,9 +17,9 @@ CutTomato: Tomato{}
 Recipe: { 
   .cook(m: Mushroom, e: Eggplant, t: CutTomato): Ratatouille
   -> Ratatouille: {
-    .tomato:Tomato -> t,
-    .eggplant:Eggplant -> e,
-    .mushroom:Mushroom -> m,
+    .tomato:Tomato -> t;
+    .eggplant:Eggplant -> e;
+    .mushroom:Mushroom -> m;
     }
   }
 """)

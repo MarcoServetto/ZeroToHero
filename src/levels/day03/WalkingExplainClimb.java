@@ -58,26 +58,26 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
       """, TypeDeclaration)
     .question("""
   Archer: {
-    .heading: Direction -> heading,
-    .aiming:  Direction -> aiming,
-    .aimTo(d: Direction):Archer -> Archers#(heading, @[@@d]@),
-    .headTo(d: Direction):Archer -> Archers#(d, aiming),
+    .heading: Direction -> heading;
+    .aiming:  Direction -> aiming;
+    .aimTo(d: Direction):Archer -> Archers#(heading, @[@@d]@);
+    .headTo(d: Direction):Archer -> Archers#(d, aiming);
     }
 """, Parameter)
     .question("""
   Archer: {
-    .heading: Direction -> heading,
-    .aiming:  Direction -> aiming,
-    .aimTo(d: Direction):Archer -> Archers#(heading, d),
-    @[.headTo(@@d: Direction):Archer -> Archers#(d, aiming),]@
+    .heading: Direction -> heading;
+    .aiming:  Direction -> aiming;
+    .aimTo(d: Direction):Archer -> Archers#(heading, d);
+    @[.headTo(@@d: Direction):Archer -> Archers#(d, aiming);]@
     }
 """, MethodDeclaration)
     .question("""
   Archer: {
-    .heading: Direction -> heading,
-    .aiming:  Direction -> aiming,
-    .aimTo(d: Direction):Archer -> Archers#(heading, d),
-    .headTo(d: @[D@@irection]@):Archer -> Archers#(d, aiming),
+    .heading: Direction -> heading;
+    .aiming:  Direction -> aiming;
+    .aimTo(d: Direction):Archer -> Archers#(heading, d);
+    .headTo(d: @[D@@irection]@):Archer -> Archers#(d, aiming);
     }
 """, Type)
     .build(); } }

@@ -91,20 +91,27 @@ const Utils= {
     const timeOutF=autoMsg ? endMsg : ()=>messageBox.addEventListener('click', endMsg, { once: true });
     setTimeout(timeOutF, timeOut);
   },
-  flashImage:(color,image)=>{
-    const overlay = document.getElementById('screenOverlay').style;
+  flashImage:(color,image,extra)=>{
+    const overlayElem= Utils.getElementById('screenOverlay');
+    const overlay= overlayElem.style;
     overlay.transition = 'none';
+    overlay.animation = 'none';
     overlay.backgroundColor = color;
-    void overlay.offsetWidth;
+    void overlayElem.offsetWidth;
     overlay.animation = 'flashEffect 6s ease-out';
-    const character= document.getElementById(image);
-    character.hidden = false;
-    character.style.animation = 'levelEndAppear 3s ease-in-out forwards';
-    setTimeout(() => {
-      character.hidden = true;
-      character.style.animation = '';
-      }, 4000);
-    },
+    const container= Utils.getElementById(image);
+    const oldExtra= container.style.getPropertyValue('--flashExtra');
+    if (extra !== undefined){ container.style.setProperty('--flashExtra', extra); }
+    container.hidden = false;
+    container.style.animation = 'none';
+    void container.offsetWidth;
+    container.style.animation = 'levelEndAppear 3s ease-in-out forwards';
+    setTimeout(() =>{
+      container.hidden = true;
+      container.style.animation = '';
+      if (extra !== undefined){ container.style.setProperty('--flashExtra', oldExtra); }
+    }, 4000);
+  },
   flashGreen:()=> Utils
     .flashImage('rgba(0,255,0,0.7)','levelEndCharacter'),
   showNextLevelButton: (target, innerHTML, onClick ) => {

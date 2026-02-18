@@ -12,7 +12,8 @@ public class ClimbArcherAimTo implements Function<Days.LevelName,String>{
       Now we use methods Archer.headTo and Archer.aimTo
       Look to the code above to see the implementation.
       Remember to select the result that can be obtained
-      the least number of steps.
+      in the least number of steps.
+      That is, occasionally only rocks that skips some steps will be available!
       """,
       "Archers#(South, @[West.turn]@).headTo(North.turn.turn)",
       List.of("Archer{..}",

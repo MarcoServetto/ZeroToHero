@@ -10,7 +10,7 @@ public class Archery1 implements Function<Days.LevelName,String>{
       //Code to make an archer
       //shooting and then moving
       //to hit the targets
-      //Use 'methodName -> methodBody,'
+      //Use 'methodName -> methodBody;'
       
       Direction:{ .turn: Direction }
       North:Direction{ East  }
@@ -18,8 +18,8 @@ public class Archery1 implements Function<Days.LevelName,String>{
       South:Direction{ West  }
       West: Direction{ North }
       Archer:{
-        .heading: Direction,
-        .aiming:  Direction,
+        .heading: Direction;
+        .aiming:  Direction;
         }      
       """;
   String acc(String annotated){
