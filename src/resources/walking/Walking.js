@@ -27,7 +27,6 @@ const Walking= (score) => {
     var x=score.justFailed()? 1 : score.streak()+1;
     if (x>8){x=8;}
     Utils.flashImage('rgba(250,250,250,0.01)','speedUp'+x,'translateY(40%) scale(0.55)');
-
     questions[currentQuestionIndex].solved = !score.justFailed();
     if (score.justFailed()){ score.doMootSuccess(); return; }
     score.doSuccess();
