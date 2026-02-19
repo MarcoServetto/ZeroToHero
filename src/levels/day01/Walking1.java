@@ -10,14 +10,20 @@ public class Walking1 implements Function<Days.LevelName,String>{
     return new htmlMangle.Walking(name,33)
     // selected, start, end, option
     .question("""
+      //Press the first button to the right, then 
+      //observe the screen. Some of this text will
+      //pulse; select such text.
+      @[//A button will pulse. Press that button@@!]@
+      """,Comment)
+    .question("""
       @[/*
       This is the walking minigame
       Select all the code and press 'comment'.
-      This text -is- the code!
+      This text -is- the code; including / and *.
       Indeed, this code is a multiline comment.
       Text useful for explanation but
       ignored in execution@@.
-      */]@""",Comment,"Occasionally, some text here can explain more details.")
+      */]@""",Comment)
     .question("""
       @[//This is a @@single line comment]@
       //Select all and only the line with

@@ -56,6 +56,7 @@ const Walking= (score) => {
     if (rightAfterPass > 5){ rightAfterPass = 3; setTimeout(Utils.flashGreen, 900); }
     };
   const handleIncorrectAnswer= (currentQuestion) => {
+    const longW= score.streak() > 1;
     score.doFailure()
     currentBonusElem.textContent = 0;
     const opt= currentQuestion.requiredOption;
@@ -63,19 +64,21 @@ const Walking= (score) => {
     currentQuestion.toSolution();
     currentQuestion.selectionEvent();
     hintStart(currentQuestion,opt);
-    //Buttons.freezeFor(4050);
-    playFallAnimation(opt,motivation,()=>{ //displayExplanationMessage
+    playFallAnimation(longW,opt,motivation,()=>{ //displayExplanationMessage
       hintStop(currentQuestion);
       questions.forEach(q => q.active(false));
       questions[currentQuestionIndex].active(true);
       updateContent();
       });
     };
-  const playFallAnimation= (requiredOption,motivation,onDone)=>{//motivation is now dead code
-    Buttons.freezeFor(6500);
-    Utils.flashImage('rgba(200,20,0,0.9)','fallEndCharacter','translateY(30%) scale(0.65)');
-    setTimeout(()=>Utils.flashImage('rgba(170,60,10,0.7)','fallStarsCharacter','translateY(30%) scale(0.65)'),3500);
-    setTimeout(onDone,6500);
+  const playFallAnimation= (longW,requiredOption,motivation,onDone)=>{//motivation is now dead code
+    const waitT= longW ? 10000 : 5000;
+    Buttons.freezeFor(waitT+100);
+    if (longW){
+      Utils.flashImage('rgba(200,20,0,0.9)','fallEndCharacter','translateY(30%) scale(0.65)');
+      setTimeout(()=>Utils.flashImage('rgba(170,60,10,0.7)','fallStarsCharacter','translateY(30%) scale(0.65)'),3500);
+    }
+    setTimeout(onDone,waitT);
   };
   const displayExplanationMessage = (requiredOption,motivation,onDismiss) => {//this method is now dead code
     const explanation = OptionExplanations[requiredOption] || Utils.error('bad button id '+requiredOption);
