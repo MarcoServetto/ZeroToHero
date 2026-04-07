@@ -15,7 +15,8 @@ public enum File{
   Gather_html,
   Walking_html,
   Climb_html,
-  Book_html;
+  Book_html,
+  Forest_html;
   public final String text;
   File(){text= loadText(this.name());}
   public static Path startPath(){

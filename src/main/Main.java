@@ -4,6 +4,7 @@ import levels.day01.*;
 import levels.day01Leo.*;
 import levels.day02.*;
 import levels.day03.*;
+import levels.day04.*;
 
 public class Main {
   public static final boolean debug= false;
@@ -42,7 +43,9 @@ public class Main {
     d.add(new ClimbArcherAimTo());
     d.add(new GatherOnTop());
     d.add(new WalkingBoomerangParam());
-    d.add(new Day3Outro());
+    d.addLast(new Day3Outro());
+    
+    d.add(new ForestIntro());
     }
   public static void leoLevels(){
     Days d= new Days("assetsLeo");
