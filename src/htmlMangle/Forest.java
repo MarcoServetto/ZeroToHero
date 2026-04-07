@@ -5,8 +5,10 @@ import java.util.stream.Collectors;
 
 import resources.File;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -23,57 +25,98 @@ public class Forest {
   
   public Forest(String solution) { this.solution= solution; }
   
-  public Forest addNode(int x, int y, String code) {
+  public Forest addNode(int x, int y) {
 	Position p= new Position(x, y);
-    nodes.put(p, new ForestNode(p, code));
+    nodes.put(p, new ForestNode(p));
     return this;
     }
   
-  public Forest addDirected(int x1, int y1, int x2, int y2) {
+  public Forest addDirected(int x1, int y1, int x2, int y2, String code) {
 	ForestNode from= nodes.get(new Position(x1, y1));
 	if (from == null) throw new IllegalArgumentException("The 'from' node doesn't exist.");
 	ForestNode to= nodes.get(new Position(x2, y2));
 	if (to == null) throw new IllegalArgumentException("The 'to' node doesn't exist.");
-    connections.add(new ForestNodeConnection(from, to));
+    connections.add(new ForestNodeConnection(from, to, code));
     return this;
     }
-  public Forest addUndirected(int x1, int y1, int x2, int y2) {
-	return addDirected(x1, y1, x2, y2).addDirected(x2, y2, x1, y1);
+  public Forest addUndirected(int x1, int y1, int x2, int y2, String code) {
+	return addDirected(x1, y1, x2, y2, code).addDirected(x2, y2, x1, y1, code);
 	}
   
   public String build() {
-	String nodesHtml = nodes.values().stream()
-	  .map(ForestNode::build)
-	  .collect(Collectors.joining("\n"));
-	String connectionsHtml = connections.stream()
-      .map(ForestNodeConnection::build)
-	  .collect(Collectors.joining("\n"));
-	return File.Forest_html.text
-      .replace("[###BODY###]", nodesHtml);
+    String nodesHtml = nodes.values().stream()
+      .map(ForestNode::build)
+      .collect(Collectors.joining("\n"));
+    Map<String, List<ForestNodeConnection>> connectionGroups= connections.stream()
+      .collect(Collectors.groupingBy(
+        conn -> {
+          Position a = conn.from().position();
+	        Position b = conn.to().position();
+	        // normalize order so A-B == B-A
+	        if (a.x() < b.x() || (a.x() == b.x() && a.y() <= b.y())) {
+	          return a.x() + "," + a.y() + "-" + b.x() + "," + b.y();
+	        } else {
+	          return b.x() + "," + b.y() + "-" + a.x() + "," + a.y();
+	        }
+	      }
+      ));
+    StringBuilder pathsHtml= new StringBuilder();
+    Collection<List<ForestNodeConnection>> connections= connectionGroups.values();
+    System.out.println(connections);
+    for (List<ForestNodeConnection> conns : connections) {
+      for (int i = 0; i < conns.size(); i++) {
+        ForestNodeConnection c = conns.get(i);
+        pathsHtml.append(buildCurvedDotPath(c.from(), c.to(), conns.size(), i));
+        }
+      }
+    return File.Forest_html.text
+      .replace("[###BODY###]", nodesHtml + pathsHtml.toString());
     }
-}
+  
+  private String buildCurvedDotPath(ForestNode from, ForestNode to, int totalConnections, int index) {
+    double x1= from.position().x();
+    double y1= from.position().y();
+    double x2= to.position().x();
+    double y2= to.position().y();
+    
+    int steps= 50;
+    
+    double dx= x2 - x1;
+    double dy= y2 - y1;
+    double length= Math.sqrt(dx * dx + dy * dy);
+    
+    // perpendicular unit vector
+    double nx= -dy / length;
+    double ny= dx / length;
+    
+    // compute offset for this path
+    double spacing= 30; // tweak as needed
+    double offsetIndex= index - (totalConnections - 1) / 2.0;
+    double curveOffset= offsetIndex * spacing;
+    
+    // midpoint with offset
+    double mx= (x1 + x2) / 2 + nx * curveOffset;
+    double my= (y1 + y2) / 2 + ny * curveOffset;
+    
+    StringBuilder sb = new StringBuilder();
+    for (int i = 0; i <= steps; i++) {
+        double t= i / (double) steps;
+        double xt= (1 - t)*(1 - t)*x1 + 2*(1 - t)*t*mx + t*t*x2;
+        double yt= (1 - t)*(1 - t)*y1 + 2*(1 - t)*t*my + t*t*y2;
+        sb.append(String.format("<div class='path-dot' style='left:%.2f%%; top:%.2f%%;'></div>%n", xt, yt));
+        }
+    return sb.toString();
+    }
+  }
 
-record ForestNode(Position position, String code) {
+record ForestNode(Position position) {
   public String build() {
 	return """
       <div class="node"
-       style="left:%d%%; top:%d%%;"
-       onclick="onNodeClick(this)"
-       data-code="%s">
-         <div class="tooltip">%s</div>
+       style="left:%d%%; top:%d%%;">
       </div>
-    <script>
-      function onNodeClick(el) {
-        console.log(el.dataset.code);
-      }
-    </script>
-      
-      """.formatted(position.x(), position.y(), code, code);
+    """.formatted(position.x(), position.y());
+    }
   }
-}
-record ForestNodeConnection(ForestNode from, ForestNode to) {
-  public String build() {
-	return "";
-  }
-}
+record ForestNodeConnection(ForestNode from, ForestNode to, String code) {}
 record Position(int x, int y) {}
