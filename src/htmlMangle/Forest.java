@@ -76,16 +76,17 @@ public class Forest {
     for (List<ForestNodeConnection> conns : connections) {
       for (int i = 0; i < conns.size(); i++) {
         ForestNodeConnection c = conns.get(i);
-        pathsHtml.append(drawPath(c.from(), c.to(), conns.size(), i));
+        pathsHtml.append(drawPath(c.code(), c.from(), c.to(), conns.size(), i));
         }
       }
     String outputBoxHtml = """
-      <textarea class="overlayTextarea"
+      <textarea class="overlayTextarea" id="output"
 			style="top:0%%;left:70.00%%;width:30%%;height:70.00%%;"
 			name="ForestOutputBox"
 			data-solution="%s"
 			data-original="%s"
 			data-alternative=""
+			wrap="soft"
 			autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off" readonly>%s</textarea>
       """.formatted(solution, initialCode, initialCode);
     return File.Forest_html.text
@@ -94,7 +95,7 @@ public class Forest {
       .replace("[###OUTPUT###]", outputBoxHtml);
     }
   
-  private String drawPath(ForestNode from, ForestNode to, int totalConnections, int index) {
+  private String drawPath(String code, ForestNode from, ForestNode to, int totalConnections, int index) {
     int x1= from.position().x();
     int y1= from.position().y();
     int x2= to.position().x();
@@ -122,8 +123,8 @@ public class Forest {
     double my= (y1 + y2) / 2 + ny * offset;
 
     return String.format(
-      "<path class='path' d='m %d %d Q %.2f %.2f %d %d' onclick='travelPath(%d, %d, %d, %d)'/>\n",
-      x1, y1, mx, my, x2, y2,   x1, y1, x2, y2
+      "<path class='path' d='m %d %d Q %.2f %.2f %d %d' onclick='travelPath(\"%s\", %d, %d, %d, %d)'/>\n",
+      x1, y1, mx, my, x2, y2,   code, x1, y1, x2, y2
       );
     }
   
