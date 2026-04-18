@@ -6,7 +6,7 @@ import main.Days;
 
 public class ForestIntro implements Function<Days.LevelName, String>{
   public String apply(Days.LevelName name) {
-	return new htmlMangle.Forest(30, 20, "North:Direction", "North:Direction{}")
+	return new htmlMangle.Forest("North:Direction", "North:Direction{}")
 	  .addNode(0, 0)
 	  .addNode(20, 20)
 	  .addNode(40, 40)

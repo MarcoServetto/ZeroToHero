@@ -23,13 +23,17 @@ public class Forest {
   private final Set<ForestNodeConnection> connections= new HashSet<>();
   private final String initialCode;
   private final String solution;
-  private final Position start;
+  //private final Position start;
   
-  public Forest(int x, int y, String initialCode, String solution) { 
+  public Forest(String initialCode, String solution) { 
     this.initialCode= initialCode; this.solution= solution; 
-    start= new Position(x, y);
-    addNode(x, y);
     }
+  /**
+   * Add a node to the Forest. The first node added to the Forest becomes the starting node.
+   * @param x position of the node.
+   * @param y position of the node.
+   * @return this
+   */
   public Forest addNode(int x, int y) {
 	  Position p= new Position(x, y);
     nodes.put(p, new ForestNode(p));
@@ -91,13 +95,13 @@ public class Forest {
     }
   
   private String drawPath(ForestNode from, ForestNode to, int totalConnections, int index) {
-    double x1= from.position().x();
-    double y1= from.position().y();
-    double x2= to.position().x();
-    double y2= to.position().y();
+    int x1= from.position().x();
+    int y1= from.position().y();
+    int x2= to.position().x();
+    int y2= to.position().y();
 
-    double dx= x2 - x1;
-    double dy= y2 - y1;
+    int dx= x2 - x1;
+    int dy= y2 - y1;
     double length= Math.sqrt(dx * dx + dy * dy);
 
     // perpendicular unit vector
@@ -118,8 +122,8 @@ public class Forest {
     double my= (y1 + y2) / 2 + ny * offset;
 
     return String.format(
-      "<path class='path' d='m %.2f %.2f Q %.2f %.2f %.2f %.2f' onclick='alert(\"Hello\")'/>\n",
-      x1, y1, mx, my, x2, y2
+      "<path class='path' d='m %d %d Q %.2f %.2f %d %d' onclick='travelPath(%d, %d, %d, %d)'/>\n",
+      x1, y1, mx, my, x2, y2,   x1, y1, x2, y2
       );
     }
   
