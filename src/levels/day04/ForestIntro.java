@@ -6,21 +6,12 @@ import main.Days;
 
 public class ForestIntro implements Function<Days.LevelName, String>{
   public String apply(Days.LevelName name) {
-	return new htmlMangle.Forest("North:Direction", "North:Direction{}")
-	  .addNode(0, 0)
-	  .addNode(20, 20)
-	  .addNode(40, 40)
-	  .addNode(50, 20)
-	  .addNode(90, 20)
-	  .addNode(100, 30)
-	  .addNode(50, 50)
-	  .addNode(100, 100)
-	  .connect(0, 0, 20, 20, "{}")
-	  .connect(0, 0, 20, 20, "Direction")
-	  .connect(0, 0, 20, 20, ":")
-	  .connect(20, 20, 50, 20, "North:Direction{}")
-	  .connect(50, 20, 90, 20, "North:Direction{}")
-	  .connect(50, 20, 90, 20, "East:Direction{}")
+	return new htmlMangle.Forest("Direction:", "Direction:{ .turn: Direction; }")
+	  .addNode(34, 20)
+	  .addNode(26, 56)
+	  .addNode(82, 60)
+	  .connect(34, 20, 26, 56, "{ .turn: ")
+	  .connect(26, 56, 82, 60, "Direction; }")
 	  .build();
     }
   }
