@@ -1,8 +1,12 @@
+// Forest Minigame Settings
+const TRAVEL_SPEED= 0.75; // Seconds
+
 const resetBtn= document.getElementById('resetBtn');
 const submitBtn= document.getElementById('submitBtn');
 const undoBtn= document.getElementById('undoBtn');
 const currentNodeMarker= document.getElementById('currentNodeMarker');
 const currentTravelingPath= document.getElementById('currentTravelingPath');
+var interactionEnabled= true;
 
 resetBtn.addEventListener('click', () => {
   location.reload();
@@ -60,12 +64,14 @@ const solutionCode= output.getAttribute("data-solution");
 const travelFail= (n1, n2) => { console.log("Cannot travel between ", n1, n2); }
   
 const travelPath= (code, x1, y1, mx, my, x2, y2) => {
+  if (!interactionEnabled) { return; }
   const n1= new Node(x1, y1);
   const n2= new Node(x2, y2);
   if (!(currentNode.equals(n1) || currentNode.equals(n2))) {
 	travelFail(n1, n2);
 	return;
     }
+  interactionEnabled = false;
   var otherNode;
   if (currentNode.equals(n1)) {
 	currentNode = n2;
@@ -76,28 +82,26 @@ const travelPath= (code, x1, y1, mx, my, x2, y2) => {
   }
   output.value = currentCode += code;
   animateTravelPath(otherNode.x, otherNode.y, mx, my, currentNode.x, currentNode.y); // It's backwards somehow :/
-  updateCurrentNodeMarkerLocation(currentNode.x, currentNode.y);
 }
 
 const animateTravelPath= (x1, y1, mx, my, x2, y2) => {
-	const d = `M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}`;
+  const d = `M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}`;
+  currentTravelingPath.setAttribute("d", d);
 
-	  currentTravelingPath.setAttribute("d", d);
+  const length = currentTravelingPath.getTotalLength();
+  const start= performance.now();
 
-	  const length = currentTravelingPath.getTotalLength();
+  const step= (t) => {
+    const progress = Math.min((t - start) / (TRAVEL_SPEED*1000), 1);
+    const point = currentTravelingPath.getPointAtLength(length * progress);
+    updateCurrentNodeMarkerLocation(point.x, point.y);
+    if (progress < 1) {
+      requestAnimationFrame(step);
+      } else {
+		interactionEnabled = true;
+		currentTravelingPath.setAttribute("d", "");
+	  }
+    };
 
-	  currentTravelingPath.style.transition = "none";
-	  currentTravelingPath.style.strokeDasharray = length;
-	  currentTravelingPath.style.strokeDashoffset = length;
-
-	  // Force reflow
-	  currentTravelingPath.getBoundingClientRect();
-
-	  currentTravelingPath.style.transition = "stroke-dashoffset 0.6s ease";
-	  currentTravelingPath.style.strokeDashoffset = "0";
+  requestAnimationFrame(step);
 }
-currentTravelingPath.addEventListener("transitionend", (e) => {
-  if (e.propertyName === "stroke-dashoffset") {
-    currentTravelingPath.setAttribute("d", "");
-    }
-});

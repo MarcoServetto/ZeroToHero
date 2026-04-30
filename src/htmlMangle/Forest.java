@@ -129,8 +129,12 @@ public class Forest {
     double my= (y1 + y2) / 2 + ny * offset;
 
     return String.format(
-      "<path class='path' d='m %d %d Q %.2f %.2f %d %d' stroke-dasharray=\"4 4\" onclick='travelPath(\"%s\", %d, %d, %.2f, %.2f, %d, %d)'/>\n",
-      x1, y1, mx, my, x2, y2,   code, x1, y1, mx, my, x2, y2
+      """
+      <g class="edge">
+        <path class="hitPath" d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d' onclick='travelPath("%7$s", %1$d, %2$d, %3$.2f, %4$.2f, %5$d, %6$d)' />
+        <path class='path' d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d' stroke-dasharray="4 4"/>
+      </g>
+      """, x1, y1, mx, my, x2, y2, code
       );
     }
   
