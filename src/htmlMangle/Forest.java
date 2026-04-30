@@ -23,7 +23,6 @@ public class Forest {
   private final Set<ForestNodeConnection> connections= new HashSet<>();
   private final String initialCode;
   private final String solution;
-  private static final int SIZE_MULTIPLIER= 1;
   
   public Forest(String initialCode, String solution) { 
     this.initialCode= initialCode; this.solution= solution; 
@@ -35,28 +34,18 @@ public class Forest {
    * @return this
    */
   public Forest addNode(int x, int y) {
-    x *= SIZE_MULTIPLIER;
-    y *= SIZE_MULTIPLIER;
 	  Position p= new Position(x, y);
     nodes.put(p, new ForestNode(p));
     return this;
     }
   
-  public Forest addDirected(int x1, int y1, int x2, int y2, String code) {
-    x1 *= SIZE_MULTIPLIER;
-    y1 *= SIZE_MULTIPLIER;
-    x2 *= SIZE_MULTIPLIER;
-    y2 *= SIZE_MULTIPLIER;
+  public Forest connect(int x1, int y1, int x2, int y2, String code) {
   	ForestNode from= nodes.get(new Position(x1, y1));
   	if (from == null) throw new IllegalArgumentException("The 'from' node doesn't exist.");
   	ForestNode to= nodes.get(new Position(x2, y2));
   	if (to == null) throw new IllegalArgumentException("The 'to' node doesn't exist.");
     connections.add(new ForestNodeConnection(from, to, code));
     return this;
-    }
-  
-  public Forest addUndirected(int x1, int y1, int x2, int y2, String code) {
-  	return addDirected(x1, y1, x2, y2, code).addDirected(x2, y2, x1, y1, code);
     }
   
   public String build() {
@@ -119,7 +108,7 @@ public class Forest {
     double offsetIndex= index - (totalConnections - 1) / 2.0;
 
     // scale curve strength with number of connections
-    double baseCurve= 10.0 * SIZE_MULTIPLIER; // tweak this
+    double baseCurve= 10.0; // tweak this
     double curveAmount= baseCurve * (1 + totalConnections * 0.5);
 
     double offset= offsetIndex * curveAmount;
