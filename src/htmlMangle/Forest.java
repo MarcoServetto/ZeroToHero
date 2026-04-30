@@ -23,7 +23,7 @@ public class Forest {
   private final Set<ForestNodeConnection> connections= new HashSet<>();
   private final String initialCode;
   private final String solution;
-  //private final Position start;
+  private static final int SIZE_MULTIPLIER= 1;
   
   public Forest(String initialCode, String solution) { 
     this.initialCode= initialCode; this.solution= solution; 
@@ -35,12 +35,18 @@ public class Forest {
    * @return this
    */
   public Forest addNode(int x, int y) {
+    x *= SIZE_MULTIPLIER;
+    y *= SIZE_MULTIPLIER;
 	  Position p= new Position(x, y);
     nodes.put(p, new ForestNode(p));
     return this;
     }
   
   public Forest addDirected(int x1, int y1, int x2, int y2, String code) {
+    x1 *= SIZE_MULTIPLIER;
+    y1 *= SIZE_MULTIPLIER;
+    x2 *= SIZE_MULTIPLIER;
+    y2 *= SIZE_MULTIPLIER;
   	ForestNode from= nodes.get(new Position(x1, y1));
   	if (from == null) throw new IllegalArgumentException("The 'from' node doesn't exist.");
   	ForestNode to= nodes.get(new Position(x2, y2));
@@ -113,7 +119,7 @@ public class Forest {
     double offsetIndex= index - (totalConnections - 1) / 2.0;
 
     // scale curve strength with number of connections
-    double baseCurve= 10.0; // tweak this
+    double baseCurve= 10.0 * SIZE_MULTIPLIER; // tweak this
     double curveAmount= baseCurve * (1 + totalConnections * 0.5);
 
     double offset= offsetIndex * curveAmount;
@@ -123,8 +129,8 @@ public class Forest {
     double my= (y1 + y2) / 2 + ny * offset;
 
     return String.format(
-      "<path class='path' d='m %d %d Q %.2f %.2f %d %d' onclick='travelPath(\"%s\", %d, %d, %d, %d)'/>\n",
-      x1, y1, mx, my, x2, y2,   code, x1, y1, x2, y2
+      "<path class='path' d='m %d %d Q %.2f %.2f %d %d' stroke-dasharray=\"4 4\" onclick='travelPath(\"%s\", %d, %d, %.2f, %.2f, %d, %d)'/>\n",
+      x1, y1, mx, my, x2, y2,   code, x1, y1, mx, my, x2, y2
       );
     }
   
