@@ -3,6 +3,7 @@ package htmlMangle;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import main.Days;
 import resources.File;
 
 import java.util.Collection;
@@ -14,7 +15,7 @@ import java.util.Map;
 /**
  * The Forest mini-game has nodes connected by a path.
  * Travel between nodes is only permitted if there exists a path connecting them.
- * Each node contains a block of code that is collected on arrival.
+ * Each path contains a block of code that is collected on traversal.
  * The puzzle can be completed if the code blocks are collected in the right order,
  *  so that the resulting code is valid and correctly answers the question.
  */
@@ -23,9 +24,12 @@ public class Forest {
   private final Set<ForestNodeConnection> connections= new HashSet<>();
   private final String initialCode;
   private final String solution;
+  private final Days.LevelName name;
   
-  public Forest(String initialCode, String solution) { 
-    this.initialCode= initialCode; this.solution= solution; 
+  public Forest(Days.LevelName name, String initialCode, String solution) {
+    this.name= name;
+    this.initialCode= initialCode;
+    this.solution= solution; 
     }
   /**
    * Add a node to the Forest. The first node added to the Forest becomes the starting node.
@@ -84,7 +88,7 @@ public class Forest {
 			wrap="soft"
 			autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off" readonly>%s</textarea>
       """.formatted(solution, initialCode, initialCode);
-    return File.Forest_html.text
+    return name.htmlNextLevel(File.Forest_html.text)
       .replace("[###PATHS###]", pathsHtml.toString())
       .replace("[###BODY###]", nodesHtml)
       .replace("[###OUTPUT###]", outputBoxHtml);

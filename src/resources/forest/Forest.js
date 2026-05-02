@@ -1,5 +1,8 @@
+'use strict';
+
 // Forest Minigame Settings
 const TRAVEL_SPEED= 0.75; // Seconds
+
 
 const resetBtn= document.getElementById('resetBtn');
 const submitBtn= document.getElementById('submitBtn');
@@ -22,16 +25,18 @@ undoBtn.addEventListener('click', () => {
   });
 
 const onComplete= () => {
-  console.log("Done");
-}
+  const nextLevelUrl = MetaData.str(document.body, 'next');
+  Utils.checkExists(nextLevelUrl);
+  setTimeout(() => window.location.href = nextLevelUrl, 1000);
+  }
 const onFail= () => {
   console.log("Incorrect")
-}
+  }
 
 const updateCurrentNodeMarkerLocation= (x, y) => {
   currentNodeMarker.setAttribute("x", x - 5);
   currentNodeMarker.setAttribute("y", y - 5);
-}
+  }
 
 const nodesRaw= document.querySelectorAll("circle");
 const pathsRaw= document.querySelectorAll("path");
