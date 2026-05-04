@@ -109,4 +109,4 @@ const animateTravelPath= (x1, y1, mx, my, x2, y2) => {
     };
 
   requestAnimationFrame(step);
-}
+  }

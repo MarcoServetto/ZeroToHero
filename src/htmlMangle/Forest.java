@@ -43,12 +43,24 @@ public class Forest {
     return this;
     }
   
-  public Forest connect(int x1, int y1, int x2, int y2, String code) {
+  /**
+   * Add a connection between two nodes and the position of the box to display the code.
+   * The order of the position of the two nodes matters and you should not add a two-way connection.
+   * @param x1
+   * @param y1
+   * @param x2
+   * @param y2
+   * @param code
+   * @param bx
+   * @param by
+   * @return this
+   */
+  public Forest connect(int x1, int y1, int x2, int y2, String code, int bx, int by) {
   	ForestNode from= nodes.get(new Position(x1, y1));
   	if (from == null) throw new IllegalArgumentException("The 'from' node doesn't exist.");
   	ForestNode to= nodes.get(new Position(x2, y2));
   	if (to == null) throw new IllegalArgumentException("The 'to' node doesn't exist.");
-    connections.add(new ForestNodeConnection(from, to, code));
+    connections.add(new ForestNodeConnection(from, to, code, bx, by));
     return this;
     }
   
@@ -75,7 +87,7 @@ public class Forest {
     for (List<ForestNodeConnection> conns : connections) {
       for (int i = 0; i < conns.size(); i++) {
         ForestNodeConnection c = conns.get(i);
-        pathsHtml.append(drawPath(c.code(), c.from(), c.to(), conns.size(), i));
+        pathsHtml.append(drawPath(c.code(), c.x(), c.y(), c.from(), c.to(), conns.size(), i));
         }
       }
     String outputBoxHtml = """
@@ -94,7 +106,7 @@ public class Forest {
       .replace("[###OUTPUT###]", outputBoxHtml);
     }
   
-  private String drawPath(String code, ForestNode from, ForestNode to, int totalConnections, int index) {
+  private String drawPath(String code, int x, int y, ForestNode from, ForestNode to, int totalConnections, int index) {
     int x1= from.position().x();
     int y1= from.position().y();
     int x2= to.position().x();
@@ -123,11 +135,22 @@ public class Forest {
 
     return String.format(
       """
-      <g class="edge">
-        <path class="hitPath" d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d' onclick='travelPath("%7$s", %1$d, %2$d, %3$.2f, %4$.2f, %5$d, %6$d)' />
+      <g class="edge" onclick='travelPath("%7$s", %1$d, %2$d, %3$.2f, %4$.2f, %5$d, %6$d)'>
+        <path class="hitPath" d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d'/>
         <path class='path' d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d' stroke-dasharray="4 4"/>
+        <foreignObject x="%8$d" y="%9$d" width="40px" height="8px">
+          <textarea
+            class="overlayTextarea"
+            style="top:0%%;left:0%%;width:100%%;height:100%%;font-size:3px;overflow-x:auto;"
+            name="ForestCodeBox"
+            wrap="soft"
+            autocomplete="off"
+            spellcheck="false"
+            readonly>%7$s
+            </textarea>
+          </foreignObject>
       </g>
-      """, x1, y1, mx, my, x2, y2, code
+      """, x1, y1, mx, my, x2, y2, code, x, y
       );
     }
   
@@ -144,5 +167,5 @@ record ForestNode(Position position) {
       """.formatted(position.x(), position.y());
     }
   }
-record ForestNodeConnection(ForestNode from, ForestNode to, String code) {}
+record ForestNodeConnection(ForestNode from, ForestNode to, String code, int x, int y) {}
 record Position(int x, int y) {}
