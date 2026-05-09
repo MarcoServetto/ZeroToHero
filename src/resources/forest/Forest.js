@@ -68,7 +68,9 @@ const solutionCode= output.getAttribute("data-solution");
   
 const travelFail= (n1, n2) => { console.log("Cannot travel between ", n1, n2); }
   
-const travelPath= (code, x1, y1, mx, my, x2, y2) => {
+const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
+  const code= Utils.getElementById(edgeId).value;
+  //const code= MetaData.str(Utils.getElementById(edgeId), );
   if (!interactionEnabled) { return; }
   const n1= new Node(x1, y1);
   const n2= new Node(x2, y2);

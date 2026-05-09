@@ -7,8 +7,8 @@ import main.Days;
 import resources.File;
 
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -20,7 +20,7 @@ import java.util.Map;
  *  so that the resulting code is valid and correctly answers the question.
  */
 public class Forest {
-  private final Map<Position, ForestNode> nodes= new HashMap<>();
+  private final Map<Position, ForestNode> nodes= new LinkedHashMap<>();
   private final Set<ForestNodeConnection> connections= new HashSet<>();
   private final String initialCode;
   private final String solution;
@@ -84,10 +84,11 @@ public class Forest {
     StringBuilder pathsHtml= new StringBuilder();
     Collection<List<ForestNodeConnection>> connections= connectionGroups.values();
     //System.out.println(connections);
+    int id= 0;
     for (List<ForestNodeConnection> conns : connections) {
       for (int i = 0; i < conns.size(); i++) {
         ForestNodeConnection c = conns.get(i);
-        pathsHtml.append(drawPath(c.code(), c.x(), c.y(), c.from(), c.to(), conns.size(), i));
+        pathsHtml.append(drawPath(c.code(), c.x(), c.y(), c.from(), c.to(), conns.size(), i, id++));
         }
       }
     String outputBoxHtml = """
@@ -99,14 +100,14 @@ public class Forest {
 			data-alternative=""
 			wrap="soft"
 			autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off" readonly>%s</textarea>
-      """.formatted(solution, initialCode, initialCode);
+      """.formatted(Escape.escapeForHtmlAttribute(solution), Escape.escapeForHtmlAttribute(initialCode), Escape.escapeForHtmlAttribute(initialCode));
     return name.htmlNextLevel(File.Forest_html.text)
       .replace("[###PATHS###]", pathsHtml.toString())
       .replace("[###BODY###]", nodesHtml)
       .replace("[###OUTPUT###]", outputBoxHtml);
     }
   
-  private String drawPath(String code, int x, int y, ForestNode from, ForestNode to, int totalConnections, int index) {
+  private String drawPath(String code, int x, int y, ForestNode from, ForestNode to, int totalConnections, int index, int id) {
     int x1= from.position().x();
     int y1= from.position().y();
     int x2= to.position().x();
@@ -135,22 +136,23 @@ public class Forest {
 
     return String.format(
       """
-      <g class="edge" onclick='travelPath("%7$s", %1$d, %2$d, %3$.2f, %4$.2f, %5$d, %6$d)'>
+      <g class="edge" onclick='travelPath("edge_%10$d", %1$d, %2$d, %3$.2f, %4$.2f, %5$d, %6$d)'>
         <path class="hitPath" d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d'/>
         <path class='path' d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d' stroke-dasharray="4 4"/>
         <foreignObject x="%8$d" y="%9$d" width="40px" height="8px">
           <textarea
+            id="edge_%10$d"
             class="overlayTextarea"
             style="top:0%%;left:0%%;width:100%%;height:100%%;font-size:3px;overflow-x:auto;"
             name="ForestCodeBox"
             wrap="soft"
             autocomplete="off"
             spellcheck="false"
-            readonly>%7$s
-            </textarea>
+            readonly
+            >%7$s</textarea>
           </foreignObject>
       </g>
-      """, x1, y1, mx, my, x2, y2, code, x, y
+      """, x1, y1, mx, my, x2, y2, Escape.escapeForHtmlAttribute(code), x, y, id
       );
     }
   
