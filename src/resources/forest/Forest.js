@@ -1,7 +1,7 @@
 'use strict';
 
 // Forest Minigame Settings
-const TRAVEL_SPEED= 0.75; // Seconds
+const TRAVEL_SPEED= 0.75; // Seconds between two nodes
 
 
 const resetBtn= document.getElementById('resetBtn');
@@ -9,7 +9,38 @@ const submitBtn= document.getElementById('submitBtn');
 const undoBtn= document.getElementById('undoBtn');
 const currentNodeMarker= document.getElementById('currentNodeMarker');
 const currentTravelingPath= document.getElementById('currentTravelingPath');
+
+// The code box shown above everything else when an 'edge' is hovered over
+const foreignObjectCodeBox= document.getElementById("foreignObjectCodeBox");
+const codeBoxOverlayTop= document.getElementById('codeBoxOverlayTop');
+const edges= document.getElementsByClassName('edge');
+
+Array.from(edges).forEach(edge => {
+  edge.addEventListener("mouseenter", () => {
+	const foreignObject= edge.querySelector("foreignObject");
+	const codeBox= edge.querySelector(".overlayTextarea");
+	foreignObjectCodeBox.setAttribute("opacity", 1);
+	foreignObjectCodeBox.setAttribute("x", foreignObject.getAttribute("x"));
+	foreignObjectCodeBox.setAttribute("y", foreignObject.getAttribute("y"));
+	foreignObjectCodeBox.setAttribute("width", foreignObject.getAttribute("width"));
+	foreignObjectCodeBox.setAttribute("height", foreignObject.getAttribute("height"));
+	codeBoxOverlayTop.value = codeBox.value;
+  });
+  edge.addEventListener("mouseleave", () => {
+	foreignObjectCodeBox.setAttribute("opacity", 0);
+  })
+});
+
 var interactionEnabled= true;
+
+const actionStack= [];
+
+class Action {
+  constructor(node, code) {
+	this.node= node;
+	this.code= code;
+  }
+}
 
 resetBtn.addEventListener('click', () => {
   location.reload();
@@ -21,7 +52,11 @@ submitBtn.addEventListener('click', () => {
   });
 
 undoBtn.addEventListener('click', () => {
-  location.reload();
+  if (actionStack.length === 0 || !interactionEnabled) { return; }
+  const action= actionStack.pop();
+  currentNode = action.node;
+  currentCode = action.code;
+  updateVisuals();
   });
 
 const onComplete= () => {
@@ -67,10 +102,9 @@ var currentCode= output.getAttribute("data-original");
 const solutionCode= output.getAttribute("data-solution");
   
 const travelFail= (n1, n2) => { console.log("Cannot travel between ", n1, n2); }
-  
+
 const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
   const code= Utils.getElementById(edgeId).value;
-  //const code= MetaData.str(Utils.getElementById(edgeId), );
   if (!interactionEnabled) { return; }
   const n1= new Node(x1, y1);
   const n2= new Node(x2, y2);
@@ -78,6 +112,7 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
 	travelFail(n1, n2);
 	return;
     }
+  actionStack.push(new Action(currentNode, currentCode));
   interactionEnabled = false;
   var otherNode;
   if (currentNode.equals(n1)) {
@@ -111,4 +146,9 @@ const animateTravelPath= (x1, y1, mx, my, x2, y2) => {
     };
 
   requestAnimationFrame(step);
+  }
+
+const updateVisuals= () => {
+  updateCurrentNodeMarkerLocation(currentNode.x, currentNode.y);
+  output.value = currentCode;
   }

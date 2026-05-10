@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 import main.Days;
 import resources.File;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -46,33 +47,36 @@ public class Forest {
   /**
    * Add a connection between two nodes and the position of the box to display the code.
    * The order of the position of the two nodes matters and you should not add a two-way connection.
-   * @param x1
-   * @param y1
-   * @param x2
-   * @param y2
-   * @param code
-   * @param bx
-   * @param by
+   * @param n1 Index of the first node.
+   * @param n2 Index of the second node.
+   * @param code Code associated with this edge
+   * @param bx Box's top-left corner x-position
+   * @param by Box's top-left corner y-position
+   * @param bw Box's width
+   * @param bh Box's height
    * @return this
    */
-  public Forest connect(int x1, int y1, int x2, int y2, String code, int bx, int by) {
-  	ForestNode from= nodes.get(new Position(x1, y1));
-  	if (from == null) throw new IllegalArgumentException("The 'from' node doesn't exist.");
-  	ForestNode to= nodes.get(new Position(x2, y2));
-  	if (to == null) throw new IllegalArgumentException("The 'to' node doesn't exist.");
-    connections.add(new ForestNodeConnection(from, to, code, bx, by));
+  public Forest connect(int n1, int n2, String code, int bx, int by, int bw, int bh) {
+    int nodesSize = nodes.size();
+    if (nodesSize < n1) throw new IllegalArgumentException("The index of first node is invalid.");
+    if (nodesSize < n2) throw new IllegalArgumentException("The index of second node is invalid.");
+    connections.add(new ForestNodeConnection(n1, n2, code, bx, by, bw, bh));
     return this;
+    }
+  public Forest connect(int n1, int n2, String code, int bx, int by) {
+    return connect(n1, n2, code, bx, by, 40, 7);
     }
   
   public String build() {
     String nodesHtml = nodes.values().stream()
       .map(ForestNode::build)
       .collect(Collectors.joining("\n"));
+    List<ForestNode> forestNodesOrdered= new ArrayList<>(nodes.values());
     Map<String, List<ForestNodeConnection>> connectionGroups= connections.stream()
       .collect(Collectors.groupingBy(
         conn -> {
-          Position a = conn.from().position();
-	        Position b = conn.to().position();
+          Position a= forestNodesOrdered.get(conn.fromIndex()).position();
+          Position b= forestNodesOrdered.get(conn.toIndex()).position();
 	        // normalize order so A-B == B-A
 	        if (a.x() < b.x() || (a.x() == b.x() && a.y() <= b.y())) {
 	          return a.x() + "," + a.y() + "-" + b.x() + "," + b.y();
@@ -83,12 +87,13 @@ public class Forest {
       ));
     StringBuilder pathsHtml= new StringBuilder();
     Collection<List<ForestNodeConnection>> connections= connectionGroups.values();
-    //System.out.println(connections);
     int id= 0;
     for (List<ForestNodeConnection> conns : connections) {
       for (int i = 0; i < conns.size(); i++) {
         ForestNodeConnection c = conns.get(i);
-        pathsHtml.append(drawPath(c.code(), c.x(), c.y(), c.from(), c.to(), conns.size(), i, id++));
+        ForestNode from= forestNodesOrdered.get(c.fromIndex());
+        ForestNode to= forestNodesOrdered.get(c.toIndex());
+        pathsHtml.append(drawPath(c.code(), c.x(), c.y(), from, to, conns.size(), i, id++, c.w(), c.h()));
         }
       }
     String outputBoxHtml = """
@@ -107,7 +112,7 @@ public class Forest {
       .replace("[###OUTPUT###]", outputBoxHtml);
     }
   
-  private String drawPath(String code, int x, int y, ForestNode from, ForestNode to, int totalConnections, int index, int id) {
+  private String drawPath(String code, int x, int y, ForestNode from, ForestNode to, int totalConnections, int index, int id, int boxWidth, int boxHeight) {
     int x1= from.position().x();
     int y1= from.position().y();
     int x2= to.position().x();
@@ -139,7 +144,7 @@ public class Forest {
       <g class="edge" onclick='travelPath("edge_%10$d", %1$d, %2$d, %3$.2f, %4$.2f, %5$d, %6$d)'>
         <path class="hitPath" d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d'/>
         <path class='path' d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d' stroke-dasharray="4 4"/>
-        <foreignObject x="%8$d" y="%9$d" width="40px" height="8px">
+        <foreignObject x="%8$d" y="%9$d" width="%11$dpx" height="%12$dpx">
           <textarea
             id="edge_%10$d"
             class="overlayTextarea"
@@ -152,7 +157,7 @@ public class Forest {
             >%7$s</textarea>
           </foreignObject>
       </g>
-      """, x1, y1, mx, my, x2, y2, Escape.escapeForHtmlAttribute(code), x, y, id
+      """, x1, y1, mx, my, x2, y2, Escape.escapeForHtmlAttribute(code), x, y, id, boxWidth, boxHeight
       );
     }
   
@@ -161,13 +166,13 @@ public class Forest {
 record ForestNode(Position position) {
   public String build() {
     return """
-        <circle 
-          cx="%d" cy="%d" 
-          r="2" 
+        <circle
+          cx="%d" cy="%d"
+          r="2"
           fill="red"
         />
       """.formatted(position.x(), position.y());
     }
   }
-record ForestNodeConnection(ForestNode from, ForestNode to, String code, int x, int y) {}
+record ForestNodeConnection(int fromIndex, int toIndex, String code, int x, int y, int w, int h) {}
 record Position(int x, int y) {}
