@@ -39,14 +39,15 @@ class Action {
   constructor(node, code) {
 	this.node= node;
 	this.code= code;
+    }
   }
-}
 
 resetBtn.addEventListener('click', () => {
   location.reload();
   });
 
 submitBtn.addEventListener('click', () => {
+  if (!interactionEnabled) { return; }
   if (currentCode === solutionCode) onComplete();
   else onFail();
   });
@@ -60,9 +61,11 @@ undoBtn.addEventListener('click', () => {
   });
 
 const onComplete= () => {
+  interactionEnabled = false;
+  Utils.flashImage('rgba(0, 250, 0, 0.5)','levelEndCharacter','translateY(-5%)');
   const nextLevelUrl = MetaData.str(document.body, 'next');
   Utils.checkExists(nextLevelUrl);
-  setTimeout(() => window.location.href = nextLevelUrl, 1000);
+  setTimeout(() => window.location.href = nextLevelUrl, 5000);
   }
 const onFail= () => {
   console.log("Incorrect")
@@ -91,7 +94,7 @@ class Path {
 	this.n1= new Node(x1, y1);
 	this.n2= new Node(x2, y2);
     }
-}
+  }
 
 const nodes= Array.from(nodesRaw).map(c => new Node(c.cx.baseVal.value, c.cy.baseVal.value));
 var currentNode= nodes[0];
@@ -118,10 +121,10 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
   if (currentNode.equals(n1)) {
 	currentNode = n2;
 	otherNode= n1;
-  } else {
+    } else {
 	currentNode = n1;
 	otherNode= n2;
-  }
+    }
   output.value = currentCode += code;
   animateTravelPath(otherNode.x, otherNode.y, mx, my, currentNode.x, currentNode.y); // It's backwards somehow :/
 }
