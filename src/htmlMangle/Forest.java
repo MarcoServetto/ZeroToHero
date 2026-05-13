@@ -103,12 +103,10 @@ public class Forest {
       }
     String outputBoxHtml = """
       <textarea class="overlayTextarea" id="output"
-			style="top:0%%;left:70.00%%;width:30%%;height:70.00%%;"
+			style="top:0%%;left:70.00%%;width:30%%;height:80.00%%;overflow-x:auto;"
 			name="ForestOutputBox"
 			data-solution="%s"
 			data-original="%s"
-			data-alternative=""
-			wrap="soft"
 			autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off" readonly>%s</textarea>
       """.formatted(Escape.escapeForHtmlAttribute(initialCode + solution), Escape.escapeForHtmlAttribute(initialCode), Escape.escapeForHtmlAttribute(initialCode));
     return name.htmlNextLevel(File.Forest_html.text)
