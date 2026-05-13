@@ -95,7 +95,9 @@ const onComplete= () => {
   setTimeout(() => window.location.href = nextLevelUrl, 5000);
   }
 const onFail= () => {
-  console.log("Incorrect")
+	interactionEnabled = false;
+	Utils.flashImage("rgba(250, 0, 0, 0.5)","levelFail","translateY(-5%)");
+	setTimeout(() => interactionEnabled = true, 3000);
   }
 
 const updateCurrentNodeMarkerLocation= (x, y) => {
