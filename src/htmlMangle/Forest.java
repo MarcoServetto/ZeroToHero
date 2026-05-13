@@ -21,7 +21,7 @@ import java.util.Map;
  *  so that the resulting code is valid and correctly answers the question.
  */
 public class Forest {
-  private final Map<Position, ForestNode> nodes= new LinkedHashMap<>();
+  private final Map<Position, Node> nodes= new LinkedHashMap<>();
   private final Set<ForestNodeConnection> connections= new HashSet<>();
   private final String initialCode;
   private final String solution;
@@ -41,6 +41,11 @@ public class Forest {
   public Forest addNode(int x, int y) {
 	  Position p= new Position(x, y);
     nodes.put(p, new ForestNode(p));
+    return this;
+    }
+  public Forest addFinishNode(int x, int y) {
+    Position p= new Position(x, y);
+    nodes.put(p, new FinishNode(p));
     return this;
     }
   
@@ -69,9 +74,9 @@ public class Forest {
   
   public String build() {
     String nodesHtml = nodes.values().stream()
-      .map(ForestNode::build)
+      .map(Node::build)
       .collect(Collectors.joining("\n"));
-    List<ForestNode> forestNodesOrdered= new ArrayList<>(nodes.values());
+    List<Node> forestNodesOrdered= new ArrayList<>(nodes.values());
     Map<String, List<ForestNodeConnection>> connectionGroups= connections.stream()
       .collect(Collectors.groupingBy(
         conn -> {
@@ -91,8 +96,8 @@ public class Forest {
     for (List<ForestNodeConnection> conns : connections) {
       for (int i = 0; i < conns.size(); i++) {
         ForestNodeConnection c = conns.get(i);
-        ForestNode from= forestNodesOrdered.get(c.fromIndex());
-        ForestNode to= forestNodesOrdered.get(c.toIndex());
+        Node from= forestNodesOrdered.get(c.fromIndex());
+        Node to= forestNodesOrdered.get(c.toIndex());
         pathsHtml.append(drawPath(c.code(), c.x(), c.y(), from, to, conns.size(), i, id++, c.w(), c.h()));
         }
       }
@@ -112,7 +117,7 @@ public class Forest {
       .replace("[###OUTPUT###]", outputBoxHtml);
     }
   
-  private String drawPath(String code, int x, int y, ForestNode from, ForestNode to, int totalConnections, int index, int id, int boxWidth, int boxHeight) {
+  private String drawPath(String code, int x, int y, Node from, Node to, int totalConnections, int index, int id, int boxWidth, int boxHeight) {
     int x1= from.position().x();
     int y1= from.position().y();
     int x2= to.position().x();
@@ -161,17 +166,32 @@ public class Forest {
       );
     }
   
-  }
-
-record ForestNode(Position position) {
-  public String build() {
-    return """
-        <circle
-          cx="%d" cy="%d"
-          r="2"
-          fill="red"
-        />
-      """.formatted(position.x(), position.y());
+  interface Node {
+    Position position();
+    String build();
+    }
+  record ForestNode(Position position) implements Node {
+    public String build() {
+      return """
+          <circle
+            cx="%d" cy="%d"
+            r="2"
+            fill="red"
+          />
+        """.formatted(position.x(), position.y());
+      }
+    }
+  record FinishNode(Position position) implements Node {
+    public String build() {
+      return """
+          <circle
+            class="finishNode"
+            cx="%d" cy="%d"
+            r="2"
+            fill="lightgreen"
+          />
+        """.formatted(position.x(), position.y());
+      }
     }
   }
 record ForestNodeConnection(int fromIndex, int toIndex, String code, int x, int y, int w, int h) {}
