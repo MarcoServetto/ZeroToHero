@@ -110,7 +110,7 @@ public class Forest {
 			data-alternative=""
 			wrap="soft"
 			autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off" readonly>%s</textarea>
-      """.formatted(Escape.escapeForHtmlAttribute(solution), Escape.escapeForHtmlAttribute(initialCode), Escape.escapeForHtmlAttribute(initialCode));
+      """.formatted(Escape.escapeForHtmlAttribute(initialCode + solution), Escape.escapeForHtmlAttribute(initialCode), Escape.escapeForHtmlAttribute(initialCode));
     return name.htmlNextLevel(File.Forest_html.text)
       .replace("[###PATHS###]", pathsHtml.toString())
       .replace("[###BODY###]", nodesHtml)

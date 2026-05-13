@@ -1,4 +1,4 @@
-'use strict';
+"use strict";
 
 // Forest Minigame Settings
 const TRAVEL_SPEED= 0.75; // Seconds between two nodes
@@ -21,11 +21,11 @@ class Path {
     }
   }
 
-const resetBtn= document.getElementById('resetBtn');
-const submitBtn= document.getElementById('submitBtn');
-const undoBtn= document.getElementById('undoBtn');
-const currentNodeMarker= document.getElementById('currentNodeMarker');
-const currentTravelingPath= document.getElementById('currentTravelingPath');
+const resetBtn= document.getElementById("resetBtn");
+const submitBtn= document.getElementById("submitBtn");
+const undoBtn= document.getElementById("undoBtn");
+const currentNodeMarker= document.getElementById("currentNodeMarker");
+const currentTravelingPath= document.getElementById("currentTravelingPath");
 
 const nodesRaw= document.querySelectorAll("circle");
 const finishNodesRaw= document.getElementsByClassName("finishNode");
@@ -33,8 +33,8 @@ const pathsRaw= document.querySelectorAll("path");
 
 // The code box shown above everything else when an 'edge' is hovered over
 const foreignObjectCodeBox= document.getElementById("foreignObjectCodeBox");
-const codeBoxOverlayTop= document.getElementById('codeBoxOverlayTop');
-const edges= document.getElementsByClassName('edge');
+const codeBoxOverlayTop= document.getElementById("codeBoxOverlayTop");
+const edges= document.getElementsByClassName("edge");
 
 // Map each HTML node to Javascript node.
 const normalNodes= Array.from(nodesRaw).map(c => new Node(c.cx.baseVal.value, c.cy.baseVal.value));
@@ -70,18 +70,18 @@ class Action {
     }
   }
 
-resetBtn.addEventListener('click', () => {
+resetBtn.addEventListener("click", () => {
   location.reload();
   });
 
-submitBtn.addEventListener('click', () => {
+submitBtn.addEventListener("click", () => {
   if (!interactionEnabled) { return; }
   if (!onFinishNode()) { return; }
   if (currentCode === solutionCode) onComplete();
   else onFail();
   });
 
-undoBtn.addEventListener('click', () => {
+undoBtn.addEventListener("click", () => {
   if (actionStack.length === 0 || !interactionEnabled) { return; }
   const action= actionStack.pop();
   currentNode = action.node;
@@ -91,8 +91,8 @@ undoBtn.addEventListener('click', () => {
 
 const onComplete= () => {
   interactionEnabled = false;
-  Utils.flashImage('rgba(0, 250, 0, 0.5)','levelEndCharacter','translateY(-5%)');
-  const nextLevelUrl = MetaData.str(document.body, 'next');
+  Utils.flashImage("rgba(0, 250, 0, 0.5)","levelEndCharacter","translateY(-5%)");
+  const nextLevelUrl = MetaData.str(document.body, "next");
   Utils.checkExists(nextLevelUrl);
   setTimeout(() => window.location.href = nextLevelUrl, 5000);
   }
