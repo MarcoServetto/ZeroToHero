@@ -45,6 +45,7 @@ public class Main {
     d.add(new WalkingBoomerangParam());
     d.addLast(new Day3Outro());
     
+    d.add(new WalkingToForest());;
     d.add(new ForestIntro());
     }
   public static void leoLevels(){
