@@ -3,7 +3,7 @@
 // Forest Minigame Settings
 const TRAVEL_SPEED= 0.75; // Seconds between two nodes
 
-
+	
 class Node {
   constructor(x, y) {
     this.x= x;
@@ -13,12 +13,11 @@ class Node {
     return this.x === other.x && this.y === other.y;
     }
   }
-class FinishNode extends Node {}
 class Path {
   constructor(code, x1, y1, x2, y2) {
-	this.code= code;
-	this.n1= new Node(x1, y1);
-	this.n2= new Node(x2, y2);
+    this.code= code;
+    this.n1= new Node(x1, y1);
+    this.n2= new Node(x2, y2);
     }
   }
 class Action {
@@ -49,24 +48,24 @@ const edges= document.getElementsByClassName("edge");
 
 // Map each HTML node to Javascript node.
 const normalNodes= Array.from(nodesRaw).map(c => new Node(c.cx.baseVal.value, c.cy.baseVal.value));
-const finishNodes= Array.from(finishNodesRaw).map(c => new FinishNode(c.cx.baseVal.value, c.cy.baseVal.value));
+const finishNodes= Array.from(finishNodesRaw).map(c => new Node(c.cx.baseVal.value, c.cy.baseVal.value));
 const nodes= normalNodes.concat(finishNodes);
 
 Array.from(edges).forEach(edge => {
   edge.addEventListener("mouseenter", () => {
-	const foreignObject= edge.querySelector("foreignObject");
-	const codeBox= edge.querySelector(".overlayTextarea");
-	foreignObjectCodeBox.setAttribute("opacity", 1);
-	foreignObjectCodeBox.setAttribute("x", foreignObject.getAttribute("x"));
-	foreignObjectCodeBox.setAttribute("y", foreignObject.getAttribute("y"));
-	foreignObjectCodeBox.setAttribute("width", foreignObject.getAttribute("width"));
-	foreignObjectCodeBox.setAttribute("height", foreignObject.getAttribute("height"));
-	codeBoxOverlayTop.value = codeBox.value;
-  });
+    const foreignObject= edge.querySelector("foreignObject");
+    const codeBox= edge.querySelector(".overlayTextarea");
+    foreignObjectCodeBox.setAttribute("opacity", 1);
+    foreignObjectCodeBox.setAttribute("x", foreignObject.getAttribute("x"));
+    foreignObjectCodeBox.setAttribute("y", foreignObject.getAttribute("y"));
+    foreignObjectCodeBox.setAttribute("width", foreignObject.getAttribute("width"));
+    foreignObjectCodeBox.setAttribute("height", foreignObject.getAttribute("height"));
+    codeBoxOverlayTop.value = codeBox.value;
+    });
   edge.addEventListener("mouseleave", () => {
-	foreignObjectCodeBox.setAttribute("opacity", 0);
-  })
-});
+    foreignObjectCodeBox.setAttribute("opacity", 0);
+    });
+  });
 
 resetBtn.addEventListener("click", () => {
   location.reload();
@@ -95,9 +94,9 @@ const onComplete= () => {
   setTimeout(() => window.location.href = nextLevelUrl, 5000);
   }
 const onFail= () => {
-	interactionEnabled = false;
-	Utils.flashImage("rgba(250, 0, 0, 0.5)","levelFail","translateY(-5%)");
-	setTimeout(() => interactionEnabled = true, 3000);
+  interactionEnabled = false;
+  Utils.flashImage("rgba(250, 0, 0, 0.5)","levelFail","translateY(-5%)");
+  setTimeout(() => interactionEnabled = true, 3000);
   }
 
 const updateCurrentNodeMarkerLocation= (x, y) => {
@@ -109,8 +108,6 @@ var interactionEnabled= true;
 var currentNode= nodes[0]; // The node the player is currently on
 const actionStack= [];
 
-updateCurrentNodeMarkerLocation(currentNode.x, currentNode.y);
-
 const onFinishNode= () => { return finishNodes.some(n => n.equals(currentNode)); }
 const travelFail= (n1, n2) => { console.log("Cannot travel between ", n1, n2); }
 const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
@@ -119,23 +116,23 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
   const n1= new Node(x1, y1);
   const n2= new Node(x2, y2);
   if (!(currentNode.equals(n1) || currentNode.equals(n2))) {
-	travelFail(n1, n2);
-	return;
+    travelFail(n1, n2);
+    return;
     }
   actionStack.push(new Action(currentNode, currentCode));
   interactionEnabled = false;
   var otherNode;
   if (currentNode.equals(n1)) {
-	currentNode = n2;
-	otherNode= n1;
+    currentNode = n2;
+    otherNode= n1;
     } else {
-	currentNode = n1;
-	otherNode= n2;
+    currentNode = n1;
+    otherNode= n2;
     }
   submitBtn.disabled = !onFinishNode();
   output.value = currentCode += code;
   animateTravelPath(otherNode.x, otherNode.y, mx, my, currentNode.x, currentNode.y); // It's backwards somehow :/
-}
+  }
 
 const animateTravelPath= (x1, y1, mx, my, x2, y2) => {
   const d = `M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}`;
@@ -151,9 +148,9 @@ const animateTravelPath= (x1, y1, mx, my, x2, y2) => {
     if (progress < 1) {
       requestAnimationFrame(step);
       } else {
-		interactionEnabled = true;
-		currentTravelingPath.setAttribute("d", "");
-	  }
+        interactionEnabled = true;
+        currentTravelingPath.setAttribute("d", "");
+      }
     };
 
   requestAnimationFrame(step);
@@ -162,6 +159,7 @@ const animateTravelPath= (x1, y1, mx, my, x2, y2) => {
 const updateVisuals= () => {
   updateCurrentNodeMarkerLocation(currentNode.x, currentNode.y);
   output.value = currentCode;
+  submitBtn.disabled = !onFinishNode();
   }
 
-submitBtn.disabled = !onFinishNode();
+updateVisuals();

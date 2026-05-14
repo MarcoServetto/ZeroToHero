@@ -8,7 +8,7 @@ import resources.File;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +22,7 @@ import java.util.Map;
  */
 public class Forest {
   private final Map<Position, Node> nodes= new LinkedHashMap<>();
-  private final Set<ForestNodeConnection> connections= new HashSet<>();
+  private final Set<ForestNodeConnection> connections= new LinkedHashSet<>();
   private final String initialCode;
   private final String solution;
   private final Days.LevelName name;
@@ -63,8 +63,8 @@ public class Forest {
    */
   public Forest connect(int n1, int n2, String code, int bx, int by, int bw, int bh) {
     int nodesSize = nodes.size();
-    if (nodesSize < n1) throw new IllegalArgumentException("The index of first node is invalid.");
-    if (nodesSize < n2) throw new IllegalArgumentException("The index of second node is invalid.");
+    if (nodesSize < n1) { throw new IllegalArgumentException("The index of first node is invalid."); }
+    if (nodesSize < n2) { throw new IllegalArgumentException("The index of second node is invalid."); }
     connections.add(new ForestNodeConnection(n1, n2, code, bx, by, bw, bh));
     return this;
     }
@@ -73,46 +73,50 @@ public class Forest {
     }
   
   public String build() {
-    String nodesHtml = nodes.values().stream()
+    return name.htmlNextLevel(File.Forest_html.text)
+      .replace("[###PATHS###]", pathsHtml())
+      .replace("[###BODY###]", nodesHtml())
+      .replace("[###OUTPUT###]", outputBoxHtml());
+    }
+  private String nodesHtml() {
+    return nodes.values().stream()
       .map(Node::build)
       .collect(Collectors.joining("\n"));
+    }
+  private String pathsHtml() {
     List<Node> forestNodesOrdered= new ArrayList<>(nodes.values());
     Map<String, List<ForestNodeConnection>> connectionGroups= connections.stream()
-      .collect(Collectors.groupingBy(
-        conn -> {
-          Position a= forestNodesOrdered.get(conn.fromIndex()).position();
-          Position b= forestNodesOrdered.get(conn.toIndex()).position();
-	        // normalize order so A-B == B-A
-	        if (a.x() < b.x() || (a.x() == b.x() && a.y() <= b.y())) {
-	          return a.x() + "," + a.y() + "-" + b.x() + "," + b.y();
-	        } else {
-	          return b.x() + "," + b.y() + "-" + a.x() + "," + a.y();
-	        }
-	      }
+      .collect(Collectors.groupingBy(conn -> {
+        Position a= forestNodesOrdered.get(conn.fromIndex()).position();
+        Position b= forestNodesOrdered.get(conn.toIndex()).position();
+        // normalize order so A-B == B-A
+        return a.x() < b.x() || (a.x() == b.x() && a.y() <= b.y()) ?
+          a.x() + "," + a.y() + "-" + b.x() + "," + b.y():
+          b.x() + "," + b.y() + "-" + a.x() + "," + a.y();
+        }
       ));
     StringBuilder pathsHtml= new StringBuilder();
     Collection<List<ForestNodeConnection>> connections= connectionGroups.values();
     int id= 0;
     for (List<ForestNodeConnection> conns : connections) {
-      for (int i = 0; i < conns.size(); i++) {
-        ForestNodeConnection c = conns.get(i);
+      for (int i= 0; i < conns.size(); i++) {
+        ForestNodeConnection c= conns.get(i);
         Node from= forestNodesOrdered.get(c.fromIndex());
         Node to= forestNodesOrdered.get(c.toIndex());
         pathsHtml.append(drawPath(c.code(), c.x(), c.y(), from, to, conns.size(), i, id++, c.w(), c.h()));
         }
       }
-    String outputBoxHtml = """
+    return pathsHtml.toString();
+    }
+  private String outputBoxHtml() {
+    return """
       <textarea class="overlayTextarea" id="output"
-			style="top:0%%;left:70.00%%;width:30%%;height:80.00%%;overflow-x:auto;"
-			name="ForestOutputBox"
-			data-solution="%s"
-			data-original="%s"
-			autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off" readonly>%s</textarea>
+      style="top:0%%;left:70.00%%;width:30%%;height:80.00%%;overflow-x:auto;"
+      name="ForestOutputBox"
+      data-solution="%s"
+      data-original="%s"
+      autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off" readonly>%s</textarea>
       """.formatted(Escape.escapeForHtmlAttribute(initialCode + solution), Escape.escapeForHtmlAttribute(initialCode), Escape.escapeForHtmlAttribute(initialCode));
-    return name.htmlNextLevel(File.Forest_html.text)
-      .replace("[###PATHS###]", pathsHtml.toString())
-      .replace("[###BODY###]", nodesHtml)
-      .replace("[###OUTPUT###]", outputBoxHtml);
     }
   
   private String drawPath(String code, int x, int y, Node from, Node to, int totalConnections, int index, int id, int boxWidth, int boxHeight) {
@@ -171,24 +175,22 @@ public class Forest {
   record ForestNode(Position position) implements Node {
     public String build() {
       return """
-          <circle
-            cx="%d" cy="%d"
-            r="2"
-            fill="red"
-          />
-        """.formatted(position.x(), position.y());
+        <circle
+          cx="%d" cy="%d"
+          r="2"
+          fill="red"
+        />""".formatted(position.x(), position.y());
       }
     }
   record FinishNode(Position position) implements Node {
     public String build() {
       return """
-          <circle
-            class="finishNode"
-            cx="%d" cy="%d"
-            r="2"
-            fill="lightgreen"
-          />
-        """.formatted(position.x(), position.y());
+        <circle
+          class="finishNode"
+          cx="%d" cy="%d"
+          r="2"
+          fill="lightgreen"
+        />""".formatted(position.x(), position.y());
       }
     }
   }
