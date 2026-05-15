@@ -3,7 +3,7 @@
 // Forest Minigame Settings
 const TRAVEL_SPEED= 0.75; // Seconds between two nodes
 
-	
+
 class Node {
   constructor(x, y) {
     this.x= x;
@@ -135,15 +135,15 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
   }
 
 const animateTravelPath= (x1, y1, mx, my, x2, y2) => {
-  const d = `M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}`;
+  const d= `M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}`;
   currentTravelingPath.setAttribute("d", d);
 
-  const length = currentTravelingPath.getTotalLength();
+  const length= currentTravelingPath.getTotalLength();
   const start= performance.now();
 
   const step= (t) => {
-    const progress = Math.min((t - start) / (TRAVEL_SPEED*1000), 1);
-    const point = currentTravelingPath.getPointAtLength(length * progress);
+    const progress= Math.min((t - start) / (TRAVEL_SPEED*1000), 1);
+    const point= currentTravelingPath.getPointAtLength(length * progress);
     updateCurrentNodeMarkerLocation(point.x, point.y);
     if (progress < 1) {
       requestAnimationFrame(step);

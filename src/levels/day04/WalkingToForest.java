@@ -14,7 +14,7 @@ public class WalkingToForest implements Function<Days.LevelName,String>{
       build the palisade," says Panic. He was already
       waiting for me at the door. */
       Bed:{ .getUp: North; }
-      @[Bed.getUp@@.turn]@
+      Hero:{ #: Direction -> @[Bed.getUp@@.turn]@; }
       """, MethodCall)
     .question("""
       @[// Your legs and arms tired from yesterday,

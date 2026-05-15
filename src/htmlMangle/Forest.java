@@ -40,12 +40,12 @@ public class Forest {
    */
   public Forest addNode(int x, int y) {
 	  Position p= new Position(x, y);
-    nodes.put(p, new ForestNode(p));
+    nodes.put(p, new Node(p, "", "red"));
     return this;
     }
   public Forest addFinishNode(int x, int y) {
     Position p= new Position(x, y);
-    nodes.put(p, new FinishNode(p));
+    nodes.put(p, new Node(p, "finishNode", "lightgreen"));
     return this;
     }
   
@@ -62,7 +62,7 @@ public class Forest {
    * @return this
    */
   public Forest connect(int n1, int n2, String code, int bx, int by, int bw, int bh) {
-    int nodesSize = nodes.size();
+    int nodesSize= nodes.size();
     if (nodesSize < n1) { throw new IllegalArgumentException("The index of first node is invalid."); }
     if (nodesSize < n2) { throw new IllegalArgumentException("The index of second node is invalid."); }
     connections.add(new ForestNodeConnection(n1, n2, code, bx, by, bw, bh));
@@ -83,18 +83,19 @@ public class Forest {
       .map(Node::build)
       .collect(Collectors.joining("\n"));
     }
+  private String normaliseOrderString(Position a, Position b) {
+    return a.x() < b.x() || (a.x() == b.x() && a.y() <= b.y()) ?
+      a.x() + "," + a.y() + "-" + b.x() + "," + b.y():
+      b.x() + "," + b.y() + "-" + a.x() + "," + a.y();
+    }
   private String pathsHtml() {
     List<Node> forestNodesOrdered= new ArrayList<>(nodes.values());
     Map<String, List<ForestNodeConnection>> connectionGroups= connections.stream()
       .collect(Collectors.groupingBy(conn -> {
         Position a= forestNodesOrdered.get(conn.fromIndex()).position();
         Position b= forestNodesOrdered.get(conn.toIndex()).position();
-        // normalize order so A-B == B-A
-        return a.x() < b.x() || (a.x() == b.x() && a.y() <= b.y()) ?
-          a.x() + "," + a.y() + "-" + b.x() + "," + b.y():
-          b.x() + "," + b.y() + "-" + a.x() + "," + a.y();
-        }
-      ));
+        return normaliseOrderString(a, b);
+      }));
     StringBuilder pathsHtml= new StringBuilder();
     Collection<List<ForestNodeConnection>> connections= connectionGroups.values();
     int id= 0;
@@ -168,29 +169,14 @@ public class Forest {
       );
     }
   
-  interface Node {
-    Position position();
-    String build();
-    }
-  record ForestNode(Position position) implements Node {
+  record Node(Position position, String elementClass, String fill) {
     public String build() {
       return """
-        <circle
+        <circle class="%s"
           cx="%d" cy="%d"
           r="2"
-          fill="red"
-        />""".formatted(position.x(), position.y());
-      }
-    }
-  record FinishNode(Position position) implements Node {
-    public String build() {
-      return """
-        <circle
-          class="finishNode"
-          cx="%d" cy="%d"
-          r="2"
-          fill="lightgreen"
-        />""".formatted(position.x(), position.y());
+          fill="%s"
+        />""".formatted(elementClass, position.x(), position.y(), fill);
       }
     }
   }
