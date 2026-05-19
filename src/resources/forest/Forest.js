@@ -2,6 +2,7 @@
 
 // Forest Minigame Settings
 const TRAVEL_SPEED= 0.75; // Seconds between two nodes
+const MAX_LINE_LENGTH= 60; // Maximum amount of characters for each line in the output box
 
 
 class Node {
@@ -67,6 +68,19 @@ Array.from(edges).forEach(edge => {
     });
   });
 
+const undo= () => {
+  if (actionStack.length === 0 || !interactionEnabled) { return; }
+  const action= actionStack.pop();
+  currentNode = action.node;
+  currentCode = action.code;
+  updateVisuals();
+  }
+const panicUndo= () => {
+  // TODO: Show Panic image pressing Undo button
+  // Maybe some screen effects to make this clear?
+  undo();
+  }
+
 resetBtn.addEventListener("click", () => {
   location.reload();
   });
@@ -78,13 +92,15 @@ submitBtn.addEventListener("click", () => {
   else onFail();
   });
 
-undoBtn.addEventListener("click", () => {
-  if (actionStack.length === 0 || !interactionEnabled) { return; }
-  const action= actionStack.pop();
-  currentNode = action.node;
-  currentCode = action.code;
-  updateVisuals();
-  });
+undoBtn.addEventListener("click", () => { undo(); });
+
+const checkOutputBoxLength= () => {
+  const lines = output.value.split("\n");
+  const tooLong = lines.some(line => line.length > MAX_LINE_LENGTH);
+  if (tooLong) {
+    console.log("UNDO");
+    }
+  };
 
 const onComplete= () => {
   interactionEnabled = false;
@@ -100,8 +116,8 @@ const onFail= () => {
   }
 
 const updateCurrentNodeMarkerLocation= (x, y) => {
-  currentNodeMarker.setAttribute("x", x - 5);
-  currentNodeMarker.setAttribute("y", y - 5);
+  currentNodeMarker.setAttribute("x", x - 40);
+  currentNodeMarker.setAttribute("y", y - 40);
   }
 
 var interactionEnabled= true;
@@ -131,6 +147,7 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
     }
   submitBtn.disabled = !onFinishNode();
   output.value = currentCode += code;
+  checkOutputBoxLength();
   animateTravelPath(otherNode.x, otherNode.y, mx, my, currentNode.x, currentNode.y); // It's backwards somehow :/
   }
 

@@ -17,8 +17,8 @@ public class ForestIntro implements Function<Days.LevelName, String>{
       .addNode(34, 20)
       .addNode(26, 56)
       .addFinishNode(82, 60)
-      .connect(0, 1, "{ .turn: ", 34, 40, 28, 7)
-      .connect(1, 2, "Direction; }", 30, 62)
+      .connect(0, 1, "{ .turn: ", 34, 40, 15)
+      .connect(1, 2, "Direction; }", 30, 62, 20)
       .build();
     }
   }

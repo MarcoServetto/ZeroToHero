@@ -21,6 +21,9 @@ import java.util.Map;
  *  so that the resulting code is valid and correctly answers the question.
  */
 public class Forest {
+  private static final float SIZE_MULTIPLIER= 10f;
+  private static final float DEFAULT_CODE_BOX_WIDTH= 25;
+  private static final float DEFAULT_CODE_BOX_HEIGHT= 4;
   private final Map<Position, Node> nodes= new LinkedHashMap<>();
   private final Set<ForestNodeConnection> connections= new LinkedHashSet<>();
   private final String initialCode;
@@ -38,13 +41,17 @@ public class Forest {
    * @param y position of the node.
    * @return this
    */
-  public Forest addNode(int x, int y) {
-	  Position p= new Position(x, y);
+  public Forest addNode(float x, float y) {
+    x *= SIZE_MULTIPLIER;
+    y *= SIZE_MULTIPLIER;
+	  Position p= new Position((int)x, (int)y);
     nodes.put(p, new Node(p, "", "red"));
     return this;
     }
-  public Forest addFinishNode(int x, int y) {
-    Position p= new Position(x, y);
+  public Forest addFinishNode(float x, float y) {
+    x *= SIZE_MULTIPLIER;
+    y *= SIZE_MULTIPLIER;
+    Position p= new Position((int)x, (int)y);
     nodes.put(p, new Node(p, "finishNode", "lightgreen"));
     return this;
     }
@@ -68,8 +75,15 @@ public class Forest {
     connections.add(new ForestNodeConnection(n1, n2, code, bx, by, bw, bh));
     return this;
     }
+  public Forest connect(int n1, int n2, String code, int bx, int by, int bw) {
+    int nodesSize= nodes.size();
+    if (nodesSize < n1) { throw new IllegalArgumentException("The index of first node is invalid."); }
+    if (nodesSize < n2) { throw new IllegalArgumentException("The index of second node is invalid."); }
+    connections.add(new ForestNodeConnection(n1, n2, code, bx, by, bw, (int)DEFAULT_CODE_BOX_HEIGHT));
+    return this;
+    }
   public Forest connect(int n1, int n2, String code, int bx, int by) {
-    return connect(n1, n2, code, bx, by, 40, 7);
+    return connect(n1, n2, code, bx, by, (int)DEFAULT_CODE_BOX_WIDTH);
     }
   
   public String build() {
@@ -112,7 +126,7 @@ public class Forest {
   private String outputBoxHtml() {
     return """
       <textarea class="overlayTextarea" id="output"
-      style="top:0%%;left:70.00%%;width:30%%;height:80.00%%;overflow-x:auto;"
+      style="top:0%%;left:60.00%%;width:40%%;height:80.00%%;overflow-x:auto;"
       name="ForestOutputBox"
       data-solution="%s"
       data-original="%s"
@@ -151,12 +165,12 @@ public class Forest {
       """
       <g class="edge" onclick='travelPath("edge_%10$d", %1$d, %2$d, %3$.2f, %4$.2f, %5$d, %6$d)'>
         <path class="hitPath" d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d'/>
-        <path class='path' d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d' stroke-dasharray="4 4"/>
+        <path class='path' d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d' stroke-dasharray="16 16"/>
         <foreignObject x="%8$d" y="%9$d" width="%11$dpx" height="%12$dpx">
           <textarea
             id="edge_%10$d"
             class="overlayTextarea"
-            style="top:0%%;left:0%%;width:100%%;height:100%%;font-size:3px;overflow-x:auto;"
+            style="top:0%%;left:0%%;width:100%%;height:100%%;font-size:20px;overflow-x:auto;"
             name="ForestCodeBox"
             wrap="soft"
             autocomplete="off"
@@ -165,7 +179,7 @@ public class Forest {
             >%7$s</textarea>
           </foreignObject>
       </g>
-      """, x1, y1, mx, my, x2, y2, Escape.escapeForHtmlAttribute(code), x, y, id, boxWidth, boxHeight
+      """, x1, y1, mx, my, x2, y2, Escape.escapeForHtmlAttribute(code), (int)(x * SIZE_MULTIPLIER), (int)(y * SIZE_MULTIPLIER), id, (int)(boxWidth * SIZE_MULTIPLIER), (int)(boxHeight * SIZE_MULTIPLIER)
       );
     }
   
@@ -174,7 +188,7 @@ public class Forest {
       return """
         <circle class="%s"
           cx="%d" cy="%d"
-          r="2"
+          r="15"
           fill="%s"
         />""".formatted(elementClass, position.x(), position.y(), fill);
       }
