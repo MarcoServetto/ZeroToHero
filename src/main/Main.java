@@ -47,7 +47,12 @@ public class Main {
     
     d.add(new WalkingToForest());
     d.add(new ForestIntro());
-    }
+    d.add(new ForestTutorial1());
+    d.add(new ForestTutorial2());
+    d.add(new ForestCollectTrunk1());
+    d.add(new ForestCollectTrunk2());
+    d.add(new ForestCollectTrunk3());
+  }
   public static void leoLevels(){
     Days d= new Days("assetsLeo");
     d.add(new Leo1());
