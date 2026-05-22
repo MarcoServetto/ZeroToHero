@@ -28,11 +28,10 @@ class Action {
     }
   }
 
-const resetBtn= Utils.getElementById("resetBtn");
-const submitBtn= Utils.getElementById("submitBtn");
-const undoBtn= Utils.getElementById("undoBtn");
 const currentNodeMarker= Utils.getElementById("currentNodeMarker");
 const currentTravelingPath= Utils.getElementById("currentTravelingPath");
+const markerWidth= currentNodeMarker.getAttribute("width");
+const markerHeight= currentNodeMarker.getAttribute("height");
 
 var output= Utils.getElementById("output");
 var currentCode= MetaData.str(output, "original");
@@ -52,6 +51,36 @@ const normalNodes= Array.from(nodesRaw).map(c => new Node(c.cx.baseVal.value, c.
 const finishNodes= Array.from(finishNodesRaw).map(c => new Node(c.cx.baseVal.value, c.cy.baseVal.value));
 const nodes= normalNodes.concat(finishNodes);
 
+var interactionEnabled= true;
+var currentNode= nodes[0]; // The node the player is currently on
+const actionStack= [];
+
+const submit= () => {
+  if (!onFinishNode()) { return; }
+  const freezeToken= Buttons.freezeToken();
+  if (currentCode === solutionCode) { onComplete(); }
+  else { onFail(freezeToken); }
+  }
+const undo= () => {
+  if (actionStack.length === 0 || !interactionEnabled) { return; }
+  const action= actionStack.pop();
+  currentNode = action.node;
+  currentCode = action.code;
+  updateVisuals();
+  }
+const panicUndo= () => {
+  // TODO: Show Panic image pressing Undo button
+  // Maybe some screen effects to make this clear?
+  undo();
+  }
+
+const buttonActions= {
+  submitBtn: submit,
+  resetBtn: () => location.reload(),
+  undoBtn: undo
+  };
+const Buttons= initButtons(() => {}, buttonActions);
+
 Array.from(edges).forEach(edge => {
   edge.addEventListener("mouseenter", () => {
     const foreignObject= edge.querySelector("foreignObject");
@@ -68,61 +97,27 @@ Array.from(edges).forEach(edge => {
     });
   });
 
-const undo= () => {
-  if (actionStack.length === 0 || !interactionEnabled) { return; }
-  const action= actionStack.pop();
-  currentNode = action.node;
-  currentCode = action.code;
-  updateVisuals();
-  }
-const panicUndo= () => {
-  // TODO: Show Panic image pressing Undo button
-  // Maybe some screen effects to make this clear?
-  undo();
-  }
-
-resetBtn.addEventListener("click", () => {
-  location.reload();
-  });
-
-submitBtn.addEventListener("click", () => {
-  if (!interactionEnabled) { return; }
-  if (!onFinishNode()) { return; }
-  if (currentCode === solutionCode) onComplete();
-  else onFail();
-  });
-
-undoBtn.addEventListener("click", () => { undo(); });
-
 const checkOutputBoxLength= () => {
   const lines = output.value.split("\n");
   const tooLong = lines.some(line => line.length > MAX_LINE_LENGTH);
-  if (tooLong) {
-    console.log("UNDO");
-    }
+  if (tooLong) { panicUndo(); }
   };
 
 const onComplete= () => {
-  interactionEnabled = false;
   Utils.flashImage("rgba(0, 250, 0, 0.5)","levelEndCharacter","translateY(-5%)");
   const nextLevelUrl= MetaData.str(document.body, "next");
   Utils.checkExists(nextLevelUrl);
   setTimeout(() => window.location.href = nextLevelUrl, 5000);
   }
-const onFail= () => {
-  interactionEnabled = false;
+const onFail= (freezeToken) => {
   Utils.flashImage("rgba(250, 0, 0, 0.5)","levelFail","translateY(-5%)");
-  setTimeout(() => interactionEnabled = true, 3000);
+  setTimeout(() => freezeToken.unfreeze(), 3000);
   }
 
 const updateCurrentNodeMarkerLocation= (x, y) => {
-  currentNodeMarker.setAttribute("x", x - 40);
-  currentNodeMarker.setAttribute("y", y - 40);
+  currentNodeMarker.setAttribute("x", x - markerWidth/2);
+  currentNodeMarker.setAttribute("y", y - markerHeight/2);
   }
-
-var interactionEnabled= true;
-var currentNode= nodes[0]; // The node the player is currently on
-const actionStack= [];
 
 const onFinishNode= () => { return finishNodes.some(n => n.equals(currentNode)); }
 const travelFail= (n1, n2) => { console.log("Cannot travel between ", n1, n2); }

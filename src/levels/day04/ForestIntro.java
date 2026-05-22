@@ -3,17 +3,18 @@ package levels.day04;
 import java.util.function.Function;
 
 import main.Days;
+import htmlMangle.Forest;
 
 public class ForestIntro implements Function<Days.LevelName, String>{
   public String apply(Days.LevelName name) {
-    return new htmlMangle.Forest(name, """
+    return new Forest(name, """
       /*
       Panic: It's quite easy to get
       lost here. Make sure to 
       remember your directions!
       */
       
-      Direction:""", "{ .turn: Direction; }")
+      Direction:""", "{ .turn: Direction; }").background(Forest.Background.DAWN)
       .addNode(34, 20)
       .addNode(26, 56)
       .addFinishNode(82, 60)

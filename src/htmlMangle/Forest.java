@@ -29,6 +29,7 @@ public class Forest {
   private final String initialCode;
   private final String solution;
   private final Days.LevelName name;
+  private Background background= Background.DAWN;
   
   public Forest(Days.LevelName name, String initialCode, String solution) {
     this.name= name;
@@ -42,17 +43,16 @@ public class Forest {
    * @return this
    */
   public Forest addNode(float x, float y) {
-    x *= SIZE_MULTIPLIER;
-    y *= SIZE_MULTIPLIER;
-	  Position p= new Position((int)x, (int)y);
-    nodes.put(p, new Node(p, "", "red"));
-    return this;
+    return addNode(x, y, "", "red");
     }
   public Forest addFinishNode(float x, float y) {
+    return addNode(x, y, "finishNode", "lightgreen");
+    }
+  private Forest addNode(float x, float y, String className, String colour) {
     x *= SIZE_MULTIPLIER;
     y *= SIZE_MULTIPLIER;
     Position p= new Position((int)x, (int)y);
-    nodes.put(p, new Node(p, "finishNode", "lightgreen"));
+    nodes.put(p, new Node(p, className, colour));
     return this;
     }
   
@@ -76,18 +76,19 @@ public class Forest {
     return this;
     }
   public Forest connect(int n1, int n2, String code, int bx, int by, int bw) {
-    int nodesSize= nodes.size();
-    if (nodesSize < n1) { throw new IllegalArgumentException("The index of first node is invalid."); }
-    if (nodesSize < n2) { throw new IllegalArgumentException("The index of second node is invalid."); }
-    connections.add(new ForestNodeConnection(n1, n2, code, bx, by, bw, (int)DEFAULT_CODE_BOX_HEIGHT));
-    return this;
+    return connect(n1, n2, code, bx, by, bw, (int)DEFAULT_CODE_BOX_HEIGHT);
     }
   public Forest connect(int n1, int n2, String code, int bx, int by) {
     return connect(n1, n2, code, bx, by, (int)DEFAULT_CODE_BOX_WIDTH);
     }
+  public Forest background(Background background) {
+    this.background = background;
+    return this;
+    }
   
   public String build() {
     return name.htmlNextLevel(File.Forest_html.text)
+      .replace("[###BACKGROUNDFILE###]", background.filename())
       .replace("[###PATHS###]", pathsHtml())
       .replace("[###BODY###]", nodesHtml())
       .replace("[###OUTPUT###]", outputBoxHtml());
@@ -193,6 +194,12 @@ public class Forest {
         />""".formatted(elementClass, position.x(), position.y(), fill);
       }
     }
+  public enum Background {
+    DAWN("forestDawn.png");
+    String filename; // Located in resources/forest/FILENAME
+    Background(String filename) { this.filename= filename; }
+    String filename() { return filename; }
+  }
   }
 record ForestNodeConnection(int fromIndex, int toIndex, String code, int x, int y, int w, int h) {}
 record Position(int x, int y) {}
