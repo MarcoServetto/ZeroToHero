@@ -21,7 +21,7 @@ import java.util.Map;
  *  so that the resulting code is valid and correctly answers the question.
  */
 public class Forest {
-  private static final float SIZE_MULTIPLIER= 10f;
+  private static final float SIZE_MULTIPLIER= 10f; // SVG is originally 100x100, if higher, have to multiply
   private static final float DEFAULT_CODE_BOX_WIDTH= 25;
   private static final float DEFAULT_CODE_BOX_HEIGHT= 4;
   private final Map<Position, Node> nodes= new LinkedHashMap<>();
@@ -72,6 +72,11 @@ public class Forest {
     int nodesSize= nodes.size();
     if (nodesSize < n1) { throw new IllegalArgumentException("The index of first node is invalid."); }
     if (nodesSize < n2) { throw new IllegalArgumentException("The index of second node is invalid."); }
+    if (n2 < n1) { // Swap them around
+      int temp= n1;
+      n1 = n2;
+      n2 = temp;
+      }
     connections.add(new ForestNodeConnection(n1, n2, code, bx, by, bw, bh));
     return this;
     }
@@ -98,19 +103,10 @@ public class Forest {
       .map(Node::build)
       .collect(Collectors.joining("\n"));
     }
-  private String normaliseOrderString(Position a, Position b) {
-    return a.x() < b.x() || (a.x() == b.x() && a.y() <= b.y()) ?
-      a.x() + "," + a.y() + "-" + b.x() + "," + b.y():
-      b.x() + "," + b.y() + "-" + a.x() + "," + a.y();
-    }
   private String pathsHtml() {
     List<Node> forestNodesOrdered= new ArrayList<>(nodes.values());
     Map<String, List<ForestNodeConnection>> connectionGroups= connections.stream()
-      .collect(Collectors.groupingBy(conn -> {
-        Position a= forestNodesOrdered.get(conn.fromIndex()).position();
-        Position b= forestNodesOrdered.get(conn.toIndex()).position();
-        return normaliseOrderString(a, b);
-      }));
+      .collect(Collectors.groupingBy(conn -> conn.fromIndex() + "," + conn.toIndex()));
     StringBuilder pathsHtml= new StringBuilder();
     Collection<List<ForestNodeConnection>> connections= connectionGroups.values();
     int id= 0;
@@ -153,7 +149,7 @@ public class Forest {
     double offsetIndex= index - (totalConnections - 1) / 2.0;
 
     // scale curve strength with number of connections
-    double baseCurve= 10.0; // tweak this
+    double baseCurve= 10.0 * SIZE_MULTIPLIER; // tweak this
     double curveAmount= baseCurve * (1 + totalConnections * 0.5);
 
     double offset= offsetIndex * curveAmount;
