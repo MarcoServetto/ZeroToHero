@@ -98,10 +98,13 @@ Array.from(edges).forEach(edge => {
   });
 
 const checkOutputBoxLength= () => {
-  const lines = output.value.split("\n");
-  const tooLong = lines.some(line => line.length > MAX_LINE_LENGTH);
-  if (tooLong) { panicUndo(); }
+  const tooLong= checkOverLength(output.value);
   };
+
+const checkOverLength= (str) => {
+  const lines= str.split("\n");
+  return lines.some(line => line.length > MAX_LINE_LENGTH);
+  }
 
 const onComplete= () => {
   Utils.flashImage("rgba(0, 250, 0, 0.5)","levelEndCharacter","translateY(-5%)");
@@ -122,7 +125,6 @@ const updateCurrentNodeMarkerLocation= (x, y) => {
 const onFinishNode= () => { return finishNodes.some(n => n.equals(currentNode)); }
 const travelFail= (n1, n2) => { console.log("Cannot travel between ", n1, n2); }
 const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
-  const code= Utils.getElementById(edgeId).value;
   if (!interactionEnabled) { return; }
   const n1= new Node(x1, y1);
   const n2= new Node(x2, y2);
@@ -130,6 +132,11 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
     travelFail(n1, n2);
     return;
     }
+  const code= Utils.getElementById(edgeId).value;
+  if (checkOverLength(output.value + code)) {
+	Utils.showMessageBox("We've picked up too much! Try pressing the Undo button.", 1000, true, Buttons.freezeToken);
+	return;
+  }
   actionStack.push(new Action(currentNode, currentCode));
   interactionEnabled = false;
   var otherNode;
