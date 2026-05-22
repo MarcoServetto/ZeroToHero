@@ -21,11 +21,15 @@ import java.util.Map;
  *  so that the resulting code is valid and correctly answers the question.
  */
 public class Forest {
+  private static final float SIZE_MULTIPLIER= 10f; // SVG is originally 100x100, if higher, have to multiply
+  private static final float DEFAULT_CODE_BOX_WIDTH= 25;
+  private static final float DEFAULT_CODE_BOX_HEIGHT= 4;
   private final Map<Position, Node> nodes= new LinkedHashMap<>();
   private final Set<ForestNodeConnection> connections= new LinkedHashSet<>();
   private final String initialCode;
   private final String solution;
   private final Days.LevelName name;
+  private Background background= Background.DAWN;
   
   public Forest(Days.LevelName name, String initialCode, String solution) {
     this.name= name;
@@ -38,14 +42,17 @@ public class Forest {
    * @param y position of the node.
    * @return this
    */
-  public Forest addNode(int x, int y) {
-	  Position p= new Position(x, y);
-    nodes.put(p, new Node(p, "", "red"));
-    return this;
+  public Forest addNode(float x, float y) {
+    return addNode(x, y, "", "red");
     }
-  public Forest addFinishNode(int x, int y) {
-    Position p= new Position(x, y);
-    nodes.put(p, new Node(p, "finishNode", "lightgreen"));
+  public Forest addFinishNode(float x, float y) {
+    return addNode(x, y, "finishNode", "lightgreen");
+    }
+  private Forest addNode(float x, float y, String className, String colour) {
+    x *= SIZE_MULTIPLIER;
+    y *= SIZE_MULTIPLIER;
+    Position p= new Position((int)x, (int)y);
+    nodes.put(p, new Node(p, className, colour));
     return this;
     }
   
@@ -65,15 +72,28 @@ public class Forest {
     int nodesSize= nodes.size();
     if (nodesSize < n1) { throw new IllegalArgumentException("The index of first node is invalid."); }
     if (nodesSize < n2) { throw new IllegalArgumentException("The index of second node is invalid."); }
+    if (n2 < n1) { // Swap them around
+      int temp= n1;
+      n1 = n2;
+      n2 = temp;
+      }
     connections.add(new ForestNodeConnection(n1, n2, code, bx, by, bw, bh));
     return this;
     }
+  public Forest connect(int n1, int n2, String code, int bx, int by, int bw) {
+    return connect(n1, n2, code, bx, by, bw, (int)DEFAULT_CODE_BOX_HEIGHT);
+    }
   public Forest connect(int n1, int n2, String code, int bx, int by) {
-    return connect(n1, n2, code, bx, by, 40, 7);
+    return connect(n1, n2, code, bx, by, (int)DEFAULT_CODE_BOX_WIDTH);
+    }
+  public Forest background(Background background) {
+    this.background = background;
+    return this;
     }
   
   public String build() {
     return name.htmlNextLevel(File.Forest_html.text)
+      .replace("[###BACKGROUNDFILE###]", background.filename())
       .replace("[###PATHS###]", pathsHtml())
       .replace("[###BODY###]", nodesHtml())
       .replace("[###OUTPUT###]", outputBoxHtml());
@@ -83,19 +103,10 @@ public class Forest {
       .map(Node::build)
       .collect(Collectors.joining("\n"));
     }
-  private String normaliseOrderString(Position a, Position b) {
-    return a.x() < b.x() || (a.x() == b.x() && a.y() <= b.y()) ?
-      a.x() + "," + a.y() + "-" + b.x() + "," + b.y():
-      b.x() + "," + b.y() + "-" + a.x() + "," + a.y();
-    }
   private String pathsHtml() {
     List<Node> forestNodesOrdered= new ArrayList<>(nodes.values());
     Map<String, List<ForestNodeConnection>> connectionGroups= connections.stream()
-      .collect(Collectors.groupingBy(conn -> {
-        Position a= forestNodesOrdered.get(conn.fromIndex()).position();
-        Position b= forestNodesOrdered.get(conn.toIndex()).position();
-        return normaliseOrderString(a, b);
-      }));
+      .collect(Collectors.groupingBy(conn -> conn.fromIndex() + "," + conn.toIndex()));
     StringBuilder pathsHtml= new StringBuilder();
     Collection<List<ForestNodeConnection>> connections= connectionGroups.values();
     int id= 0;
@@ -112,7 +123,7 @@ public class Forest {
   private String outputBoxHtml() {
     return """
       <textarea class="overlayTextarea" id="output"
-      style="top:0%%;left:70.00%%;width:30%%;height:80.00%%;overflow-x:auto;"
+      style="top:0%%;left:60.00%%;width:40%%;height:80.00%%;overflow-x:auto;"
       name="ForestOutputBox"
       data-solution="%s"
       data-original="%s"
@@ -138,7 +149,7 @@ public class Forest {
     double offsetIndex= index - (totalConnections - 1) / 2.0;
 
     // scale curve strength with number of connections
-    double baseCurve= 10.0; // tweak this
+    double baseCurve= 10.0 * SIZE_MULTIPLIER; // tweak this
     double curveAmount= baseCurve * (1 + totalConnections * 0.5);
 
     double offset= offsetIndex * curveAmount;
@@ -151,12 +162,12 @@ public class Forest {
       """
       <g class="edge" onclick='travelPath("edge_%10$d", %1$d, %2$d, %3$.2f, %4$.2f, %5$d, %6$d)'>
         <path class="hitPath" d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d'/>
-        <path class='path' d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d' stroke-dasharray="4 4"/>
+        <path class='path' d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d' stroke-dasharray="16 16"/>
         <foreignObject x="%8$d" y="%9$d" width="%11$dpx" height="%12$dpx">
           <textarea
             id="edge_%10$d"
             class="overlayTextarea"
-            style="top:0%%;left:0%%;width:100%%;height:100%%;font-size:3px;overflow-x:auto;"
+            style="top:0%%;left:0%%;width:100%%;height:100%%;font-size:20px;overflow-x:auto;"
             name="ForestCodeBox"
             wrap="soft"
             autocomplete="off"
@@ -165,7 +176,7 @@ public class Forest {
             >%7$s</textarea>
           </foreignObject>
       </g>
-      """, x1, y1, mx, my, x2, y2, Escape.escapeForHtmlAttribute(code), x, y, id, boxWidth, boxHeight
+      """, x1, y1, mx, my, x2, y2, Escape.escapeForHtmlAttribute(code), (int)(x * SIZE_MULTIPLIER), (int)(y * SIZE_MULTIPLIER), id, (int)(boxWidth * SIZE_MULTIPLIER), (int)(boxHeight * SIZE_MULTIPLIER)
       );
     }
   
@@ -174,11 +185,17 @@ public class Forest {
       return """
         <circle class="%s"
           cx="%d" cy="%d"
-          r="2"
+          r="15"
           fill="%s"
         />""".formatted(elementClass, position.x(), position.y(), fill);
       }
     }
+  public enum Background {
+    DAWN("forestDawn.png");
+    String filename; // Located in resources/forest/FILENAME
+    Background(String filename) { this.filename= filename; }
+    String filename() { return filename; }
+  }
   }
 record ForestNodeConnection(int fromIndex, int toIndex, String code, int x, int y, int w, int h) {}
 record Position(int x, int y) {}
