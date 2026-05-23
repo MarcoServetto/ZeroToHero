@@ -2,7 +2,7 @@
 
 // Forest Minigame Settings
 const TRAVEL_SPEED= 0.75; // Seconds between two nodes
-const MAX_LINE_LENGTH= 60; // Maximum amount of characters for each line in the output box
+const MAX_LINE_LENGTH= 80; // Maximum amount of characters for each line in the output box
 
 
 class Node {

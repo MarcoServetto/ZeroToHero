@@ -52,6 +52,11 @@ public class Main {
     d.add(new ForestCollectTrunk1());
     d.add(new ForestCollectTrunk2());
     d.add(new ForestCollectTrunk3());
+    d.add(new DuskDanger());
+    d.add(new ForestCollectTrunk4());
+    d.add(new ForestCollectTrunk5());
+    d.add(new ForestCollectTrunk6());
+    d.addLast(new RotationCombine());
   }
   public static void leoLevels(){
     Days d= new Days("assetsLeo");
