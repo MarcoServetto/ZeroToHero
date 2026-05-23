@@ -21,7 +21,7 @@ import java.util.Map;
  *  so that the resulting code is valid and correctly answers the question.
  */
 public class Forest {
-  private static final float SIZE_MULTIPLIER= 10f; // SVG is originally 100x100, if higher, have to multiply
+  private static final float SIZE_MULTIPLIER= 10f;
   private static final float DEFAULT_CODE_BOX_WIDTH= 25;
   private static final float DEFAULT_CODE_BOX_HEIGHT= 4;
   private final Map<Position, Node> nodes= new LinkedHashMap<>();
@@ -123,7 +123,7 @@ public class Forest {
   private String outputBoxHtml() {
     return """
       <textarea class="overlayTextarea" id="output"
-      style="top:0%%;left:60.00%%;width:40%%;height:80.00%%;overflow-x:auto;"
+      style="top:0%%;left:60.00%%;width:40%%;height:60.00%%;overflow-x:auto;pointer-events:auto"
       name="ForestOutputBox"
       data-solution="%s"
       data-original="%s"
