@@ -33,7 +33,7 @@ const currentTravelingPath= Utils.getElementById("currentTravelingPath");
 const markerWidth= currentNodeMarker.getAttribute("width");
 const markerHeight= currentNodeMarker.getAttribute("height");
 
-var output= Utils.getElementById("output");
+const output= Utils.getElementById("output");
 var currentCode= MetaData.str(output, "original");
 const solutionCode= MetaData.str(output, "solution");
 
@@ -66,13 +66,21 @@ const undo= () => {
   const action= actionStack.pop();
   currentNode = action.node;
   currentCode = action.code;
+  hintChar.hidden = true; // Hide Panic
   updateVisuals();
   }
-const panicUndo= () => {
-  // TODO: Show Panic image pressing Undo button
-  // Maybe some screen effects to make this clear?
-  undo();
-  }
+
+let panicToHideId= null;
+const hintChar= document.getElementById("hintCharacter");
+const displayPanicMessage= (msg, duration) => {
+  clearTimeout(panicToHideId);
+  const speechBubble= hintChar.querySelector(".speechBubble");
+  speechBubble.textContent = msg;
+  hintChar.hidden = false;
+  panicToHideId = setTimeout(()=>{
+    hintChar.hidden = true;
+    }, duration);
+  };
 
 const buttonActions= {
   submitBtn: submit,
@@ -134,8 +142,9 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
     }
   const code= Utils.getElementById(edgeId).value;
   if (checkOverLength(output.value + code)) {
-	Utils.showMessageBox("We've picked up too much! Try pressing the Undo button.", 1000, true, Buttons.freezeToken);
-	return;
+    displayPanicMessage("We've picked up too much! Try the Undo button.", 5000);
+    output.classList.add("incorrectGlow");
+    return;
   }
   actionStack.push(new Action(currentNode, currentCode));
   interactionEnabled = false;
@@ -179,6 +188,7 @@ const updateVisuals= () => {
   updateCurrentNodeMarkerLocation(currentNode.x, currentNode.y);
   output.value = currentCode;
   submitBtn.disabled = !onFinishNode();
+  if (!checkOverLength(output.value)) { output.classList.remove("incorrectGlow"); }
   }
 
 updateVisuals();
