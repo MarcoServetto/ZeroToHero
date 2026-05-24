@@ -1,7 +1,7 @@
 "use strict";
 
 // Forest Minigame Settings
-const TRAVEL_SPEED= 0.75; // Seconds between two nodes
+const TRAVEL_SPEED= 500; // Constant speed along a path
 const MAX_LINE_LENGTH= 80; // Maximum amount of characters for each line in the output box
 
 
@@ -161,7 +161,7 @@ const animateTravelPath= (x1, y1, mx, my, x2, y2) => {
   const start= performance.now();
 
   const step= (t) => {
-    const progress= Math.min((t - start) / (TRAVEL_SPEED*1000), 1);
+    const progress= Math.min((t - start) / (length*1000/TRAVEL_SPEED), 1);
     const point= currentTravelingPath.getPointAtLength(length * progress);
     updateCurrentNodeMarkerLocation(point.x, point.y);
     if (progress < 1) {
