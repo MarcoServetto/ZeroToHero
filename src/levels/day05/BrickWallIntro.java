@@ -1,0 +1,14 @@
+package levels.day05;
+
+import java.util.function.Function;
+
+import main.Days;
+import htmlMangle.BrickWall;
+
+public class BrickWallIntro implements Function<Days.LevelName, String>{
+  public String apply(Days.LevelName name) {
+    return new BrickWall(name)
+      
+      .build();
+    }
+  }

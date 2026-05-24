@@ -19,7 +19,8 @@ lost here. Make sure to
 remember your directions!
 */
 
-Direction:""", "{ .turn: Direction; }").background(Forest.Background.DAWN)
+Direction:""", "{ .turn: Direction; }")
+      .background(Forest.Background.DAWN)
       .addNode(34, 20)
       .addNode(26, 56)
       .addFinishNode(82, 60)
