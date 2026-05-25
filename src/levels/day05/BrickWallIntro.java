@@ -2,7 +2,7 @@ package levels.day05;
 
 import java.util.function.Function;
 
-import main.Days;
+import mainZeroToHero.Days;
 import htmlMangle.BrickWall;
 
 public class BrickWallIntro implements Function<Days.LevelName, String>{

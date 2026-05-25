@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import main.Days;
+import mainZeroToHero.Days;
 
 /**
  * The Brick Wall mini-game has a wall of bricks, which are arranged in rows.
