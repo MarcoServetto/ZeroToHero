@@ -11,8 +11,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import main.Days;
-import main.Main;
+import mainZeroToHero.Days;
+import mainZeroToHero.Main;
 import resources.File;
 public class DirectInstructions {
   private Days.LevelName name;

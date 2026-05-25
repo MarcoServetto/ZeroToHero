@@ -3,7 +3,7 @@ package htmlMangle;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import main.Days;
+import mainZeroToHero.Days;
 import resources.File;
 
 import java.util.ArrayList;

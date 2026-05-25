@@ -2,7 +2,7 @@ package levels.day02;
 
 import java.util.function.Function;
 
-import main.Days;
+import mainZeroToHero.Days;
 
 
 public class BookArchery1 implements Function<Days.LevelName,String>{

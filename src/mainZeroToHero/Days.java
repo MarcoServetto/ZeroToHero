@@ -1,4 +1,4 @@
-package main;
+package mainZeroToHero;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;

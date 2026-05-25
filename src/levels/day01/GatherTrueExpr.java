@@ -7,7 +7,7 @@ import static htmlMangle.Gather.Kind.*;
 
 import java.util.function.Function;
 
-import main.Days;
+import mainZeroToHero.Days;
 
 public class GatherTrueExpr implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){

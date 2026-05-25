@@ -2,7 +2,7 @@ package levels.day04;
 
 import java.util.function.Function;
 
-import main.Days;
+import mainZeroToHero.Days;
 
 public class ForestTutorial2 implements Function<Days.LevelName, String>{
   public String apply(Days.LevelName name) {
