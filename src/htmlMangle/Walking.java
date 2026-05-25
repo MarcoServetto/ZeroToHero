@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import main.Days;
+import mainZeroToHero.Days;
 import resources.File;
 public class Walking {
   private Days.LevelName name;

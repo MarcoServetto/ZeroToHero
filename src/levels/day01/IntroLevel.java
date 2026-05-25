@@ -3,7 +3,7 @@ package levels.day01;
 import java.util.List;
 import java.util.function.Function;
 
-import main.Days;
+import mainZeroToHero.Days;
 
 
 public class IntroLevel implements Function<Days.LevelName,String>{

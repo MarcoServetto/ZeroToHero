@@ -3,7 +3,7 @@ package levels.day02;
 import java.util.function.Function;
 
 import htmlMangle.DirectInstructions.Location;
-import main.Days;
+import mainZeroToHero.Days;
 public class Archery2 implements Function<Days.LevelName,String>{
   Location l= new Location(2, 97, 0.5, 40.5);
   String intro="""

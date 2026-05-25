@@ -1,4 +1,4 @@
-package main;
+package mainZeroToHero;
 
 import levels.day01.*;
 import levels.day01Leo.*;

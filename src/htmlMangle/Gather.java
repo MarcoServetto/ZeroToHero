@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.stream.Collectors;
 
-import main.Days;
+import mainZeroToHero.Days;
 import resources.File;
 public class Gather {
   private Days.LevelName name;
