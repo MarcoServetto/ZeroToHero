@@ -16,6 +16,7 @@ public enum File{
   Walking_html,
   Climb_html,
   Book_html,
+  Fishing_html,
   Forest_html;
   public final String text;
   File(){text= loadText(this.name());}

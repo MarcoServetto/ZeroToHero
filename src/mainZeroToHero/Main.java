@@ -5,6 +5,7 @@ import levels.day01Leo.*;
 import levels.day02.*;
 import levels.day03.*;
 import levels.day04.*;
+import levels.day05.*;
 
 public class Main {
   public static final boolean debug= false;
@@ -57,6 +58,10 @@ public class Main {
     d.add(new ForestCollectTrunk5());
     d.add(new ForestCollectTrunk6());
     d.addLast(new RotationCombine());
+    
+    d.add(new FishingIntro0());
+    d.add(new FishingIntro());
+    d.add(new FishingComb());
   }
   public static void leoLevels(){
     Days d= new Days("assetsLeo");
