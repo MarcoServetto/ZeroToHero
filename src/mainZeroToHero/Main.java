@@ -59,9 +59,15 @@ public class Main {
     d.add(new ForestCollectTrunk6());
     d.addLast(new RotationCombine());
     
+    d.add(new ClimbRotation());
+    d.add(new ClimbRotation2());
+    d.add(new ClimbRotationTwice());
+    d.add(new ClimbedReverse());
+    d.add(new GatherReverse());
+    d.add(new WalkingHomeAlive());
     d.add(new FishingIntro0());
     d.add(new FishingIntro());
-    d.add(new FishingComb());
+    d.addLast(new FishingComb());
   }
   public static void leoLevels(){
     Days d= new Days("assetsLeo");

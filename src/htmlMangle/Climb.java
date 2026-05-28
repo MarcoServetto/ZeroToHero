@@ -19,33 +19,46 @@ public class Climb {
   public Climb question(String text, List<String> rocks, int option){
     return question(lastContext,text,rocks,option);
   }
+  public Climb question(String context, String text, List<String> rocks, int option){
+    return question(context,text,text,rocks,option);
+  }
+  public Climb questionInstead(String shouldBe, String isInstead, List<String> rocks, int option){
+    return questionInstead(lastContext,shouldBe,isInstead,rocks,option);
+  }
+  public Climb questionInstead(String context, String shouldBe, String isInstead, List<String> rocks, int option){
+    return question(context,isInstead,shouldBe,rocks,option);
+  }
   private static final String endContext= Escape.cleanUp("\n_______________\n");
-  
-  private String handleContinuations(boolean isContinuation, String context, String text){
+
+  private String handleContinuations(boolean isContinuation, String context, String shouldBe, String isInstead){
     if(!isContinuation){ return context + endContext; }
-    checkContinuation(text);
+    checkContinuation(shouldBe);
     int i= context.indexOf(endContext);
     if (i==-1){ i = context.length(); context += endContext; }
     String part1= context.substring(0,i+endContext.length());
-    String part2= context.substring(i+endContext.length(),context.length());    
-    return part1+"\n"+text+part2;
+    String part2= context.substring(i+endContext.length(),context.length());
+    return part1+"\n"+isInstead+part2;
   }
-  public Climb question(String context, String text, List<String> rocks, int option){
+  private Climb question(String context, String text, String shouldBe, List<String> rocks, int option){
     text = Escape.cleanUp(text);
+    shouldBe = Escape.cleanUp(shouldBe);
     boolean isContinuation= text.startsWith("##");
-    if (isContinuation){ text= text.substring(2); }    
+    assert shouldBe.startsWith("##") == isContinuation: shouldBe+" -- "+text;
+    if (isContinuation){ text= text.substring(2); shouldBe= shouldBe.substring(2); }
     context = Escape.cleanUp(context);
     rocks = rocks.stream().map(Escape::cleanUp).toList();
     int start= text.indexOf("@[");
     assert start >= 0:text;
-    text = text.replace("@[","");    
+    text = text.replace("@[","");
     int end= text.indexOf("]@");
     assert end >= 0:text;
     text = text.replace("]@","");
-    assert option >= 0 && option < rocks.size();
-    context = handleContinuations(isContinuation,context,text);
+    shouldBe = shouldBe.replace("@[","").replace("]@","");
+    assert !shouldBe.contains("@[") && !shouldBe.contains("]@"): shouldBe;
+    assert option >= 0 && option < rocks.size(): "Option out of size bounds:"+option+" max is "+(rocks.size()-1);
+    context = handleContinuations(isContinuation,context,shouldBe,text);
     lastContext = context;
-    commit(new CQuestion(isContinuation,context,text,start,end,rocks,option));
+    commit(new CQuestion(isContinuation,context,text,shouldBe,start,end,rocks,option));
     return this;
   }
   void checkContinuation(String text){
@@ -54,7 +67,7 @@ public class Climb {
     var prefix= last.text().substring(0,last.start());
     var suffix= last.text().substring(last.end(),last.text().length());
     var next= prefix+sol+suffix;
-    assert next.equals(text): 
+    assert next.equals(text):
       next+" -- "+text;
   }
   String pre(){
@@ -70,7 +83,7 @@ public class Climb {
        autocorrect="off" autocapitalize="off"></textarea>
       """;
     }
-  public String build(){    
+  public String build(){
     String body= IntStream.range(0, qs.size())
       .mapToObj(index->qs.get(index).body(index))
       .collect(Collectors.joining("\n"));
@@ -78,14 +91,15 @@ public class Climb {
       .replace("[###BODY###]", pre()+body);
   }
 }
-record CQuestion(boolean isContinuation, String context, String text, int start, int end, List<String> rocks, int option){
+record CQuestion(boolean isContinuation, String context, String text, String shouldBe, int start, int end, List<String> rocks, int option){
   String body(int index) {
     int[] i={0};
-    return 
+    return
       "<textarea class=\"overlayTextarea questionText\"\n"
     + "    id=\"question" + index + "\"\n"
     + "    name=\"Question_" + index + "\"\n"
     + "    data-original=\"" + Escape.escapeForHtmlAttribute(text) + "\"\n"
+    + "    data-shouldbe=\"" + Escape.escapeForHtmlAttribute(shouldBe) + "\"\n"
     + "    data-context=\"" + Escape.escapeForHtmlAttribute(context) + "\"\n"
     + "    data-selectionstart=\"" + start + "\"\n"
     + "    data-selectionend=\"" + end + "\"\n"
@@ -94,7 +108,7 @@ record CQuestion(boolean isContinuation, String context, String text, int start,
     + rocks.stream().map(r->
       "    data-rock"+i[0]+"Img=\"Rock"+Climb.nextRock()+".png\""
     + "    data-rock"+(i[0]++)+"Code= \""+Escape.escapeForHtmlAttribute(r)+"\"")
-      .collect(Collectors.joining("\n"))          
+      .collect(Collectors.joining("\n"))
     + "    autocomplete=\"off\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" readonly hidden draggable=\"false\"></textarea>";
   }
 }
