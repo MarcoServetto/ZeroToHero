@@ -63,12 +63,21 @@ const Gather= Log.tagAsync('Gather', () => {
   const codeBaskets = document.getElementById('codeBaskets');
   const mouseOverCodeBlock = document.getElementById('mouseOverCodeBlock');
   const allSlots = Array.from(codeBaskets.querySelectorAll('.basketSlot'));
-
-  const isOverSlot= (x, y) => {
-    const elements= document.elementsFromPoint(x, y);
-    const slot= elements
-      .find(el => el.classList && el.classList.contains('basketSlot'));
-    return slot || null;
+  const dist2FromRect= (x,y,r)=>{
+    const dx= x < r.left ? r.left - x : x > r.right ? x - r.right : 0;
+    const dy= y < r.top  ? r.top  - y : y > r.bottom ? y - r.bottom : 0;
+    return dx*dx + dy*dy;
+    };
+  const isOverSlot= (x,y) => {
+    const exact= document.elementsFromPoint(x,y)
+      .find(el=>el.classList && el.classList.contains('basketSlot'));
+    if (exact){ return exact; }
+    const nearest= allSlots
+      .map(slot=>({ slot, rect: slot.getBoundingClientRect() }))
+      .map(o=>({ slot: o.slot, rect: o.rect, d2: dist2FromRect(x,y,o.rect) }))
+      .sort((a,b)=>a.d2 - b.d2)[0];
+    const maxDist= Math.min(nearest.rect.width,nearest.rect.height)*0.25;
+    return nearest.d2 <= maxDist*maxDist ? nearest.slot : null;
     };
   const isOverDeck = (x, y) => {
     const deckRect = cardDeck.getBoundingClientRect();
