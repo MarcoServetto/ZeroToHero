@@ -6,7 +6,7 @@ import levels.day02.*;
 import levels.day03.*;
 import levels.day04.*;
 import levels.day05.*;
-import levels.day06.StartDay6;
+import levels.day06.*;
 
 public class Main {
   public static final boolean debug= false;
@@ -70,7 +70,9 @@ public class Main {
     d.add(new FishingIntro());
     d.addLast(new FishingComb());
     
-    d.add(new StartDay6());    
+    d.add(new StartDay6());
+    d.add(new BookAbstraction());
+    d.add(new BookAbstraction2());    
   }
   public static void leoLevels(){
     Days d= new Days("assetsLeo");
