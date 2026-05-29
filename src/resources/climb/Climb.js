@@ -203,12 +203,13 @@ const Climb= (score) => {
     const start= oldQ.extractInt('selectionstart');
     const end=   oldQ.extractInt('selectionend');
     const newText= newQ.extractStr('original');
+    const shouldBe= newQ.extractStr('shouldbe');
     const prefix= oldText.slice(0, start);
     const oldMiddle= oldText.slice(start, end);
     const suffix= oldText.slice(end);
-    const newMiddle= newText.slice(prefix.length, newText.length - suffix.length);     
+    const newMiddle= shouldBe.slice(prefix.length, shouldBe.length - suffix.length);
     Utils.assertEqual(prefix + oldMiddle + suffix, oldText);
-    Utils.assertEqual(prefix + newMiddle + suffix, newText);
+    Utils.assertEqual(prefix + newMiddle + suffix, shouldBe);
     const padCount= Math.abs(newMiddle.length - oldMiddle.length);
     const leftPad= Math.floor(padCount / 2);
     const rightPad= padCount - leftPad;

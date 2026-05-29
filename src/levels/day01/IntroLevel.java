@@ -59,7 +59,11 @@ public class IntroLevel implements Function<Days.LevelName,String>{
     .image(2)
       .area( 2, 85,    55, 98, last,last=
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}",List.of(
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\nDirection:{}","Write Direction before North"))
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\nDirection:{}","Write Direction before North",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:North{}\nDirection:East{}\nDirection:West{}\nDirection:South{}\nDirection:{}","Write North:Direction, not Direction:North",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nDirection:North{}\nDirection:East{}\nDirection:West{}\nDirection:South{}","Write North:Direction, not Direction:North"
+                               ))
+
     .image()
       .area(37, 90,     1, 41, last,last=
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}",List.of(
