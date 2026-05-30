@@ -73,6 +73,7 @@ public class Main {
     d.add(new StartDay6());
     d.add(new BookAbstraction());
     d.add(new BookAbstraction2());    
+    d.add(new StartDay6Fire());
   }
   public static void leoLevels(){
     Days d= new Days("assetsLeo");
