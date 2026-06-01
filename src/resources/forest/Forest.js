@@ -105,10 +105,6 @@ Array.from(edges).forEach(edge => {
     });
   });
 
-const checkOutputBoxLength= () => {
-  const tooLong= checkOverLength(output.value);
-  };
-
 const checkOverLength= (str) => {
   const lines= str.split("\n");
   return lines.some(line => line.length > MAX_LINE_LENGTH);
@@ -141,7 +137,7 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
     return;
     }
   const code= Utils.getElementById(edgeId).value;
-  if (checkOverLength(output.value + code)) {
+  if (checkOverLength(output.value)) {
     displayPanicMessage("We've picked up too much! Try the Undo button.", 5000);
     output.classList.add("incorrectGlow");
     return;
@@ -158,7 +154,6 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
     }
   submitBtn.disabled = !onFinishNode();
   output.value = currentCode += code;
-  checkOutputBoxLength();
   animateTravelPath(otherNode.x, otherNode.y, mx, my, currentNode.x, currentNode.y); // It's backwards somehow :/
   }
 
