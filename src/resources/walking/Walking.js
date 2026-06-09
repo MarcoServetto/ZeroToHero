@@ -36,6 +36,7 @@ const ColorQuestion= (q,isFrozen)=>{
  let blinking= false;
  let hintBlink= on=>{};
  let postSelect= ()=>{};
+ let onTextPress= ()=>{};
  let mousePressed= false;
  const cells= [];
  const noRedChar= ()=>Number.isNaN(redChar);
@@ -43,11 +44,12 @@ const ColorQuestion= (q,isFrozen)=>{
   && (originalText[i] === '\n' || originalText[i] === ' ');
  const explicit= i=>originalText[i] !== '\n';
  const setHintBlink= cb=>hintBlink = cb;
+ const setPostSelect= cb=>postSelect = cb;
+ const setOnTextPress= cb=>onTextPress = cb;
  const addClass= str=>pane.classList.add(str);
  const removeClass= str=>pane.classList.remove(str);
  const extractStr= str=>MetaData.str(q,str);
  const extractInt= str=>MetaData.int(q,str);
- const setPostSelect= cb=>postSelect = cb;
  const selectedBounds= ()=>{
   if (selected.size === 0){ return {start:0,end:0}; }
   return {start:Math.min(...selected),end:Math.max(...selected)+1};
@@ -125,10 +127,11 @@ const ColorQuestion= (q,isFrozen)=>{
   return c && pane.contains(c)?Number(c.dataset.index):NaN;
  };
  const pointerDown= e=>{
-  if (isFrozen()){ return; }
   const i= cellIndex(e);
   if (Number.isNaN(i)){ return; }
   e.preventDefault();
+  onTextPress();
+  if (isFrozen()){ return; }
   mousePressed = true;
   touchIndex(i);
  };
@@ -227,7 +230,7 @@ const ColorQuestion= (q,isFrozen)=>{
   isCorrectAnswer,isCorrectSelection,
   active,keepFocus,selectionEvent,
   extractStr,extractInt,
-  addClass,removeClass,setPostSelect,setHintBlink,
+  addClass,removeClass,setPostSelect,setHintBlink,setOnTextPress,
   isBlinking:()=>blinking,
   solved:false,requiredOption,inner:()=>q
  };
@@ -279,7 +282,7 @@ const Walking= (score) => {
  };
  const showNextLevelButton= () => Utils.showNextLevelButton(
   document.querySelector('.scoreText'),
-  '<span class="emoji">🎉</span>',
+  '<span class="emoji">&#x1f389;</span>',
   ()=>window.location.href = nextLevelUrl
  );
  let rightAfterPass= 0;
@@ -289,36 +292,63 @@ const Walking= (score) => {
   if (score.score() >= requiredPoints){ showNextLevelButton(); rightAfterPass += 1; }
   if (rightAfterPass > 5){ rightAfterPass = 3; setTimeout(Utils.flashGreen, 900); }
  };
- const handleIncorrectAnswer= currentQuestion => {
+ const handleIncorrectAnswer= (currentQuestion) => {
   const longW= score.streak() > 1;
   score.doFailure();
   currentBonusElem.textContent = 0;
   const opt= currentQuestion.requiredOption;
   const motivation= currentQuestion.extractStr('motivation');
+
   currentQuestion.toSolution();
   currentQuestion.selectionEvent();
   hintStart(currentQuestion,opt);
-  playFallAnimation(longW,opt,motivation,()=>{
+
+  let fall= null;
+  currentQuestion.setOnTextPress(()=>{ if (fall){ fall.stop(); } });
+
+  fall = playFallAnimation(longW,opt,motivation,()=>{
+   currentQuestion.setOnTextPress(()=>{});
    hintStop(currentQuestion);
    questions.forEach(q => q.active(false));
    questions[currentQuestionIndex].active(true);
    updateContent();
   });
  };
- const playFallAnimation= (longW,requiredOption,motivation,onDone)=>{
+ const playFallAnimation= (longW,requiredOption,motivation,onDone)=>{//we should find an elegant way to still display the motivation
   const waitT= longW ? 10000 : 5000;
-  Buttons.freezeFor(waitT+100);
+  const freeze= Buttons.freezeFor(waitT+100);
+  const timers= [];
+  const flashers= [];
+  let done= false;
+  const later= (f,t)=>timers.push(setTimeout(f,t));
+  const finish= ()=>{
+   if (done){ return; }
+   done = true;
+   timers.forEach(clearTimeout);
+   flashers.forEach(f=>f.stop());
+   freeze.unfreeze();
+   onDone();
+  };
   if (longW){
-   Utils.flashImage('rgba(200,20,0,0.9)','fallEndCharacter','translateY(30%) scale(0.65)');
-   setTimeout(()=>Utils.flashImage('rgba(170,60,10,0.7)','fallStarsCharacter','translateY(30%) scale(0.65)'),3500);
+   flashers.push(Utils.flashImage(
+    'rgba(200,20,0,0.9)',
+    'fallEndCharacter',
+    'translateY(30%) scale(0.65)'
+   ));
+   later(()=>flashers.push(Utils.flashImage(
+    'rgba(170,60,10,0.7)',
+    'fallStarsCharacter',
+    'translateY(30%) scale(0.65)'
+   )),3500);
   }
-  setTimeout(onDone,waitT);
+  later(finish,waitT);
+  return { stop:finish };
  };
- const handleButtonClick = Log.tag('handleButtonClick', option => {
-  Buttons.freezeFor(500);
+ const handleButtonClick = Log.tag('handleButtonClick', (option) => {
   const currentQuestion = questions[currentQuestionIndex];
   const nope= !currentQuestion.isCorrectAnswer(option);
   if (nope){ handleIncorrectAnswer(currentQuestion); return; }
+  Buttons.freezeFor(500);
   handleCorrectAnswer();
   nextQuestion();
  });

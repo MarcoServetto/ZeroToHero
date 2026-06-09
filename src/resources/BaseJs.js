@@ -106,12 +106,20 @@ const Utils= {
     container.style.animation = 'none';
     void container.offsetWidth;
     container.style.animation = 'levelEndAppear 3s ease-in-out forwards';
-    setTimeout(() =>{
+    let active= true;
+    let timeout= null;
+    const stop= ()=>{
+      if (!active){ return; }
+      active = false;
+      clearTimeout(timeout);
+      overlay.animation = 'none';
       container.hidden = true;
       container.style.animation = '';
       if (extra !== undefined){ container.style.setProperty('--flashExtra', oldExtra); }
-    }, 4000);
-  },
+      };
+    timeout = setTimeout(stop, 4000);
+    return { stop };
+    },
   flashGreen:()=> Utils
     .flashImage('rgba(0,255,0,0.7)','levelEndCharacter'),
   showNextLevelButton: (target, innerHTML, onClick ) => {
@@ -134,11 +142,11 @@ const initButtons = (updateContent,buttonActions) => {
     const token = {};
     freezeButtons.add(token);
     return { unfreeze: () => freezeButtons.delete(token) };
-    };
+    };    
   const freezeFor = time => {
-    const token = {};
-    freezeButtons.add(token);
-    setTimeout(() => freezeButtons.delete(token), time);
+    const t= freezeToken();
+    const timeout= setTimeout(t.unfreeze, time);
+    return { unfreeze:()=>{ clearTimeout(timeout); t.unfreeze(); } };
     };
   const isFrozen = () => freezeButtons.size !== 0;
   //init

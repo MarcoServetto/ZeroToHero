@@ -86,7 +86,10 @@ const QuestionText = (q,isFrozen) => {
   const addClass= (str)=> q.classList.add(str);
   const removeClass= (str)=> q.classList.remove(str);
   let postSelect= ()=>{};
+  let onTextPress= ()=>{};
   const setPostSelect= (callBack)=>postSelect=callBack;
+  const setOnTextPress= (callBack)=>onTextPress=callBack;
+  
   const selectionEventMouse = () => {
     setTimeout(selectionEvent, 10);
     setTimeout(postSelect, 11);
@@ -94,14 +97,13 @@ const QuestionText = (q,isFrozen) => {
   q.addEventListener('mouseup', selectionEventMouse);
   q.addEventListener('mouseleave', selectionEventMouse);
   q.addEventListener('keydown', (e) => e.preventDefault());
-  q.addEventListener('mousedown', (e)=>{ q.selectionStart = q.selectionEnd = 0; });
-
+  q.addEventListener('mousedown', (e)=>{ onTextPress(); q.selectionStart = q.selectionEnd = 0; });
   return {
     toSolution, toSingle, currentSelection,
     isCorrectAnswer, isCorrectSelection,
     active, keepFocus, selectionEvent,
     extractStr, extractInt,
-    addClass, removeClass, setPostSelect,setHintBlink,
+    addClass, removeClass, setPostSelect,setHintBlink,setOnTextPress,
     isBlinking: () => isBlinking,
     solved:false, requiredOption,inner:()=>q};
 };
