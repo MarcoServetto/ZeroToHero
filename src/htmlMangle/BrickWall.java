@@ -39,8 +39,44 @@ public class BrickWall {
     }
   public String build() {
     return name.htmlNextLevel(File.BrickWall_html.text)
-      .replace("[###BRICKWALL###]", "");
+      .replace("[###BRICKWALL###]", renderWall() + renderPile());
     }
+
+  private String renderWall() {
+    StringBuilder sb = new StringBuilder("<div id=\"brickWall\">");
+    for (Row r : brickRows) {
+      sb.append("<div class=\"row\" data-length=\"").append(r.length()).append("\">");
+      for (PlacedBrick pb : r.placedBricks()) {
+        sb.append(brickEl(pb.brick(), pb.index()));
+        }
+      sb.append("</div>");
+      }
+    return sb.append("</div>").toString();
+    }
+
+  private String renderPile() {
+    StringBuilder sb = new StringBuilder("<div id=\"brickPile\">");
+    for (Brick b : brickPile) {
+      sb.append(brickEl(b, -1));
+      }
+    return sb.append("</div>").toString();
+    }
+
+  private static String brickEl(Brick b, int index) {
+    String cls = "brick " + (b.movable() ? "movable" : "immovable");
+    String idxAttr = index >= 0 ? " data-index=\"" + index + "\"" : "";
+    return "<div class=\"" + cls + "\""
+      + " data-length=\"" + b.length() + "\""
+      + " data-code=\"" + escape(b.code()) + "\""
+      + " data-movable=\"" + b.movable() + "\""
+      + idxAttr + ">"
+      + escape(b.code()) + "</div>";
+    }
+
+  private static String escape(String s) {
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace("\"", "&quot;");
+  }
   
   public static record Row(int length, List<PlacedBrick> placedBricks) {
     public Row(int length) { this(length, new ArrayList<>()); }
