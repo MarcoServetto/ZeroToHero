@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import mainZeroToHero.Days;
+import resources.File;
 
 /**
  * The Brick Wall mini-game has a wall of bricks, which are arranged in rows.
@@ -22,8 +23,10 @@ public class BrickWall {
   private final List<Brick> brickPile= new ArrayList<>();
   private final List<Row> brickRows= new ArrayList<>();
   
+  private final Days.LevelName name;
+  
   public BrickWall(Days.LevelName name) {
-    
+    this.name= name;
     }
   public BrickWall addToPile(Brick brick) {
     brickPile.add(brick);
@@ -35,10 +38,11 @@ public class BrickWall {
 
     }
   public String build() {
-    return "";
+    return name.htmlNextLevel(File.BrickWall_html.text)
+      .replace("[###BRICKWALL###]", "");
     }
   
-  public record Row(int length, List<PlacedBrick> placedBricks) {
+  public static record Row(int length, List<PlacedBrick> placedBricks) {
     public Row(int length) { this(length, new ArrayList<>()); }
     public Row {
       if (length <= 0) { throw new IllegalArgumentException("Row length is required to be positive!"); }
@@ -66,9 +70,9 @@ public class BrickWall {
       }
     }
 
-  record PlacedBrick(Brick brick, int index) {}
+  public static record PlacedBrick(Brick brick, int index) {}
   
-  public record Brick(int length, String code, boolean moveable) {
+  public static record Brick(int length, String code, boolean movable) {
     static public Brick movable(int length, String code) { return new Brick(length, code, true); }
     static public Brick movable(int length) { return new Brick(length, "", true); }
     static public Brick movable(String code) { return new Brick(code.length(), code, true); }
