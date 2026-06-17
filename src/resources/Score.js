@@ -12,6 +12,7 @@ const Score= (incrementFun) => {
     scoreDisplayElem.style.fontSize = `${newFontSize}ex`;
     };
   const showScoreAnimation= (increment)=>{
+    if (increment === 0){ return; }
     const incrementElem = document.createElement('span');
     incrementElem.classList.add('scoreIncrement');
     incrementElem.textContent = `+${increment}`;
@@ -25,7 +26,7 @@ const Score= (incrementFun) => {
       setTimeout(()=>scoreDisplayElem.classList.remove('animate-glow'), 3000);
       },500);
     };
-  const nextIncrement= ()=>incrementFun(streak)
+  const nextIncrement= ()=>incrementFun(streak);
   const doSuccess= ()=>{
     justFailed = false;
     const increment= nextIncrement();
