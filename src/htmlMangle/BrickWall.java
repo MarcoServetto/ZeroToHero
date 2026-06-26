@@ -39,7 +39,8 @@ public class BrickWall {
     }
   public String build() {
     return name.htmlNextLevel(File.BrickWall_html.text)
-      .replace("[###BRICKWALL###]", renderWall() + renderPile());
+      .replace("[###BRICKWALL###]", renderWall())
+      .replace("[###PILE###]", renderPile());
     }
 
   private String renderWall() {

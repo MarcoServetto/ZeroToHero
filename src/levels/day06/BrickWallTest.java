@@ -14,8 +14,12 @@ public class BrickWallTest implements Function<Days.LevelName, String>{
       .addToPile(Brick.movable(6, "Direct"))
       .addToPile(Brick.movable(3, "ion"))
       .addRow(new Row(20, List.of(
-        new PlacedBrick(Brick.movable(5, "World"), 0),
+        new PlacedBrick(Brick.immovable(5, "World"), 0),
         new PlacedBrick(Brick.movable(6, "Hello"), 5)
+        )))
+      .addRow(new Row(25, List.of(
+        new PlacedBrick(Brick.movable(5, "Row2"), 0),
+        new PlacedBrick(Brick.movable(6, "Roow"), 5)
         )))
       .build();
     }
