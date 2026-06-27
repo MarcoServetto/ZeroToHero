@@ -20,6 +20,8 @@ import resources.File;
  *   where the player has to remove all the unnecessary bricks.
  */
 public class BrickWall {
+  private int id= 0;
+  
   private final List<Brick> brickPile= new ArrayList<>();
   private final List<Row> brickRows= new ArrayList<>();
   
@@ -44,23 +46,17 @@ public class BrickWall {
     }
 
   private String renderWall() {
-    StringBuilder sb = new StringBuilder("<div id=\"brickWall\">");
+    StringBuilder sb = new StringBuilder();
     for (Row r : brickRows) {
-      sb.append("<div class=\"row\" data-length=\"").append(r.length()).append("\">");
-      for (PlacedBrick pb : r.placedBricks()) {
-        sb.append(brickEl(pb.brick(), pb.index()));
-        }
-      sb.append("</div>");
+      //sb.append(r.);
       }
-    return sb.append("</div>").toString();
+    return sb.toString();
     }
 
   private String renderPile() {
-    StringBuilder sb = new StringBuilder("<div id=\"brickPile\">");
-    for (Brick b : brickPile) {
-      sb.append(brickEl(b, -1));
-      }
-    return sb.append("</div>").toString();
+    StringBuilder sb = new StringBuilder();
+    for (Brick b : brickPile) { sb.append(b.toHtml()); }
+    return sb.toString();
     }
 
   private static String brickEl(Brick b, int index) {
@@ -109,19 +105,21 @@ public class BrickWall {
 
   public static record PlacedBrick(Brick brick, int index) {}
   
-  public static record Brick(int length, String code, boolean movable) {
-    static public Brick movable(int length, String code) { return new Brick(length, code, true); }
-    static public Brick movable(int length) { return new Brick(length, "", true); }
-    static public Brick movable(String code) { return new Brick(code.length(), code, true); }
+  public static record Brick(String code, boolean movable) {
+    static public Brick movable(String code) { return new Brick(code, true); }
+    static public Brick movable(int length) { return new Brick(" ".repeat(length), true); }
     
-    static public Brick immovable(int length, String code) { return new Brick(length, code, false); }
-    static public Brick immovable(int length) { return new Brick(length, "", false); }
-    static public Brick immovable(String code) { return new Brick(code.length(), code, false); }
+    static public Brick immovable(String code) { return new Brick(code, false); }
+    static public Brick immovable(int length) { return new Brick(" ".repeat(length), false); }
+    
+    public int length() { return code.length(); }
     
     public Brick {
-      if (length < code.length()) { // The brick has to be longer than the code to fit it
-        throw new IllegalArgumentException("Brick with code `" + code + "` requires at least length " + code.length());
-        }
+      if (code.length() <= 0) { throw new IllegalArgumentException("Brick cannot be empty!"); }
       }
-    }
+    public String toHtml() {
+      String movableStr = movable ? "movable" : "";
+      return "<span class=\"brick %s\">%s</span>".formatted(movableStr, code);
+      }
   }
+}
