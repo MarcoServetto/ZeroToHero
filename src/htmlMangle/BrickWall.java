@@ -1,6 +1,7 @@
 package htmlMangle;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -41,14 +42,29 @@ public class BrickWall {
     }
   public String build() {
     return name.htmlNextLevel(File.BrickWall_html.text)
-      .replace("[###BRICKWALL###]", renderWall())
+      .replace("[###WALL###]", renderWall())
       .replace("[###PILE###]", renderPile());
     }
 
   private String renderWall() {
     StringBuilder sb = new StringBuilder();
     for (Row r : brickRows) {
-      //sb.append(r.);
+      sb.append("<span class=\"brickRow\">");
+      List<PlacedBrick> sortedBricks = new ArrayList<>(r.placedBricks());
+      Collections.sort(sortedBricks);
+      int currentIndex = 0;
+      for (PlacedBrick placedBrick : sortedBricks) {
+        Brick brick = placedBrick.brick();
+        int brickIndex = placedBrick.index();
+        int len = placedBrick.brick().length();
+        if (brickIndex > currentIndex) {
+          String gap = "&nbsp;".repeat(brickIndex - currentIndex);
+          sb.append("<span class=\"empty\">" + gap + "</span>");
+        }
+        sb.append(brick.toHtml());
+        currentIndex += len;
+        }
+      sb.append("</span>");
       }
     return sb.toString();
     }
@@ -59,23 +75,15 @@ public class BrickWall {
     return sb.toString();
     }
 
-  private static String brickEl(Brick b, int index) {
-    String cls = "brick " + (b.movable() ? "movable" : "immovable");
-    String idxAttr = index >= 0 ? " data-index=\"" + index + "\"" : "";
-    return "<div class=\"" + cls + "\""
-      + " data-length=\"" + b.length() + "\""
-      + " data-code=\"" + escape(b.code()) + "\""
-      + " data-movable=\"" + b.movable() + "\""
-      + idxAttr + ">"
-      + escape(b.code()) + "</div>";
-    }
-
   private static String escape(String s) {
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            .replace("\"", "&quot;");
+      .replace("\"", "&quot;");
   }
   
   public static record Row(int length, List<PlacedBrick> placedBricks) {
+    public static Row of(int length, PlacedBrick... bricks) {
+      return new Row(length, List.of(bricks));
+      }
     public Row(int length) { this(length, new ArrayList<>()); }
     public Row {
       if (length <= 0) { throw new IllegalArgumentException("Row length is required to be positive!"); }
@@ -103,7 +111,9 @@ public class BrickWall {
       }
     }
 
-  public static record PlacedBrick(Brick brick, int index) {}
+  public static record PlacedBrick(Brick brick, int index) implements Comparable<PlacedBrick> {
+    public int compareTo(PlacedBrick other) { return index() - other.index(); }
+    }
   
   public static record Brick(String code, boolean movable) {
     static public Brick movable(String code) { return new Brick(code, true); }

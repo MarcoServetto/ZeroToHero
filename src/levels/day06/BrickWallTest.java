@@ -1,6 +1,5 @@
 package levels.day06;
 
-import java.util.List;
 import java.util.function.Function;
 
 import htmlMangle.BrickWall;
@@ -13,14 +12,12 @@ public class BrickWallTest implements Function<Days.LevelName, String>{
       .addToPile(Brick.movable("Hii"))
       .addToPile(Brick.movable("Direct"))
       .addToPile(Brick.movable("ion"))
-      .addRow(new Row(20, List.of(
+      .addRow(Row.of(20,
         new PlacedBrick(Brick.immovable("World"), 0),
-        new PlacedBrick(Brick.movable("Hello"), 5)
-        )))
-      .addRow(new Row(25, List.of(
+        new PlacedBrick(Brick.movable("Hello"), 5)))
+      .addRow(Row.of(25,
         new PlacedBrick(Brick.movable("Row2"), 0),
-        new PlacedBrick(Brick.movable("Roow"), 5)
-        )))
+        new PlacedBrick(Brick.movable("Roow"), 9)))
       .build();
     }
   }
