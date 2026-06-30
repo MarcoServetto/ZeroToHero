@@ -21,6 +21,7 @@ import resources.File;
  *   where the player has to remove all the unnecessary bricks.
  */
 public class BrickWall {
+  private static int MAX_LENGTH = 80;
   private int id= 0;
   
   private final List<Brick> brickPile= new ArrayList<>();
@@ -63,6 +64,10 @@ public class BrickWall {
         }
         sb.append(brick.toHtml());
         currentIndex += len;
+        }
+      if (currentIndex < MAX_LENGTH) {
+        String gap = "&nbsp;".repeat(MAX_LENGTH - currentIndex);
+        sb.append("<span class=\"empty\">" + gap + "</span>");
         }
       sb.append("</span>");
       }
