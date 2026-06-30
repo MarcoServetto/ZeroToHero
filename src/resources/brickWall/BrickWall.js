@@ -32,8 +32,17 @@ const combineEmpty= () => {
   };
 
 const setEmpty= e => {
-  e.className = "empty preview";
+  e.className = "empty";
   e.textContent = "\u00A0".repeat(e.textContent.length);
+  e.removeEventListener("pointerdown", registerMovable);
+}
+const createGhost= e => {
+  const ghost= document.createElement("span");
+  ghost.textContent = e.textContent;
+  ghost.className = "brick movable";
+  ghost.style.position = "absolute";
+  movingBricksDiv.appendChild(ghost);
+  return ghost;
 }
 
 document.addEventListener("pointermove", e => {
@@ -42,31 +51,38 @@ document.addEventListener("pointermove", e => {
   if (!isEmpty(element)) { return; }
 });
 
-movableBricks.forEach(b => {
-  b.addEventListener("pointerdown", e => {
+var ghostBrick= null;
+const movableBrickEventListeners= new Map();
+
+const registerMovable= e => {
+  const handler= () => {
     dragging = true;
-    //b.style.position = "absolute";
-	offsetX = e.clientX - b.offsetLeft;
-    offsetY = e.clientY - b.offsetTop;
-	setEmpty(b);
-	//movingBricksDiv.appendChild(b);
-	//combineEmpty();
-	b.setPointerCapture(e.pointerId);
-    });
-  b.addEventListener("pointermove", e => {
-    if (!dragging) { return; }
-    //b.style.left = `${e.clientX - offsetX}px`;
-    //b.style.top = `${e.clientY - offsetY}px`;
-	//movingBricksDiv.appendChild(b);
-	//combineEmpty();
-    });
-  b.addEventListener("pointerup", e => {
-	dragging = false;
-	//pile.appendChild(b);
-    b.style.position = "";
-    b.style.zIndex = "";
-    b.style.left = "";
-    b.style.top = "";
-    b.releasePointerCapture(e.pointerId);
-    })
+    ghostBrick = createGhost(e);
+    if (e.parentElement !== pile) {
+      setEmpty(e);
+	  } else { e.remove(); }
+    combineEmpty();
+    };
+  e.addEventListener("pointerdown", handler);
+  movableBrickEventListeners.set(e, handler);
+  }
+
+movableBricks.forEach(b => {
+  registerMovable(b);
+  });
+
+document.addEventListener("pointermove", e => {
+  if (ghostBrick === null) { return; }
+  ghostBrick.style.left = `${e.clientX}px`;
+  ghostBrick.style.top = `${e.clientY}px`;
+  });
+
+document.addEventListener("pointerup", e => {
+  if (ghostBrick === null) { return; }
+  ghostBrick.style.position = "";
+  ghostBrick.style.left = "";
+  ghostBrick.style.top = "";
+  pile.appendChild(ghostBrick);
+  registerMovable(ghostBrick);
+  ghostBrick = null;
   });

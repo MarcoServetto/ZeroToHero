@@ -61,7 +61,8 @@ public class BrickWall {
         if (brickIndex > currentIndex) {
           String gap = "&nbsp;".repeat(brickIndex - currentIndex);
           sb.append("<span class=\"empty\">" + gap + "</span>");
-        }
+          currentIndex = brickIndex;
+          }
         sb.append(brick.toHtml());
         currentIndex += len;
         }
