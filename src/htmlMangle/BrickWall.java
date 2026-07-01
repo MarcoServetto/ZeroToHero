@@ -58,17 +58,14 @@ public class BrickWall {
         Brick brick = placedBrick.brick();
         int brickIndex = placedBrick.index();
         int len = placedBrick.brick().length();
-        if (brickIndex > currentIndex) {
-          String gap = "&nbsp;".repeat(brickIndex - currentIndex);
-          sb.append("<span class=\"empty\">" + gap + "</span>");
-          currentIndex = brickIndex;
+        for (; currentIndex < brickIndex; currentIndex++) {
+          sb.append("<span class=\"empty\">&nbsp;</span>");
           }
         sb.append(brick.toHtml());
         currentIndex += len;
         }
-      if (currentIndex < MAX_LENGTH) {
-        String gap = "&nbsp;".repeat(MAX_LENGTH - currentIndex);
-        sb.append("<span class=\"empty\">" + gap + "</span>");
+      for (; currentIndex < MAX_LENGTH; currentIndex++) {
+        sb.append("<span class=\"empty\">&nbsp;</span>");
         }
       sb.append("</span>");
       }
