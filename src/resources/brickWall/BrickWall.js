@@ -38,17 +38,6 @@ const movableBrickEventListeners= new Map();
 
 // --- preview state ---
 let previewSpans= [];           // the empty spans currently shown as preview
-let previewSaved= [];           // saved textContent to restore on miss/move
-
-const clearPreview= () => {
-  previewSpans.forEach((span, i) => {
-    span.classList.add("empty");
-    span.classList.remove("preview");
-    span.textContent = previewSaved[i];
-  });
-  previewSpans = [];
-  previewSaved = [];
-}
 
 // Given an empty span the mouse is over, find the run of consecutive
 // empty siblings starting at it that can fit the brick's length.
@@ -65,20 +54,22 @@ const findSlot= (startSpan, length) => {
 const showPreview= (startSpan, text) => {
   const slot= findSlot(startSpan, text.length);
   if (!slot) { return false; }
-  slot.forEach((span, i) => {
-    previewSaved.push(span.textContent);
-    span.classList.remove("empty");
-    span.classList.add("preview");
-    span.textContent = text[i];
-  });
   previewSpans = slot;
   return true;
 }
 
+const getBrickPosFromMouse= (brick, event) => {
+  const rect= brick.getBoundingClientRect();
+  return [event.clientX - rect.width/2, event.clientY - rect.height/2];
+}
+
 const registerMovable= e => {
-  const handler= () => {
+  const handler= event => {
     dragging = true;
     ghostBrick = createGhost(e);
+	const pos= getBrickPosFromMouse(e, event);
+    ghostBrick.style.left = `${pos[0]}px`;
+    ghostBrick.style.top = `${pos[1]}px`;
     if (e.parentElement !== pile) {
       setEmpty(e);
     } else { e.remove(); }
@@ -94,7 +85,6 @@ movableBricks.forEach(b => {
 document.addEventListener("pointermove", e => {
   if (ghostBrick === null) { return; }
 
-  clearPreview();
   // hide ghost momentarily so elementFromPoint reads what's underneath
   ghostBrick.style.visibility = "hidden";
   const target = document.elementFromPoint(e.clientX, e.clientY);
@@ -109,8 +99,10 @@ document.addEventListener("pointermove", e => {
     ghostBrick.style.top = `${rect.top}px`;
   } else {
     // follow the cursor when there's no valid slot
-    ghostBrick.style.left = `${e.clientX}px`;
-    ghostBrick.style.top = `${e.clientY}px`;
+    const pos= getBrickPosFromMouse(ghostBrick, e);
+    ghostBrick.style.left = `${pos[0]}px`;
+    ghostBrick.style.top = `${pos[1]}px`;
+	previewSpans = [];
   }
 });
 
@@ -129,12 +121,10 @@ document.addEventListener("pointerup", e => {
     parent.insertBefore(placed, ref);
     previewSpans.forEach(s => s.remove());
     previewSpans = [];
-    previewSaved = [];
     registerMovable(placed);
     ghostBrick.remove();
   } else {
     // miss: send back to pile
-    clearPreview();
     ghostBrick.style.position = "";
     ghostBrick.style.left = "";
     ghostBrick.style.top = "";
