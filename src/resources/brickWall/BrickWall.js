@@ -4,9 +4,6 @@ const movableBricks= document.querySelectorAll(".brick.movable");
 const movingBricksDiv= Utils.getElementById("movingBricks");
 const pile= Utils.getElementById("pile");
 
-/*const submitButton= Utils.getElementById("submitBtn");
-const hintButton= Utils.getElementById("hintBtn");*/
-
 const SPACE= "\u00A0";
 
 let dragging= false;
@@ -30,7 +27,7 @@ const setEmpty= e => {
 const createGhost= e => {
   const ghost= document.createElement("span");
   ghost.textContent = e.textContent;
-  ghost.className = "brick movable";
+  ghost.className = "brick movable ghost";
   ghost.style.position = "absolute";
   movingBricksDiv.appendChild(ghost);
   return ghost;
@@ -96,8 +93,6 @@ movableBricks.forEach(b => {
 
 document.addEventListener("pointermove", e => {
   if (ghostBrick === null) { return; }
-  ghostBrick.style.left = `${e.clientX}px`;
-  ghostBrick.style.top = `${e.clientY}px`;
 
   clearPreview();
   // hide ghost momentarily so elementFromPoint reads what's underneath
@@ -105,13 +100,23 @@ document.addEventListener("pointermove", e => {
   const target = document.elementFromPoint(e.clientX, e.clientY);
   ghostBrick.style.visibility = "";
 
-  if (isEmpty(target)) {
-    showPreview(target, ghostBrick.textContent);
+  const placed = isEmpty(target) && showPreview(target, ghostBrick.textContent);
+
+  if (placed) {
+    // snap ghost to the slot the preview occupies
+    const rect = previewSpans[0].getBoundingClientRect();
+    ghostBrick.style.left = `${rect.left}px`;
+    ghostBrick.style.top = `${rect.top}px`;
+  } else {
+    // follow the cursor when there's no valid slot
+    ghostBrick.style.left = `${e.clientX}px`;
+    ghostBrick.style.top = `${e.clientY}px`;
   }
 });
 
 document.addEventListener("pointerup", e => {
   if (ghostBrick === null) { return; }
+  ghostBrick.classList.remove("ghost");
 
   if (previewSpans.length > 0) {
     // commit: turn the preview run into a single placed brick
