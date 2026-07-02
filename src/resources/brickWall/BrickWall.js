@@ -4,11 +4,14 @@ const movableBricks= document.querySelectorAll(".brick.movable");
 const movingBricksDiv= Utils.getElementById("movingBricks");
 const pile= Utils.getElementById("pile");
 
+/*const submitButton= Utils.getElementById("submitBtn");
+const hintButton= Utils.getElementById("hintBtn");*/
+
+const SPACE= "\u00A0";
+
 let dragging= false;
 
 const isEmpty= e => { return e && e.classList && e.classList.contains("empty"); }
-
-const combineEmpty= () => {};
 
 const setEmpty= e => {
   const len = e.textContent.length;
@@ -18,7 +21,7 @@ const setEmpty= e => {
   for (let i = 0; i < len; i++) {
     const empty = document.createElement("span");
     empty.className = "empty";
-    empty.textContent = "\u00A0";
+    empty.textContent = SPACE;
     parent.insertBefore(empty, e);
   }
   e.remove();
@@ -82,7 +85,6 @@ const registerMovable= e => {
     if (e.parentElement !== pile) {
       setEmpty(e);
     } else { e.remove(); }
-    combineEmpty();
   };
   e.addEventListener("pointerdown", handler);
   movableBrickEventListeners.set(e, handler);
@@ -138,3 +140,32 @@ document.addEventListener("pointerup", e => {
   ghostBrick = null;
   dragging = false;
 });
+
+const normaliseWallText= () => {
+  let str= "";
+  let putSpace= true;
+  brickRows.forEach(r => {
+    [...r.children].forEach(c => {
+      let content= c.textContent;
+      if (content === SPACE) {
+		if (!putSpace) { return; }
+        str += " ";
+        putSpace = false;
+        return;
+        }
+      putSpace = true;
+      str += content;
+      return;
+      });
+    str = str.trim();
+    str += "\n";
+    });
+  str = str.trim();
+  console.log(str);
+  return str;
+};
+const buttonActions= {
+  submitBtn: normaliseWallText,
+  hintBtn: () => { console.log("Hint"); },
+  };
+const Buttons= initButtons(() => {}, buttonActions);
