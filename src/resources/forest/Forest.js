@@ -55,6 +55,13 @@ var interactionEnabled= true;
 var currentNode= nodes[0]; // The node the player is currently on
 const actionStack= [];
 
+const getOutputText= () => {
+  return output.textContent;
+};
+const setOutputText= text => {
+  output.innerHTML = text;
+};
+
 const submit= () => {
   if (!onFinishNode()) { return; }
   const freezeToken= Buttons.freezeToken();
@@ -117,6 +124,7 @@ const onComplete= () => {
   setTimeout(() => window.location.href = nextLevelUrl, 5000);
   }
 const onFail= (freezeToken) => {
+  showIncorrect();
   Utils.flashImage("rgba(250, 0, 0, 0.5)","levelFail","translateY(-5%)");
   setTimeout(() => freezeToken.unfreeze(), 3000);
   }
@@ -137,7 +145,7 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
     return;
     }
   const code= Utils.getElementById(edgeId).value;
-  if (checkOverLength(output.value)) {
+  if (checkOverLength(getOutputText())) {
     displayPanicMessage("We've picked up too much! Try the Undo button.", 5000);
     output.classList.add("incorrectGlow");
     return;
@@ -153,7 +161,7 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
     otherNode= n2;
     }
   submitBtn.disabled = !onFinishNode();
-  output.value = currentCode += code;
+  setOutputText(currentCode += code);
   animateTravelPath(otherNode.x, otherNode.y, mx, my, currentNode.x, currentNode.y); // It's backwards somehow :/
   }
 
@@ -181,9 +189,36 @@ const animateTravelPath= (x1, y1, mx, my, x2, y2) => {
 
 const updateVisuals= () => {
   updateCurrentNodeMarkerLocation(currentNode.x, currentNode.y);
-  output.value = currentCode;
+  setOutputText(currentCode);
   submitBtn.disabled = !onFinishNode();
-  if (!checkOverLength(output.value)) { output.classList.remove("incorrectGlow"); }
+  if (!checkOverLength(getOutputText())) { output.classList.remove("incorrectGlow"); }
   }
+
+const showIncorrect= () => {
+  const currentOutput= getOutputText();
+  //let html = "";
+  let incorrectIndex= -1;
+  const len = Math.max(currentOutput.length, solutionCode.length);
+  for (let i = 0; i < len; i++) {
+    if (currentOutput[i] !== solutionCode[i]) {
+      incorrectIndex = i;
+      break;
+      }
+    //const c = currentOutput[i] ?? "";
+    /*if (c === solutionCode[i]) {
+      html += escapeHtml(c);
+      } else {
+      html += `<span class="redHighlight">${escapeHtml(c)}</span>`;
+      }*/
+    }
+  const rightText= currentOutput.slice(0, incorrectIndex);
+  const wrongText= currentOutput.slice(incorrectIndex, len);
+  setOutputText(rightText + `<span class="redHighlight">${escapeHtml(wrongText)}</span>`);
+}
+const escapeHtml= str => {
+  return str.replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
 updateVisuals();
