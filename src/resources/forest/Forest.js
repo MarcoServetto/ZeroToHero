@@ -196,7 +196,6 @@ const updateVisuals= () => {
 
 const showIncorrect= () => {
   const currentOutput= getOutputText();
-  //let html = "";
   let incorrectIndex= -1;
   const len = Math.max(currentOutput.length, solutionCode.length);
   for (let i = 0; i < len; i++) {
@@ -204,12 +203,6 @@ const showIncorrect= () => {
       incorrectIndex = i;
       break;
       }
-    //const c = currentOutput[i] ?? "";
-    /*if (c === solutionCode[i]) {
-      html += escapeHtml(c);
-      } else {
-      html += `<span class="redHighlight">${escapeHtml(c)}</span>`;
-      }*/
     }
   const rightText= currentOutput.slice(0, incorrectIndex);
   const wrongText= currentOutput.slice(incorrectIndex, len);
