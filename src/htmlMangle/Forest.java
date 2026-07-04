@@ -123,7 +123,7 @@ public class Forest {
   private String outputBoxHtml() {
     return """
       <textarea class="overlayTextarea" id="output"
-      style="top:0%%;left:55.00%%;width:45%%;height:40.00%%;font-size:17px;;overflow-x:auto;pointer-events:auto"
+      style="top:0%%;left:55.00%%;width:45%%;height:40.00%%;overflow-x:auto;pointer-events:auto"
       name="ForestOutputBox"
       data-solution="%s"
       data-original="%s"
@@ -167,7 +167,7 @@ public class Forest {
           <textarea
             id="edge_%10$d"
             class="overlayTextarea"
-            style="top:0%%;left:0%%;width:100%%;height:100%%;font-size:20px;overflow-x:auto;"
+            style="top:0%%;left:0%%;width:100%%;height:100%%;overflow-x:auto;"
             name="ForestCodeBox"
             wrap="soft"
             autocomplete="off"
