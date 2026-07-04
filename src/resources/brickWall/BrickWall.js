@@ -4,6 +4,8 @@ const movableBricks= document.querySelectorAll(".brick.movable");
 const movingBricksDiv= Utils.getElementById("movingBricks");
 const pile= Utils.getElementById("pile");
 
+const solution= MetaData.str(wall, "solution");
+
 const SPACE= "\u00A0";
 
 let dragging= false;
@@ -159,8 +161,18 @@ const normaliseWallText= () => {
   console.log(str);
   return str;
 };
+
+const onComplete= () => { console.log("Yay"); };
+const onFail= () => { console.log("Nay"); };
+
+const checkSolution= () => {
+  const wallText= normaliseWallText();
+  if (wallText === solution) { onComplete(); }
+  else { onFail(); }
+};
+
 const buttonActions= {
-  submitBtn: normaliseWallText,
+  submitBtn: checkSolution,
   hintBtn: () => { console.log("Hint"); },
   };
 const Buttons= initButtons(() => {}, buttonActions);

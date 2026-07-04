@@ -22,15 +22,16 @@ import resources.File;
  */
 public class BrickWall {
   private static int MAX_LENGTH = 80;
-  private int id= 0;
   
   private final List<Brick> brickPile= new ArrayList<>();
   private final List<Row> brickRows= new ArrayList<>();
   
   private final Days.LevelName name;
+  private final String solution;
   
-  public BrickWall(Days.LevelName name) {
+  public BrickWall(Days.LevelName name, String solution) {
     this.name= name;
+    this.solution= solution;
     }
   public BrickWall addToPile(Brick brick) {
     brickPile.add(brick);
@@ -69,7 +70,7 @@ public class BrickWall {
         }
       sb.append("</span>");
       }
-    return sb.toString();
+    return "<div id=\"wall\" class=\"wall\" data-solution=\"" + escape(solution) + "\">" + sb.toString() + "</div>";
     }
 
   private String renderPile() {
@@ -78,19 +79,20 @@ public class BrickWall {
     return sb.toString();
     }
 
-  private static String escape(String s) {
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-      .replace("\"", "&quot;");
+  public static String escape(String s) {
+    return s.replace("&", "&amp;")
+      .replace("<", "&lt;")
+      .replace(">", "&gt;")
+      .replace("\"", "&quot;")
+      .replace(" ", "&nbsp;");
   }
   
-  public static record Row(int length, List<PlacedBrick> placedBricks) {
-    public static Row of(int length, PlacedBrick... bricks) {
-      return new Row(length, List.of(bricks));
+  public static record Row(List<PlacedBrick> placedBricks) {
+    public static Row of(PlacedBrick... bricks) {
+      return new Row(List.of(bricks));
       }
-    public Row(int length) { this(length, new ArrayList<>()); }
-    public Row {
-      if (length <= 0) { throw new IllegalArgumentException("Row length is required to be positive!"); }
-      }
+    public Row() { this(new ArrayList<>()); }
+
     public Row addBrick(Brick brick, int index) {
       placedBricks.add(new PlacedBrick(brick, index));
       verifyValidity();
@@ -98,7 +100,7 @@ public class BrickWall {
       }
     private void verifyValidity() {
       List<Integer> emptyIndices= new ArrayList<>(
-        IntStream.range(0, length).boxed().collect(Collectors.toList())
+        IntStream.range(0, MAX_LENGTH).boxed().collect(Collectors.toList())
         );
       placedBricks.stream()
         .forEach(b -> {
@@ -132,7 +134,7 @@ public class BrickWall {
       }
     public String toHtml() {
       String movableStr = movable ? "movable" : "";
-      return "<span class=\"brick %s\">%s</span>".formatted(movableStr, code);
+      return "<span class=\"brick %s\">%s</span>".formatted(movableStr, BrickWall.escape(code));
       }
   }
 }
