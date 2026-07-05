@@ -162,7 +162,12 @@ const normaliseWallText= () => {
   return str;
 };
 
-const onComplete= () => { console.log("Yay"); };
+const onComplete= () => {
+  Utils.flashImage("rgba(0, 250, 0, 0.5)","levelEndCharacter","translateY(-5%)");
+  const nextLevelUrl= MetaData.str(document.body, "next");
+  Utils.checkExists(nextLevelUrl);
+  setTimeout(() => window.location.href = nextLevelUrl, 5000);
+};
 const onFail= () => { console.log("Nay"); };
 
 const checkSolution= () => {
@@ -171,8 +176,12 @@ const checkSolution= () => {
   else { onFail(); }
 };
 
+const hint= () => {
+  console.log("Hint");
+};
+
 const buttonActions= {
   submitBtn: checkSolution,
-  hintBtn: () => { console.log("Hint"); },
+  hintBtn: hint,
   };
 const Buttons= initButtons(() => {}, buttonActions);
