@@ -3,7 +3,7 @@
 // Forest Minigame Settings
 const TRAVEL_SPEED= 500; // Constant speed along a path
 const MAX_LINE_LENGTH= 80; // Maximum amount of characters for each line in the output box
-
+const TEXT_OUTPUT_SPEED= 50; // ms per character to appear
 
 class Node {
   constructor(x, y) {
@@ -34,7 +34,7 @@ const markerWidth= currentNodeMarker.getAttribute("width");
 const markerHeight= currentNodeMarker.getAttribute("height");
 
 const output= Utils.getElementById("output");
-var currentCode= MetaData.str(output, "original");
+let currentCode= MetaData.str(output, "original");
 const solutionCode= MetaData.str(output, "solution");
 
 const nodesRaw= document.querySelectorAll("circle");
@@ -55,6 +55,8 @@ var interactionEnabled= true;
 var currentNode= nodes[0]; // The node the player is currently on
 const actionStack= [];
 
+let textToAnimate= ""; // Remaining characters to add to output
+
 const getOutputText= () => {
   return output.textContent;
 };
@@ -70,11 +72,14 @@ const submit= () => {
   }
 const undo= () => {
   if (actionStack.length === 0 || !interactionEnabled) { return; }
+  clearInterval(animateTextInterval);
+  textToAnimate = "";
   const action= actionStack.pop();
   currentNode = action.node;
   currentCode = action.code;
   hintChar.hidden = true; // Hide Panic
   updateVisuals();
+  animateTextInterval = setInterval(animateText, TEXT_OUTPUT_SPEED);
   }
 
 let panicToHideId= null;
@@ -152,7 +157,7 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
   }
   actionStack.push(new Action(currentNode, currentCode));
   interactionEnabled = false;
-  var otherNode;
+  let otherNode;
   if (currentNode.equals(n1)) {
     currentNode = n2;
     otherNode= n1;
@@ -161,7 +166,9 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
     otherNode= n2;
     }
   submitBtn.disabled = !onFinishNode();
-  setOutputText(currentCode += code);
+  //setOutputText(currentCode += code);
+  currentCode += code
+  textToAnimate += code;
   animateTravelPath(otherNode.x, otherNode.y, mx, my, currentNode.x, currentNode.y); // It's backwards somehow :/
   }
 
@@ -213,5 +220,15 @@ const escapeHtml= str => {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
+
+const animateText= () => {
+  if (textToAnimate.length === 0) { return; }
+  const first= textToAnimate[0];
+  textToAnimate = textToAnimate.slice(1);
+  const current= getOutputText();
+  setOutputText(current + first);
+};
+
+let animateTextInterval= setInterval(animateText, TEXT_OUTPUT_SPEED);
 
 updateVisuals();
