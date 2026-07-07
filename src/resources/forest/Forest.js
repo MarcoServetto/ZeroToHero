@@ -66,6 +66,8 @@ const setOutputText= text => {
 
 const submit= () => {
   if (!onFinishNode()) { return; }
+  textToAnimate = "";
+  setOutputText(currentCode);
   const freezeToken= Buttons.freezeToken();
   if (currentCode === solutionCode) { onComplete(); }
   else { onFail(freezeToken); }
