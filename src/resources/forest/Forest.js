@@ -110,7 +110,7 @@ Array.from(edges).forEach(edge => {
     foreignObjectCodeBox.setAttribute("y", foreignObject.getAttribute("y"));
     foreignObjectCodeBox.setAttribute("width", foreignObject.getAttribute("width"));
     foreignObjectCodeBox.setAttribute("height", foreignObject.getAttribute("height"));
-    codeBoxOverlayTop.value = codeBox.value;
+    codeBoxOverlayTop.textContent = codeBox.textContent;
     });
   edge.addEventListener("mouseleave", () => {
     foreignObjectCodeBox.setAttribute("opacity", 0);
@@ -149,7 +149,7 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
     travelFail(n1, n2);
     return;
     }
-  const code= Utils.getElementById(edgeId).value;
+  const code= Utils.getElementById(edgeId).textContent;
   if (checkOverLength(getOutputText())) {
     displayPanicMessage("We've picked up too much! Try the Undo button.", 5000);
     output.classList.add("incorrectGlow");

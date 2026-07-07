@@ -164,7 +164,7 @@ public class Forest {
         <path class="hitPath" d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d'/>
         <path class='path' d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d' stroke-dasharray="16 16"/>
         <foreignObject x="%8$d" y="%9$d" width="%11$dpx" height="%12$dpx">
-          <textarea
+          <div
             id="edge_%10$d"
             class="overlayTextarea"
             style="top:0%%;left:0%%;width:100%%;height:100%%;overflow-x:auto;"
@@ -173,7 +173,7 @@ public class Forest {
             autocomplete="off"
             spellcheck="false"
             readonly
-            >%7$s</textarea>
+            >%7$s</div>
           </foreignObject>
       </g>
       """, x1, y1, mx, my, x2, y2, Escape.escapeForHtmlAttribute(code), (int)(x * SIZE_MULTIPLIER), (int)(y * SIZE_MULTIPLIER), id, (int)(boxWidth * SIZE_MULTIPLIER), (int)(boxHeight * SIZE_MULTIPLIER)
