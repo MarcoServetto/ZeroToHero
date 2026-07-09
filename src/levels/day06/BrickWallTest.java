@@ -16,7 +16,7 @@ Direction: {
       .addToPile(Brick.movable("{"))
       .addToPile(Brick.movable(".turn: "))
       .addToPile(Brick.movable("Direction"))
-      .addToPile(Brick.movable("                                            "))
+      .addToPile(Brick.movable("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"))
       .addRow(Row.of(
         new PlacedBrick(Brick.immovable(": "), 9),
         new PlacedBrick(Brick.movable("Direction"), 10)))
