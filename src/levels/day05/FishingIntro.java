@@ -12,7 +12,7 @@ public class FishingIntro implements Function<Days.LevelName,String>{
     .fish("No@r@@th")
     .fish("East")
     .fish("South")
-    .fish("Archer#(East@,North@@)")
+    .fish("Archers#(East@,North@@)")
     .fish("South@:Direction{@@E@@a@@s@@t}")
     .fish("Stone.break")
     .fish("""
