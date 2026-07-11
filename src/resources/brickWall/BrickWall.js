@@ -3,6 +3,7 @@ const brickRows= document.querySelectorAll(".brickRow");
 const movableBricks= document.querySelectorAll(".brick.movable");
 const movingBricksDiv= Utils.getElementById("movingBricks");
 const pile= Utils.getElementById("pile");
+const gameArea= Utils.getElementById("gameArea");
 
 const solution= MetaData.str(wall, "solution");
 
@@ -62,7 +63,8 @@ const showPreview= (startSpan, text) => {
 
 const getBrickPosFromMouse= (brick, event) => {
   const rect= brick.getBoundingClientRect();
-  return [event.clientX - rect.width/2, event.clientY - rect.height/2];
+  const gameAreaRect= gameArea.getBoundingClientRect();
+  return [event.clientX - gameAreaRect.left - rect.width/2, event.clientY - gameAreaRect.top - rect.height/2];
 }
 
 const registerMovable= e => {
@@ -97,8 +99,9 @@ document.addEventListener("pointermove", e => {
   if (placed) {
     // snap ghost to the slot the preview occupies
     const rect = previewSpans[0].getBoundingClientRect();
-    ghostBrick.style.left = `${rect.left}px`;
-    ghostBrick.style.top = `${rect.top}px`;
+	const gameAreaRect= gameArea.getBoundingClientRect();
+    ghostBrick.style.left = `${rect.left - gameAreaRect.left}px`;
+    ghostBrick.style.top = `${rect.top - gameAreaRect.top}px`;
   } else {
     // follow the cursor when there's no valid slot
     const pos= getBrickPosFromMouse(ghostBrick, e);
@@ -142,22 +145,10 @@ const normaliseWallText= () => {
   let str= "";
   let putSpace= true;
   brickRows.forEach(r => {
-    [...r.children].forEach(c => {
-      let content= c.textContent;
-      if (content === SPACE) {
-		if (!putSpace) { return; }
-        str += " ";
-        putSpace = false;
-        return;
-        }
-      putSpace = true;
-      str += content;
-      return;
-      });
-    str = str.trim();
+    [...r.children].forEach(c => { str += c.textContent; });
     str += "\n";
     });
-  str = str.trim();
+  str = Utils.normalize(str);
   console.log(str);
   return str;
 };
@@ -172,7 +163,7 @@ const onFail= () => { console.log("Nay"); };
 
 const checkSolution= () => {
   const wallText= normaliseWallText();
-  if (wallText === solution) { onComplete(); }
+  if (wallText === Utils.normalize(solution)) { onComplete(); }
   else { onFail(); }
 };
 
