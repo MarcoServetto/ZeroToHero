@@ -91,9 +91,9 @@ const displayPanicMessage= (msg, duration) => {
   const speechBubble= hintChar.querySelector(".speechBubble");
   speechBubble.textContent = msg;
   hintChar.hidden = false;
-  panicToHideId = setTimeout(()=>{
+  /*panicToHideId = setTimeout(()=>{
     hintChar.hidden = true;
-    }, duration);
+    }, duration);*/
   };
 
 const buttonActions= {
@@ -132,6 +132,7 @@ const onComplete= () => {
   }
 const onFail= (freezeToken) => {
   showIncorrect();
+  output.classList.add("incorrectGlow");
   Utils.flashImage("rgba(250, 0, 0, 0.5)","levelFail","translateY(-5%)");
   setTimeout(() => freezeToken.unfreeze(), 3000);
   }
@@ -155,6 +156,7 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
   if (checkOverLength(getOutputText())) {
     displayPanicMessage("We've picked up too much! Try the Undo button.", 5000);
     output.classList.add("incorrectGlow");
+    showIncorrect();
     return;
   }
   actionStack.push(new Action(currentNode, currentCode));
@@ -168,7 +170,6 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
     otherNode= n2;
     }
   submitBtn.disabled = !onFinishNode();
-  //setOutputText(currentCode += code);
   currentCode += code
   textToAnimate += code;
   animateTravelPath(otherNode.x, otherNode.y, mx, my, currentNode.x, currentNode.y); // It's backwards somehow :/
