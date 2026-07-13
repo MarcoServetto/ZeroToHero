@@ -90,11 +90,12 @@ public class Forest {
     this.background = background;
     return this;
     }
-  
   public String build() {
+    String[] pathStrings= pathsHtml();
     return name.htmlNextLevel(File.Forest_html.text)
       .replace("[###BACKGROUNDFILE###]", background.filename())
-      .replace("[###PATHS###]", pathsHtml())
+      .replace("[###PATH_EDGES###]", pathStrings[0])
+      .replace("[###PATH_CODE_BOX###]", pathStrings[1])
       .replace("[###BODY###]", nodesHtml())
       .replace("[###OUTPUT###]", outputBoxHtml());
     }
@@ -103,11 +104,12 @@ public class Forest {
       .map(Node::build)
       .collect(Collectors.joining("\n"));
     }
-  private String pathsHtml() {
+  private String[] pathsHtml() {
     List<Node> forestNodesOrdered= new ArrayList<>(nodes.values());
     Map<String, List<ForestNodeConnection>> connectionGroups= connections.stream()
       .collect(Collectors.groupingBy(conn -> conn.fromIndex() + "," + conn.toIndex()));
     StringBuilder pathsHtml= new StringBuilder();
+    StringBuilder pathCodeBoxesHtml= new StringBuilder();
     Collection<List<ForestNodeConnection>> connections= connectionGroups.values();
     int id= 0;
     for (List<ForestNodeConnection> conns : connections) {
@@ -115,10 +117,15 @@ public class Forest {
         ForestNodeConnection c= conns.get(i);
         Node from= forestNodesOrdered.get(c.fromIndex());
         Node to= forestNodesOrdered.get(c.toIndex());
-        pathsHtml.append(drawPath(c.code(), c.x(), c.y(), from, to, conns.size(), i, id++, c.w(), c.h()));
+        double[] control= controlPoint(from, to, conns.size(), i);
+        double mx= control[0];
+        double my= control[1];
+        pathsHtml.append(drawPath(c.code(), from, to, mx, my, id));
+        pathCodeBoxesHtml.append(drawPathCodeBox(c.code(), c.x(), c.y(), from, to, mx, my, id, c.w(), c.h()));
+        id++;
         }
       }
-    return pathsHtml.toString();
+    return new String[]{pathsHtml.toString(), pathCodeBoxesHtml.toString()};
     }
   private String outputBoxHtml() {
     return """
@@ -131,7 +138,9 @@ public class Forest {
       """.formatted(Escape.escapeForHtmlAttribute(initialCode + solution), Escape.escapeForHtmlAttribute(initialCode), Escape.escapeForHtmlAttribute(initialCode));
     }
   
-  private String drawPath(String code, int x, int y, Node from, Node to, int totalConnections, int index, int id, int boxWidth, int boxHeight) {
+  // Quadratic Bezier control point: midpoint offset perpendicular to the line,
+  // scaled by how many parallel connections there are and this connection's index.
+  private double[] controlPoint(Node from, Node to, int totalConnections, int index) {
     int x1= from.position().x();
     int y1= from.position().y();
     int x2= to.position().x();
@@ -157,28 +166,44 @@ public class Forest {
     // control point (midpoint + perpendicular offset)
     double mx= (x1 + x2) / 2 + nx * offset;
     double my= (y1 + y2) / 2 + ny * offset;
+    return new double[]{mx, my};
+    }
+  private String drawPath(String code, Node from, Node to, double mx, double my, int id) {
+    int x1= from.position().x();
+    int y1= from.position().y();
+    int x2= to.position().x();
+    int y2= to.position().y();
 
     return String.format(
       """
-      <g class="edge" onclick='travelPath("edge_%10$d", %1$d, %2$d, %3$.2f, %4$.2f, %5$d, %6$d)'>
+      <g class="edge" data-edge="edge_%7$d" onclick='travelPath("edge_%7$d", %1$d, %2$d, %3$.2f, %4$.2f, %5$d, %6$d)'>
         <path class="hitPath" d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d'/>
         <path class='path' d='m %1$d %2$d Q %3$.2f %4$.2f %5$d %6$d' stroke-dasharray="16 16"/>
-        <foreignObject x="%8$d" y="%9$d" width="%11$dpx" height="%12$dpx">
-          <div
-            id="edge_%10$d"
-            class="overlayTextarea"
-            style="top:0%%;left:0%%;width:100%%;height:100%%;overflow-x:auto;"
-            name="ForestCodeBox"
-            wrap="soft"
-            autocomplete="off"
-            spellcheck="false"
-            readonly
-            >%7$s</div>
-          </foreignObject>
-      </g>
-      """, x1, y1, mx, my, x2, y2, Escape.escapeForHtmlAttribute(code), (int)(x * SIZE_MULTIPLIER), (int)(y * SIZE_MULTIPLIER), id, (int)(boxWidth * SIZE_MULTIPLIER), (int)(boxHeight * SIZE_MULTIPLIER)
+      </g>""", x1, y1, mx, my, x2, y2, id
       );
     }
+  private String drawPathCodeBox(String code, int x, int y, Node from, Node to, double mx, double my, int id, int boxWidth, int boxHeight) {
+    int x1= from.position().x();
+    int y1= from.position().y();
+    int x2= to.position().x();
+    int y2= to.position().y();
+    return String.format("""
+    <foreignObject class="codeBoxEdge" data-edge="edge_%6$d" x="%2$d" y="%3$d" width="%4$dpx" height="%5$dpx"
+      onclick='travelPath("edge_%6$d", %7$d, %8$d, %9$.2f, %10$.2f, %11$d, %12$d)'>
+      <div
+        id="edge_%6$d"
+        class="overlayTextarea"
+        style="top:0%%;left:0%%;width:100%%;height:100%%;overflow-x:auto;"
+        name="ForestCodeBox"
+        wrap="soft"
+        autocomplete="off"
+        spellcheck="false"
+        readonly
+        >%1$s</div>
+      </foreignObject>""",
+      code, (int)(x * SIZE_MULTIPLIER), (int)(y * SIZE_MULTIPLIER), (int)(boxWidth * SIZE_MULTIPLIER), (int)(boxHeight * SIZE_MULTIPLIER),
+      id, x1, y1, mx, my, x2, y2);
+  }
   
   record Node(Position position, String elementClass, String fill) {
     public String build() {

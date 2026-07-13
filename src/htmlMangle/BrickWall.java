@@ -74,7 +74,7 @@ public class BrickWall {
     }
 
   private String renderPile() {
-    StringBuilder sb = new StringBuilder();
+    StringBuilder sb= new StringBuilder();
     for (Brick b : brickPile) { sb.append(b.toHtml()); }
     return sb.toString();
     }

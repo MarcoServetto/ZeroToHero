@@ -45,6 +45,7 @@ const pathsRaw= document.querySelectorAll("path");
 const foreignObjectCodeBox= Utils.getElementById("foreignObjectCodeBox");
 const codeBoxOverlayTop= Utils.getElementById("codeBoxOverlayTop");
 const edges= document.getElementsByClassName("edge");
+const codeBoxEdges= document.getElementsByClassName("codeBoxEdge");
 
 // Map each HTML node to Javascript node.
 const normalNodes= Array.from(nodesRaw).map(c => new Node(c.cx.baseVal.value, c.cy.baseVal.value));
@@ -59,10 +60,10 @@ let textToAnimate= ""; // Remaining characters to add to output
 
 const getOutputText= () => {
   return output.textContent;
-};
+  };
 const setOutputText= text => {
   output.innerHTML = text;
-};
+  };
 
 const submit= () => {
   if (!onFinishNode()) { return; }
@@ -91,9 +92,6 @@ const displayPanicMessage= (msg, duration) => {
   const speechBubble= hintChar.querySelector(".speechBubble");
   speechBubble.textContent = msg;
   hintChar.hidden = false;
-  /*panicToHideId = setTimeout(()=>{
-    hintChar.hidden = true;
-    }, duration);*/
   };
 
 const buttonActions= {
@@ -103,20 +101,43 @@ const buttonActions= {
   };
 const Buttons= initButtons(() => {}, buttonActions);
 
+// Pair each edge with its code box via the shared data-edge id, so hovering
+// either one highlights both and shows the top overlay code box.
+const edgeById= new Map();
 Array.from(edges).forEach(edge => {
-  edge.addEventListener("mouseenter", () => {
-    const foreignObject= edge.querySelector("foreignObject");
-    const codeBox= edge.querySelector(".overlayTextarea");
-    foreignObjectCodeBox.setAttribute("opacity", 1);
-    foreignObjectCodeBox.setAttribute("x", foreignObject.getAttribute("x"));
-    foreignObjectCodeBox.setAttribute("y", foreignObject.getAttribute("y"));
-    foreignObjectCodeBox.setAttribute("width", foreignObject.getAttribute("width"));
-    foreignObjectCodeBox.setAttribute("height", foreignObject.getAttribute("height"));
-    codeBoxOverlayTop.textContent = codeBox.textContent;
-    });
-  edge.addEventListener("mouseleave", () => {
-    foreignObjectCodeBox.setAttribute("opacity", 0);
-    });
+  edgeById.set(edge.getAttribute("data-edge"), edge);
+  });
+
+const showCodeBoxOverlay= (codeBoxEdge) => {
+  const box= codeBoxEdge.querySelector(".overlayTextarea");
+  foreignObjectCodeBox.setAttribute("x", codeBoxEdge.getAttribute("x"));
+  foreignObjectCodeBox.setAttribute("y", codeBoxEdge.getAttribute("y"));
+  foreignObjectCodeBox.setAttribute("width", codeBoxEdge.getAttribute("width"));
+  foreignObjectCodeBox.setAttribute("height", codeBoxEdge.getAttribute("height"));
+  foreignObjectCodeBox.setAttribute("opacity", 1);
+  codeBoxOverlayTop.textContent = box.textContent;
+  };
+
+const setHovered= (edgeId, hovered) => {
+  const edge= edgeById.get(edgeId);
+  const codeBoxEdge= Array.from(codeBoxEdges).find(cb => cb.getAttribute("data-edge") === edgeId);
+  if (edge) { edge.classList.toggle("hovered", hovered); }
+  if (codeBoxEdge) {
+    codeBoxEdge.classList.toggle("hovered", hovered);
+    if (hovered) { showCodeBoxOverlay(codeBoxEdge); }
+    }
+  if (!hovered) { foreignObjectCodeBox.setAttribute("opacity", 0); }
+};
+
+Array.from(edges).forEach(edge => {
+  const edgeId= edge.getAttribute("data-edge");
+  edge.addEventListener("mouseenter", () => setHovered(edgeId, true));
+  edge.addEventListener("mouseleave", () => setHovered(edgeId, false));
+  });
+Array.from(codeBoxEdges).forEach(codeBoxEdge => {
+  const edgeId= codeBoxEdge.getAttribute("data-edge");
+  codeBoxEdge.addEventListener("mouseenter", () => setHovered(edgeId, true));
+  codeBoxEdge.addEventListener("mouseleave", () => setHovered(edgeId, false));
   });
 
 const checkOverLength= (str) => {
@@ -158,7 +179,7 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
     output.classList.add("incorrectGlow");
     showIncorrect();
     return;
-  }
+    }
   actionStack.push(new Action(currentNode, currentCode));
   interactionEnabled = false;
   let otherNode;
@@ -217,12 +238,12 @@ const showIncorrect= () => {
   const rightText= currentOutput.slice(0, incorrectIndex);
   const wrongText= currentOutput.slice(incorrectIndex, len);
   setOutputText(rightText + `<span class="redHighlight">${escapeHtml(wrongText)}</span>`);
-}
+  }
 const escapeHtml= str => {
   return str.replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-}
+  }
 
 const animateText= () => {
   if (textToAnimate.length === 0) { return; }
@@ -230,7 +251,7 @@ const animateText= () => {
   textToAnimate = textToAnimate.slice(1);
   const current= getOutputText();
   setOutputText(current + first);
-};
+  };
 
 let animateTextInterval= setInterval(animateText, TEXT_OUTPUT_SPEED);
 
