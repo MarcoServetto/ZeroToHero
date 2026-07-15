@@ -54,11 +54,10 @@ List.of(
 "##@[Recipe.cook(Mushroom, Eggplant, CutTomato)]@",
 List.of(
   "Recipe.cook(Mushroom, Eggplant, Tomato)",
-  "Tomato",
+  "<completed>",
   "Ratatouille",
   "Recipe",
-  "【🍄, 🍆, 🍅🔪】",
-  "<completed>"),4)
+  "【🍄, 🍆, 🍅🔪】"),4)
 .question(
 "##@[【🍄, 🍆, 🍅🔪】]@",
 List.of(

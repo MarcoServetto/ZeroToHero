@@ -9,7 +9,7 @@ public class ClimbBaseArcher implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Climb(name,ClimbBase.directions)
     .question("""
-      Now for Archer#
+      Now for Archers#
       Reduction produces values that are better represented
       in a more abstract and compact way (not valid syntax)
       We will use 【...】 or typename【...】 for those values
