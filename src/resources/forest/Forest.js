@@ -1,9 +1,9 @@
 "use strict";
 
 // Forest Minigame Settings
-const TRAVEL_SPEED= 500; // Constant speed along a path
-const MAX_LINE_LENGTH= 80; // Maximum amount of characters for each line in the output box
-const TEXT_OUTPUT_SPEED= 50; // ms per character to appear
+const travelSpeed= 500; // Constant speed along a path
+const maxLineLength= 80; // Maximum amount of characters for each line in the output box
+const textOutputSpeed= 50; // ms per character to appear
 
 class Node {
   constructor(x, y) {
@@ -82,7 +82,7 @@ const undo= () => {
   currentCode = action.code;
   hintChar.hidden = true; // Hide Panic
   updateVisuals();
-  animateTextInterval = setInterval(animateText, TEXT_OUTPUT_SPEED);
+  animateTextInterval = setInterval(animateText, textOutputSpeed);
   }
 
 let panicToHideId= null;
@@ -142,7 +142,7 @@ Array.from(codeBoxEdges).forEach(codeBoxEdge => {
 
 const checkOverLength= (str) => {
   const lines= str.split("\n");
-  return lines.some(line => line.length > MAX_LINE_LENGTH);
+  return lines.some(line => line.length > maxLineLength);
   }
 
 const onComplete= () => {
@@ -204,7 +204,7 @@ const animateTravelPath= (x1, y1, mx, my, x2, y2) => {
   const start= performance.now();
 
   const step= (t) => {
-    const progress= Math.min((t - start) / (length*1000/TRAVEL_SPEED), 1);
+    const progress= Math.min((t - start) / (length*1000/travelSpeed), 1);
     const point= currentTravelingPath.getPointAtLength(length * progress);
     updateCurrentNodeMarkerLocation(point.x, point.y);
     if (progress < 1) {
@@ -253,6 +253,6 @@ const animateText= () => {
   setOutputText(current + first);
   };
 
-let animateTextInterval= setInterval(animateText, TEXT_OUTPUT_SPEED);
+let animateTextInterval= setInterval(animateText, textOutputSpeed);
 
 updateVisuals();

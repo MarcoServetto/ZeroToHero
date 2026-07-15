@@ -3,7 +3,6 @@ package levels.day06;
 import java.util.function.Function;
 
 import htmlMangle.BrickWall;
-import htmlMangle.BrickWall.*;
 import mainZeroToHero.Days;
 
 public class BrickWallTest implements Function<Days.LevelName, String>{
@@ -12,19 +11,18 @@ public class BrickWallTest implements Function<Days.LevelName, String>{
 Direction: {
 .turn: Direction;
 }""")
-      .addToPile(Brick.movable("}"))
-      .addToPile(Brick.movable("{"))
-      .addToPile(Brick.movable(".turn: "))
-      .addToPile(Brick.movable("Direction"))
-      .addToPile(Brick.movable("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"))
-      .addRow(Row.of(
-        new PlacedBrick(Brick.immovable(": "), 9),
-        new PlacedBrick(Brick.movable("Direction"), 10)))
-      .addRow(Row.of(
-        new PlacedBrick(Brick.movable(";"), 0),
-        new PlacedBrick(Brick.movable("   "), 2)))
-      .addRow(Row.of(
-        new PlacedBrick(Brick.immovable("          "), 1)))
+      .addImmovable(9, ": ")
+      .addMovable(0, "Direction")
+      .newRow()
+      .addMovable(0, ";")
+      .addMovable(1, "   ")
+      .newRow()
+      .addImmovable(1, "          ")
+      .addToPile(0, true, "}")
+      .addToPile(0, true, "{")
+      .addToPile(0, true, ".turn: ")
+      .addToPile(0, true, "Direction")
+      .addToPile(0, true, "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww")
       .build();
     }
   }

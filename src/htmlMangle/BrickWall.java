@@ -1,10 +1,7 @@
 package htmlMangle;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import mainZeroToHero.Days;
 import resources.File;
@@ -21,27 +18,37 @@ import resources.File;
  *   where the player has to remove all the unnecessary bricks.
  */
 public class BrickWall {
-  private static int MAX_LENGTH = 80;
+  private static final int maxLength = 80;
   
   private final List<Brick> brickPile= new ArrayList<>();
-  private final List<Row> brickRows= new ArrayList<>();
+  private final List<List<Brick>> brickRows= new ArrayList<>();
+  private List<Brick> currentRowBricks= new ArrayList<>();
   
   private final Days.LevelName name;
   private final String solution;
+  int currentIndexAlongRow= 0;
   
   public BrickWall(Days.LevelName name, String solution) {
     this.name= name;
     this.solution= solution;
     }
-  public BrickWall addToPile(Brick brick) {
-    brickPile.add(brick);
+  public BrickWall addToPile(int indexSkip, boolean movable, String s) {
+    brickPile.add(new Brick(s, movable, indexSkip));
     return this;
     }
-  public BrickWall addRow(Row row) {
-    brickRows.add(row);
+  public BrickWall newRow() {
+    brickRows.add(currentRowBricks);
+    currentIndexAlongRow = 0;
+    currentRowBricks = new ArrayList<>();
     return this;
-
     }
+  public BrickWall addBrick(int indexSkip, boolean movable, String s) {
+    currentIndexAlongRow += indexSkip;
+    currentRowBricks.add(new Brick(s, movable, currentIndexAlongRow));
+    return this;
+    }
+  public BrickWall addImmovable(int indexSkip, String s) { return addBrick(indexSkip, false, s); }
+  public BrickWall addMovable(int indexSkip, String s) { return addBrick(indexSkip, true, s); }
   public String build() {
     return name.htmlNextLevel(File.BrickWall_html.text)
       .replace("[###WALL###]", renderWall())
@@ -49,28 +56,26 @@ public class BrickWall {
     }
 
   private String renderWall() {
+    brickRows.add(currentRowBricks);
     StringBuilder sb = new StringBuilder();
-    for (Row r : brickRows) {
+    for (List<Brick> sortedBricks : brickRows) {
       sb.append("<span class=\"brickRow\">");
-      List<PlacedBrick> sortedBricks = new ArrayList<>(r.placedBricks());
-      Collections.sort(sortedBricks);
       int currentIndex = 0;
-      for (PlacedBrick placedBrick : sortedBricks) {
-        Brick brick = placedBrick.brick();
-        int brickIndex = placedBrick.index();
-        int len = placedBrick.brick().length();
+      for (Brick brick : sortedBricks) {
+        int brickIndex= brick.index();
+        int len= brick.length();
         for (; currentIndex < brickIndex; currentIndex++) {
           sb.append("<span class=\"empty\">&nbsp;</span>");
           }
         sb.append(brick.toHtml());
         currentIndex += len;
         }
-      for (; currentIndex < MAX_LENGTH; currentIndex++) {
+      for (; currentIndex < maxLength; currentIndex++) {
         sb.append("<span class=\"empty\">&nbsp;</span>");
         }
       sb.append("</span>");
       }
-    return "<div id=\"wall\" class=\"wall\" data-solution=\"" + escape(solution) + "\">" + sb.toString() + "</div>";
+    return "<div id=\"wall\" class=\"wall\" data-solution=\"" + Escape.escapeForHtmlText(solution) + "\">" + sb.toString() + "</div>";
     }
 
   private String renderPile() {
@@ -79,62 +84,14 @@ public class BrickWall {
     return sb.toString();
     }
 
-  public static String escape(String s) {
-    return s.replace("&", "&amp;")
-      .replace("<", "&lt;")
-      .replace(">", "&gt;")
-      .replace("\"", "&quot;")
-      .replace(" ", "&nbsp;");
-  }
-  
-  public static record Row(List<PlacedBrick> placedBricks) {
-    public static Row of(PlacedBrick... bricks) {
-      return new Row(List.of(bricks));
-      }
-    public Row() { this(new ArrayList<>()); }
-
-    public Row addBrick(Brick brick, int index) {
-      placedBricks.add(new PlacedBrick(brick, index));
-      verifyValidity();
-      return this;
-      }
-    private void verifyValidity() {
-      List<Integer> emptyIndices= new ArrayList<>(
-        IntStream.range(0, MAX_LENGTH).boxed().collect(Collectors.toList())
-        );
-      placedBricks.stream()
-        .forEach(b -> {
-          int startindex= b.index();
-          int endIndexExclusive= startindex + b.brick().length();
-          IntStream.range(startindex, endIndexExclusive)
-            .forEach(i -> {
-              if (!emptyIndices.remove(Integer.valueOf(i))) {
-                throw new IllegalArgumentException("Brick with code `" + b.brick().code() + "` does not fit in its row!");
-                }
-            });
-        });
-      }
-    }
-
-  public static record PlacedBrick(Brick brick, int index) implements Comparable<PlacedBrick> {
-    public int compareTo(PlacedBrick other) { return index() - other.index(); }
-    }
-  
-  public static record Brick(String code, boolean movable) {
-    static public Brick movable(String code) { return new Brick(code, true); }
-    static public Brick movable(int length) { return new Brick(" ".repeat(length), true); }
-    
-    static public Brick immovable(String code) { return new Brick(code, false); }
-    static public Brick immovable(int length) { return new Brick(" ".repeat(length), false); }
-    
+  private record Brick(String code, boolean movable, int index) {
     public int length() { return code.length(); }
-    
     public Brick {
       if (code.length() <= 0) { throw new IllegalArgumentException("Brick cannot be empty!"); }
       }
     public String toHtml() {
       String movableStr = movable ? "movable" : "";
-      return "<span class=\"brick %s\">%s</span>".formatted(movableStr, BrickWall.escape(code));
+      return "<span class=\"brick %s\">%s</span>".formatted(movableStr, Escape.escapeForHtmlText(code));
       }
-  }
+    }
 }

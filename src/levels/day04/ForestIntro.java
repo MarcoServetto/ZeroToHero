@@ -20,7 +20,7 @@ remember your directions!
 */
 
 Direction:""", "{ .turn: Direction; }")
-      .background(Forest.Background.DAWN)
+      .background(Forest.Background.Dawn)
       .addNode(34, 20)
       .addNode(26, 56)
       .addFinishNode(82, 60)

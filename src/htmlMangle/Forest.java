@@ -21,15 +21,15 @@ import java.util.Map;
  *  so that the resulting code is valid and correctly answers the question.
  */
 public class Forest {
-  private static final float SIZE_MULTIPLIER= 10f;
-  private static final float DEFAULT_CODE_BOX_WIDTH= 25;
-  private static final float DEFAULT_CODE_BOX_HEIGHT= 4;
+  private static final float sizeMultiplier= 10f;
+  private static final float defaultCodeBoxWidth= 25;
+  private static final float defaultCodeBoxHeight= 4;
   private final Map<Position, Node> nodes= new LinkedHashMap<>();
   private final Set<ForestNodeConnection> connections= new LinkedHashSet<>();
   private final String initialCode;
   private final String solution;
   private final Days.LevelName name;
-  private Background background= Background.DAWN;
+  private Background background= Background.Dawn;
   
   public Forest(Days.LevelName name, String initialCode, String solution) {
     this.name= name;
@@ -49,8 +49,8 @@ public class Forest {
     return addNode(x, y, "finishNode", "lightgreen");
     }
   private Forest addNode(float x, float y, String className, String colour) {
-    x *= SIZE_MULTIPLIER;
-    y *= SIZE_MULTIPLIER;
+    x *= sizeMultiplier;
+    y *= sizeMultiplier;
     Position p= new Position((int)x, (int)y);
     nodes.put(p, new Node(p, className, colour));
     return this;
@@ -81,30 +81,16 @@ public class Forest {
     return this;
     }
   public Forest connect(int n1, int n2, String code, int bx, int by, int bw) {
-    return connect(n1, n2, code, bx, by, bw, (int)DEFAULT_CODE_BOX_HEIGHT);
+    return connect(n1, n2, code, bx, by, bw, (int)defaultCodeBoxHeight);
     }
   public Forest connect(int n1, int n2, String code, int bx, int by) {
-    return connect(n1, n2, code, bx, by, (int)DEFAULT_CODE_BOX_WIDTH);
+    return connect(n1, n2, code, bx, by, (int)defaultCodeBoxWidth);
     }
   public Forest background(Background background) {
     this.background = background;
     return this;
     }
   public String build() {
-    String[] pathStrings= pathsHtml();
-    return name.htmlNextLevel(File.Forest_html.text)
-      .replace("[###BACKGROUNDFILE###]", background.filename())
-      .replace("[###PATH_EDGES###]", pathStrings[0])
-      .replace("[###PATH_CODE_BOX###]", pathStrings[1])
-      .replace("[###BODY###]", nodesHtml())
-      .replace("[###OUTPUT###]", outputBoxHtml());
-    }
-  private String nodesHtml() {
-    return nodes.values().stream()
-      .map(Node::build)
-      .collect(Collectors.joining("\n"));
-    }
-  private String[] pathsHtml() {
     List<Node> forestNodesOrdered= new ArrayList<>(nodes.values());
     Map<String, List<ForestNodeConnection>> connectionGroups= connections.stream()
       .collect(Collectors.groupingBy(conn -> conn.fromIndex() + "," + conn.toIndex()));
@@ -117,16 +103,29 @@ public class Forest {
         ForestNodeConnection c= conns.get(i);
         Node from= forestNodesOrdered.get(c.fromIndex());
         Node to= forestNodesOrdered.get(c.toIndex());
+        
         double[] control= controlPoint(from, to, conns.size(), i);
         double mx= control[0];
         double my= control[1];
+        
         pathsHtml.append(drawPath(c.code(), from, to, mx, my, id));
         pathCodeBoxesHtml.append(drawPathCodeBox(c.code(), c.x(), c.y(), from, to, mx, my, id, c.w(), c.h()));
         id++;
         }
       }
-    return new String[]{pathsHtml.toString(), pathCodeBoxesHtml.toString()};
+    return name.htmlNextLevel(File.Forest_html.text)
+      .replace("[###BACKGROUNDFILE###]", background.filename())
+      .replace("[###PATH_EDGES###]", pathsHtml.toString())
+      .replace("[###PATH_CODE_BOX###]", pathCodeBoxesHtml.toString())
+      .replace("[###BODY###]", nodesHtml())
+      .replace("[###OUTPUT###]", outputBoxHtml());
     }
+  private String nodesHtml() {
+    return nodes.values().stream()
+      .map(Node::build)
+      .collect(Collectors.joining("\n"));
+    }
+  
   private String outputBoxHtml() {
     return """
       <div class="overlayTextarea" id="output"
@@ -158,7 +157,7 @@ public class Forest {
     double offsetIndex= index - (totalConnections - 1) / 2.0;
 
     // scale curve strength with number of connections
-    double baseCurve= 10.0 * SIZE_MULTIPLIER; // tweak this
+    double baseCurve= 10.0 * sizeMultiplier; // tweak this
     double curveAmount= baseCurve * (1 + totalConnections * 0.5);
 
     double offset= offsetIndex * curveAmount;
@@ -201,7 +200,7 @@ public class Forest {
         readonly
         >%1$s</div>
       </foreignObject>""",
-      code, (int)(x * SIZE_MULTIPLIER), (int)(y * SIZE_MULTIPLIER), (int)(boxWidth * SIZE_MULTIPLIER), (int)(boxHeight * SIZE_MULTIPLIER),
+      code, (int)(x * sizeMultiplier), (int)(y * sizeMultiplier), (int)(boxWidth * sizeMultiplier), (int)(boxHeight * sizeMultiplier),
       id, x1, y1, mx, my, x2, y2);
   }
   
@@ -216,11 +215,11 @@ public class Forest {
       }
     }
   public enum Background {
-    DAWN("forestDawn.png");
+    Dawn("forestDawn.png");
     String filename; // Located in resources/forest/FILENAME
     Background(String filename) { this.filename= filename; }
     String filename() { return filename; }
-  }
+    }
   }
 record ForestNodeConnection(int fromIndex, int toIndex, String code, int x, int y, int w, int h) {}
 record Position(int x, int y) {}

@@ -28,4 +28,7 @@ public class Escape {
         })
       .collect(Collectors.joining());
     }
+  public static String escapeForHtmlText(String input) {
+    return escapeForHtmlAttribute(input).replace(" ", "&nbsp;");
+    }
   }
