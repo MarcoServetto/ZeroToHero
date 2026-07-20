@@ -88,10 +88,10 @@ Rotation: {
 DrillDown: {
   #d: Direction: Direction ->
     Rotation
-      .twice _______________________
+      .twice________________________
       ______________________________
       ______________________________
-      .rotate(_)
+      .rotate(d)
   }
 }
 """, """

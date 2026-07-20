@@ -9,10 +9,9 @@ public class ForestCollectTrunk2 implements Function<Days.LevelName, String>{
     return new htmlMangle.Forest(name, """
 //The last tree broke, but not a clean break, 
 //the trunk is ruined and not good for the palisade.
-//Panic: Rotating the tree just 90 degrees sometimes
-//does not work.
+//Panic: "Rotating the tree just 90 degrees sometimes does not work."
 
-//you: I think I know how to do this better!
+//"I think I know how to do this better!"
 
 """,
 """
@@ -26,12 +25,12 @@ Rotate360:{
       .addNode(35, 65)
       .addFinishNode(90, 90)
 
-      .connect(0, 1, "Rotate360:{\n  #(d: Direction): Direction->\n    d", 40,  18, 58, 13)
+      .connect(0, 1, "Rotate360:{\n  #(d: Direction): Direction->\n    d", 35,  18, 40, 7)
 
-      .connect(1, 2, ".turn",                                      58, 45, 18,  7)
-      .connect(2, 1, ".turn",                                      32, 42, 18,  7)
+      .connect(1, 2, ".turn",                                      56, 42, 10,  7)
+      .connect(2, 1, ".turn",                                      36, 42, 10,  7)
 
-      .connect(1, 3, ";\n  }\n",                                    78, 68, 14, 11)
+      .connect(1, 3, ";\n  }\n",                                    78, 68, 14, 7)
       .build();
     }
   }

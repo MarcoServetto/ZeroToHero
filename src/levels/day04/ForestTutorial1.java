@@ -10,12 +10,12 @@ public class ForestTutorial1 implements Function<Days.LevelName, String>{
 //Go on the same path again to collect
 //the same code multiple times
 """, "Direction:{ .turn: Direction; }")
-      .addNode(10, 10)
-      .addNode(50, 10)
-      .addFinishNode(50, 50)
-      .connect(0, 1, "Direction", 55, 20, 30, 7)
-      .connect(1, 0, ":{ .turn: ", 5, 20, 28, 7)
-      .connect(1, 2, "; }", 30, 62)
+      .addNode(15, 15)
+      .addNode(55, 15)
+      .addFinishNode(55, 55)
+      .connect(0, 1, "Direction",  22,  4, 30, 7)
+      .connect(1, 0, ":{ .turn: ", 22, 20, 28, 7)
+      .connect(1, 2, "; }", 40, 42)
       .build();
     }
   }

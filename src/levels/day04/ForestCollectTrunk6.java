@@ -12,18 +12,15 @@ public class ForestCollectTrunk6 implements Function<Days.LevelName, String>{
 
 """,
 """
-Rotation:{
-  .rotate(d: Direction): Direction
-  }
+Rotation:{ .rotate(d: Direction): Direction }
 Rotation720: Rotation{
   d-> d.reverse.reverse.reverse.reverse
   }
-Rotation3600:{
-  #(d: Direction): Direction->
-    Rotation720#(Rotation720#(Rotation720#(Rotation720#(Rotation720#(d)))))
+Rotation3600: Rotation{ d->
+  Rotation720#(Rotation720#(Rotation720#(Rotation720#(Rotation720#(d)))))
   }
 """)
-      .addNode(3, 95)
+      .addNode(6, 92)
       .addNode(18, 75)
 
       .addNode(3, 60)
@@ -35,17 +32,17 @@ Rotation3600:{
 
       .addFinishNode(98, 5)
 
-      .connect(0, 1, "Rotation:{\n  .rotate(d: Direction): Direction\n  }\n",
-        0, 82, 50, 10)
+      .connect(0, 1, "Rotation:{ .rotate(d: Direction): Direction }\n",
+        3, 79, 50, 7)
 
       .connect(1, 2, "Rotation720: Rotation{\n  d-> d",
-        0, 67, 33, 7)
+        2, 67, 33, 7)
 
       .connect(2, 3, ".reverse", 7, 45, 24, 7)
 
       .connect(2, 4, "\n  }\n", 14, 58, 8, 7)
 
-      .connect(4, 5, "Rotation3600:{\n  #(d: Direction): Direction->\n    ",
+      .connect(4, 5, "Rotation3600: Rotation{ d->\n  ",
         42, 70, 45, 7)
 
       .connect(5, 6, "Rotation720#(", 65, 45, 20, 7)

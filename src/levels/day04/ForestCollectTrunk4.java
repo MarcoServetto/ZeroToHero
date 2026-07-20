@@ -23,7 +23,7 @@ Rotation3600:{
     Rotation720#(Rotation720#(Rotation720#(Rotation720#(Rotation720#(d)))))
   }
 """)
-      .addNode(3, 95)
+      .addNode(5, 94)
       .addNode(3, 60)
       .addNode(13, 30)
 
@@ -38,19 +38,19 @@ Rotation3600:{
       .addFinishNode(98, 05)
 
       .connect(0, 1, "Rotation360:{\n  #(d: Direction): Direction-> this",
-        0, 85, 50, 6)
+        3, 80, 45, 6)
 
       .connect(1, 2, ".reverse", 7, 45, 24, 7)
 
       .connect(1, 3, "\n  }\n", 14, 60, 10, 7)
       .connect(3, 4, "Rotation720:{\n  #(d: Direction): Direction-> ",
-        8, 70, 52, 7)
+        8, 70, 40, 7)
 
       .connect(4, 5, "Rotation360#(", 39, 45, 32, 7)
 
       .connect(4, 6, "d))\n  }\n", 56, 60, 8, 7)
       .connect(6, 7, "Rotation3600:{\n  #(d: Direction): Direction->\n    ",
-        70, 70, 45, 7)
+        70, 70, 40, 7)
 
       .connect(7, 8, "Rotation720#(", 81, 45, 20, 7)
 
