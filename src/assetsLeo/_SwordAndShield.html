@@ -69,7 +69,6 @@
   .flash{color:#ff9d9d;font-weight:600}
   .prev{background:var(--panel2);border:1px solid var(--line);border-radius:7px;line-height:0;padding:2px}
 
-  #record,#setup{z-index:40}
   .over{position:fixed;inset:0;background:rgba(5,8,11,.86);display:flex;align-items:center;
         justify-content:center;z-index:20;padding:20px}
   .card{background:var(--panel);border:1px solid var(--accent);border-radius:14px;padding:18px 22px;
@@ -96,7 +95,6 @@
   <div class="badge" id="turnBadge">&nbsp;</div>
   <div class="spacer"></div>
   <button onclick="toggleLog()">History</button>
-  <button onclick="openRecord()">Record</button>
   <button onclick="openSetup()">New game</button>
   <button onclick="document.getElementById('help').hidden=false">?</button>
 </header>
@@ -116,21 +114,6 @@
 
 <div class="over" id="setup" hidden><div class="card" id="setupCard"></div></div>
 
-<div class="over" id="record" hidden><div class="card" style="width:640px;max-width:94vw">
-  <h3>Game record</h3>
-  <p class="hint">Everything both players did, in order. Copy this and hand it back to have the game replayed exactly.</p>
-  <textarea id="recText" readonly style="width:100%;height:190px;background:#0e1319;color:#cfe0ee;border:1px solid #2a3540;border-radius:8px;padding:8px;font-family:ui-monospace,Consolas,monospace;font-size:12px"></textarea>
-  <div class="btns" style="margin:8px 0">
-    <button class="primary" onclick="copyRecord()">Copy</button>
-    <button onclick="downloadRecord()">Download .txt</button>
-    <button onclick="document.getElementById('record').hidden=true">Close</button>
-  </div>
-  <p style="margin:14px 0 4px"><b>Load a record</b> <span class="hint">— paste one here to replay it</span></p>
-  <textarea id="recIn" style="width:100%;height:80px;background:#0e1319;color:#cfe0ee;border:1px solid #2a3540;border-radius:8px;padding:8px;font-family:ui-monospace,Consolas,monospace;font-size:12px"></textarea>
-  <div class="btns" style="margin-top:8px"><button class="primary" onclick="loadRecord()">Load &amp; replay</button></div>
-  <p class="hint" id="recStatus" style="margin-top:8px"></p>
-</div></div>
-
 <div class="over" id="help" hidden>
   <div class="card">
     <h3>Swords &amp; Shields</h3>
@@ -143,7 +126,7 @@
       <li>Pending reactions appear as numbered markers. You <b>schedule</b> them one at a time — resolving one may cancel the others. The chain must be finished before you act again.</li>
       <li>A move whose reactions never end is an illegal move: you will notice while scheduling it, and take it back with <b>Undo</b> or <b>Restart turn</b>.</li>
       <li><b>Handicap:</b> the first player begins with the blank piece — the weakest of the 24 — already sitting on their creation grid.</li>
-      <li><b>Computer opponent:</b> pick who plays each side under <b>New game</b>. <b>Easy</b> weighs single actions. <b>Medium</b> and <b>hard</b> search whole turns — sequences of several actions — then play your best answer out against each candidate turn before choosing; hard examines twice as many turns and looks much deeper for your replies. All of them take a win they can see, and it refuses any line that leaves you a win in one action — unless every line does. Beating it means trapping it there. You can watch it weigh lines on the board while it thinks, and <b>Undo</b> pauses it so you can take a move back.</li>
+      <li><b>Computer opponent:</b> pick who plays each side under <b>New game</b>. It always takes a win it can see in one action, and it refuses any line that leaves you a win in one action — unless every line does. Beating it means trapping it there. You can watch it weigh lines on the board while it thinks, and <b>Undo</b> pauses it so you can take a move back.</li>
       <li><b>Draw</b> if every sword-bearing piece is dead. <b>Keys:</b> Esc cancels, U undoes.</li>
     </ul>
     <p><button class="primary" onclick="document.getElementById('help').hidden=true">Close</button></p>
@@ -243,14 +226,12 @@ function applyReaction(ps, rx){
 
 /* ============================== state ============================== */
 let state, undoStack = [], turnStarts = {}, sel = null, flash = "";
-let fastReplay = false;
 
 function newGame(){
   const pieces = [];
   for(let owner=0; owner<2; owner++)
     TYPES.forEach((t,i)=> pieces.push({id:owner*24+i, owner, sides:t.slice(), loc:"ready", r:-1, c:-1, acted:false}));
-  state = {pieces, turn:0, createDone:false, gameOver:null, log:[], turnSerial:0,
-           rec:[], meta:{ai:[AI[0]||"human", AI[1]||"human"]}};
+  state = {pieces, turn:0, createDone:false, gameOver:null, log:[], turnSerial:0};
   undoStack = []; turnStarts = {}; sel = null; flash = ""; deaths.clear(); pendingFx = [];
   // handicap for the initiative: the blank piece is already deployed
   const blank = pieces.find(p=> p.owner===0 && p.sides.every(s=>s===NOTHING));
@@ -262,7 +243,6 @@ function newGame(){
 const serialize = ()=> JSON.stringify(state);
 function restore(str){ state = JSON.parse(str); sel = null; }
 function snapshot(){ undoStack.push(serialize()); if(undoStack.length>400) undoStack.shift(); }
-function recPush(t){ if(state && state.rec) state.rec.push(t); }
 function logMsg(t, hi){ state.log.push((hi?"* ":"")+t); if(state.log.length>200) state.log.shift(); }
 
 function startTurnHousekeeping(){
@@ -288,7 +268,7 @@ function act(fn){
   const prev = capture();
   fn();
   checkDraw();
-  render(fastReplay ? null : prev);
+  render(prev);
 }
 
 /* ============================== actions ============================== */
@@ -323,7 +303,6 @@ function createPiece(id, k){
     p.sides = rotSides(p.sides, k);
     p.loc="board"; p.r=r; p.c=c; p.acted=false;
     state.createDone = true;
-    recPush("C"+id+"."+k);
     logMsg(PNAME[state.turn]+" creates a piece on "+r+"-"+c+".");
     sel = null; flash = "";
   });
@@ -332,7 +311,6 @@ function skipCreation(){
   if(aiRunning && !aiCalling) return;
   if(mode()!=="create") return;
   snapshot(); state.createDone = true; sel = null; flash = "";
-  recPush("S");
   logMsg(PNAME[state.turn]+" skips creation."); render();
 }
 function movePiece(id, d){
@@ -340,7 +318,7 @@ function movePiece(id, d){
   const p = byId(id);
   if(p.owner!==state.turn || p.loc!=="board" || p.acted) return;
   act(()=>{
-    snapshot(); p.acted = true; recPush("M"+id+"."+d);
+    snapshot(); p.acted = true;
     logMsg(PNAME[state.turn]+" moves "+p.r+"-"+p.c+" "+DIRNAME[d]+".");
     const n = pushChain(state.pieces, p.r, p.c, d);
     if(n>1) pendingFx.push({kind:"shake", strength:Math.min(n,4)});
@@ -352,7 +330,7 @@ function rotatePiece(id, k){
   const p = byId(id);
   if(p.owner!==state.turn || p.loc!=="board" || p.acted) return;
   act(()=>{
-    snapshot(); spinHint = {id, k}; recPush("R"+id+"."+k);
+    snapshot(); spinHint = {id, k};
     p.sides = rotSides(p.sides, k); p.acted = true;
     logMsg(PNAME[state.turn]+(k===0 ? " leaves the piece on "+p.r+"-"+p.c+" as it stands (360\u00b0)."
                                     : " turns the piece on "+p.r+"-"+p.c+" by "+(k*90)+"\u00b0."));
@@ -363,7 +341,7 @@ function endTurnBtn(){
   if(aiRunning && !aiCalling) return;
   if(state.gameOver) return;
   if(mode()==="react"){ flash = "Resolve the pending reactions first."; render(); return; }
-  snapshot(); recPush("E");
+  snapshot();
   state.pieces.forEach(p=>p.acted=false);
   state.turn = 1-state.turn; state.createDone = false; state.turnSerial++;
   sel = null; flash = "";
@@ -387,7 +365,7 @@ function restartTurn(){
 function surrender(owner){
   if(state.gameOver) return;
   if(!confirm(PNAME[owner]+", surrender this game?")) return;
-  snapshot(); recPush("Q"+owner);
+  snapshot();
   state.gameOver = {winner:1-owner, reason:"surrender"};
   logMsg(PNAME[owner]+" surrenders. "+PNAME[1-owner]+" wins.", true);
   render();
@@ -426,10 +404,10 @@ function rxClick(i){
   if(aiRunning && !aiCalling) return;
   const rx = computeReactions(state.pieces);
   if(i>=rx.length) return;
-  act(()=>{ snapshot(); flash=""; recPush("X"+i); doReaction(rx[i]); });
+  act(()=>{ snapshot(); flash=""; doReaction(rx[i]); });
 }
 document.addEventListener("keydown", e=>{
-  if(e.key==="Escape"){ document.getElementById("help").hidden=true; document.getElementById("record").hidden=true; sel=null; flash=""; render(); }
+  if(e.key==="Escape"){ document.getElementById("help").hidden=true; sel=null; flash=""; render(); }
   else if(e.key==="u"||e.key==="U") undo();
   else if(sel && sel.kind==="board" && !aiRunning){
     if(e.key==="r"||e.key==="R") rotatePiece(sel.id,1);
@@ -637,7 +615,6 @@ function fxRing(x,y,col,to,ms){
   setTimeout(()=>g.remove(),ms+40);
 }
 function playFx(){
-  if(fastReplay){ pendingFx = []; return; }
   for(const f of pendingFx){
     if(f.kind==="shake"){ shake(f.strength); continue; }
     const mx=(f.A[0]+(f.B?f.B[0]:f.A[0]))/2, my=(f.A[1]+(f.B?f.B[1]:f.A[1]))/2;
@@ -682,7 +659,7 @@ function controlsHTML(owner){
   const m = mode(), mine = state.turn===owner && !state.gameOver && !AI[owner] && !aiRunning;
   const dis = mine ? "" : " disabled";
   if(AI[owner]) return '<div class="btns'+(owner===1?" push":"")+'"><button class="wide" disabled>'+
-    (state.turn===owner && !state.gameOver ? "Computer is playing…" : "Computer &middot; "+AI[owner])+'</button>'+
+    (state.turn===owner && !state.gameOver ? "Computer is playing…" : "Played by the computer")+'</button>'+
     '<button class="danger wide" onclick="surrender('+(1-owner)+')">Resign this game</button></div>';
   return '<div class="btns'+(owner===1?" push":"")+'">'+
     '<button class="wide primary" onclick="endTurnBtn()"'+(mine&&m!=="react"?"":" disabled")+'>End turn &#9654;</button>'+
@@ -779,7 +756,6 @@ function overlay(){
             : state.gameOver.reason==="surrender" ? "By surrender." : "The head was struck by a sword.";
   d.innerHTML = '<div class="card" style="text-align:center"><h3>'+title+'</h3><p>'+sub+'</p>'+
                 '<button class="primary" onclick="openSetup()">New game</button> '+
-                '<button onclick="openRecord()">Copy game record</button> '+
                 '<button onclick="undo()">Undo last</button></div>';
   setTimeout(()=>{ if(state.gameOver && !document.getElementById("gameover")) document.body.appendChild(d); }, 1500);
 }
@@ -789,8 +765,8 @@ const HEADCELL = [[1,1],[8,8]];
 let AI = [false,false];
 let aiRunning = false, aiPaused = false, aiCalling = false;
 let aiViz = null, aiSeen = 0, aiPaintAt = 0;
-const PACE = { calm:{move:780, pass:260, rx:1050, think:1100, tries:12},
-               brisk:{move:360, pass:120, rx:500,  think:380,  tries:12} };
+const PACE = { calm:{move:300, pass:70, rx:480, think:1100, tries:12},
+               brisk:{move:120, pass:25, rx:190, think:380, tries:12} };
 let pace = "calm";
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 const gd = (p,h)=> Math.abs(p.r-h[0]) + Math.abs(p.c-h[1]);
@@ -798,31 +774,12 @@ const gd = (p,h)=> Math.abs(p.r-h[0]) + Math.abs(p.c-h[1]);
 function simClone(ps){ return ps.map(p=>({id:p.id,owner:p.owner,sides:p.sides,loc:p.loc,r:p.r,c:p.c,acted:p.acted})); }
 
 /* ---------- how much a piece is worth (from long experience) ---------- */
-const CODE = s => s[0]*27 + s[1]*9 + s[2]*3 + s[3];
-const VAL = new Float64Array(81), NSW = new Int8Array(81), NSH = new Int8Array(81);
-(function(){
-  for(let a=0;a<3;a++)for(let b=0;b<3;b++)for(let c=0;c<3;c++)for(let d=0;d<3;d++){
-    const t=[a,b,c,d], i=CODE(t);
-    const s1=t.filter(x=>x===SWORD).length, s2=t.filter(x=>x===SHIELD).length;
-    let v = 4 + 1.3*s2 + 1.0*s1;
-    if((s2===3&&s1===1)||(s2===2&&s1===2)) v += 1.6;   // the strongest shapes
-    if(s1===4) v -= 2.0;                               // four swords: a liability
-    VAL[i]=v; NSW[i]=s1; NSH[i]=s2;
-  }
-})();
-function pieceValue(p){ return VAL[CODE(p.sides)]; }
-
-/* occupancy without allocating: a stamped typed array, reused every call */
-const OCC = new Int32Array(100), OCCAT = new Int32Array(100);
-let occStamp = 0;
-function fillOcc(ps){
-  occStamp++;
-  for(const p of ps) if(p.loc==="board"){ const i=p.r*10+p.c; OCC[i]=p.id; OCCAT[i]=occStamp; }
-}
-function occAt(r,c){
-  if(r<0||r>9||c<0||c>9) return -1;
-  const i=r*10+c;
-  return OCCAT[i]===occStamp ? OCC[i] : -1;
+function pieceValue(p){
+  const s1 = p.sides.filter(x=>x===SWORD).length, s2 = p.sides.filter(x=>x===SHIELD).length;
+  let v = 4 + 1.3*s2 + 1.0*s1;
+  if((s2===3&&s1===1)||(s2===2&&s1===2)) v += 1.6;   // the strongest shapes
+  if(s1===4) v -= 2.0;                               // four swords: a liability
+  return v;
 }
 
 /* ---------- position evaluation, from `me`'s point of view ---------- */
@@ -863,11 +820,7 @@ function legalActions(ps, who, phase){
   } else {
     for(const p of ps) if(p.loc==="board" && p.owner===who && !p.acted){
       for(let d=0;d<4;d++) out.push({kind:"move", id:p.id, d});
-      for(let k=1;k<4;k++){
-        const r = rotSides(p.sides,k);          // symmetric pieces: rotating changes nothing
-        if(r[0]===p.sides[0] && r[1]===p.sides[1] && r[2]===p.sides[2] && r[3]===p.sides[3]) continue;
-        out.push({kind:"rot", id:p.id, k});
-      }
+      for(let k=1;k<4;k++) out.push({kind:"rot", id:p.id, k});
       out.push({kind:"pass", id:p.id});
     }
   }
@@ -887,7 +840,6 @@ function rxPref(r, me, ps){
 }
 // resolve a chain the way `me` would schedule it -> "win" | "loss" | "ok" | "loop"
 function simResolve(ps, me){
-  if(RESOLVE_STRONG) return simResolveStrong(ps, me);
   for(let i=0;i<70;i++){
     const rx = computeReactions(ps);
     if(!rx.length) return "ok";
@@ -900,12 +852,6 @@ function simResolve(ps, me){
   return "loop";
 }
 function chooseRxIndex(rx, me){
-  if(AI[me]==="medium" || AI[me]==="hard"){
-    const w = rx.findIndex(r=>r.type==="head" && r.owner!==me);
-    if(w>=0) return w;
-    const others = rx.filter(r=>r.type!=="head");
-    if(others.length) return rx.indexOf(others[bestRxIndex(state.pieces, others, me)]);
-  }
   let bi = 0, bs = -1e9;
   rx.forEach((r,i)=>{
     let s;
@@ -1034,8 +980,7 @@ async function aiPaint(force){
   document.getElementById("fx").innerHTML = s;
   document.getElementById("actionbar").innerHTML =
     '<span class="think"></span><b>'+PNAME[state.turn]+' is thinking…</b>'+
-    '<span class="hint">'+(aiViz.phase||"weighing moves")+' &middot; line '+aiViz.attempt+' of '+aiViz.tries+
-    ' &middot; '+aiSeen.toLocaleString()+' positions weighed'+
+    '<span class="hint">line '+aiViz.attempt+' of '+aiViz.tries+' &middot; '+aiSeen.toLocaleString()+' positions weighed'+
     (aiViz.safe===false ? ' &middot; <span style="color:#ff9d9d">that line loses — trying another</span>' : '')+'</span>';
   await sleep(0);
 }
@@ -1044,17 +989,13 @@ async function aiPaint(force){
 async function aiTurn(){
   if(aiRunning || state.gameOver || !AI[state.turn]) return;
   aiRunning = true; aiPaused = false; aiSeen = 0;
-  aiViz = {marks:[], best:null, attempt:1, tries:PACE[pace].tries, safe:null, phase:''};
+  aiViz = {marks:[], best:null, attempt:1, tries:PACE[pace].tries, safe:null};
   render();
   const me = state.turn;
   await sleep(180);
   const t0 = Date.now();
   let res;
-  try {
-    res = AI[me]==="hard"   ? await planStrong(me, LVL.hard)
-        : AI[me]==="medium" ? await planStrong(me, LVL.medium)
-        : await planTurn(me);
-  }
+  try { res = await planTurn(me); }
   catch(err){ console.error(err); res = {plan:[]}; }
   const wait = PACE[pace].think - (Date.now()-t0);
   if(wait>0) await sleep(wait);
@@ -1062,11 +1003,6 @@ async function aiTurn(){
   aiViz = null;
   for(const a of (res.plan||[])){
     if(state.gameOver || state.turn!==me) break;
-    if(a.kind==="rx"){                       // the search chose this schedule; replay it exactly
-      await sleep(PACE[pace].rx);
-      aiCalling = true; rxClick(a.i); aiCalling = false;
-      continue;
-    }
     await sleep(a.kind==="pass"||a.kind==="skip" ? PACE[pace].pass : PACE[pace].move);
     aiCalling = true;
     if(a.kind==="create")      createPiece(a.id, a.k);
@@ -1075,11 +1011,12 @@ async function aiTurn(){
     else if(a.kind==="rot")    rotatePiece(a.id, a.k);
     else if(a.kind==="pass")   rotatePiece(a.id, 0);
     aiCalling = false;
-  }
-  let guard = 0;                             // anything left over: resolve it greedily
-  while(!state.gameOver && state.turn===me && computeReactions(state.pieces).length && guard++<90){
-    await sleep(PACE[pace].rx);
-    aiCalling = true; rxClick(chooseRxIndex(computeReactions(state.pieces), me)); aiCalling = false;
+    let guard = 0;
+    while(!state.gameOver && computeReactions(state.pieces).length && guard++<90){
+      await sleep(PACE[pace].rx);
+      const rx = computeReactions(state.pieces);
+      aiCalling = true; rxClick(chooseRxIndex(rx, me)); aiCalling = false;
+    }
   }
   aiRunning = false;
   if(!state.gameOver && state.turn===me){ await sleep(PACE[pace].move); aiCalling = true; endTurnBtn(); aiCalling = false; }
@@ -1091,768 +1028,17 @@ function aiMaybeStart(){
 }
 function aiResume(){ aiPaused = false; render(); aiMaybeStart(); }
 
-/* ============================ MEDIUM BRAIN ============================
-   Easy weighs single actions. Medium searches whole turns: sequences of
-   actions inside one turn, and scores the position it would hand over by
-   looking at every reply. Roughly 10-30x the compute of Easy.          */
-
-function relevantActions(ps, me, radius){
-  const fh = HEADCELL[1-me], out = [];
-  for(const p of ps) if(p.loc==="board" && p.owner===me && !p.acted && gd(p,fh)<=radius){
-    for(let d=0;d<4;d++) out.push({kind:"move", id:p.id, d});
-    for(let k=1;k<4;k++) out.push({kind:"rot", id:p.id, k});
-  }
-  return out;
-}
-function winActions(ps, me, depth){
-  return depth<=1 ? legalActions(ps,me,"move") : relevantActions(ps,me,depth+2);
-}
-// synchronous inner search: is there a sequence of `depth` more actions that wins?
-function winDFS(ps, me, depth, st){
-  for(const a of winActions(ps,me,depth)){
-    if(++st.n > st.budget || st.n > st.cap) return null;
-    const c = simClone(ps); simAction(c,a);
-    const res = simResolve(c,me);
-    if(res==="win") return [a];
-    if(res!=="ok") continue;
-    if(depth>1){ const sub = winDFS(c, me, depth-1, st); if(sub) return [a].concat(sub); }
-  }
-  return null;
-}
-// iterative deepening over the whole turn, yielding to the browser as it goes
-async function winSearchTurn(ps, me, maxDepth, budget, viz, minDepth){
-  const st = {n:0, budget, cap:Infinity};
-  for(let d=minDepth||1; d<=maxDepth; d++){
-    const acts = winActions(ps, me, d);
-    for(let i=0;i<acts.length;i++){
-      if(++st.n > st.budget) return null;
-      const c = simClone(ps); simAction(c,acts[i]);
-      const res = simResolve(c,me);
-      if(res==="win") return [acts[i]];
-      if(res==="ok" && d>1){
-        st.cap = st.n + 12000;                       // keep any one branch short enough to stay responsive
-        const sub = winDFS(c, me, d-1, st);
-        if(sub) return [acts[i]].concat(sub);
-      }
-      if(viz && (i%4)===0){
-        aiViz.phase = "hunting for a forced win — "+d+" action"+(d>1?"s":"")+" deep";
-        aiSeen = st.n; aiMark(ps, acts[i]); await aiPaint();
-      }
-    }
-  }
-  return null;
-}
-
-/* ---- how many ways would I have to win if the position came back to me ---- */
-function countWins(ps, me){
-  const base = simClone(ps);
-  for(const p of base) if(p.owner===me) p.acted = false;
-  const pieces = new Set(); let n = 0;
-  for(const a of legalActions(base, me, "move")){
-    const c = simClone(base); simAction(c,a);
-    if(simResolve(c,me)==="win"){ n++; pieces.add(a.id); }
-  }
-  return {n, distinct:pieces.size};
-}
-/* ---- one pass over every enemy reply: do they win, and what can they take ---- */
-function analyzeReplies(ps, opp, me){
-  const acts = legalActions(ps,opp,"create").filter(a=>a.kind==="create")
-               .concat(legalActions(ps,opp,"move"));
-  let bestCap = 0;
-  for(const a of acts){
-    const c = simClone(ps); simAction(c,a);
-    const res = simResolve(c,opp);
-    if(res==="win") return {win:true, bestCap:0};
-    if(res!=="ok") continue;
-    let cap = 0;
-    for(const p of ps){
-      if(p.loc!=="board" || c[p.id].loc!=="dead") continue;
-      cap += (p.owner===me ? pieceValue(p) : -0.8*pieceValue(p));
-    }
-    if(cap>bestCap) bestCap = cap;
-  }
-  return {win:false, bestCap};
-}
-
-/* ---- Medium's positional sense: Easy's, plus the things that actually decide games ---- */
-function evalStateM(ps, me){
-  let v = evalState(ps, me);
-  for(const p of ps){
-    if(p.loc!=="board") continue;
-    const own = p.owner, foe = 1-own, s = (own===me ? 1 : -1);
-    if(gd(p,HEADCELL[foe])===1) v += s*9;        // standing on the crown's doorstep
-    if(gd(p,HEADCELL[own])===1){                 // holding your own doorstep denies it to them
-      v += s*3.5;
-      const toward = DIRS.findIndex((d,i)=> p.r+d[0]===HEADCELL[own][0] && p.c+d[1]===HEADCELL[own][1]);
-      const out = (toward+2)%4;
-      if(p.sides[out]===SHIELD) v += s*2;        // shield facing outward: a wall
-    }
-  }
-  return v;
-}
-
-async function chooseActionM(ps, me, phase){
-  const acts = legalActions(ps, me, phase), scored = [];
-  for(const a of acts){
-    const c = simClone(ps); simAction(c,a);
-    const res = simResolve(c,me);
-    aiSeen++;
-    if(res==="loop") continue;
-    let sc = res==="win" ? 1e6 : res==="loss" ? -1e6 : evalStateM(c,me);
-    if(a.kind==="rot")  sc -= 1.4;
-    if(a.kind==="pass") sc -= 1.2;
-    if(a.kind==="skip") sc -= 0.4;
-    sc += Math.random()*0.5;
-    scored.push({a,sc});
-    if((aiSeen & 255)===0){ aiMark(ps,a); await aiPaint(); }
-  }
-  if(!scored.length) return null;
-  scored.sort((x,y)=>y.sc-x.sc);
-  const top = scored.slice(0, Math.min(3,scored.length));
-  const w = [4,2,1].slice(0,top.length), tot = w.reduce((a,b)=>a+b,0);
-  let r = Math.random()*tot;
-  for(let i=0;i<top.length;i++){ r -= w[i]; if(r<=0) return top[i].a; }
-  return top[0].a;
-}
-
-async function buildPlanM(me){
-  const ps = simClone(state.pieces), plan = [];
-  if(!state.createDone){
-    const a = await chooseActionM(ps, me, "create");
-    if(a){ plan.push(a); simAction(ps,a); simResolve(ps,me); }
-  }
-  for(let step=0; step<26; step++){
-    if(!legalActions(ps,me,"move").length) break;
-    const w = findWin(ps, me, "move");
-    if(w){ plan.push(w); simAction(ps,w); simResolve(ps,me); break; }
-    const a = await chooseActionM(ps, me, "move");
-    if(!a) break;
-    plan.push(a); simAction(ps,a);
-    if(simResolve(ps,me)==="loss") break;
-  }
-  return {ps, plan};
-}
-
-/* ---- what is this finished turn actually worth, once they get to answer ---- */
-async function deepScore(ps, me){
-  const opp = 1-me;
-  const rep = analyzeReplies(ps, opp, me);
-  if(rep.win) return -1e6;
-  const combo = await winSearchTurn(ps, opp, 2, 90000, false, 2);   // a two-action kill for them
-  if(combo) return -5e5 + evalStateM(ps,me);
-  let s = evalStateM(ps, me);
-  const mine = countWins(ps, me);
-  s += Math.min(mine.n,4)*6 + (mine.distinct>=2 ? 12 : 0);          // unanswerable double threats
-  s -= rep.bestCap*0.9;                                             // what they can take from me
-  return s;
-}
-
-async function planTurnMedium(me){
-  const t0 = Date.now();
-  aiViz.phase = "hunting for a forced win";
-  let pre = [];
-  if(!state.createDone){
-    const w = findWin(state.pieces, me, "create");
-    if(w) return {plan:[w], winning:true};
-    pre = [{kind:"skip"}];
-  }
-  const seq = await winSearchTurn(state.pieces, me, 3, 350000, true);
-  if(seq) return {plan: pre.concat(seq), winning:true};
-
-  const N = 18; let best = null;
-  for(let i=0;i<N;i++){
-    aiViz.attempt = i+1; aiViz.tries = N; aiViz.phase = "weighing whole turns";
-    const {ps, plan} = await buildPlanM(me);
-    aiViz.phase = "checking every reply you could make";
-    const sc = await deepScore(ps, me);
-    if(!best || sc>best.sc) best = {plan, sc};
-    aiViz.safe = best.sc > -4e5;
-    await aiPaint(true);
-    if(best.sc > -4e5 && i>=5) break;
-    if(Date.now()-t0 > 7000) break;
-  }
-  return {plan:best.plan, safe:best.sc > -4e5};
-}
-
-/* ======================= STRONG BRAIN (medium & hard) =======================
-   Easy scores single actions against a pile of hand-written positional rules.
-   This one hands the work to search. It enumerates genuinely different ways to
-   open the turn, completes each one greedily, then plays the opponent's answer
-   out against every candidate — and, for the best few, its own answer to that
-   answer. Three half-turns deep. Almost all of Easy's positional terms are
-   gone; what is left is material, pressure concentrated on the two doorstep
-   squares beside each crown, and forge control.                            */
-
-const LVL = {
-  medium:{ states:26000,  searchMs:8000,  width:600,  rxBranch:3, consider:16, minScored:8,
-           foeStates:5000,   foeMs:4000, foeWidth:400,  ms:3500 },
-  hard:  { states:90000,  searchMs:25000, width:2000, rxBranch:3, consider:44, minScored:14,
-           foeStates:14000,  foeMs:9000, foeWidth:1200, counter:true, ms:11000 }
-};
-let RESOLVE_STRONG = false;      // only one AI turn runs at a time, so a flag is enough
-
-/* ---- reaction scheduling: take the reaction that leaves the best position ---- */
-function bestRxIndex(ps, rx, me){
-  let bi = -1, bs = -Infinity;
-  rx.forEach((r,i)=>{
-    let s;
-    if(r.type==="head") s = (r.owner!==me) ? 1e9 : -1e9;
-    else { const c = simClone(ps); applyReaction(c,r); s = evalStrong(c,me); }
-    if(s>bs){ bs=s; bi=i; }
-  });
-  return bi;
-}
-function simResolveStrong(ps, me){
-  for(let i=0;i<70;i++){
-    const rx = computeReactions(ps);
-    if(!rx.length) return "ok";
-    if(rx.some(r=>r.type==="head" && r.owner!==me)) return "win";
-    const others = rx.filter(r=>r.type!=="head");
-    if(!others.length) return "loss";
-    applyReaction(ps, others[bestRxIndex(ps, others, me)]);
-  }
-  return "loop";
-}
-
-function freshFor(ps, who){ const c = simClone(ps); for(const p of c) if(p.owner===who) p.acted=false; return c; }
-
-/* ---- greedy completion of a turn ---- */
-function greedyAction(ps, who, phase, noise){
-  let best = null, bs = -Infinity;
-  for(const a of legalActions(ps, who, phase)){
-    const c = simClone(ps); simAction(c,a);
-    const res = simResolveStrong(c, who);
-    aiSeen++;
-    if(res==="loop") continue;
-    let sc = res==="win" ? 1e6 : res==="loss" ? -1e6 : evalStrong(c, who);
-    if(a.kind==="rot")  sc -= 0.8;
-    if(a.kind==="pass") sc -= 1.6;   // idling wasted six turns in a recorded game
-    if(a.kind==="skip") sc -= 0.3;
-    if(noise) sc += Math.random()*noise;
-    if(sc>bs){ bs=sc; best=a; }
-  }
-  return best;
-}
-function buildTurnFrom(ps0, who, first, noise){
-  const ps = simClone(ps0), plan = [];
-  if(first){
-    plan.push(first); simAction(ps, first);
-    if(simResolveStrong(ps,who)==="win") return {ps, plan, won:true};
-  }
-  for(let i=0;i<26;i++){
-    if(!legalActions(ps, who, "move").length) break;
-    const w = findWin(ps, who, "move");
-    if(w){ plan.push(w); simAction(ps,w); simResolveStrong(ps,who); return {ps, plan, won:true}; }
-    const a = greedyAction(ps, who, "move", noise);
-    if(!a) break;
-    plan.push(a); simAction(ps,a);
-    if(simResolveStrong(ps,who)==="loss") break;
-  }
-  return {ps, plan, won:false};
-}
-// a whole turn for `who` from scratch, creation included
-function buildTurn(ps0, who, noise){
-  const ps = simClone(ps0), plan = [];
-  const a = greedyAction(ps, who, "create", noise);
-  if(a){ plan.push(a); simAction(ps,a); if(simResolveStrong(ps,who)==="win") return {ps,plan,won:true}; }
-  const rest = buildTurnFrom(ps, who, null, noise);
-  return {ps:rest.ps, plan:plan.concat(rest.plan), won:rest.won};
-}
-
-/* ---- what a finished turn is worth once the opponent has answered it ---- */
-function threatBonus(ps, me){
-  const t = countWins(ps, me);
-  return Math.min(t.n,4)*4 + (t.distinct>=2 ? 11 : 0);        // a double threat cannot be parried
-}
-async function scoreTurn(ps, me, cfg, deep){
-  const opp = 1-me;
-  const rep = analyzeReplies(ps, opp, me);
-  if(rep.win) return -1e6;
-  const combo = await winSearchTurn(ps, opp, deep?cfg.s2Depth:cfg.oppDepth,
-                                              deep?cfg.s2Budget:cfg.oppBudget, false, 2);
-  if(combo) return -5e5;
-  const n = deep ? cfg.s2Replies : cfg.replies;
-  let worst = Infinity;
-  for(let i=0;i<n;i++){
-    const r = buildTurn(freshFor(ps,opp), opp, i===0 ? 0 : 1.0);   // they actually play a turn
-    if(r.won) return -4e5;
-    let v;
-    if(deep && cfg.ply3){
-      const mine = buildTurn(freshFor(r.ps,me), me, 0);             // and I answer that
-      v = mine.won ? 6e4 : evalStrong(mine.ps, me) + threatBonus(mine.ps, me);
-    } else {
-      v = evalStrong(r.ps, me) + threatBonus(r.ps, me);
-    }
-    if(v<worst) worst = v;
-  }
-  return worst;
-}
-
-/* ================== EXHAUSTIVE TURN SEARCH (medium & hard) ==================
-   A turn is: an optional creation, then each piece acts at most once, plus a
-   scheduling choice wherever several reactions are pending. Enumerated as
-   sequences that is millions of lines; but wildly different sequences land on
-   the same board, so we walk it breadth-first and hash every position reached,
-   which collapses it to a DAG of tens of thousands. Measured on a real 5-piece
-   turn: 3.9M sequences -> 23,679 distinct positions, fully enumerable.
-   Only ~0.4% of actions leave more than one reaction pending, so branching on
-   the schedule as well is nearly free.
-   Every node is a legal end of turn, because leaving pieces unmoved is legal. */
-
-function hashTurnState(ps, me){
-  let h1 = 0x811c9dc5, h2 = 0x01000193;
-  for(const p of ps){
-    const v = p.loc==="board" ? (p.r*10+p.c+1) : (p.loc==="dead" ? 101 : 102);
-    const s = p.sides[0]*27 + p.sides[1]*9 + p.sides[2]*3 + p.sides[3];
-    const a = (p.owner===me && p.acted) ? 1 : 0;
-    h1 = (Math.imul(h1 ^ (v + s*211 + a*40009 + p.id*7919), 16777619)) >>> 0;
-    h2 = (h2 + Math.imul(v*31 + s + a*7 + p.id, 2654435761)) >>> 0;
-  }
-  return h1.toString(36)+":"+h2.toString(36);
-}
-
-/* resolve a chain, branching wherever the schedule is a real choice.
-   returns {win:true} or a list of {ps, rx:[indices chosen]}            */
-function resolveBranch(ps0, me, cap){
-  const out = [];
-  const stack = [{ps:ps0, rx:[]}];
-  let guard = 0;
-  while(stack.length && out.length<cap && guard++ < 400){
-    const cur = stack.pop();
-    const rx = computeReactions(cur.ps);
-    if(!rx.length){ out.push(cur); continue; }
-    if(rx.some(r=>r.type==="head" && r.owner!==me)) return {win:true};
-    const others = [];
-    rx.forEach((r,i)=>{ if(r.type!=="head") others.push({r,i}); });
-    if(!others.length) continue;                       // only our own crown left: dead line
-    if(others.length===1){
-      applyReaction(cur.ps, others[0].r);
-      stack.push({ps:cur.ps, rx:cur.rx.concat([others[0].i])});
-      continue;
-    }
-    others.sort((a,b)=> rxPref(b.r,me,cur.ps) - rxPref(a.r,me,cur.ps));
-    for(const o of others.slice(0,3)){
-      const c = simClone(cur.ps);
-      applyReaction(c, o.r);
-      stack.push({ps:c, rx:cur.rx.concat([o.i])});
-    }
-  }
-  return {states:out};
-}
-
-/* ---- evaluation ------------------------------------------------------
-   The board has exactly four cells that matter: two crowns and two forges.
-   Everything below is pressure on those four cells, plus material. Swords
-   press crowns, shields hold forges; one decay curve per kind of pressure.  */
-const FWD  = [[2,1],[0,3]];                       // the way each side advances
-const sharp = d => 14/(1 + 0.34*d*d);             // crown pressure: sharply local
-const soft  = (d,reach) => d>=reach ? 0 : (reach-d)/reach;   // forge pressure: linear reach
-
-/* friendly pieces within three steps — the diamond around a square */
-function nearbyFriends(ps, p){
-  let n = 0;
-  for(let dr=-3; dr<=3; dr++){
-    const rem = 3-(dr<0?-dr:dr);
-    for(let dc=-rem; dc<=rem; dc++){
-      if(dr===0 && dc===0) continue;
-      const id = occAt(p.r+dr, p.c+dc);
-      if(id>=0 && ps[id].owner===p.owner) n++;
-    }
-  }
-  return n;
-}
-
-function evalParts(ps, me){
-  const opp = 1-me;
-  fillOcc(ps);
-  const ready = [0,0];
-  for(const p of ps) if(p.loc==="ready") ready[p.owner]++;
-
-  let mat = 0;
-  const crown=[0,0], door=[0,0], keep=[0,0], siege=[0,0], form=[0,0], tap=[-1,-1];
-
-  for(const p of ps){
-    if(p.loc!=="board") continue;
-    const own = p.owner, foe = 1-own, s = (own===me ? 1 : -1);
-    const code = CODE(p.sides), sh = NSH[code];
-    const swordy = NSW[code] ? 1 : 0.25;
-    const holds  = 0.5 + 0.30*sh;                 // shields make a piece hard to shift
-    mat += s*VAL[code];
-
-    /* An attack needs bodies. A piece advancing alone just dies, so offence is
-       scaled by the company it keeps: full value once four friends are within
-       three squares (five working together), and a small fraction alone. It is
-       graded rather than a threshold so that gathering is rewarded at every
-       step. Exempt: three or four shields, which go tapping and survive alone,
-       and three or four swords, which are worth sending in as a distraction. */
-    const sw = NSW[code];
-    const soloist = sh>=3 || sw>=3;
-    const dCrown = gd(p, HEADCELL[foe]);
-    const dTheirForge = Math.abs(p.r-CREATE[foe][0]) + Math.abs(p.c-CREATE[foe][1]);
-    let company = 1;
-    if(!soloist && (dCrown<=8 || dTheirForge<=5))  // only pay for the scan where it can matter
-      company = 0.12 + 0.88*Math.min(1, nearbyFriends(ps,p)/4);
-    crown[own] += swordy * sharp(dCrown) * company;
-    if(dCrown===1) door[own]++;                   // already on the doorstep: a real threat regardless
-
-    const dOwnForge = Math.abs(p.r-CREATE[own][0]) + Math.abs(p.c-CREATE[own][1]);
-    if(dTheirForge===0) tap[own] = p.id;
-    else siege[own] += (1.1 + 0.55*sh) * soft(dTheirForge, 5) * company;
-    if(dOwnForge===0) mat -= s*3;                 // squatting on your own forge stops your own production
-    else keep[own] += holds * soft(dOwnForge, 4); // guarding it is never a penalty
-
-    /* the ratchet: sword behind, shield in front. Useless alone; behind a
-       friendly shield it is flung forward, and a line of them ratchets.   */
-    for(const f of FWD[own]){
-      const back = (f+2)%4;
-      if(p.sides[back]!==SWORD || p.sides[f]!==SHIELD) continue;
-      form[own] += 1.0;
-      for(let t=1;t<=3;t++){
-        const id = occAt(p.r+DIRS[back][0]*t, p.c+DIRS[back][1]*t);
-        if(id>=0){ const b=ps[id]; if(b.owner===own && b.sides[f]===SHIELD) form[own] += 2.4/t; break; }
-      }
-      for(let t=1;t<=4;t++){
-        const id = occAt(p.r+DIRS[f][0]*t, p.c+DIRS[f][1]*t);
-        if(id>=0){ if(ps[id].owner!==own) form[own] += 2.2/t; break; }
-      }
-    }
-  }
-
-  /* A tap only hurts while there is still something in the box to build. */
-  for(const w of [0,1]){
-    if(tap[w]<0) continue;
-    const victim = 1-w;
-    const sh = NSH[CODE(ps[tap[w]].sides)];
-    const worth = Math.min(ready[victim],12) * (1.7 + 0.25*sh);
-    mat += (w===me ? worth : -worth);
-    keep[victim] *= 3;                            // and pull the victim home to break it
-  }
-
-  const d = (a)=> a[me]-a[opp];
-  return {
-    overall: mat + 1.15*d(crown) + 5.5*d(door) + 1.30*d(keep) + 1.00*d(siege) + 0.90*d(form),
-    attack:  mat + 2.20*crown[me] + 9*door[me] + 1.6*siege[me] + 1.3*form[me] - 0.4*crown[opp],
-    safety:  mat - 2.20*crown[opp] - 9*door[opp] - 1.6*siege[opp] + 2.2*keep[me] + 0.4*crown[me]
-  };
-}
-
-function evalStrong(ps, me){ return evalParts(ps, me).overall; }
-
-/* the DAG walk. exhaustive while it fits in the caps, beam-pruned after. */
-async function turnDAG(me, cfg, silent){
-  const t0 = Date.now(), seen = new Set(), cands = [];
-  let frontier = [], truncated = false;
-
-  const expand = (node, a) => {          // returns list of child nodes, or "win"
-    const c = simClone(node.ps);
-    simAction(c, a);
-    const res = resolveBranch(c, me, cfg.rxBranch);
-    if(res.win) return "win";
-    const kids = [];
-    for(const st of res.states){
-      const h = hashTurnState(st.ps, me);
-      if(seen.has(h)) continue;
-      seen.add(h);
-      const plan = node.plan.concat([a], st.rx.map(i=>({kind:"rx", i})));
-      kids.push({ps:st.ps, plan});
-    }
-    return kids;
-  };
-
-  if(!state.createDone){
-    const root = {ps:simClone(state.pieces), plan:[]};
-    for(const a of legalActions(state.pieces, me, "create")){
-      const k = expand(root, a);
-      if(k==="win") return {win:root.plan.concat([a])};
-      frontier.push(...k);
-    }
-    if(!frontier.length) frontier = [{ps:simClone(state.pieces), plan:[{kind:"skip"}]}];
-  } else {
-    frontier = [{ps:simClone(state.pieces), plan:[]}];
-  }
-  cands.push(...frontier);
-
-  for(let lvl=0; lvl<26; lvl++){
-    const next = [];
-    for(const node of frontier){
-      for(const a of legalActions(node.ps, me, "move")){
-        if(a.kind==="pass") continue;
-        const k = expand(node, a);
-        if(k==="win") return {win:node.plan.concat([a])};
-        next.push(...k);
-      }
-      if(seen.size > cfg.states){ truncated = true; break; }        // deterministic bound
-      if(Date.now()-t0 > cfg.searchMs){ truncated = true; break; }     // clock is only a backstop
-    }
-    if(!next.length) break;
-    cands.push(...next);
-    if(truncated){                       // out of budget: keep only the strongest lines
-      for(const n of next) n.sc = evalStrong(n.ps, me);
-      next.sort((a,b)=>b.sc-a.sc);
-      frontier = next.slice(0, cfg.width);
-      truncated = false;
-      if(Date.now()-t0 > cfg.searchMs*1.6) break;
-    } else frontier = next;
-    if(!silent){
-      aiViz.phase = "walking the turn DAG — "+(lvl+1)+" actions deep, "+
-                    seen.size.toLocaleString()+" distinct positions";
-      aiSeen = seen.size;
-      await aiPaint();
-    }
-  }
-  return {cands, states:seen.size, exhaustive:!truncated};
-}
-
-/* can the opponent win anywhere inside one whole turn? bounded. */
-function enemyWinsInATurn(ps0, opp, cap, ms){
-  const t0 = Date.now(), seen = new Set();
-  let frontier = [{ps:ps0}];
-  const step = (node, a) => {
-    const c = simClone(node.ps); simAction(c, a);
-    const res = resolveBranch(c, opp, 2);
-    if(res.win) return "win";
-    const kids = [];
-    for(const st of res.states){
-      const h = hashTurnState(st.ps, opp);
-      if(seen.has(h)) continue;
-      seen.add(h);
-      kids.push({ps:st.ps});
-    }
-    return kids;
-  };
-  const creations = occMap(ps0).has(key(CREATE[opp][0],CREATE[opp][1]))
-      ? [] : legalActions(ps0, opp, "create").filter(a=>a.kind==="create");
-  for(const a of creations){ if(step(frontier[0], a)==="win") return true; }
-  for(let lvl=0; lvl<26; lvl++){
-    const next = [];
-    for(const node of frontier){
-      for(const a of legalActions(node.ps, opp, "move")){
-        if(a.kind==="pass") continue;
-        const k = step(node, a);
-        if(k==="win") return true;
-        next.push(...k);
-      }
-      if(seen.size>cap || Date.now()-t0>ms) return false;   // slack: give up, assume safe
-    }
-    if(!next.length) return false;
-    frontier = next;
-  }
-  return false;
-}
-
-/* ---- the opponent's best whole turn, by the same exhaustive walk ----
-   The evaluation is exactly antisymmetric, so their best leaf is our worst
-   case: we score a candidate turn by what the board looks like AFTER they
-   have answered it as well as they can.                                  */
-function replyBest(ps0, opp, cfg){
-  const me = 1-opp;
-  const t0 = Date.now(), seen = new Set();
-  let frontier = [{ps:ps0}], best = evalStrong(ps0, opp), truncated = false;
-  const topLeaves = [];                       // their strongest answers, for the counter search
-  const remember = (st,v)=>{
-    if(!cfg.counter) return;
-    topLeaves.push({ps:st, v});
-    if(topLeaves.length>24){ topLeaves.sort((a,b)=>b.v-a.v); topLeaves.length = 8; }
-  };
-  const step = (node, a) => {
-    const c = simClone(node.ps); simAction(c, a);
-    const res = resolveBranch(c, opp, 2);
-    if(res.win) return "win";
-    const kids = [];
-    for(const st of res.states){
-      const h = hashTurnState(st.ps, opp);
-      if(seen.has(h)) continue;
-      seen.add(h);
-      const v = evalStrong(st.ps, opp);
-      if(v>best) best = v;
-      remember(st.ps, v);
-      kids.push({ps:st.ps, sc:v});
-    }
-    return kids;
-  };
-  if(!occMap(ps0).has(key(CREATE[opp][0], CREATE[opp][1]))){
-    for(const a of legalActions(ps0, opp, "create")){
-      if(a.kind!=="create") continue;
-      const k = step(frontier[0], a);
-      if(k==="win") return {win:true};
-      frontier.push(...k);
-    }
-  }
-  for(let lvl=0; lvl<26; lvl++){
-    const next = [];
-    for(const node of frontier){
-      for(const a of legalActions(node.ps, opp, "move")){
-        if(a.kind==="pass") continue;
-        const k = step(node, a);
-        if(k==="win") return {win:true};
-        next.push(...k);
-      }
-      if(seen.size>cfg.foeStates){ truncated = true; break; }
-      if(Date.now()-t0>cfg.foeMs){ truncated = true; break; }
-    }
-    if(!next.length) break;
-    if(truncated){
-      next.sort((a,b)=>b.sc-a.sc);
-      frontier = next.slice(0, cfg.foeWidth);
-      truncated = false;
-      if(Date.now()-t0 > cfg.foeMs*1.5) break;
-    } else frontier = next;
-  }
-  if(cfg.counter && topLeaves.length){
-    topLeaves.sort((a,b)=>b.v-a.v);
-    let worst = Infinity;                     // they pick the answer that leaves me worst off
-    for(const leaf of topLeaves.slice(0,3)){
-      const mine = buildTurn(freshFor(leaf.ps, me), me, 0);
-      const v = mine.won ? 1e6 : evalStrong(mine.ps, me);
-      if(v<worst) worst = v;
-    }
-    return {win:false, best:-worst};          // caller negates, so this stays "their best"
-  }
-  return {win:false, best};
-}
-
-/* ---- the turn ---- */
-async function planStrong(me, cfg){
-  const t0 = Date.now();
-  RESOLVE_STRONG = true;
-  try{
-    aiViz.phase = "walking the turn DAG"; aiViz.attempt = 1; aiViz.tries = 1;
-    const r = await turnDAG(me, cfg);
-    if(r.win) return {plan:r.win, winning:true};
-    if(!r.cands.length) return {plan:[], safe:false};
-
-    const opp = 1-me;
-    for(const c of r.cands) c.p = evalParts(c.ps, me);
-    // three different opinions about what "best" means; walk all three at once
-    const lists = ["overall","attack","safety"].map(kind=>
-      r.cands.slice().sort((a,b)=> b.p[kind]-a.p[kind]));
-    const order = [], taken = new Set();
-    for(let i=0; i<cfg.consider; i++)
-      for(const L of lists){
-        const c = L[i];
-        if(c && !taken.has(c)){ taken.add(c); order.push(c); }
-      }
-
-    aiViz.tries = order.length;
-    let bestPlan = order[0].plan, bestScore = -Infinity, scored = 0;
-    for(let i=0;i<order.length;i++){
-      aiViz.attempt = i+1;
-      aiViz.phase = "playing out your whole best answer to each candidate turn";
-      const r = replyBest(order[i].ps, opp, cfg);
-      const sc = r.win ? -1e9 : -r.best;      // antisymmetric: their best is our worst case
-      scored++;
-      if(sc > bestScore){ bestScore = sc; bestPlan = order[i].plan; }
-      aiViz.safe = bestScore > -1e8;
-      if((i&1)===0) await aiPaint(true);
-      // the clock may never cut in before the head of every heuristic list has been judged
-      if(i+1 >= cfg.minScored && Date.now()-t0 > cfg.ms) break;
-    }
-    aiViz.phase = "scored "+scored+" candidate turns against your best answer";
-    await aiPaint(true);
-    return {plan:bestPlan, safe:bestScore > -1e8};
-  } finally { RESOLVE_STRONG = false; }
-}
-
-/* ============================ game record ============================
-   Every action is stored in state.rec as a token, so undo and restart-turn
-   rewind the record for free. A record replays deterministically: the tokens
-   are the moves themselves, and reaction lists are a pure function of the
-   position, so an X token always resolves the same reaction.              */
-
-function recordText(){
-  const res = !state.gameOver ? "unfinished"
-            : state.gameOver.draw ? "draw"
-            : PNAME[state.gameOver.winner].toLowerCase()+" wins by "+(state.gameOver.reason||"head");
-  let s = "SNS1|"+state.meta.ai.join(",")+"|"+res+"\n";
-  s += state.rec.join(" ")+"\n";
-  s += "\n# ---- readable log ----\n";
-  s += state.log.map(l=>"# "+l.replace(/^\* /,"")).join("\n")+"\n";
-  return s;
-}
-function replayFrom(text){
-  const toks = [];
-  let ai = ["human","human"];
-  for(const ln of String(text).split(/\r?\n/)){
-    const t = ln.trim();
-    if(!t || t.startsWith("#")) continue;
-    if(t.startsWith("SNS1|")){ const p=t.split("|"); if(p[1]) ai = p[1].split(","); continue; }
-    for(const tok of t.split(/\s+/)) if(/^[CSMRXEQ]/.test(tok)) toks.push(tok);
-  }
-  const savedAI = AI.slice();
-  AI = [false,false];
-  fastReplay = true;
-  newGame();
-  let done = 0, failed = null;
-  for(const tok of toks){
-    const before = state.rec.length;
-    const k = tok[0], a = tok.slice(1).split(".");
-    if(k==="C") createPiece(+a[0], +a[1]);
-    else if(k==="S") skipCreation();
-    else if(k==="M") movePiece(+a[0], +a[1]);
-    else if(k==="R") rotatePiece(+a[0], +a[1]);
-    else if(k==="X") rxClick(+a[0]);
-    else if(k==="E") endTurnBtn();
-    else if(k==="Q"){ snapshot(); recPush(tok); state.gameOver={winner:1-(+a[0]), reason:"surrender"}; }
-    if(state.rec.length===before){ failed = tok; break; }
-    done++;
-    if(state.gameOver) break;
-  }
-  fastReplay = false;
-  AI = [ai[0]==="human"?false:ai[0], ai[1]==="human"?false:ai[1]];
-  state.meta = {ai};
-  aiPaused = true;                       // never let the computer run off with a loaded game
-  render();
-  return {done, total:toks.length, failed};
-}
-
-function openRecord(){
-  document.getElementById("record").hidden = false;
-  document.getElementById("recText").value = recordText();
-  document.getElementById("recStatus").textContent =
-    state.rec.length+" actions recorded"+(state.gameOver?" · game finished":"");
-}
-function copyRecord(){
-  const ta = document.getElementById("recText");
-  ta.select(); ta.setSelectionRange(0, 999999);
-  let ok = false;
-  try { ok = document.execCommand("copy"); } catch(e){}
-  if(!ok && navigator.clipboard) navigator.clipboard.writeText(ta.value).then(()=>{
-    document.getElementById("recStatus").textContent = "copied to clipboard";
-  });
-  else document.getElementById("recStatus").textContent = ok ? "copied to clipboard" : "select the text above and copy";
-}
-function loadRecord(){
-  const r = replayFrom(document.getElementById("recIn").value);
-  document.getElementById("recStatus").textContent =
-    r.failed ? ("replayed "+r.done+" of "+r.total+" actions, then '"+r.failed+"' did not apply")
-             : ("replayed all "+r.done+" actions — the computer is paused, press \u25b6 under its pieces to hand it the turn");
-  document.getElementById("recText").value = recordText();
-}
-function downloadRecord(){
-  const blob = new Blob([recordText()], {type:"text/plain"});
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "swords-record.txt";
-  a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
-}
-
 /* ---------- new game setup ---------- */
-let setupSel = ["human","medium"];
-function openSetup(){
-  const go = document.getElementById("gameover"); if(go) go.remove();
-  document.getElementById("setup").hidden = false; drawSetup();
-}
+let setupSel = [false,true];
+function openSetup(){ document.getElementById("setup").hidden = false; drawSetup(); }
 function drawSetup(){
   let s = '<h3>New game</h3>';
   [0,1].forEach(o=>{
     s += '<p style="margin:10px 0 4px"><span class="dot" style="background:'+P_FILL[o]+';border:1px solid '+P_EDGE[o]+
          '"></span> <b>'+PNAME[o]+'</b> <span class="hint">('+(o===0?"top, moves first, starts with the blank piece":"bottom")+')</span></p>'+
-         '<div class="btns" style="max-width:300px">'+
-         ["human","easy","medium","hard"].map(v=>
-           '<button'+(setupSel[o]===v?' class="primary"':'')+' onclick="setupSel['+o+']=\''+v+'\';drawSetup()">'+
-           (v==="human"?"Human":"Computer &middot; "+v)+'</button>').join('')+
-         '</div>';
+         '<div class="btns" style="max-width:280px">'+
+         '<button'+(setupSel[o]?'':' class="primary"')+' onclick="setupSel['+o+']=false;drawSetup()">Human</button>'+
+         '<button'+(setupSel[o]?' class="primary"':'')+' onclick="setupSel['+o+']=true;drawSetup()">Computer</button></div>';
   });
   s += '<p style="margin:14px 0 4px"><b>Computer pace</b></p><div class="btns" style="max-width:280px">'+
        '<button'+(pace==="calm"?' class="primary"':'')+' onclick="pace=\'calm\';drawSetup()">Considered</button>'+
@@ -1862,7 +1048,7 @@ function drawSetup(){
   document.getElementById("setupCard").innerHTML = s;
 }
 function startGame(){
-  AI = [setupSel[0]==="human"?false:setupSel[0], setupSel[1]==="human"?false:setupSel[1]];
+  AI = [setupSel[0], setupSel[1]];
   document.getElementById("setup").hidden = true;
   newGame();
   aiMaybeStart();
