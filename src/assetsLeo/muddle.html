@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Muddle</title>
+<style>
+  /* The board is a neutral mid-grey on purpose: any tint in the surround
+     drags the eye the other way and the muddy colour stops being honest. */
+  :root{
+    --bg:#2b2c31; --panel:#34363d; --line:#43454e; --txt:#e9eaee; --dim:#a0a4b0;
+    --gold:#f3c34a; --ok:#5fbf7a;
+    --pad:clamp(6px,1.5vmin,15px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+  body{background:var(--bg);color:var(--txt);
+       font-family:"Segoe UI",system-ui,-apple-system,Helvetica,Arial,sans-serif;
+       font-size:clamp(13px,1.9vmin,17px);
+       display:flex;align-items:center;justify-content:center;user-select:none}
+  button{font-family:inherit;cursor:pointer}
+  [hidden]{display:none !important}
+  #app{width:min(100vw,100vh*1.5);height:100%;display:flex;flex-direction:column;
+       padding:var(--pad);gap:var(--pad)}
+
+  /* ---------------- heads-up strip ---------------- */
+  #hud{display:flex;align-items:center;gap:.7em;flex:0 0 auto}
+  #dots{display:flex;gap:.22em;flex:1 1 auto;flex-wrap:nowrap;overflow:hidden}
+  .rd{height:.5em;flex:1 1 0;min-width:2px;max-width:1.1em;border-radius:99px;background:#464852}
+  .rd.done{background:#6e727f}
+  .rd.now{background:var(--gold)}
+  .rd.sd{background:#8b5cf6}
+  #clockwrap{flex:0 0 auto;width:5.5em;height:.5em;border-radius:99px;background:#464852;overflow:hidden}
+  #clock{height:100%;width:100%;background:var(--ok);transition:width .3s linear,background .4s}
+  #clock.low{background:#e0704f}
+  #clock.next{background:var(--gold)}
+  #secs{flex:0 0 auto;min-width:1.6em;text-align:right;font-variant-numeric:tabular-nums;
+        font-weight:800;font-size:1.15em;color:var(--ok);transition:color .4s}
+  #secs.low{color:#ff9d7d}
+  #secs.next{color:var(--gold)}
+  #secs .cap{font-size:.6em;opacity:.75;font-weight:600}
+  #sound{background:none;border:0;color:var(--dim);font-size:1.2em;padding:0 .2em;line-height:1}
+
+  /* ---------------- who is who ----------------
+     Your own animal is the one thing on screen that must never be hunted
+     for, so it is not a chip among chips: it is twice the size, ringed in
+     gold, pinned to the same corner all game, and it is repeated on the
+     tile you tap. Everyone else is a small chip in the crowd.            */
+  #row{flex:0 0 auto;display:flex;gap:.5em;align-items:flex-start}
+  #you{flex:0 0 auto;display:flex;align-items:center;gap:.3em;
+       background:linear-gradient(#413a29,#37312450);border:2.5px solid var(--gold);
+       border-radius:99px;padding:.1em .55em .1em .18em;box-shadow:0 0 0 .28em rgba(243,195,74,.12)}
+  #you .av{font-size:2.3em;line-height:1;filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
+  #you .sc{font-weight:800;font-size:1.35em;color:var(--gold);font-variant-numeric:tabular-nums;min-width:.8em;text-align:center}
+  #players{flex:1 1 auto;display:flex;flex-wrap:wrap;gap:.3em;align-content:flex-start;
+           max-height:24vh;overflow:auto}
+  #players.crowd{font-size:.82em}
+  .chip{display:flex;align-items:center;gap:.2em;background:var(--panel);
+        border:2px solid var(--line);border-radius:99px;padding:.12em .45em .12em .18em;
+        position:relative;transition:transform .3s ease,border-color .3s ease,background .3s ease}
+  .chip.voted{background:#3b4740;border-color:#5a7a5f}
+  .chip.won{transform:translateY(-.22em);border-color:var(--gold);background:#463f2e}
+  .chip .av{font-size:1.3em;line-height:1}
+  .chip .sc{font-weight:700;font-size:1em;min-width:.8em;text-align:center;font-variant-numeric:tabular-nums}
+  .plus{position:absolute;left:50%;top:0;transform:translateX(-50%);color:var(--gold);
+        font-weight:800;pointer-events:none;animation:rise 1.4s cubic-bezier(.3,.7,.4,1) forwards}
+  @keyframes rise{0%{opacity:0;transform:translate(-50%,.2em) scale(.7)}
+                  20%{opacity:1;transform:translate(-50%,-.9em) scale(1.1)}
+                  100%{opacity:0;transform:translate(-50%,-2.2em) scale(1)}}
+
+  /* ---------------- the muddy colour ---------------- */
+  #stage{flex:1 1 auto;display:flex;align-items:center;justify-content:center;min-height:0;position:relative}
+  #swatch{width:min(100%,44vh*1.6);height:100%;max-height:44vh;border-radius:clamp(14px,3vmin,30px);
+          background:#6b6257;position:relative;overflow:hidden;
+          box-shadow:0 .6em 2em rgba(0,0,0,.32), inset 0 0 0 1px rgba(255,255,255,.06);
+          transition:background 1.1s ease}
+  #swatch.swap{animation:swap 1.2s ease}
+  @keyframes swap{0%{transform:scale(1)}18%{transform:scale(.965)}60%{transform:scale(1.008)}100%{transform:scale(1)}}
+  #hand{position:absolute;left:0;right:0;bottom:6%;text-align:center;font-size:2em;opacity:.55;
+        animation:bob 2.8s ease-in-out infinite;pointer-events:none}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(.42em)}}
+
+  /* ---------------- colour tiles ---------------- */
+  #tiles{flex:0 0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:var(--pad);
+         width:100%;max-width:min(100%,64vh);margin:0 auto}
+  .tile{position:relative;aspect-ratio:1;border-radius:clamp(10px,2.4vmin,22px);border:3px solid transparent;
+        background:var(--c);padding:0;overflow:visible;box-shadow:0 .25em .7em rgba(0,0,0,.3);
+        transition:transform .35s cubic-bezier(.2,.9,.3,1),border-color .35s,filter .5s ease,opacity .5s ease}
+  .tile:active{transform:scale(.94)}
+  .tile:focus-visible{outline:3px solid #fff;outline-offset:3px}
+  .tile.picked{border-color:var(--gold);transform:translateY(-.35em) scale(1.05);
+               box-shadow:0 .6em 1.2em rgba(0,0,0,.4)}
+  .tile.dim{filter:saturate(.4) brightness(.62);opacity:.8}
+  .tile.win{border-color:var(--gold);animation:winglow 2.2s ease-in-out infinite;filter:none;opacity:1}
+  @keyframes winglow{0%,100%{box-shadow:0 .25em .7em rgba(0,0,0,.3),0 0 0 .1em rgba(243,195,74,.55)}
+                     50%{box-shadow:0 .25em .7em rgba(0,0,0,.3),0 0 0 .45em rgba(243,195,74,.2)}}
+  .tile .voters{position:absolute;inset:0;display:flex;flex-wrap:wrap;align-content:center;
+                justify-content:center;gap:.06em;font-size:clamp(11px,2.3vmin,21px);
+                text-shadow:0 1px 3px rgba(0,0,0,.45);pointer-events:none}
+  .tile .voters span{animation:land .5s cubic-bezier(.25,.9,.3,1.05) both}
+  .tile .voters span.mine{border-radius:99px;box-shadow:0 0 0 .13em var(--gold);background:rgba(0,0,0,.18)}
+  @keyframes land{from{opacity:0;transform:translateY(-.6em) scale(.7)}to{opacity:1;transform:none}}
+  /* your own animal, sitting on the tile you chose */
+  .tile .mypick{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+                font-size:clamp(20px,5.5vmin,44px);pointer-events:none;
+                filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));animation:land .45s cubic-bezier(.25,.9,.3,1.05) both}
+  .tile .crown{position:absolute;top:-.5em;left:50%;transform:translateX(-50%);
+               font-size:clamp(14px,3vmin,26px);opacity:0}
+  .tile.win .crown{opacity:1;animation:land .55s .12s cubic-bezier(.25,.9,.3,1.05) both}
+  #tiles.locked .tile{pointer-events:none}
+  /* a spent card is not a dimmed card, it is an empty place where the card was */
+  .tile.spent{background:transparent;border:3px dashed var(--c);opacity:.5;pointer-events:none;
+              box-shadow:none;filter:none}
+  .tile.spent::after{content:"";position:absolute;inset:22%;border-radius:50%;
+                     background:var(--c);opacity:.16}
+  #sitrow{flex:0 0 auto;display:flex;align-items:center;gap:.5em;min-height:2.2em}
+  #pass{flex:0 0 auto;display:flex;align-items:center;gap:.4em;background:#3a3d45;color:var(--txt);
+        border:2px solid var(--line);border-radius:99px;padding:.25em .9em .25em .4em;font-size:1em;
+        transition:transform .2s,border-color .2s,background .2s}
+  #pass .who{font-size:1.5em;line-height:1}
+  #pass .mark{font-size:1.1em;opacity:.8}
+  #pass:active{transform:scale(.95)}
+  #pass.chosen{border-color:var(--gold);background:#443d2c}
+  #sat{flex:1 1 auto;display:flex;flex-wrap:wrap;gap:.2em;font-size:1.35em;opacity:.65}
+  #sat .lbl{font-size:.8em;opacity:.6;align-self:center;margin-right:.15em}
+
+  /* ---------------- cards over the board ---------------- */
+  .veil{position:fixed;inset:0;background:rgba(20,21,25,.92);z-index:30;
+        display:flex;align-items:center;justify-content:center;padding:18px;overflow:auto}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px;
+        max-width:540px;width:100%}
+  h1{font-size:2.2em;margin:0 0 .1em;letter-spacing:-.02em}
+  h1 .a{color:var(--gold)}
+  .sub{color:var(--dim);margin:0 0 1.2em;line-height:1.45}
+  .lab{font-size:.8em;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:1.1em 0 .4em}
+  .avgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:.35em}
+  .avgrid button{font-size:1.6em;line-height:1;padding:.28em 0;background:#2b2d33;border:2px solid var(--line);
+                 border-radius:12px;color:inherit}
+  .avgrid button.on{border-color:var(--gold);background:#413a2a;transform:scale(1.06)}
+  .avgrid button.taken{opacity:.2;filter:grayscale(1);cursor:default}
+  .row{display:flex;gap:.5em;flex-wrap:wrap}
+  .btn{flex:1 1 auto;background:#3d4048;color:var(--txt);border:1px solid var(--line);border-radius:12px;
+       padding:.75em 1em;font-size:1em}
+  .btn:hover{background:#474a54}
+  .btn.go{background:var(--gold);border-color:var(--gold);color:#241d06;font-weight:700}
+  .btn.go:hover{filter:brightness(1.08)}
+  input{width:100%;background:#24262b;color:var(--txt);border:1px solid var(--line);
+        border-radius:12px;padding:.7em;font-family:inherit;font-size:1em}
+  .warn{color:#ffb4a2;margin:.8em 0 0}
+  .ring{display:flex;flex-wrap:wrap;gap:.4em;justify-content:center;margin:1em 0;font-size:1.9em;min-height:1.6em}
+  .ring .self{filter:drop-shadow(0 0 .18em var(--gold));border-bottom:.12em solid var(--gold)}
+  .big{font-size:2.6em;font-weight:800;text-align:center;font-variant-numeric:tabular-nums}
+  .podium{display:flex;flex-direction:column;gap:.4em;margin:1em 0}
+  .prow{display:flex;align-items:center;gap:.6em;background:#2b2d33;border-radius:12px;padding:.5em .8em}
+  .prow.top{background:#453d27;border:1px solid var(--gold)}
+  .prow.self{outline:2px solid #6c7180}
+  .prow .av{font-size:1.8em}
+  .prow .bar{flex:1 1 auto;height:.55em;background:#43454e;border-radius:99px;overflow:hidden}
+  .prow .bar i{display:block;height:100%;background:var(--gold);border-radius:99px;transition:width .8s ease}
+  .prow .n{font-weight:800;font-variant-numeric:tabular-nums;min-width:1.4em;text-align:right}
+  .tiny{font-size:.82em;color:var(--dim);line-height:1.5}
+  .links{font-size:.78em;color:var(--dim);margin-top:.8em;font-family:ui-monospace,Consolas,monospace}
+  .links b{color:var(--ok)}
+  .spin{display:inline-block;width:.85em;height:.85em;border:.14em solid var(--gold);
+        border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;vertical-align:-.08em}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .confetti{position:fixed;top:-8vh;font-size:1.5em;animation:fall linear forwards;pointer-events:none;z-index:31}
+  @keyframes fall{to{transform:translateY(115vh) rotate(420deg)}}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;animation-iteration-count:1 !important;
+    transition-duration:.01ms !important}}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="hud">
+    <div id="dots"></div>
+    <div id="clockwrap"><div id="clock"></div></div>
+    <div id="secs"></div>
+    <button id="sound" onclick="toggleSound()" title="Sound">&#128266;</button>
+  </div>
+  <div id="row">
+    <div id="you"><span class="av"></span><span class="sc">0</span></div>
+    <div id="players"></div>
+  </div>
+  <div id="stage"><div id="swatch"><div id="hand" hidden>&#11015;&#65039;</div></div></div>
+  <div id="tiles"></div>
+  <div id="sitrow">
+    <button id="pass" onclick="pass()" hidden><span class="who"></span><span class="mark">&#9193;</span></button>
+    <div id="sat"></div>
+  </div>
+</div>
+
+<div class="veil" id="veil"><div class="card" id="veilCard"></div></div>
+
+<script>(()=>{var So=Object.defineProperty;var bo=(e,n,t)=>n in e?So(e,n,{enumerable:!0,configurable:!0,writable:!0,value:t}):e[n]=t;var oe=(e,n,t)=>bo(e,typeof n!="symbol"?n+"":n,t);var Ft=Object.freeze({p:BigInt("0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"),n:BigInt("0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"),h:BigInt(1),a:BigInt(0),b:BigInt(7),Gx:BigInt("0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"),Gy:BigInt("0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8")}),{p:Ee,n:Ye,Gx:Ro,Gy:Ao,b:zt}=Ft,ae=32,qe=64,Nn={publicKey:ae+1,publicKeyUncompressed:qe+1,signature:qe,seed:ae+ae/2},Z=(e="",n=Error)=>{let t=new n(e),{captureStackTrace:r}=Error;throw typeof r=="function"&&r(t,Z),t},To=e=>e instanceof Uint8Array||ArrayBuffer.isView(e)&&e.constructor.name==="Uint8Array"&&e.BYTES_PER_ELEMENT===1,ye=(e,n,t="")=>{let r=To(e),s=e==null?void 0:e.length,a=n!==void 0;if(!r||a&&s!==n){let o=t&&`"${t}" `,i=a?` of length ${n}`:"",f=r?`length=${s}`:`type=${typeof e}`,l=o+"expected Uint8Array"+i+", got "+f;return r?Z(l,RangeError):Z(l,TypeError)}return e},Xe=e=>new Uint8Array(e),Jt=(e,n)=>e.toString(16).padStart(n,"0"),Wt=e=>{let n="";for(let t of ye(e))n+=Jt(t,2);return n},be={_0:48,_9:57,A:65,F:70,a:97,f:102},It=e=>e>=be._0&&e<=be._9?e-be._0:e>=be.A&&e<=be.F?e-(be.A-10):e>=be.a&&e<=be.f?e-(be.a-10):void 0,Vt=e=>{let n="hex invalid";if(typeof e!="string")return Z(n);let t=e.length,r=t/2;if(t%2)return Z(n);let s=Xe(r);for(let a=0,o=0;a<r;a++,o+=2){let i=It(e.charCodeAt(o)),f=It(e.charCodeAt(o+1));if(i===void 0||f===void 0)return Z(n);s[a]=i*16+f}return s},xt=()=>{var e,n;return(n=(e=globalThis==null?void 0:globalThis.crypto)==null?void 0:e.subtle)!=null?n:Z("crypto.subtle must be defined, consider polyfill")},Fe=(...e)=>{let n=0;for(let s of e)n+=ye(s).length;let t=Xe(n),r=0;for(let s of e)t.set(s,r),r+=s.length;return t},qn=(e=ae)=>(globalThis==null?void 0:globalThis.crypto).getRandomValues(Xe(e)),$n=BigInt,He=(e,n,t,r="bad number: out of range")=>typeof e!="bigint"?Z(r,TypeError):n<=e&&e<t?e:Z(r,RangeError),B=(e,n=Ee)=>{let t=e%n;return t>=BigInt(0)?t:n+t},Pn=e=>B(e,Ye),Eo=(e,n)=>{(e===BigInt(0)||n<=BigInt(0))&&Z("no inverse n="+e+" mod="+n);let t=B(e,n),r=n,s=BigInt(0),a=BigInt(1),o=BigInt(1),i=BigInt(0);for(;t!==BigInt(0);){let f=r/t,l=r%t,u=s-o*f,c=a-i*f;r=t,t=l,s=o,a=i,o=u,i=c}return r===BigInt(1)?B(s,n):Z("no inverse")},Gt=e=>{let n=_o[e];return typeof n!="function"&&Z("hashes."+e+" not set"),n},Nt=(e,n,t)=>ye(Gt(e)(n,t),ae,"digest"),$t=(e,n,t)=>Promise.resolve(Gt(e)(n,t)).then(r=>ye(r,ae,"digest"));var xn=e=>e instanceof Me?e:Z("Point expected"),Zt=e=>B(B(e*e)*e+zt),Kt=e=>He(e,BigInt(0),Ee),hn=e=>He(e,BigInt(1),Ee),Mo=e=>He(e,BigInt(1),Ye),vn=e=>!(e&BigInt(1)),Xt=e=>Uint8Array.of(e),Oo=e=>Xt(vn(e)?2:3),Yt=e=>{let n=Zt(hn(e)),t=BigInt(1);for(let r=n,s=(Ee+BigInt(1))/BigInt(4);s>BigInt(0);s>>=BigInt(1))s&BigInt(1)&&(t=t*r%Ee),r=r*r%Ee;return B(t*t)!==n&&Z("sqrt invalid"),vn(t)?t:B(-t)};var Pe=class Pe{constructor(n,t,r){oe(this,"X");oe(this,"Y");oe(this,"Z");this.X=Kt(n),this.Y=hn(t),this.Z=Kt(r),Object.freeze(this)}static CURVE(){return Ft}static fromAffine(n){let{x:t,y:r}=n;return t===BigInt(0)&&r===BigInt(0)?Le:new Pe(t,r,BigInt(1))}static fromBytes(n){ye(n);let{publicKey:t,publicKeyUncompressed:r}=Nn,s,a=n.length,o=n[0],i=n.subarray(1),f=pn(i,0,ae);if(a===t&&(o===2||o===3)){let l=Yt(f);o===3&&(l=B(-l)),s=new Pe(f,l,BigInt(1))}return a===r&&o===4&&(s=new Pe(f,pn(i,ae,qe),BigInt(1))),s?s.assertValidity():Z("bad point: not on curve")}static fromHex(n){return Pe.fromBytes(Vt(n))}get x(){return this.toAffine().x}get y(){return this.toAffine().y}equals(n){let{X:t,Y:r,Z:s}=this,{X:a,Y:o,Z:i}=xn(n),f=B(t*i),l=B(a*s),u=B(r*i),c=B(o*s);return f===l&&u===c}is0(){return this.equals(Le)}negate(){return new Pe(this.X,B(-this.Y),this.Z)}double(){return this.add(this)}add(n){let{X:t,Y:r,Z:s}=this,{X:a,Y:o,Z:i}=xn(n),f=BigInt(0),l=zt,u=BigInt(0),c=BigInt(0),d=BigInt(0),g=B(l*BigInt(3)),y=B(t*a),w=B(r*o),P=B(s*i),b=B(t+r),v=B(a+o);b=B(b*v),v=B(y+w),b=B(b-v),v=B(t+s);let O=B(a+i);return v=B(v*O),O=B(y+P),v=B(v-O),O=B(r+s),u=B(o+i),O=B(O*u),u=B(w+P),O=B(O-u),d=B(f*v),u=B(g*P),d=B(u+d),u=B(w-d),d=B(w+d),c=B(u*d),w=B(y+y),w=B(w+y),P=B(f*P),v=B(g*v),w=B(w+P),P=B(y-P),P=B(f*P),v=B(v+P),y=B(w*v),c=B(c+y),y=B(O*v),u=B(b*u),u=B(u-y),y=B(b*w),d=B(O*d),d=B(d+y),new Pe(u,c,d)}subtract(n){return this.add(xn(n).negate())}multiply(n,t=!0){if(!t&&n===BigInt(0))return Le;if(Mo(n),n===BigInt(1))return this;if(this.equals(Ie))return Uo(n).p;let r=Le,s=Ie;for(let a=this;n>BigInt(0);a=a.double(),n>>=BigInt(1))n&BigInt(1)?r=r.add(a):t&&(s=s.add(a));return r}multiplyUnsafe(n){return this.multiply(n,!1)}toAffine(){let{X:n,Y:t,Z:r}=this;if(this.equals(Le))return{x:BigInt(0),y:BigInt(0)};if(r===BigInt(1))return{x:n,y:t};let s=Eo(r,Ee);return B(r*s)!==BigInt(1)&&Z("inverse invalid"),{x:B(n*s),y:B(t*s)}}assertValidity(){let{x:n,y:t}=this.toAffine();return hn(n),hn(t),B(t*t)===Zt(n)?this:Z("bad point: not on curve")}toBytes(n=!0){let{x:t,y:r}=this.assertValidity().toAffine(),s=ve(t);return n?Fe(Oo(r),s):Fe(Xt(4),s,ve(r))}toHex(n){return Wt(this.toBytes(n))}};oe(Pe,"BASE"),oe(Pe,"ZERO");var Me=Pe,Ie=new Me(Ro,Ao,BigInt(1)),Le=new Me(BigInt(0),BigInt(1),BigInt(0));Me.BASE=Ie;Me.ZERO=Le;var Bo=(e,n,t)=>Ie.multiply(n,!1).add(e.multiply(t,!1)).assertValidity(),xe=e=>$n("0x"+(Wt(e)||"0")),pn=(e,n,t)=>xe(e.subarray(n,t)),Do=BigInt(2)**BigInt(256),ve=e=>Vt(Jt(He(e,BigInt(0),Do),qe)),Co=e=>{let n=xe(ye(e,ae,"secret key"));return He(n,BigInt(1),Ye,"invalid secret key: outside of range")};var jt="SHA-256",_o={hmacSha256Async:async(e,n)=>{let t=xt(),r="HMAC",s=await t.importKey("raw",e,{name:r,hash:{name:jt}},!1,["sign"]);return Xe(await t.sign(r,s,n))},hmacSha256:void 0,sha256Async:async e=>Xe(await xt().digest(jt,e)),sha256:void 0};var Lo=e=>{if(e=e===void 0?qn(Nn.seed):e,ye(e),e.length<Nn.seed||e.length>1024)return Z("expected 48-1024b",RangeError);let n=B(xe(e),Ye-BigInt(1));return ve(n+BigInt(1))},Ho=e=>n=>{let t=Lo(n);return{secretKey:t,publicKey:e(t)}};var Qt=e=>Uint8Array.from("BIP0340/"+e,n=>n.charCodeAt(0)),er="aux",nr="nonce",tr="challenge",Kn=(e,...n)=>{let t=Nt("sha256",Qt(e));return Nt("sha256",Fe(t,t,...n))},jn=(e,...n)=>$t("sha256Async",Qt(e)).then(t=>$t("sha256Async",Fe(t,t,...n))),Fn=e=>{let n=Co(e),t=Ie.multiply(n),{x:r,y:s}=t.assertValidity().toAffine(),a=vn(s)?n:Pn(-n),o=ve(r);return{d:a,px:o}},zn=e=>Pn(xe(e)),rr=(...e)=>zn(Kn(tr,...e)),or=async(...e)=>zn(await jn(tr,...e)),sr=e=>Fn(e).px,Io=Ho(sr),ar=(e,n,t)=>{let{px:r,d:s}=Fn(n);return{m:ye(e),px:r,d:s,a:ye(t,ae)}},ir=e=>{let n=zn(e);n===BigInt(0)&&Z("sign failed: k is zero");let{px:t,d:r}=Fn(ve(n));return{rx:t,k:r}},cr=(e,n,t,r)=>Fe(n,ve(Pn(e+t*r))),fr="invalid signature produced",xo=(e,n,t=qn(ae))=>{let{m:r,px:s,d:a,a:o}=ar(e,n,t),i=Kn(er,o),f=ve(a^xe(i)),l=Kn(nr,f,s,r),{rx:u,k:c}=ir(l),d=rr(u,s,r),g=cr(c,u,d,a);return ur(g,r,s)||Z(fr),g},No=async(e,n,t=qn(ae))=>{let{m:r,px:s,d:a,a:o}=ar(e,n,t),i=await jn(er,o),f=ve(a^xe(i)),l=await jn(nr,f,s,r),{rx:u,k:c}=ir(l),d=await or(u,s,r),g=cr(c,u,d,a);return await dr(g,r,s)||Z(fr),g},$o=(e,n)=>e instanceof Promise?e.then(n):n(e),lr=(e,n,t,r)=>{let s=ye(e,qe,"signature"),a=ye(n,void 0,"message"),o=ye(t,ae,"publicKey");try{let i=xe(o),f=Yt(i),l=new Me(i,f,BigInt(1)).assertValidity(),u=ve(l.toAffine().x),c=pn(s,0,ae);He(c,BigInt(1),Ee);let d=pn(s,ae,qe);He(d,BigInt(1),Ye);let g=Fe(ve(c),u,a);return $o(r(g),y=>{let{x:w,y:P}=Bo(l,d,Pn(-y)).toAffine();return!(!vn(P)||w!==c)})}catch{return!1}},ur=(e,n,t)=>lr(e,n,t,rr),dr=async(e,n,t)=>lr(e,n,t,or),Jn=Object.freeze({keygen:Io,getPublicKey:sr,sign:xo,verify:ur,signAsync:No,verifyAsync:dr}),wn=8,Ko=256,mr=Math.ceil(Ko/wn)+1,Un=2**(wn-1),jo=()=>{let e=[],n=Ie,t=n;for(let r=0;r<mr;r++){t=n,e.push(t);for(let s=1;s<Un;s++)t=t.add(n),e.push(t);n=t.double()}return e},Ut,qt=(e,n)=>{let t=n.negate();return e?t:n},Uo=e=>{let n=Ut||(Ut=jo()),t=Le,r=Ie,s=2**wn,a=s,o=$n(s-1),i=$n(wn);for(let f=0;f<mr;f++){let l=Number(e&o);e>>=i,l>Un&&(l-=a,e+=BigInt(1));let u=f*Un,c=u,d=u+Math.abs(l)-1,g=f%2!==0,y=l<0;l===0?r=r.add(qt(g,n[c])):t=t.add(qt(y,n[d]))}return e!==BigInt(0)&&Z("invalid wnaf"),{p:t,f:r}};var{floor:Wn,min:qo,sin:Fo}=Math,Q="Trystero",Oe=(e,n)=>Array(e).fill(void 0).map(n),zo="0123456789AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz",le=e=>Oe(e,()=>{var n;return(n=zo[Wn(Math.random()*62)])!=null?n:""}).join(""),X=le(20),ue=Promise.all.bind(Promise),Vn=typeof window!="undefined",{entries:ie,fromEntries:Gn,keys:Y,values:Re}=Object,ne=()=>{},kn="candidate",K=e=>(e!==null&&clearTimeout(e),null),j=e=>new Error(`${Q}: ${e}`),Ae=(e,n)=>e instanceof Error&&e.message?e.message:typeof e=="string"&&e?e:te(e!=null?e:n),ge=(e,n)=>e instanceof Error?e:j(Ae(e,n)),Jo=new TextEncoder,Wo=new TextDecoder,he=e=>Jo.encode(e),pe=e=>Wo.decode(e),Te=e=>e.reduce((n,t)=>n+t.toString(16).padStart(2,"0"),""),Ne=(...e)=>e.join("@"),Vo=(e,n)=>{let t=[...e],r=()=>{let a=Fo(n++)*1e4;return a-Wn(a)},s=t.length;for(;s;){let a=Wn(r()*s--),o=t[s];t[s]=t[a],t[a]=o}return t},tn=(e,n,t,r=!1)=>{var s,a,o;return((s=e.relayConfig)==null?void 0:s.urls)||(r?Vo(n,Sn(e.appId)):n).slice(0,(o=(a=e.relayConfig)==null?void 0:a.redundancy)!=null?o:t)},te=JSON.stringify,de=e=>{try{return JSON.parse(e)}catch{throw j(`failed to parse JSON: ${e}`)}},Sn=(e,n=Number.MAX_SAFE_INTEGER)=>e.split("").reduce((t,r)=>t+r.charCodeAt(0),0)%n,yr=3333,Go=6e4,Qe={},en=null,nn=null,bn=()=>{en||(en=new Promise(e=>{nn=e}).finally(()=>{nn=null,en=null}))},Rn=()=>{nn==null||nn()},rn=(e,n,t)=>{let r={},s=!1,a=!1,o=ne;r.ready=new Promise(f=>o=f);let i=()=>{a=!1;let f=new WebSocket(e);f.onclose=()=>{var u;if(a)return;if(a=!0,en){en.then(i);return}let l=(u=Qe[e])!=null?u:Qe[e]=yr;setTimeout(i,Math.random()*l),Qe[e]=qo(l*2,Go)},f.onmessage=l=>n(String(l.data)),r.socket=f,r.url=f.url,f.onopen=()=>{let l=s;s=!0,o(r),Qe[e]=yr,l&&(t==null||t())},r.send=l=>{f.readyState===1&&f.send(l)}};return i(),r};var on=e=>{let n={},t=new WeakMap,r=o=>{let i=t.get(o);if(!i)throw j("relay bookkeeping missing registration for relay client");return i},s=()=>{let o={},i=f=>{var l;return(l=o[f])!=null?l:o[f]={}};return{forKey:i,forRelay:f=>i(r(f))}},a=(o,i)=>(n[o]=i,t.set(i,o),i);return{register:(o,i)=>{let f=n[o];return f||a(o,i())},keyOf:r,scoped:s,getSockets:()=>Gn(ie(n).flatMap(([o,i])=>{let f=e(i);return f?[[o,f]]:[]}))}},gr=()=>{if(Vn){let e=new AbortController;return addEventListener("online",Rn,{signal:e.signal}),addEventListener("offline",bn,{signal:e.signal}),()=>e.abort()}return ne};var Xn="AES-GCM",Zn={},Zo=e=>btoa(String.fromCharCode.apply(null,Array.from(new Uint8Array(e)))),Xo=e=>{let n=atob(e);return new Uint8Array(n.length).map((t,r)=>n.charCodeAt(r)).buffer},$e=async(e,n)=>new Uint8Array(await crypto.subtle.digest(e,he(n))),ke=async e=>{var n;return(n=Zn[e])!=null?n:Zn[e]=Array.from(await $e("SHA-1",e)).map(t=>t.toString(36)).join("")},hr=async(e,n,t)=>crypto.subtle.importKey("raw",await crypto.subtle.digest({name:"SHA-256"},he(`${e}:${n}:${t}`)),{name:Xn},!1,["encrypt","decrypt"]),pr=async(e,n)=>Te(await $e("SHA-256",`${Q}:${e}:${n}`)),wr="$",Pr=",",vr=async(e,n)=>{let t=crypto.getRandomValues(new Uint8Array(16));return t.join(Pr)+wr+Zo(await crypto.subtle.encrypt({name:Xn,iv:t},await e,he(n)))},kr=async(e,n)=>{var s;let[t,r]=n.split(wr);return pe(await crypto.subtle.decrypt({name:Xn,iv:new Uint8Array((s=t==null?void 0:t.split(Pr).map(Number))!=null?s:[])},await e,Xo(r!=null?r:"")))};var sn=57333,Yo=18e4,Qo=20,Sr=class{constructor(e){oe(this,"makeOffer");oe(this,"pool",[]);oe(this,"pooled",new Set);oe(this,"leased",new Map);oe(this,"recycling",new Set);oe(this,"cleanupTimer",null);oe(this,"active",!1);this.makeOffer=e}get isActive(){return this.active}warmup(){this.pool=[],this.pooled.clear(),Oe(Qo,this.makeOffer).forEach(e=>this.push(e)),this.active=!0,this.cleanupTimer=setInterval(()=>{this.pool=this.pool.filter(e=>e.isDead?(this.pooled.delete(e),!1):!0)},sn)}push(e){e.isDead||this.pooled.has(e)||this.leased.has(e)||(this.pool.push(e),this.pooled.add(e))}shift(e){let n=[];for(;n.length<e&&this.pool.length>0;){let t=this.pool.shift();if(!t)break;this.pooled.delete(t),n.push(t)}return n}claimLeased(e){let n=this.leased.get(e);n&&(K(n),this.leased.delete(e))}recycle(e){if(!(e.isDead||this.recycling.has(e))){if(e.connection.remoteDescription){e.destroy();return}if(!this.active){e.destroy();return}this.recycling.add(e),e.setHandlers({connect:ne,close:ne,error:ne}),e.getOffer(!0).then(n=>{if(!n||n.type!=="offer"||e.isDead||!this.active){e.destroy();return}this.push(e)}).catch(()=>e.destroy()).finally(()=>this.recycling.delete(e))}}reclaimLeased(e){let n=this.leased.get(e);n&&(K(n),this.leased.delete(e),this.recycle(e))}lease(e){this.claimLeased(e),this.leased.set(e,setTimeout(()=>{this.leased.delete(e),this.recycle(e)},Yo))}checkout(e,n,t){let r=this.shift(e),s=Math.max(0,e-r.length);s>0&&r.push(...Oe(s,this.makeOffer));let a=async(o,i=!1)=>{try{let f=await t(o);return n?(this.lease(o),{peer:o,offer:f,claim:()=>this.claimLeased(o),reclaim:()=>this.reclaimLeased(o)}):{peer:o,offer:f}}catch(f){if(this.claimLeased(o),this.pooled.delete(o),o.destroy(),!i)return a(this.makeOffer(),!0);throw f}};return ue(r.map(o=>a(o)))}getOffers(e,n){return this.checkout(e,!0,n)}destroy(){this.active=!1,this.cleanupTimer&&(clearInterval(this.cleanupTimer),this.cleanupTimer=null),this.pool.forEach(e=>e.destroy()),this.pool=[],this.pooled.clear(),this.leased.forEach((e,n)=>{K(e),n.destroy()}),this.leased.clear(),this.recycling.forEach(e=>e.destroy()),this.recycling.clear()}};var Yn=j("incorrect password for overlapping room"),br=(e,n,t)=>{let r=o=>$e("SHA-256",`${o}:${e}:${n}:${t}`).then(Te),s=async(o,i,f)=>{if(!e)return;if(f){let u=le(36);await o({__trystero_pw:"challenge",c:u});let{data:c}=await i();if(!c||typeof c!="object"||c.__trystero_pw!=="response"||typeof c.h!="string")throw Yn;let d=await r(u);if(c.h!==d)throw Yn;return}let{data:l}=await i();if(!l||typeof l!="object"||l.__trystero_pw!=="challenge"||typeof l.c!="string")throw Yn;await o({__trystero_pw:"response",h:await r(l.c)})};return{run:s,compose:o=>e||o?async(i,f,l,u)=>{await s(f,l,u),await(o==null?void 0:o(i,f,l,u))}:void 0}},es=e=>{let n=Ae(e,"unknown error");return n.startsWith("handshake ")?n:`handshake failed: ${n}`},Rr=({onPeerHandshake:e,onHandshakeError:n,handshakeTimeoutMs:t,sendHandshakeData:r,sendHandshakeReady:s,onActivate:a,onFailure:o})=>{let i={},f=(c,d)=>{let g=i[c];!g||d&&g.peer!==d||g.isActive||!g.didLocalHandshakePass||!g.didReceiveRemoteReady||(g.isActive=!0,g.handshakeTimer=K(g.handshakeTimer),a(c,g.peer))},l=(c,d,g)=>{let y=i[c];if(!y||y.peer!==d)return;let w=es(g);n==null||n(c,w),o(c,d,j(w))},u=(c,d)=>{let g=i[c];!g||g.peer!==d||g.isActive||(g.didLocalHandshakePass=!0,s("",c).catch(y=>l(c,d,j(`failed sending handshake readiness: ${Ae(y,"unknown send failure")}`))),f(c,d))};return{addPeer:(c,d)=>{i[c]={peer:d,isActive:!1,didLocalHandshakePass:!1,didReceiveRemoteReady:!1,handshakeTimer:null,pendingHandshakePayloads:[],handshakeWaiters:[]}},clearPeer:(c,d)=>{let g=i[c];g&&(g.handshakeTimer=K(g.handshakeTimer),g.pendingHandshakePayloads.length=0,g.handshakeWaiters.splice(0).forEach(y=>y.reject(d)),delete i[c])},canReceiveFromPeer:(c,d)=>{let g=i[c];return!!(g&&(g.isActive||d))},start:(c,d)=>{let g=i[c];if(!g||g.peer!==d)return;g.handshakeTimer=setTimeout(()=>l(c,d,j(`handshake timed out after ${t}ms`)),t);let y=async(b,v)=>{await r(b,c,v)},w=()=>new Promise((b,v)=>{let O=i[c];if(!O||O.peer!==d){v(j("peer disconnected during handshake"));return}let U=O.pendingHandshakePayloads.shift();if(U){b(U);return}O.handshakeWaiters.push({resolve:b,reject:T=>v(T)})}),P=X<c;Promise.resolve(e==null?void 0:e(c,y,w,P)).then(()=>u(c,d)).catch(b=>l(c,d,ge(b,"handshake failed")))},receiveHandshakeData:(c,d,g)=>{let y=i[d];if(!y||y.isActive)return;let w=g===void 0?{data:c}:{data:c,metadata:g},P=y.handshakeWaiters.shift();if(P){P.resolve(w);return}y.pendingHandshakePayloads.push(w)},receiveHandshakeReady:c=>{let d=i[c];!d||d.isActive||(d.didReceiveRemoteReady=!0,f(c))}}};var ns=15e3,ts=5e3,Ar="icegatheringstatechange",rs="iceconnectionstatechange",an="offer",os="answer",ss=/out of range/i,Tr=e=>e.replace(/ (\S+\.local) (\d+) typ host/g," 127.0.0.1 $2 typ host"),Qn=(e,{trickleIce:n,rtcConfig:t,rtcPolyfill:r,turnConfig:s,_test_only_mdnsHostFallbackToLoopback:a})=>{let o=new(r!=null?r:RTCPeerConnection)({iceServers:as.concat(s!=null?s:[]),...t}),i={},f=[],l=[],u=n!==!1,c=[],d=[],g=!1,y=!1,w=null,P=null,b=!1,v=()=>P=K(P),O=()=>{var m;b||(b=!0,v(),(m=i.close)==null||m.call(i))},U=m=>{i.signal?i.signal(m):f.push(m)},T=m=>{let h=i.signal;i.signal=A=>{h==null||h(A),m(A)},f.length>0&&f.splice(0).forEach(A=>{var L;return(L=i.signal)==null?void 0:L.call(i,A)})},E=m=>a?Tr(m):m,I=m=>{if(!a||typeof m.candidate!="string")return m;let h=Tr(m.candidate);return h===m.candidate?m:{...m,candidate:h}},R=m=>{var h,A,L,$;return{type:(A=(h=m.localDescription)==null?void 0:h.type)!=null?A:an,sdp:E(($=(L=m.localDescription)==null?void 0:L.sdp)!=null?$:"")}},q=()=>{var h,A,L;let m=(h=o.remoteDescription)==null?void 0:h.sdp;return m&&(L=(A=m.match(/a=ice-ufrag:([^\s]+)/))==null?void 0:A[1])!=null?L:null},V=()=>{var m,h,A;return((A=(h=(m=o.remoteDescription)==null?void 0:m.sdp)==null?void 0:h.match(/^m=/gm))!=null?A:[]).length},J=m=>{if(!o.remoteDescription)return!1;let h=V();if(typeof m.sdpMLineIndex=="number"&&h>0&&m.sdpMLineIndex>=h)return!1;let A=q();return!(A&&m.usernameFragment&&m.usernameFragment!==A)},W=async m=>{try{return await o.addIceCandidate(m),!0}catch(h){if(h instanceof Error&&ss.test(h.message)&&typeof m.sdpMLineIndex=="number")return!1;throw h}},z=async()=>{if(!o.remoteDescription||c.length===0)return;let m=c.splice(0),h=[];for(let A of m){if(!J(A)){h.push(A);continue}await W(A)||h.push(A)}h.length>0&&c.push(...h)},p=async m=>{if(J(m)){await W(m)||c.push(m);return}c.push(m)},S=m=>{m.binaryType="arraybuffer",m.bufferedAmountLowThreshold=65535,m.onmessage=h=>{let A=h.data;i.data?i.data(A):l.push(A)},m.onopen=()=>{var h;return(h=i.connect)==null?void 0:h.call(i)},m.onclose=O,m.onerror=({error:h})=>{var A;return(A=i.error)==null?void 0:A.call(i,ge(h,"data channel error"))}},C=async m=>{let h=null;try{await Promise.race([new Promise(A=>{let L=()=>{m.iceGatheringState==="complete"&&(m.removeEventListener(Ar,L),A())};m.addEventListener(Ar,L),L()}),new Promise(A=>{h=setTimeout(A,ns)})])}finally{K(h)}return R(m)},_=async()=>{let m=u?R(o):await C(o);return U(m),m};e?(w=o.createDataChannel("data"),S(w)):o.ondatachannel=({channel:m})=>{w=m,S(m)};let k=async(m=!1)=>{var h,A;if(o.connectionState!=="closed")try{return g=!0,m&&(o.signalingState!=="stable"&&o.signalingState!=="closed"&&((h=o.localDescription)==null?void 0:h.type)===an&&await o.setLocalDescription({type:"rollback"}),typeof o.restartIce=="function"&&o.restartIce()),await o.setLocalDescription(m?await o.createOffer({iceRestart:!0}):void 0),await _()}catch(L){(A=i.error)==null||A.call(i,ge(L,"failed to create local offer"))}finally{g=!1}};o.onnegotiationneeded=async()=>k(!1),o.onicecandidate=({candidate:m})=>{if(!u||!m)return;let h=I(typeof m.toJSON=="function"?m.toJSON():{candidate:m.candidate,sdpMid:m.sdpMid,sdpMLineIndex:m.sdpMLineIndex,usernameFragment:m.usernameFragment});U({type:kn,sdp:JSON.stringify(h)})};let M=()=>{if(o.connectionState==="failed"||o.connectionState==="closed"||o.iceConnectionState==="failed"||o.iceConnectionState==="closed"){O();return}if(o.connectionState==="connected"||o.connectionState==="connecting"||o.iceConnectionState==="connected"||o.iceConnectionState==="completed"||o.iceConnectionState==="checking"){v();return}if(o.connectionState==="disconnected"||o.iceConnectionState==="disconnected"){P||(P=setTimeout(()=>{P=null,(o.connectionState==="disconnected"||o.iceConnectionState==="disconnected")&&O()},ts));return}};o.onconnectionstatechange=M,o.addEventListener(rs,M),o.ontrack=m=>{var A,L;let h=m.streams[0];if(h){if(!i.track&&!i.stream){d.push({track:m.track,stream:h});return}(A=i.track)==null||A.call(i,m.track,h),(L=i.stream)==null||L.call(i,h)}},o.onremovestream=m=>{var h;return(h=i.stream)==null?void 0:h.call(i,m.stream)};let D=e?new Promise(m=>T(h=>{h.type===an&&m(h)})):Promise.resolve();return e&&queueMicrotask(()=>{var m;!g&&o.signalingState==="stable"&&!o.localDescription&&o.connectionState!=="closed"&&((m=o.onnegotiationneeded)==null||m.call(o,new Event("negotiationneeded")))}),{created:Date.now(),connection:o,get channel(){return w},get isDead(){return o.connectionState==="closed"},getOffer:async(m=!1)=>{var h;if(e)return m?k(!0):((h=o.localDescription)==null?void 0:h.type)===an?u?R(o):C(o):D},async signal(m){var h,A,L;if(m.type==="candidate"){try{let $=JSON.parse(m.sdp);$&&typeof $=="object"&&await p(I($))}catch($){(h=i.error)==null||h.call(i,ge($,"failed to parse remote candidate"))}return}if(!((w==null?void 0:w.readyState)==="open"&&!((A=m.sdp)!=null&&A.includes("a=rtpmap"))))try{let $={...m,sdp:E(m.sdp)};if(m.type===an){if(g||o.signalingState!=="stable"&&!y){if(e)return;await ue([o.setLocalDescription({type:"rollback"}),o.setRemoteDescription($)])}else await o.setRemoteDescription($);return await z(),await o.setLocalDescription(),await _()}if(m.type===os){y=!0;try{await o.setRemoteDescription($),await z()}finally{y=!1}}}catch($){(L=i.error)==null||L.call(i,ge($,"failed to apply remote signal"))}},sendData:m=>w==null?void 0:w.send(m),destroy:()=>{v(),w==null||w.close(),o.close(),g=!1,y=!1,O()},setHandlers:m=>{let{signal:h,...A}=m;Object.assign(i,A),i.data&&l.length>0&&l.splice(0).forEach(L=>{var $;return($=i.data)==null?void 0:$.call(i,L)}),h&&T(h),(i.track||i.stream)&&d.length>0&&d.splice(0).forEach(({track:L,stream:$})=>{var we,ce;(we=i.track)==null||we.call(i,L,$),(ce=i.stream)==null||ce.call(i,$)})},offerPromise:D,addStream:m=>m.getTracks().forEach(h=>o.addTrack(h,m)),removeStream:m=>o.getSenders().filter(h=>h.track&&m.getTracks().includes(h.track)).forEach(h=>o.removeTrack(h)),addTrack:(m,h)=>o.addTrack(m,h),removeTrack:m=>{let h=o.getSenders().find(A=>A.track===m);h&&o.removeTrack(h)},replaceTrack:(m,h)=>{let A=o.getSenders().find(L=>L.track===m);if(A)return A.replaceTrack(h)}}},as=[...Oe(3,(e,n)=>`stun:stun${n||""}.l.google.com:19302`),"stun:stun.cloudflare.com:3478"].map(e=>({urls:e}));var is=Object.getPrototypeOf(Uint8Array),et=32,cs=0,nt=32,Er=34,tt=35,An=36,Ke=16*2**10-An,cn=255,fs=65535,Mr="bufferedamountlow",Or="close",Br="error",ls=1e4,us=e=>e instanceof ArrayBuffer?new Uint8Array(e):new Uint8Array(e.buffer,e.byteOffset,e.byteLength),ds=(e,n=ls)=>e.readyState!=="open"||e.bufferedAmount<=e.bufferedAmountLowThreshold?Promise.resolve(e.readyState==="open"):new Promise(t=>{let r=!1,s=null,a=f=>{r||(r=!0,e.removeEventListener(Mr,o),e.removeEventListener(Or,i),e.removeEventListener(Br,i),K(s),t(f))},o=()=>a(!0),i=()=>a(!1);if(e.addEventListener(Mr,o),e.addEventListener(Or,i),e.addEventListener(Br,i),s=setTimeout(()=>a(!1),n),e.readyState!=="open"){a(!1);return}e.bufferedAmount<=e.bufferedAmountLowThreshold&&a(!0)}),Dr=({getPeer:e,getPeerIds:n,canReceiveFromPeer:t,throwIfAborted:r})=>{let s={},a={},o={},i={},f=(c,d,{includePending:g=!1}={})=>(c?Array.isArray(c)?c:[c]:n(g)).flatMap(y=>{let w=e(y,g);return w?[Promise.resolve(d(y,w))]:(console.warn(`${Q}: no peer with id ${y} found`),[])});return{makeInternalAction:(c,d={})=>{let g=a[c];if(s[c]&&g){let v=s[c].options;if(v.sendToPending!==!!d.sendToPending||v.receiveWhilePending!==!!d.receiveWhilePending)throw j(`action type "${c}" cannot be redefined`);return g}if(!c)throw j("action type argument is required");let y=he(c);if(y.byteLength>et)throw j(`action type string "${c}" (${y.byteLength}b) exceeds byte limit (${et}). Hint: choose a shorter name.`);let w={sendToPending:!!d.sendToPending,receiveWhilePending:!!d.receiveWhilePending},P=new Uint8Array(et);P.set(y);let b=0;return s[c]={onComplete:ne,onProgress:ne,setOnComplete:v=>{s[c].onComplete=v;let O=i[c];O!=null&&O.length&&(delete i[c],O.forEach(({payload:U,peerId:T,metadata:E})=>v(U,T,E)))},setOnProgress:v=>{s[c].onProgress=v},send:async(v,O,U,T,E)=>{r(E);let I=typeof v;if(I==="undefined")throw j("action data cannot be undefined");let R=I!=="string",q=v instanceof Blob,V=q||v instanceof ArrayBuffer||v instanceof is,J=U!==void 0,W=V?us(q?await v.arrayBuffer():v):he(R?te(v):v),z=J?he(te(U)):null,p=Math.ceil(W.byteLength/Ke)+(J?1:0)||1,S=Oe(p,(C,_)=>{var m;let k=_===p-1,M=!!(J&&_===0),D=new Uint8Array(An+(M?(m=z==null?void 0:z.byteLength)!=null?m:0:k?W.byteLength-Ke*(p-(J?2:1)):Ke));return D.set(P),D.set([b>>8,b&cn],nt),D.set([Number(k)|Number(M)<<1|Number(V)<<2|Number(R)<<3],Er),D.set([Math.round((_+1)/p*cn)],tt),D.set(J?M?z!=null?z:new Uint8Array:W.subarray((_-1)*Ke,_*Ke):W.subarray(_*Ke,(_+1)*Ke),An),D});return b=b+1&fs,await ue(f(O,async(C,_)=>{var D;let{channel:k}=_,M=0;for(;M<p;){r(E);let m=S[M];if(!m)break;if(k&&k.bufferedAmount>k.bufferedAmountLowThreshold){let L=await ds(k);if(r(E),!L)break}let h=e(C,w.sendToPending);if(!h||h!==_)break;_.sendData(m),M++;let A=(D=m[tt])!=null?D:cn;T==null||T(A/cn,C,U)}},{includePending:w.sendToPending})),[]},options:w},a[c]={send:s[c].send,onMessage:s[c].setOnComplete,onProgress:s[c].setOnProgress}},handleData:(c,d)=>{var J,W,z,p,S,C,_,k,M,D;let g=new Uint8Array(d),y=pe(g.subarray(cs,nt)).replaceAll("\0",""),w=s[y];if(!t(c,!!(w!=null&&w.options.receiveWhilePending)))return;let P=((J=g[nt])!=null?J:0)<<8|((W=g[33])!=null?W:0),b=(z=g[Er])!=null?z:0,v=(p=g[tt])!=null?p:0,O=g.subarray(An),U=!!(b&1),T=!!(b&2),E=!!(b&4),I=!!(b&8);(S=o[c])!=null||(o[c]={}),(_=(C=o[c])[y])!=null||(C[y]={});let R=(M=(k=o[c][y])[P])!=null?M:k[P]={chunks:[]};if(T?R.meta=de(pe(O)):R.chunks.push(O),w==null||w.onProgress(v/cn,c,R.meta),!U)return;let q=new Uint8Array(R.chunks.reduce((m,h)=>m+h.byteLength,0));R.chunks.reduce((m,h)=>(q.set(h,m),m+h.byteLength),0),delete o[c][y][P];let V=E?q:I?de(pe(q)):pe(q);if(w){w.onComplete(V,c,R.meta);return}((D=i[y])!=null?D:i[y]=[]).push({payload:V,peerId:c,...R.meta===void 0?{}:{metadata:R.meta}})},clearPeer:c=>{delete o[c]}}};var ms=500,ze=(e,n)=>{let t=j(n);return t.kind=e,t.name=e==="aborted"?"AbortError":t.name,t},rt=e=>{if(e!=null&&e.aborted)throw ze("aborted","operation aborted")},Cr=e=>e&&typeof e=="object"&&!Array.isArray(e)&&typeof e.r=="string"?{r:e.r,...Object.hasOwn(e,"m")?{m:e.m}:{}}:null,ys=e=>e&&typeof e=="object"&&!Array.isArray(e)&&typeof e.r=="string"?{r:e.r,...typeof e.e=="string"?{e:e.e}:{}}:null,Tn=(e,n)=>n===void 0?e:{...e,metadata:n},_r=({getPeer:e,getPeerIds:n,canReceiveFromPeer:t})=>{let r={},s={},a=Dr({getPeer:e,getPeerIds:n,canReceiveFromPeer:t,throwIfAborted:rt}),o=a.makeInternalAction,i=a.handleData,f=g=>{let y=s[g];y&&(K(y.timer),y.signal&&y.abortHandler&&y.signal.removeEventListener("abort",y.abortHandler),delete s[g])},l=(g,y)=>{ie(s).forEach(([w,P])=>{P.peerId===g&&(f(w),P.reject(y))})},u=(g,y)=>{a.clearPeer(g),l(g,ze("disconnected",Ae(y,"peer disconnected")))},c=o("@_response");return c.onMessage((g,y,w)=>{let P=ys(w);if(!P)return;let b=s[P.r];if(!(!b||b.peerId!==y)){if(f(P.r),P.e!==void 0){b.reject(ze("rejected",P.e));return}b.resolve(g)}}),{makeAction:(g,y)=>{var p,S,C,_;if(y&&"onRequest"in y&&y.kind!=="request")throw j('request actions must use kind: "request"');let w=(p=y==null?void 0:y.kind)!=null?p:"message",P=o(g),b=r[g];if(b){if(b.kind!==w)throw j(`action type "${g}" cannot be redefined`);return b.action}let v={kind:w,action:null,pendingMessages:[],pendingRequests:[],onReceiveProgress:(S=y==null?void 0:y.onReceiveProgress)!=null?S:null},O=(k,M)=>k?(D,m)=>k(D,Tn({peerId:m},M)):void 0,U=k=>{v.onReceiveProgress=k},T=(k,M,D)=>{var h;let m=v.kind==="request"?Cr(D):null;(h=v.onReceiveProgress)==null||h.call(v,k,Tn({peerId:M},m?m.m:D))};if(P.onProgress(T),w==="message"){let k=(C=y==null?void 0:y.onMessage)!=null?C:null,M=()=>{if(!k)return;let m=k;v.pendingMessages.splice(0).forEach(({payload:h,peerId:A,metadata:L})=>{Promise.resolve().then(()=>m(h,Tn({peerId:A},L))).catch($=>console.error(`${Q} action handler error:`,$))})},D={send:async(m,h={})=>{await P.send(m,h.target,h.metadata,O(h.onProgress,h.metadata),h.signal)},get onMessage(){return k},set onMessage(m){k=m,M()},get onReceiveProgress(){return v.onReceiveProgress},set onReceiveProgress(m){U(m)}};return P.onMessage((m,h,A)=>{if(!k){v.pendingMessages.push(A===void 0?{payload:m,peerId:h}:{payload:m,peerId:h,metadata:A});return}let L=k;Promise.resolve().then(()=>L(m,Tn({peerId:h},A))).catch($=>console.error(`${Q} action handler error:`,$))}),v.action=D,r[g]=v,M(),D}let E=(_=y==null?void 0:y.onRequest)!=null?_:null,I=k=>{K(k.timer);let M=v.pendingRequests.indexOf(k);M>-1&&v.pendingRequests.splice(M,1)},R=(k,M,D)=>{c.send(null,k,{r:M,e:Ae(D,"request failed")})},q=(k,M)=>{I(k),Promise.resolve().then(()=>M(k.payload,{peerId:k.peerId,...k.metadata===void 0?{}:{metadata:k.metadata},signal:k.controller.signal})).then(async D=>{if(D===void 0)throw j("request handler returned undefined");await c.send(D,k.peerId,{r:k.requestId})}).catch(D=>R(k.peerId,k.requestId,D)).finally(()=>k.controller.abort())},V=()=>{E&&v.pendingRequests.slice().forEach(k=>q(k,E))},J=(k,M,D,m)=>{if(E){q({payload:k,peerId:M,...D===void 0?{}:{metadata:D},requestId:m,controller:new AbortController,timer:null},E);return}let h={payload:k,peerId:M,...D===void 0?{}:{metadata:D},requestId:m,controller:new AbortController,timer:setTimeout(()=>{I(h),h.controller.abort(),R(M,m,"request handler unavailable")},ms)};v.pendingRequests.push(h)},W=async(k,M)=>{let{target:D,metadata:m,onProgress:h,signal:A,timeoutMs:L}=M;if(rt(A),!e(D,!1))throw ze("disconnected",`no active peer with id ${D}`);let $=le(20),we=new Promise((ce,yn)=>{let se={peerId:D,resolve:ce,reject:yn,timer:null,...A===void 0?{}:{signal:A}},fe=()=>{f($),yn(ze("aborted","operation aborted"))};A&&(se.abortHandler=fe,A.addEventListener("abort",fe,{once:!0})),s[$]=se}).catch(ce=>{throw ce});try{await P.send(k,D,m===void 0?{r:$}:{r:$,m},O(h,m),A);let ce=s[$];return ce&&L!==void 0&&(ce.timer=setTimeout(()=>{f($),ce.reject(ze("timeout","request timed out"))},L)),await we}catch(ce){throw f($),ce}},z={request:W,requestMany:async(k,M)=>(rt(M.signal),await ue(M.targets.map(async D=>{var m,h;try{let A={peerId:D,status:"fulfilled",value:await W(k,{target:D,...M.metadata===void 0?{}:{metadata:M.metadata},...M.timeoutMs===void 0?{}:{timeoutMs:M.timeoutMs},...M.onProgress===void 0?{}:{onProgress:M.onProgress},...M.signal===void 0?{}:{signal:M.signal}})};return(m=M.onResult)==null||m.call(M,A),A}catch(A){let L=ge(A,"request failed");if(L.kind==="aborted"||!L.kind)throw L;let $=L.kind==="timeout"?{peerId:D,status:"timeout"}:L.kind==="disconnected"?{peerId:D,status:"disconnected"}:{peerId:D,status:"rejected",error:L};return(h=M.onResult)==null||h.call(M,$),$}}))),get onRequest(){return E},set onRequest(k){E=k,V()},get onReceiveProgress(){return v.onReceiveProgress},set onReceiveProgress(k){U(k)}};return P.onMessage((k,M,D)=>{let m=Cr(D);m&&J(k,M,m.m,m.r)}),v.action=z,r[g]=v,V(),z},makeInternalAction:o,handleData:i,clearPeer:u}};var Lr=e=>e&&typeof e=="object"&&!Array.isArray(e)&&typeof e.k=="string"?{key:e.k,...typeof e.s=="string"?{streamId:e.s}:{},...typeof e.t=="string"?{trackId:e.t}:{},...Object.hasOwn(e,"m")?{metadata:e.m}:{}}:null,Hr=e=>n=>{let t=e.get(n);return t||(t=le(20),e.set(n,t)),t},ot=()=>{let e=new WeakMap,n=new WeakMap,t=new Map,r=new Map,s=new Map,a=new Map;return{getStreamKey:Hr(e),getTrackKey:Hr(n),rememberRemoteStream:(o,i,f)=>{t.set(o,i),f&&r.set(f,i)},getRemoteStream:(o,i)=>{var f;return(f=t.get(o))!=null?f:i?r.get(i):void 0},rememberRemoteTrack:(o,i,f,l,u)=>{let c={track:i,stream:f};s.set(o,c),l&&a.set(l,c),u&&r.set(u,f)},getRemoteTrack:(o,i)=>{var f;return(f=s.get(o))!=null?f:i?a.get(i):void 0},clearRemote:()=>{t.clear(),r.clear(),s.clear(),a.clear()}}},Ir=({iterate:e,isActive:n,getSharedMediaPeer:t})=>{let r={},s={},a=ot(),o={onPeerStream:null,onPeerTrack:null},i=(u,c,d,g)=>{var y,w,P;n(u)&&((w=(y=t(u))==null?void 0:y.__trysteroMedia)==null||w.rememberRemoteStream(c,d,typeof d.id=="string"?d.id:void 0),(P=o.onPeerStream)==null||P.call(o,d,u,g))},f=(u,c,d,g,y)=>{var w,P,b;n(u)&&((P=(w=t(u))==null?void 0:w.__trysteroMedia)==null||P.rememberRemoteTrack(c,d,g,typeof d.id=="string"?d.id:void 0,typeof g.id=="string"?g.id:void 0),(b=o.onPeerTrack)==null||b.call(o,d,g,u,y))},l=(u,c,d,g,y,w={})=>{let P={k:c,...w,...d===void 0?{}:{m:d}};return e(u,async(b,v)=>{await g(P,b),y(v)})};return{addStream:(u,c,d)=>l(c.target,a.getStreamKey(u),c.metadata,d,g=>g.addStream(u),{s:u.id}),removeStream:(u,c)=>{e(c,(d,g)=>g.removeStream(u))},addTrack:(u,c,d,g)=>l(d.target,a.getTrackKey(u),d.metadata,g,y=>y.addTrack(u,c),{s:c.id,t:u.id}),removeTrack:(u,c)=>{e(c,(d,g)=>g.removeTrack(u))},replaceTrack:(u,c,d,g)=>l(d.target,a.getTrackKey(c),d.metadata,g,y=>y.replaceTrack(u,c),{t:u.id}),receiveStreamMeta:(u,c)=>{var y,w,P;if(!n(c))return;let d=Lr(u);if(!d)return;let g=(w=(y=t(c))==null?void 0:y.__trysteroMedia)==null?void 0:w.getRemoteStream(d.key,d.streamId);if(g){i(c,d.key,g,d.metadata);return}((P=r[c])!=null?P:r[c]=[]).push(d)},receiveTrackMeta:(u,c)=>{var y,w,P;if(!n(c))return;let d=Lr(u);if(!d)return;let g=(w=(y=t(c))==null?void 0:y.__trysteroMedia)==null?void 0:w.getRemoteTrack(d.key,d.trackId);if(g){f(c,d.key,g.track,g.stream,d.metadata);return}((P=s[c])!=null?P:s[c]=[]).push(d)},receiveRemoteStream:(u,c)=>{var g;if(!n(u))return;let d=(g=r[u])==null?void 0:g.shift();d&&i(u,d.key,c,d.metadata)},receiveRemoteTrack:(u,c,d)=>{var y;if(!n(u))return;let g=(y=s[u])==null?void 0:y.shift();g&&f(u,g.key,c,d,g.metadata)},clearPeer:u=>{delete r[u],delete s[u]},get onPeerStream(){return o.onPeerStream},set onPeerStream(u){o.onPeerStream=u},get onPeerTrack(){return o.onPeerTrack},set onPeerTrack(u){o.onPeerTrack=u}}};var xr="beforeunload",gs=1e4,Be=e=>"@_"+e,fn=new Set,Nr=()=>fn.forEach(e=>e()),hs=e=>(fn.add(e),fn.size===1&&addEventListener(xr,Nr),()=>{fn.delete(e),fn.size||removeEventListener(xr,Nr)}),$r=(e,n,t,{onPeerHandshake:r,onHandshakeError:s,handshakeTimeoutMs:a=gs,isPassive:o=!1}={})=>{let i={},f={},l={},u={onPeerJoin:null,onPeerLeave:null},c=ne,d=null,g=(p,S,{includePending:C=!1}={})=>(p?Array.isArray(p)?p:[p]:Y(C?i:f)).flatMap(_=>{let k=C?i[_]:f[_];return k?[Promise.resolve(S(_,k))]:(console.warn(`${Q}: no peer with id ${_} found`),[])}),y=Ir({iterate:(p,S)=>g(p,(C,_)=>S(C,_)),isActive:p=>!!f[p],getSharedMediaPeer:p=>{var S;return(S=i[p])!=null?S:null}}),w=_r({getPeer:(p,S)=>(S?i:f)[p],getPeerIds:p=>Y(p?i:f),canReceiveFromPeer:(p,S)=>!!(d!=null&&d.canReceiveFromPeer(p,S))}),P=w.makeInternalAction,b=w.handleData,v=w.makeAction,O=(p,S=j("peer disconnected"))=>{var _;let C=ge(S,"peer disconnected");d==null||d.clearPeer(p,C),delete i[p],delete f[p],w.clearPeer(p,C),(_=l[p])==null||_.splice(0).forEach(k=>k.reject(C)),delete l[p],y.clearPeer(p)},U=(p,S,C)=>{var M;let _=i[p];if(!_||S&&_!==S)return;let k=!!f[p];O(p,C),_.destroy(),k&&((M=u.onPeerLeave)==null||M.call(u,p)),n(p)},T=async()=>{await J.send(""),await new Promise(p=>setTimeout(p,99)),ie(i).forEach(([p,S])=>{S.destroy(),O(p,j("room left"))}),c(),t()},E=P(Be("ping")),I=P(Be("pong")),R=P(Be("signal")),q=P(Be("stream")),V=P(Be("track")),J=P(Be("leave"),{sendToPending:!0,receiveWhilePending:!0}),W=P(Be("hsdata"),{sendToPending:!0,receiveWhilePending:!0}),z=P(Be("hsready"),{sendToPending:!0,receiveWhilePending:!0});return d=Rr({...r===void 0?{}:{onPeerHandshake:r},...s===void 0?{}:{onHandshakeError:s},handshakeTimeoutMs:a,sendHandshakeData:W.send,sendHandshakeReady:z.send,onActivate:(p,S)=>{var C;f[p]=S,(C=u.onPeerJoin)==null||C.call(u,p)},onFailure:(p,S,C)=>U(p,S,C)}),E.onMessage((p,S)=>I.send("",S)),I.onMessage((p,S)=>{var _;let C=l[S];(_=C==null?void 0:C.shift())==null||_.resolve(),C&&!C.length&&delete l[S]}),R.onMessage((p,S)=>{var C;f[S]&&((C=i[S])==null||C.signal(p))}),q.onMessage((p,S)=>y.receiveStreamMeta(p,S)),V.onMessage((p,S)=>y.receiveTrackMeta(p,S)),J.onMessage((p,S)=>U(S,void 0,j("peer left room"))),W.onMessage((p,S,C)=>d==null?void 0:d.receiveHandshakeData(p,S,C)),z.onMessage((p,S)=>d==null?void 0:d.receiveHandshakeReady(S)),e((p,S)=>{let C=i[S];if(C){if(C===p)return;C.destroy(),O(S,j("peer replaced"))}i[S]=p,d==null||d.addPeer(S,p),p.setHandlers({data:_=>b(S,_),stream:_=>y.receiveRemoteStream(S,_),track:(_,k)=>y.receiveRemoteTrack(S,_,k),signal:_=>{f[S]&&R.send(_,S)},close:()=>U(S,p,j("peer disconnected")),error:_=>{console.error(`${Q} peer error:`,_),U(S,p,_)}}),d==null||d.start(S,p)}),Vn&&(c=hs(()=>T().catch(ne))),{makeAction:v,leave:T,ping:async p=>{if(!f[p])throw j(`no active peer with id ${p}`);let S=Date.now();return await new Promise((C,_)=>{var m;let k=(m=l[p])!=null?m:l[p]=[],M=()=>{let h=l[p];if(!h)return;let A=h.indexOf(D);A>-1&&h.splice(A,1),h.length||delete l[p]},D={resolve:()=>{M(),C()},reject:h=>{M(),_(h)}};k.push(D),E.send("",p).catch(h=>D.reject(ge(h,"peer disconnected")))}),Date.now()-S},isPassive:()=>o,getPeers:()=>Gn(ie(f).map(([p,S])=>[p,S.connection])),addStream:(p,S={})=>y.addStream(p,S,q.send),removeStream:(p,S={})=>{y.removeStream(p,S.target)},addTrack:(p,S,C={})=>y.addTrack(p,S,C,V.send),removeTrack:(p,S={})=>{y.removeTrack(p,S.target)},replaceTrack:(p,S,C={})=>y.replaceTrack(p,S,C,V.send),get onPeerJoin(){return u.onPeerJoin},set onPeerJoin(p){u.onPeerJoin=p,p&&Y(f).forEach(S=>p(S))},get onPeerLeave(){return u.onPeerLeave},set onPeerLeave(p){u.onPeerLeave=p},get onPeerStream(){return y.onPeerStream},set onPeerStream(p){y.onPeerStream=p},get onPeerTrack(){return y.onPeerTrack},set onPeerTrack(p){y.onPeerTrack=p}}};var jr=1,Ur=2,Kr=(e,n)=>{let t=he(e),r=new Uint8Array(3+t.byteLength+n.byteLength);return r[0]=jr,r[1]=t.byteLength>>>8&255,r[2]=t.byteLength&255,r.set(t,3),r.set(n,3+t.byteLength),r},ps=(e,n)=>{let t=he(e),r=new Uint8Array(4+t.byteLength);return r[0]=Ur,r[1]=Number(n),r[2]=t.byteLength>>>8&255,r[3]=t.byteLength&255,r.set(t,4),r},ws=e=>{var s,a,o,i;let n=new Uint8Array(e);if(n.byteLength<3)return null;if(n[0]===jr){let f=((s=n[1])!=null?s:0)<<8|((a=n[2])!=null?a:0),l=3+f;return f<=0||n.byteLength<l?null:{type:"room",roomToken:pe(n.subarray(3,l)),payload:n.subarray(l).slice().buffer}}if(n[0]!==Ur||n.byteLength<4)return null;let t=((o=n[2])!=null?o:0)<<8|((i=n[3])!=null?i:0),r=4+t;return t<=0||n.byteLength<r?null:{type:"presence",roomToken:pe(n.subarray(4,r)),isPresent:n[1]===1}},qr=e=>{let{connection:n,channel:t}=e;return e.isDead||n.connectionState==="closed"||n.connectionState==="failed"||n.iceConnectionState==="closed"||n.iceConnectionState==="failed"||(t==null?void 0:t.readyState)==="closing"||(t==null?void 0:t.readyState)==="closed"},Fr=e=>{if(qr(e))return"stale";let{channel:n}=e;return!n||n.readyState!=="open"?"transient":"live"},zr=class{constructor(){oe(this,"byApp",{});oe(this,"roomPresenceHandlers",{})}getMap(e){var n,t;return(t=(n=this.byApp)[e])!=null?t:n[e]={}}get(e,n){var t;return(t=this.byApp[e])==null?void 0:t[n]}isPeerStale(e){return qr(e)}getHealth(e){return this.isPeerStale(e)?"stale":"live"}setRoomPresenceHandler(e,n){return this.roomPresenceHandlers[e]=n,()=>{this.roomPresenceHandlers[e]===n&&delete this.roomPresenceHandlers[e]}}sendRoomPresence(e,n,t){e.isClosing||e.peer.isDead||e.peer.sendData(ps(n,t))}clear(e,n,{destroyPeer:t}){let r=this.byApp[e],s=r==null?void 0:r[n];if(!s||s.isClosing)return;s.idleTimer=K(s.idleTimer),s.isClosing=!0,t&&!s.peer.isDead&&s.peer.destroy();let a=Re(s.bindings);s.bindings={},s.bindingsByToken={},s.controlRoomId=null,delete r[n],a.forEach(o=>{var i,f;(f=(i=o.handlers).close)==null||f.call(i),o.pendingData.length=0,o.pendingSendData.length=0,o.pendingTracks.length=0}),s.media.clearRemote(),s.pendingDataByToken.clear(),s.remoteRoomTokens.clear(),Y(r).length===0&&delete this.byApp[e]}register(e,n,t,r){let s=this.getMap(e),a=s[n];if(a){if(a.idleTimer=K(a.idleTimer),a.peer===t)return a;this.clear(e,n,{destroyPeer:!0})}let o={appId:e,peerId:n,peer:t,bindings:{},bindingsByToken:{},pendingDataByToken:new Map,remoteRoomTokens:new Set,idleTimer:null,controlRoomId:null,streamOwners:new Map,trackOwners:new Map,media:ot(),idleMs:r,isClosing:!1};return t.setHandlers({data:i=>this.dispatchData(o,i),signal:i=>this.dispatchSignal(o,i),close:()=>this.clear(e,n,{destroyPeer:!1}),error:i=>{console.error(`${Q} peer error:`,i),this.clear(e,n,{destroyPeer:!1})},track:(i,f)=>this.dispatchTrack(o,i,f)}),s[n]=o,o}bind(e,n,t,{onDetach:r}){var f;let s=t.bindings[e];if(s)return t.idleTimer=K(t.idleTimer),{proxy:s.proxy,isNew:!1};let a={roomId:e,roomToken:null,roomTokenPromise:n,handlers:{},pendingData:[],pendingSendData:[],pendingTracks:[],detach:ne,proxy:{}},o=()=>{var l;t.bindings[e]&&(this.pruneRoomOwnership(t,e),delete t.bindings[e],a.roomToken&&t.bindingsByToken[a.roomToken]===a&&delete t.bindingsByToken[a.roomToken],t.controlRoomId===e&&(t.controlRoomId=(l=Y(t.bindings)[0])!=null?l:null),r(),this.scheduleIdleTimer(t))},i={created:t.peer.created,get connection(){return t.peer.connection},get channel(){return t.peer.channel},get isDead(){return t.peer.isDead},getOffer:l=>t.peer.getOffer(l),signal:l=>t.peer.signal(l),sendData:l=>{if(!a.roomToken){a.pendingSendData.push(l);return}t.peer.sendData(Kr(a.roomToken,l))},destroy:()=>o(),setHandlers:l=>{let{signal:u,...c}=l;Object.assign(a.handlers,c),u&&(a.handlers.signal=u),this.flushBindingQueues(a)},offerPromise:t.peer.offerPromise,addStream:l=>{var d;let u=(d=t.streamOwners.get(l))!=null?d:new Set,c=u.size===0;u.add(e),t.streamOwners.set(l,u),c&&t.peer.addStream(l)},removeStream:l=>{let u=t.streamOwners.get(l);u&&(u.delete(e),u.size===0&&(t.streamOwners.delete(l),t.peer.removeStream(l)))},addTrack:(l,u)=>{var g,y;let c=(g=t.trackOwners.get(l))!=null?g:{stream:u,rooms:new Set},d=c.rooms.size===0;return c.stream=u,c.rooms.add(e),t.trackOwners.set(l,c),d?t.peer.addTrack(l,u):(y=t.peer.connection.getSenders().find(w=>w.track===l))!=null?y:t.peer.addTrack(l,u)},removeTrack:l=>{let u=t.trackOwners.get(l);u&&(u.rooms.delete(e),u.rooms.size===0&&(t.trackOwners.delete(l),t.peer.removeTrack(l)))},replaceTrack:(l,u)=>{var d;let c=t.trackOwners.get(l);if(c){t.trackOwners.delete(l);let g=(d=t.trackOwners.get(u))!=null?d:{stream:c.stream,rooms:new Set};c.rooms.forEach(y=>g.rooms.add(y)),t.trackOwners.set(u,g)}return t.peer.replaceTrack(l,u)},__trysteroMedia:t.media};return a.proxy=i,a.detach=o,t.bindings[e]=a,(f=t.controlRoomId)!=null||(t.controlRoomId=e),t.idleTimer=K(t.idleTimer),n.then(l=>{if(t.isClosing||t.bindings[e]!==a)return;a.roomToken=l,t.bindingsByToken[l]=a;let u=t.pendingDataByToken.get(l);u!=null&&u.length&&(a.pendingData.push(...u),t.pendingDataByToken.delete(l)),a.pendingSendData.splice(0).forEach(c=>t.peer.sendData(Kr(l,c))),this.flushBindingQueues(a)}),{proxy:i,isNew:!0}}pruneRoomOwnership(e,n){e.streamOwners.forEach((t,r)=>{t.delete(n),t.size===0&&(e.streamOwners.delete(r),e.peer.removeStream(r))}),e.trackOwners.forEach((t,r)=>{t.rooms.delete(n),t.rooms.size===0&&(e.trackOwners.delete(r),e.peer.removeTrack(r))})}scheduleIdleTimer(e){e.isClosing||Y(e.bindings).length>0||(e.idleTimer=K(e.idleTimer),e.idleTimer=setTimeout(()=>{var t;let n=(t=this.byApp[e.appId])==null?void 0:t[e.peerId];!n||Y(n.bindings).length>0||this.clear(e.appId,e.peerId,{destroyPeer:!0})},e.idleMs))}getSignalBinding(e){if(e.controlRoomId){let t=e.bindings[e.controlRoomId];if(t!=null&&t.handlers.signal)return t}let n=Re(e.bindings).find(t=>!!t.handlers.signal);return n?(e.controlRoomId=n.roomId,n):null}flushBindingQueues(e){let{handlers:n}=e;n.data&&e.pendingData.length>0&&e.pendingData.splice(0).forEach(t=>{var r;return(r=n.data)==null?void 0:r.call(n,t)}),(n.track||n.stream)&&e.pendingTracks.length&&e.pendingTracks.splice(0).forEach(({track:t,stream:r})=>{var s,a;(s=n.track)==null||s.call(n,t,r),(a=n.stream)==null||a.call(n,r)})}dispatchData(e,n){var s,a,o;let t=ws(n);if(!t)return;if(t.type==="presence"){t.isPresent?e.remoteRoomTokens.add(t.roomToken):e.remoteRoomTokens.delete(t.roomToken),(a=(s=this.roomPresenceHandlers)[e.appId])==null||a.call(s,e.peerId,t.roomToken,t.isPresent);return}let r=e.bindingsByToken[t.roomToken];if(!r){let i=(o=e.pendingDataByToken.get(t.roomToken))!=null?o:[];i.push(t.payload),e.pendingDataByToken.set(t.roomToken,i);return}r.handlers.data?r.handlers.data(t.payload):r.pendingData.push(t.payload)}dispatchSignal(e,n){var t,r,s;(s=(t=this.getSignalBinding(e))==null?void 0:(r=t.handlers).signal)==null||s.call(r,n)}dispatchTrack(e,n,t){Re(e.bindings).forEach(r=>{var s,a,o,i;if(r.handlers.track||r.handlers.stream){(a=(s=r.handlers).track)==null||a.call(s,n,t),(i=(o=r.handlers).stream)==null||i.call(o,t);return}r.pendingTracks.push({track:n,stream:t})})}};var Ps=23333,vs=12,ks=7533,Ss=23333,st="__legacy__",Mn="offer-placeholder",bs=["offer","answer","candidate"],Rs=e=>{if(typeof e=="string")try{let n=de(e);return n&&typeof n=="object"?n:null}catch{return null}return e&&typeof e=="object"?e:null},ln=(e,n)=>typeof e[n]=="string"&&e[n]?e[n]:void 0,As=e=>bs.some(n=>n in e&&(typeof e[n]!="string"||e[n]==="")),Wr=(e,n,t,r,s,a)=>{e.toCipher(n).then(o=>{e.isLeaving()||!a()||r(t,te(s(o.sdp)))})},Ts=()=>({status:"idle",offerPeer:null,offerId:null,offerSdp:null,offerInitPromise:null,offerAnswered:!1,offerRelays:[],offerSignalRelays:[],offerSignalBacklog:[],offerRelayTimers:[],offerExpiryTimer:null,connectedPeer:null,connectedPeerUnhealthySinceMs:null,answeringExpiryTimer:null,answeringPeer:null,answerSent:!1,connectionErrorReported:!1,pendingCandidates:{}}),Es=e=>{var n,t,r;return[...(n=e.turnConfig)!=null?n:[],...(r=(t=e.rtcConfig)==null?void 0:t.iceServers)!=null?r:[]].some(({urls:s})=>(Array.isArray(s)?s:[s]).some(a=>/^turns?:/i.test(a)))},Ms=(e,n)=>`could not connect to peer ${e} after exchanging SDP; ${Es(n)?"check that your TURN server URLs and credentials are reachable by both peers":"configure TURN servers with turnConfig or rtcConfig.iceServers"}`,Bn=(e,n,t)=>{var r;e.isLeaving()||n.connectedPeer||n.connectionErrorReported||(n.connectionErrorReported=!0,(r=e.onJoinError)==null||r.call(e,{error:Ms(t,e.config),appId:e.appId,peerId:t,roomId:e.roomId}))},Je=(e,n)=>{var t;return(t=e[n])!=null?t:e[n]=Ts()},me=e=>{e.connectedPeer?e.status="connected":e.answeringPeer?e.status="answering":e.offerPeer||e.offerRelays.some(Boolean)?e.status="offering":e.status="idle"},En=(e,n)=>{e.answeringPeer===n&&(e.answeringExpiryTimer=K(e.answeringExpiryTimer),e.answeringPeer=null,e.answerSent=!1,me(e))},On=(e,n,t)=>{e.connectedPeer&&(e.connectedPeer.isDead||e.connectedPeer.destroy(),e.connectedPeer=null,e.connectedPeerUnhealthySinceMs=null,me(e))},at=(e,n)=>{e.offerRelayTimers[n]=K(e.offerRelayTimers[n]),e.offerRelays[n]&&(e.offerRelays[n]=void 0,me(e))},Jr=(e,n)=>{(e==null?void 0:e.offerRelays[n])===Mn&&at(e,n)},Os=e=>{if(e.isDead||e.connection.connectionState==="closed")return!0;try{return!!e.connection.remoteDescription}catch{return!0}},We=(e,n)=>{let t=e.offerAnswered;e.offerExpiryTimer=K(e.offerExpiryTimer),e.offerInitPromise=null,e.offerRelays.forEach((r,s)=>at(e,s)),e.offerRelays=[],e.offerSignalRelays=[],e.offerRelayTimers=[],e.offerSignalBacklog=[],e.offerPeer&&e.offerPeer!==e.connectedPeer&&(t||Os(e.offerPeer)?e.offerPeer.isDead||e.offerPeer.destroy():n.recycle(e.offerPeer)),e.offerPeer=null,e.offerId=null,e.offerSdp=null,e.offerAnswered=!1,e.connectionErrorReported=!1,me(e)},Bs=(e,n,t,r)=>{K(n.answeringExpiryTimer),n.answeringExpiryTimer=setTimeout(()=>{let s=e.peerStates[t];!s||s.connectedPeer||s.answeringPeer!==r||(s.answerSent&&Bn(e,s,t),r.destroy(),En(s,r),e.checkDeactivate())},Ss)},Ds=async(e,n,t)=>{let r=t?[t,st]:[st];for(let s of r){let a=e.pendingCandidates[s];if(a!=null&&a.length){delete e.pendingCandidates[s];for(let o of a)await n.signal(o)}}},Vr=(e,n,t,r=sn)=>{K(n.offerExpiryTimer);let s=n.offerId;n.offerExpiryTimer=setTimeout(()=>{let a=e.peerStates[t];!a||a.connectedPeer||a.offerId!==s||(a.offerAnswered&&Bn(e,a,t),We(a,e.offerPool),e.checkDeactivate())},r)},Cs=(e,n,t,r)=>n.offerPeer&&n.offerId&&n.offerSdp?Promise.resolve({peer:n.offerPeer,offer:n.offerSdp,offerId:n.offerId}):(n.offerInitPromise||(n.offerInitPromise=(async()=>{let s=(await e.offerPool.checkout(1,!1,e.encryptOffer))[0];if(!s)throw j("failed to allocate offer peer");let{peer:a,offer:o}=s;n.offerPeer=a,n.offerId=le(vs),n.offerSdp=o,n.offerAnswered=!1,n.connectionErrorReported=!1,n.offerSignalBacklog=[],me(n);let i=()=>{n.offerPeer===a&&!n.connectedPeer&&(n.offerAnswered&&Bn(e,n,t),We(n,e.offerPool)),e.disconnectPeer(a,t),e.checkDeactivate()};return a.setHandlers({connect:()=>e.connectPeer(a,t,r),signal:f=>{n.offerPeer===a&&(n.offerSignalBacklog.push(f),n.offerSignalRelays.forEach(l=>l==null?void 0:l(f)))},close:i,error:i}),Vr(e,n,t),{peer:a,offer:o,offerId:n.offerId}})().finally(()=>n.offerInitPromise=null)),n.offerInitPromise),_s=async(e,n,t,r,s)=>{var l;if(r){e.attachSharedPeerToRoom(t,r);return}let a=e.peerStates[t];if(!a||a.connectedPeer||a.answeringPeer||a.offerAnswered){Jr(a,n);return}if(a.offerRelays[n]!==Mn)return;let[o,i]=await ue([ke(Ne(e.rootTopicPlaintext,t)),Cs(e,a,t,n)]);if(e.isLeaving())return;if(a.connectedPeer||a.answeringPeer||a.offerAnswered||a.offerRelays[n]!==Mn){Jr(a,n);return}a.offerRelayTimers[n]=K(a.offerRelayTimers[n]),a.offerRelays[n]=!0,me(a),a.offerRelayTimers[n]=setTimeout(()=>xs(e,t,n),((l=e.announceIntervals[n])!=null?l:e.announceIntervalMs)*.9);let f=!1;a.offerSignalRelays[n]=u=>{f&&(e.isLeaving()||a.connectedPeer||a.offerPeer!==i.peer||a.offerId!==i.offerId||u.type!=="candidate"||Wr(e,u,o,s,c=>({peerId:X,offerId:i.offerId,candidate:c,...e.isPassive?{passive:!0}:{}}),()=>!a.connectedPeer&&a.offerPeer===i.peer&&a.offerId===i.offerId))},s(o,te({peerId:X,offerId:i.offerId,offer:i.offer,...e.isPassive?{passive:!0}:{}})),f=!0,a.offerSignalBacklog.forEach(u=>{var c,d;return(d=(c=a.offerSignalRelays)[n])==null?void 0:d.call(c,u)})},Ls=async(e,n,t,r,s,a,o)=>{var g;let i=Je(e.peerStates,t);if(i.answeringPeer||i.offerAnswered)return;let f=!!(i.offerPeer||i.offerRelays.some(Boolean));if((f||a)&&X<t)return;f&&We(i,e.offerPool);let l=e.initPeer(!1,e.config);i.answeringPeer=l,i.answerSent=!1,i.connectionErrorReported=!1,Bs(e,i,t,l),me(i);let u=()=>{i.answeringPeer===l&&!i.connectedPeer&&i.answerSent&&Bn(e,i,t),En(i,l),e.disconnectPeer(l,t),e.checkDeactivate()};l.setHandlers({connect:()=>e.connectPeer(l,t,n),close:u,error:u});let c;try{c=await e.toPlain({type:"offer",sdp:r})}catch{En(i,l),(g=e.onJoinError)==null||g.call(e,{error:"incorrect room password when decrypting offer",appId:e.appId,peerId:t,roomId:e.roomId});return}if(l.isDead){En(i,l);return}let d=await ke(Ne(e.rootTopicPlaintext,t));e.isLeaving()||(l.setHandlers({signal:y=>{e.isLeaving()||i.answeringPeer!==l||l.isDead||y.type!=="answer"&&y.type!=="candidate"||Wr(e,y,d,o,w=>{let P={peerId:X};return y.type==="answer"?(i.answerSent=!0,P.answer=w):P.candidate=w,s&&(P.offerId=s),e.isPassive&&(P.passive=!0),P},()=>i.answeringPeer===l&&!l.isDead)}}),await l.signal(c),await Ds(i,l,s))},Hs=async(e,n,t,r,s)=>{var c,d,g,y;let a;try{a=await e.toPlain({type:kn,sdp:t})}catch{return}let o=Je(e.peerStates,n),i=r&&(o!=null&&o.offerPeer)&&o.offerId===r?o.offerPeer:null,f=(c=o==null?void 0:o.answeringPeer)!=null?c:null,l=!r&&(o!=null&&o.offerPeer)?o.offerPeer:null,u=s&&!s.isDead?s:(d=i!=null?i:f)!=null?d:l;if(!u||u.isDead){let w=r!=null?r:st;((y=(g=o.pendingCandidates)[w])!=null?y:g[w]=[]).push(a);return}u.signal(a)},Is=async(e,n,t,r,s,a)=>{var i;let o;try{o=await e.toPlain({type:"answer",sdp:r})}catch{(i=e.onJoinError)==null||i.call(e,{error:"incorrect room password when decrypting answer",appId:e.appId,peerId:t,roomId:e.roomId});return}if(a)e.offerPool.claimLeased(a),a.setHandlers({connect:()=>e.connectPeer(a,t,n),close:()=>e.disconnectPeer(a,t)}),a.signal(o);else{let f=e.peerStates[t];if(!f||!f.offerPeer||f.offerAnswered||s&&f.offerId&&s!==f.offerId||f.offerPeer.isDead)return;f.offerAnswered=!0,Vr(e,f,t,Ps),f.offerPeer.signal(o)}},xs=(e,n,t)=>{let r=e.peerStates[n];!r||r.connectedPeer||r.offerRelays[t]&&(at(r,t),e.checkDeactivate())},Gr=e=>n=>async(t,r,s)=>{var U,T,E;if(e.isLeaving())return;let a=Rs(r);if(!a||As(a))return;let o=(U=ln(a,"peerId"))!=null?U:"",i=ln(a,"offer"),f=ln(a,"answer"),l=ln(a,"candidate"),u=ln(a,"offerId"),c=a.peer,d=a.hasOutgoingOffer===!0,g=a.passive===!0;if(!o||o===X)return;let[y,w]=await ue([e.rootTopicP,e.selfTopicP]);if(e.isLeaving()||t!==y&&t!==w||e.isPassive&&g||(e.isPassive&&!e.isActive&&!f&&!l&&(e.isActive=!0,(T=e.requeueAnnounce)==null||T.call(e)),e.isPassive&&!e.isActive))return;let P=e.peerStates[o],b=P==null?void 0:P.connectedPeer;if(b&&P){let I=Fr(b);if(I==="live"){P.connectedPeerUnhealthySinceMs=null;return}if(I==="stale")On(P,o,"message-from-stale-peer");else{let R=Date.now(),q=(E=P.connectedPeerUnhealthySinceMs)!=null?E:R;if(P.connectedPeerUnhealthySinceMs=q,R-q<ks)return;On(P,o,"message-from-prolonged-disconnect")}}let v=e.sharedPeers.get(e.appId,o);v&&e.sharedPeers.getHealth(v.peer)==="stale"&&(e.sharedPeers.clear(e.appId,o,{destroyPeer:!0}),v=void 0);let O=!!(o&&!i&&!f&&!l);if(O&&!v){let I=Je(e.peerStates,o),R=X<o;if(I.answeringPeer||I.connectedPeer||I.offerAnswered)return;if(!R&&!I.offerPeer){let q=await ke(Ne(e.rootTopicPlaintext,o));!e.isLeaving()&&!I.connectedPeer&&s(q,te({peerId:X}));return}if(I.offerRelays[n])return;I.offerRelays[n]=Mn,me(I)}if(v&&(i||f||l)){if(v.bindings[e.roomId])return;e.attachSharedPeerToRoom(o,v);return}if(O)return _s(e,n,o,v,s);if(i)return Ls(e,n,o,i,u,d,s);if(l)return Hs(e,o,l,u,c);if(f)return Is(e,n,o,f,u,c)};var it=5333,Ns=[233,533,1333],$s=7533,Ks=123333,un=({init:e,subscribe:n,announce:t,deactivate:r})=>{let s={},a={},o={},i={},f=new zr,l=()=>Re(s).some(T=>Y(T).length>0),u=T=>{var E;return(E=a[T])!=null?E:a[T]={}},c=T=>{var E;return(E=o[T])!=null?E:o[T]={}},d=(T,E,I)=>{f.getHealth(T.peer)==="live"&&f.sendRoomPresence(T,E,I)},g=(T,E)=>{var I;ie((I=a[T])!=null?I:{}).forEach(([R,q])=>{if(!q.shouldAdvertise())return;let{roomToken:V,roomTokenPromise:J}=q;if(V){d(E,V,!0);return}J.then(W=>{var z;((z=a[T])==null?void 0:z[R])===q&&q.roomToken===W&&(f.get(T,E.peerId)!==E||E.isClosing||q.shouldAdvertise()&&d(E,W,!0))})})},y=(T,E,I)=>Re(f.getMap(T)).forEach(R=>d(R,E,I)),w=T=>{i[T]||(i[T]=f.setRoomPresenceHandler(T,(E,I,R)=>{var J,W,z;if(!R)return;let q=f.get(T,E),V=(J=o[T])==null?void 0:J[I];!q||!V||(z=(W=a[T])==null?void 0:W[V])==null||z.attachSharedPeerToRoom(E,q)}))},P=T=>{var E;s[T]&&Y(s[T]).length>0||((E=i[T])==null||E.call(i),delete i[T],delete a[T],delete o[T])},b=!1,v=[],O=null,U=ne;return(T,E,I)=>{var St,bt,Rt,At,Tt,Et;if(!T)throw j("requires a config map as the first argument");if(I&&typeof I!="object")throw j("third argument must be a callbacks object");let{appId:R}=T,q=I==null?void 0:I.onJoinError,V=I==null?void 0:I.onPeerHandshake,J=I==null?void 0:I.handshakeTimeoutMs;if(!R)throw j("config map is missing appId field");if(!E)throw j("roomId argument required");if(J!==void 0&&(!Number.isFinite(J)||J<=0))throw j("handshakeTimeoutMs must be a positive number");if((St=s[R])!=null&&St[E])return s[R][E];w(R);let W=Ne(Q,R,E),z=ke(W),p=ke(Ne(W,X)),S=hr((bt=T.password)!=null?bt:"",R,E),C=pr(R,E),_=(Rt=T._test_only_sharedPeerIdleMs)!=null?Rt:Ks,k=!1,M=H=>async x=>({type:x.type,sdp:await H(S,x.sdp)}),D=M(kr),m=M(vr),h=f.getMap(R),A=()=>Qn(!0,T);O||(O=new Sr(A));let L=O,$=async H=>{let x=await H.getOffer(Date.now()-H.created>sn);if(!x||x.type!=="offer")throw j("failed to get offer for peer");return(await m(x)).sdp},we=(H,x)=>{let F=Je(ee.peerStates,H);F.answeringExpiryTimer=K(F.answeringExpiryTimer),F.answeringPeer=null;let{proxy:G,isNew:N}=f.bind(E,C,x,{onDetach:()=>{let re=ee.peerStates[H];(re==null?void 0:re.connectedPeer)===x.peer&&(re.connectedPeer=null,re.connectedPeerUnhealthySinceMs=null,me(re))}});F.connectedPeer=x.peer,F.connectedPeerUnhealthySinceMs=null,me(F),N&&In(G,H),We(F,L)},ce=(H,x,F)=>{if(k){H.destroy();return}let G=Je(ee.peerStates,x);if(G.connectedPeer){let _e=h[x];if(_e&&G.connectedPeer===_e.peer&&_e.bindings[E])return;G.connectedPeer!==H&&!H.isDead&&H.destroy();return}let N=h[x];if(N&&f.getHealth(N.peer)==="stale"&&(f.clear(R,x,{destroyPeer:!0}),N=void 0),N&&N.peer!==H){H.isDead||H.destroy(),we(x,N);return}let re=!N;N||(N=f.register(R,x,H,_)),we(x,N),re&&g(R,N)},yn=(H,x)=>{if(k)return;let F=ee.peerStates[x];(F==null?void 0:F.connectedPeer)===H&&(On(F,x,"close-event"),gn())},se=!!T.passive,fe=null,Ce,Pt=ne,gn=()=>{if(!se||!ee.isActive)return;let H=!1;ie(ee.peerStates).forEach(([x,F])=>{F.connectedPeer||F.answeringPeer||F.offerInitPromise||F.offerPeer||F.offerRelays.some(Boolean)?H=!0:F.status==="idle"&&delete ee.peerStates[x]}),H||(ee.isActive=!1,Ce=K(Ce),Ue.forEach(K),Ue.length=0,Pt(),fe!=null&&fe.roomToken&&y(R,fe.roomToken,!1))},ee={appId:R,roomId:E,config:T,peerStates:{},rootTopicPlaintext:W,rootTopicP:z,selfTopicP:p,toPlain:D,toCipher:m,isLeaving:()=>k,isPassive:se,isActive:!se,onJoinError:q,sharedPeers:f,offerPool:L,encryptOffer:$,initPeer:Qn,connectPeer:ce,disconnectPeer:yn,attachSharedPeerToRoom:we,checkDeactivate:gn,announceIntervals:[],announceIntervalMs:it},_n={config:T,appId:R,roomId:E,isPassive:se},ho=Gr(ee);if(!b){let H=e(T);v=(Array.isArray(H)?H:[H]).map(x=>Promise.resolve(x)),b=!0,U=(At=T.relayConfig)!=null&&At.manualReconnection?ne:gr()}!se&&!L.isActive&&L.warmup(),ee.announceIntervals=v.map(()=>it);let Ln=v.map(()=>0),Hn=v.map(()=>0),Ue=[],vt=v.map(async(H,x)=>n(await H,await z,await p,ho(x),F=>L.getOffers(F,$),_n));ue([z,p]).then(([H,x])=>{if(k)return;let F=async(G,N)=>{var Dt,Ct,_t,Lt;if(k||se&&!ee.isActive)return;let re=se?{passive:!0}:void 0,_e;try{_e=await t(G,H,x,re,_n),Hn[N]=0}catch(ko){let Ht=(Dt=Hn[N])!=null?Dt:0;Ht===0&&((Ct=T.relayConfig)==null?void 0:Ct.warnOnRelayFailure)!==!1&&console.warn(`${Q}: announce failed - ${Ae(ko,"")}`),Hn[N]=Ht+1}if(k||se&&!ee.isActive)return;typeof _e=="number"&&(ee.announceIntervals[N]=_e);let Mt=(_t=Ln[N])!=null?_t:0;Ln[N]=Mt+1;let Ot=(Lt=ee.announceIntervals[N])!=null?Lt:it,Bt=Ns[Mt];Ue[N]=setTimeout(()=>{F(G,N)},typeof Bt=="number"?Math.min(Ot,Bt):Ot)};Pt=()=>{r&&v.forEach(async G=>{let N=await G;k||r(N,H,x,_n)})},ee.requeueAnnounce=()=>{Ue.forEach(K),Ue.length=0,Ce=K(Ce),L.isActive||L.warmup(),fe!=null&&fe.roomToken&&y(R,fe.roomToken,!0),Ce=setTimeout(gn,$s),v.forEach(async(G,N)=>{let re=await G;re&&!k&&(Ln[N]=0,F(re,N))})},vt.forEach(async(G,N)=>{if(await G,k)return;let re=await v[N];re&&!k&&(!se||ee.isActive)&&F(re,N)})});let In=ne,{compose:po}=br((Tt=T.password)!=null?Tt:"",R,E),kt=po(V),wo={...kt?{onPeerHandshake:kt}:{},...J===void 0?{}:{handshakeTimeoutMs:J},isPassive:se,onHandshakeError:(H,x)=>q==null?void 0:q({error:x.replace(/^handshake failed: /,""),appId:R,peerId:H,roomId:E})};(Et=s[R])!=null||(s[R]={});let Po=u(R),vo=$r(H=>In=H,H=>{if(k)return;let x=ee.peerStates[H];x!=null&&x.connectedPeer&&(x.connectedPeer=null,me(x),gn())},()=>{var x,F;k=!0,In=ne;let H=(x=a[R])==null?void 0:x[E];H!=null&&H.roomToken&&(y(R,H.roomToken,!1),(F=o[R])==null||delete F[H.roomToken],o[R]&&!Y(o[R]).length&&delete o[R]),a[R]&&(delete a[R][E],Y(a[R]).length||delete a[R]),ie(ee.peerStates).forEach(([G,N])=>{if(N.answeringExpiryTimer=K(N.answeringExpiryTimer),N.connectedPeer&&!N.connectedPeer.isDead){let re=h[G];(!re||re.peer!==N.connectedPeer)&&N.connectedPeer.destroy()}N.answeringPeer&&!N.answeringPeer.isDead&&N.answeringPeer.destroy(),We(N,L),N.connectedPeer=null,N.answeringPeer=null,me(N)}),s[R]&&(delete s[R][E],Y(s[R]).length===0&&delete s[R]),Ue.forEach(K),Ce=K(Ce),vt.forEach(async G=>{(await G)()}),!l()&&(b=!1,L.destroy(),O=null,U(),P(R))},wo);return fe={roomToken:null,roomTokenPromise:C,attachSharedPeerToRoom:we,shouldAdvertise:()=>!se||ee.isActive},Po[E]=fe,C.then(H=>{var F;let x=fe;!x||k||((F=a[R])==null?void 0:F[E])!==x||(x.roomToken=H,c(R)[H]=E,Re(h).forEach(G=>{G.remoteRoomTokens.has(H)&&we(G.peerId,G)}),(!se||ee.isActive)&&y(R,H,!0))}),s[R][E]=vo}};var js=["offer","answer","candidate"],Us=e=>{if(typeof e=="string")try{let n=de(e);return n&&typeof n=="object"?n:null}catch{return null}return e},ct=(e,n)=>typeof e[n]=="string"&&e[n]?e[n]:void 0,qs=e=>js.some(n=>n in e&&(typeof e[n]!="string"||e[n]==="")),Fs=e=>{let n=Us(e);if(!n||qs(n))return!1;let t=ct(n,"peerId");return!!(t&&t!==X&&n.passive!==!0&&!ct(n,"answer")&&!ct(n,"candidate"))},ft=e=>{if(!e)throw j("topic strategy missing room context");return e},Zr=(e,n,t,r)=>({kind:n,appId:e.appId,roomId:e.roomId,rootTopic:t,selfTopic:r}),lt=(e,n,t,r)=>({kind:n,appId:e.appId,roomId:e.roomId,rootTopic:t,selfTopic:r}),ut=({init:e,subscribeTopic:n,publishTopic:t,unpublishTopic:r})=>un({init:e,subscribe:async(s,a,o,i,f,l)=>{let u=ft(l),c=(O,U)=>t(s,O,U,lt(u,"signal",a,o)),d=null,g=!1,y=null,w=!1,P=O=>{g||(g=!0,O())},b=()=>(y||(y=Promise.resolve(n(s,o,(O,U)=>{w||i(O,U,c)},Zr(u,"self",a,o))).then(O=>{d=O,w&&P(O)})),y);u.isPassive||await b();let v=await n(s,a,async(O,U)=>{w||(u.isPassive&&Fs(U)&&await b(),w||await i(O,U,c))},Zr(u,"root",a,o));return()=>{w=!0,d&&P(d),v()}},announce:(s,a,o,i,f)=>{let l=ft(f);return t(s,a,te({peerId:X,...i}),lt(l,"announce",a,o))},...r?{deactivate:(s,a,o,i)=>r(s,a,lt(ft(i),"announce",a,o))}:{}});var Yr=on(e=>e.socket),zs=5,Qr="x",eo="EVENT",{secretKey:Js,publicKey:Ws}=Jn.keygen(),Vs=Te(Ws),Gs={},Zs={},dt={},Xr=250,no=()=>Math.floor(Date.now()/1e3),to=e=>{var n;return(n=dt[e])!=null?n:dt[e]=Sn(e,1e4)+2e4},Xs=async(e,n)=>{let t={kind:to(e),tags:[[Qr,e]],created_at:no(),content:n,pubkey:Vs},r=await $e("SHA-256",te([0,t.pubkey,t.created_at,t.kind,t.tags,t.content]));return te([eo,{...t,id:Te(r),sig:Te(await Jn.signAsync(r,Js))}])};var De={},Ys=(e,n,t)=>{var s,a;let r=(a=De[s=e.url])!=null?a:De[s]={subIds:[],topics:new Map,updateTimer:null};r.topics.set(n,t),ro(e,r)},Qs=(e,n)=>{let t=De[e.url];t&&(t.topics.delete(n),t.topics.size===0?(t.updateTimer!==null&&(clearTimeout(t.updateTimer),t.updateTimer=null),t.subIds.forEach(r=>e.send(te(["CLOSE",r]))),delete De[e.url]):ro(e,t))},ro=(e,n)=>{n.updateTimer===null&&(n.updateTimer=setTimeout(()=>{n.updateTimer=null,oo(e)},0))},oo=e=>{let n=De[e.url];if(!n||n.topics.size===0)return;let t=[...n.topics.keys()],r=[],s=no();for(let a=0;a<t.length;a+=Xr)r.push(t.slice(a,a+Xr));for(;n.subIds.length>r.length;){let a=n.subIds.pop();a&&e.send(te(["CLOSE",a]))}r.forEach((a,o)=>{var f,l;let i=(l=(f=n.subIds)[o])!=null?l:f[o]=le(64);e.send(te(["REQ",i,{kinds:[...new Set(a.map(to))],since:s,"#x":a}]))})},ea=e=>{let n=De[e.url];n&&n.topics.size>0&&oo(e)},so=ut({init:e=>tn(e,na,zs,!0).map(n=>{let t=Yr.register(n,()=>rn(n,r=>{var f,l,u;let[s,a,o,i]=de(r);if(s!==eo){let c=`${Q}: relay failure from ${t.url} - `;((f=e.relayConfig)==null?void 0:f.warnOnRelayFailure)!==!1&&(s==="NOTICE"?console.warn(c+a):s==="OK"&&!o&&console.warn(c+i));return}if(o&&typeof o=="object"&&"content"in o){let{content:c}=o,d=Zs[a];if(d){d((l=Gs[a])!=null?l:"",c);return}let g=De[t.url];if(g!=null&&g.subIds.includes(a)&&o.tags){let y=o.tags.find(w=>w[0]===Qr);y!=null&&y[1]&&((u=g.topics.get(y[1]))==null||u(y[1],c))}}},()=>ea(t)));return t.ready}),subscribeTopic:(e,n,t)=>(Ys(e,n,(s,a)=>{t(s,a)}),()=>{Qs(e,n)}),publishTopic:async(e,n,t)=>e.send(await Xs(n,typeof t=="string"?t:te(t)))}),hi=Yr.getSockets,na=["basspistol.org","bucket.coracle.social","chorus.almostmachines.dev","chorus.pjv.me","communities.nos.social","ftp.halifax.rwth-aachen.de/nostr","hol.is","hornetstorage.net/relay","koru.bitcointxoko.org","nos.lol","nostr-01.uid.ovh","nostr-01.yakihonne.com","nostr-relay.corb.net","nostr.data.haus","nostr.islandarea.net","nostr.sathoarder.com","nostr.self-determined.de","nostr.tegila.com.br","nostr.vulpem.com","purplerelay.com","relay-can.zombi.cloudrodion.com","relay-rpi.edufeed.org","relay.agorist.space","relay.angor.io","relay.artio.inf.unibe.ch","relay.binaryrobot.com","relay.damus.io","relay.froth.zone","relay.libernet.app","relay.mostr.pub","relay.mostro.network","relay.nostr.place","relay.nostrdice.com","relay.notoshi.win","relay.sigit.io","relay02.lnfi.network","relay2.angor.io","schnorr.me","slick.mjex.me","social.amanah.eblessing.co","staging.yabu.me","strfry.openhoofd.nl","strfry.shock.network","testnet-relay.samt.st","top.testrelay.top","x.kojira.io","yabu.me/v2"].map(e=>"wss://"+e);var je=on(e=>e.socket),mt={},uo={},Dn=je.scoped(),dn=je.scoped(),ta=je.scoped(),Ve={},Cn={},ao=je.scoped(),yt=je.scoped(),Ze={},Ge={},Se={},ra="announce",mo=20,pt=3,io=1e4,co=12e4,oa=2e4,sa=12e4,fo=4e3,aa=3,ia=async e=>{if(mt[e])return mt[e];let n=(await ke(e)).slice(0,mo);return mt[e]=n,uo[n]=e,n},gt=async(e,n,t)=>e.send(te({action:ra,info_hash:await ia(n),peer_id:X,...t})),lo=(e,n,t=!1)=>console.warn(`${Q}: torrent tracker ${t?"failure":"warning"} from ${e} - ${n}`),mn=e=>{var n;return(n=Ze[e])!=null?n:Ze[e]={}},wt=e=>{delete Ze[e],delete Ge[e]},ca=(e,n)=>{var s;let t=Ze[e],r=t==null?void 0:t[n];if(r)return delete t[n],(s=r.claim)==null||s.call(r),!Y(t).length&&!Se[e]&&wt(e),r},yo=(e,n)=>{var s;let t=Ze[e],r=t==null?void 0:t[n];r&&(delete t[n],(s=r.reclaim)==null||s.call(r),!Y(t).length&&!Se[e]&&wt(e))},ht=e=>{Y(mn(e)).forEach(n=>yo(e,n)),wt(e)},fa=e=>{let n=Date.now();ie(mn(e)).forEach(([t,r])=>{n-r.createdAt>sa&&yo(e,t)})},la=async(e,n)=>{for(;Ge[e];)await Ge[e];let t=(async()=>{fa(e);let r=mn(e),s=Y(r).length,a=Math.max(0,pt-s);a>0&&(await n(a)).forEach(o=>{r[le(mo)]={...o,createdAt:Date.now()}})})().finally(()=>{Ge[e]===t&&delete Ge[e]});return Ge[e]=t,await t,mn(e)},ua=un({init:e=>tn(e,da,aa).map(n=>{let t=je.register(n,()=>rn(n,r=>{var l,u,c,d,g,y;let s=de(r),a=s["failure reason"],o=s["warning message"],{interval:i}=s,f=s.info_hash?uo[s.info_hash]:void 0;if(a){((l=e.relayConfig)==null?void 0:l.warnOnRelayFailure)!==!1&&lo(t.url,a,!0);return}if(o&&((u=e.relayConfig)==null?void 0:u.warnOnRelayFailure)!==!1&&lo(t.url,o),i&&i*1e3>((c=Ve[t.url])!=null?c:io)&&f&&dn.forKey(n)[f]){let w=Math.min(i*1e3,oa),P=Dn.forKey(n),b=dn.forKey(n);P[f]&&clearInterval(P[f]),Ve[t.url]=w;let v=b[f];v&&(P[f]=setInterval(()=>{v()},w))}if((s.offer||s.answer)&&f&&s.offer_id){if(s.peer_id===X)return;let w=`${f}:${s.offer?"offer":"answer"}:${s.offer_id}:${(d=s.peer_id)!=null?d:""}`,P=Date.now(),b=Cn[w];if(typeof b=="number"&&P-b<fo)return;Cn[w]=P,ie(Cn).forEach(([v,O])=>{P-O>fo*6&&delete Cn[v]}),(y=(g=ao.forKey(n))[f])==null||y.call(g,s)}}));return t.ready}),subscribe:(e,n,t,r,s,a)=>{var P;let o=ao.forRelay(e),i=dn.forRelay(e),f=Dn.forRelay(e),l=ta.forRelay(e),u=yt.forRelay(e),c=Symbol(n);l[n]=c,Se[n]=((P=Se[n])!=null?P:0)+1;let d=b=>{if(b.offer&&b.peer_id&&b.offer_id)r(n,{offer:b.offer.sdp,peerId:b.peer_id,hasOutgoingOffer:Y(mn(n)).length>0},(v,O)=>{gt(e,n,{answer:{type:"answer",sdp:de(O).answer},offer_id:b.offer_id,to_peer_id:b.peer_id})});else if(b.answer&&b.offer_id&&b.peer_id){let v=ca(n,b.offer_id);v&&r(n,{answer:b.answer.sdp,peerId:b.peer_id,peer:v.peer},()=>{})}};o[n]=d;let g={announce:async()=>{if(l[n]===c){if(!g.isActive){gt(e,n,{left:0,numwant:pt,offers:[]});return}gt(e,n,{numwant:pt,offers:ie(await la(n,s)).map(([b,{offer:v}])=>({offer_id:b,offer:{type:"offer",sdp:v}}))})}},isActive:!(a!=null&&a.isPassive)};Ve[e.url]=io;let{announce:y}=g;i[n]=y,u[n]=g;let w=g.isActive?Ve[e.url]:co;return f[n]=setInterval(y,w),y(),()=>{var v;if(Se[n]=Math.max(0,((v=Se[n])!=null?v:1)-1),Se[n]||delete Se[n],l[n]!==c){Se[n]||(ht(n),delete u[n]);return}let b=f[n];b&&(clearInterval(b),delete f[n]),o[n]===d&&delete o[n],i[n]===y&&delete i[n],delete l[n],u[n]===g&&delete u[n],Se[n]||ht(n)}},announce:(e,n)=>{let t=yt.forRelay(e)[n],r=Dn.forRelay(e),s=dn.forRelay(e)[n];return t&&(t.isActive=!0),s&&r[n]&&(clearInterval(r[n]),r[n]=setInterval(()=>{s()},Ve[e.url]),s()),Ve[e.url]},deactivate:(e,n)=>{let t=yt.forRelay(e)[n],r=Dn.forRelay(e),s=dn.forRelay(e)[n];t&&(t.isActive=!1),ht(n),s&&r[n]&&(clearInterval(r[n]),r[n]=setInterval(()=>{s()},co),s())}}),go=(e,n,t)=>{var r;return ua({...e,trickleIce:(r=e.trickleIce)!=null?r:!1},n,t)},Pi=je.getSockets,da=["open.ftorrent.com","tracker.webtorrent.dev","tracker.openwebtorrent.com","tracker.btorrent.xyz","tracker.files.fm:7073/announce"].map(e=>"wss://"+e);window.TRYSTERO={selfId:X,strategies:{nostr:so,torrent:go}};})();
+/*! Bundled license information:
+
+@noble/secp256k1/index.js:
+  (*! noble-secp256k1 - MIT License (c) 2019 Paul Miller (paulmillr.com) *)
+*/
+</script>
+<script>
+"use strict";
+
+/* ===================================================================
+   MUDDLE — a consensus game.
+   There is no right answer. The colour is built to sit between two
+   names, so the only way to score is to guess the crowd. One point a
+   round to everyone in the biggest group; 25 rounds; a level game at
+   the top plays on until somebody leads alone.
+   Play is peer to peer over WebRTC. Nothing is stored anywhere.
+   =================================================================== */
+
+/* Ten rounds of the ordinary game. In the deck game a hand is eight cards, so
+   a deal is eight rounds and the length is fixed by the cards, not by taste. */
+const TOTAL=10, DECK_ROUNDS=8, MINP=3;
+const VOTE_MS=45000, REVEAL_MS=7000, LOBBY_MS=5000, OVER_MS=22000;
+const HB=1400, GONE=7000;
+
+const COLORS=["#e0392c","#ee8a17","#f0d525","#35a349","#2f6ed0","#8b46c4","#f4f2ee","#191a1e"];
+/* Thirty, because a class of fifteen needs more than fifteen to choose from,
+   and because two children sharing an animal cannot tell which one is them. */
+const AVATARS=["\u{1F98A}","\u{1F43C}","\u{1F438}","\u{1F419}","\u{1F981}","\u{1F41D}",
+               "\u{1F433}","\u{1F984}","\u{1F422}","\u{1F427}","\u{1F989}","\u{1F437}",
+               "\u{1F98B}","\u{1F428}","\u{1F435}","\u{1F996}","\u{1F414}","\u{1F9A9}",
+               "\u{1F42C}","\u{1F41E}","\u{1F418}","\u{1F434}","\u{1F993}","\u{1F992}",
+               "\u{1F994}","\u{1F430}","\u{1F42D}","\u{1F42E}","\u{1F986}","\u{1F99C}"];
+
+/* ============================ colour maths ============================ */
+function hex2rgb(h){ const n=parseInt(h.slice(1),16); return [n>>16&255,n>>8&255,n&255]; }
+function rgb2hex(c){ return "#"+c.map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,"0")).join(""); }
+function hsl2rgb(h,s,l){
+  h=((h%360)+360)%360;
+  const c=(1-Math.abs(2*l-1))*s, x=c*(1-Math.abs((h/60)%2-1)), m=l-c/2;
+  let r,g,b;
+  if(h<60)      [r,g,b]=[c,x,0];
+  else if(h<120)[r,g,b]=[x,c,0];
+  else if(h<180)[r,g,b]=[0,c,x];
+  else if(h<240)[r,g,b]=[0,x,c];
+  else if(h<300)[r,g,b]=[x,0,c];
+  else          [r,g,b]=[c,0,x];
+  return [(r+m)*255,(g+m)*255,(b+m)*255];
+}
+function rgb2lab(rgb){
+  const f=v=>{ v/=255; return v<=0.04045 ? v/12.92 : Math.pow((v+0.055)/1.055,2.4); };
+  const r=f(rgb[0]), g=f(rgb[1]), b=f(rgb[2]);
+  let x=(r*0.4124+g*0.3576+b*0.1805)/0.95047,
+      y=(r*0.2126+g*0.7152+b*0.0722),
+      z=(r*0.0193+g*0.1192+b*0.9505)/1.08883;
+  const k=v=> v>0.008856 ? Math.cbrt(v) : (7.787*v+16/116);
+  x=k(x); y=k(y); z=k(z);
+  return [116*y-16, 500*(x-y), 200*(y-z)];
+}
+function lab2rgb(L){
+  const fy=(L[0]+16)/116, fx=fy+L[1]/500, fz=fy-L[2]/200;
+  const g=t=>{ const t3=t*t*t; return t3>0.008856 ? t3 : (t-16/116)/7.787; };
+  const x=g(fx)*0.95047, y=g(fy), z=g(fz)*1.08883;
+  const s=v=>{ v = v<=0.0031308 ? 12.92*v : 1.055*Math.pow(Math.max(v,0),1/2.4)-0.055;
+               return Math.max(0,Math.min(255,v*255)); };
+  return [ s(x*3.2406+y*-1.5372+z*-0.4986), s(x*-0.9689+y*1.8758+z*0.0415), s(x*0.0557+y*-0.2040+z*1.0570) ];
+}
+/* -------------------- how a room of people names a colour --------------------
+   This began as straight-line distance in CIELAB to each of the eight named
+   colours, nearest wins. Lab already carries the compression eyesight applies
+   — sRGB is undone through its 2.4 power curve and lightness is a cube root,
+   so none of this is arithmetic on raw 0-255 numbers — but the metric was
+   still wrong, because Euclidean distance treats a step in lightness as
+   interchangeable with a step in hue. Naming does not work that way. Nobody
+   looks at a dark maroon and says black, though black is genuinely the nearest
+   point in Lab; they say red. Hue picks the name. Lightness and chroma only
+   decide how sure the person is, and when the colour has drifted far enough
+   off the hue circle to be called light or dark instead.
+
+   So this returns a distribution over the eight names — how likely a room is
+   to say each one — rather than a winner. Hue is scored against six centres,
+   each with a reach to either side, and those reaches are deliberately
+   lopsided: blue runs a long way down into cyan while green stops shortly
+   after teal, which is exactly why people call cyan blue and why the boundary
+   between them sits nearer green than halfway. How much of the colour hue
+   speaks for at all depends on chroma, measured against a threshold that rises
+   at both ends of the lightness scale, since the same faint tint reads as a
+   colour in the midtones and as off-white near the top. Whatever hue does not
+   claim goes to white and black, split by lightness.
+
+   The whole game reads off this one function. The muddy colour is searched for
+   with it, and the computer players guess with it.                          */
+const HUE=[[36,34,15],[66,15,15],[97,15,20],[144,20,30],[287,65,13],[313,13,30]];
+const clamp01=v=> v<0?0 : v>1?1 : v;
+
+function nameScores(rgb){
+  const lab=rgb2lab(rgb), L=lab[0], C=Math.hypot(lab[1],lab[2]);
+  const h=(Math.atan2(lab[2],lab[1])*180/Math.PI+360)%360;
+  // how much chroma it takes to read as a colour here rather than as a tint
+  const K=14+26*Math.pow(Math.max(0,(L-78)/22),2)+22*Math.pow(Math.max(0,(20-L)/20),2);
+  const cN=Math.pow(C,1.6), kN=Math.pow(K,1.6);
+  const g=cN/(cN+kN);                                   // the share hue speaks for
+  const w=HUE.map(function(c){
+    const d=((h-c[0]+540)%360)-180;
+    const reach = d<0 ? c[1] : c[2];
+    return Math.exp(-0.5*(d/reach)*(d/reach));
+  });
+  const tot=w.reduce((a,b)=>a+b,0)||1;
+  const wl=clamp01((L-30)/48);                          // where it sits on the grey axis
+  return w.map(v=>g*v/tot).concat([(1-g)*wl,(1-g)*(1-wl)]);
+}
+
+/* -------------------- picking a deliberately muddy colour --------------------
+   Muddy does not mean brown, it means undecidable. The search walks perceptual
+   space directly — a lightness, a chroma and a hue angle, converted back and
+   dropped if it lands outside what a screen can show — and keeps the colour
+   whose two likeliest names come closest to equally likely, with the other six
+   nowhere. Nothing is hand-listed any more: whichever arguments the naming
+   model says are real ones are the arguments the game finds, teal caught
+   between blue and green included.
+
+   `target` is how level the two claims must be, and it tightens every round.
+   Round one splits about 55/30 and most of the room lands together; round
+   twenty-five is 49/48 and the room tears in half.                        */
+let lastNamePair="";
+function candidate(){
+  for(let k=0;k<40;k++){
+    const L=20+Math.random()*72, C=3+Math.random()*72, rad=Math.random()*Math.PI*2;
+    const rgb=lab2rgb([L, C*Math.cos(rad), C*Math.sin(rad)]);
+    if(rgb.every(v=>v>=-0.6&&v<=255.6)) return rgb;     // inside the screen's gamut
+  }
+  return null;
+}
+function makeColor(round, span){
+  const target=Math.min(0.97, 0.55+0.42*round/(span||TOTAL));
+  let best=null, repeat=null;
+  for(let i=0;i<900;i++){
+    const rgb=candidate(); if(!rgb) continue;
+    const p=nameScores(rgb);
+    const o=p.map((v,j)=>[v,j]).sort((a,b)=>b[0]-a[0]);
+    if(o[0][0]+o[1][0]<0.72) continue;                  // the two must own the colour
+    if(o[2][0]>0.42*o[1][0]) continue;                  // and it stays a two-horse race
+    const cand={err:Math.abs(o[1][0]/o[0][0]-target), rgb:rgb,
+                k:[o[0][1],o[1][1]].sort().join("-")};
+    if(cand.k===lastNamePair){ if(!repeat||cand.err<repeat.err) repeat=cand; }
+    else if(!best||cand.err<best.err) best=cand;        // prefer a different argument
+  }
+  const pick=best||repeat;
+  if(!pick) return "#6b6257";
+  lastNamePair=pick.k;
+  return rgb2hex(pick.rgb);
+}
+
+/* ============================== sound ============================== */
+let audioOn=true, ac=null;
+function toggleSound(){ audioOn=!audioOn; document.getElementById("sound").textContent=audioOn?"\u{1F50A}":"\u{1F507}"; }
+function beep(freq,dur,type,vol){
+  if(!audioOn) return;
+  try{
+    ac = ac || new (window.AudioContext||window.webkitAudioContext)();
+    if(ac.state==="suspended") ac.resume();
+    const o=ac.createOscillator(), g=ac.createGain();
+    o.type=type||"sine"; o.frequency.value=freq;
+    g.gain.setValueAtTime(0,ac.currentTime);
+    g.gain.linearRampToValueAtTime(vol||0.12,ac.currentTime+0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001,ac.currentTime+dur);
+    o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime+dur+0.02);
+  }catch(e){}
+}
+const sPick =()=>beep(680,0.13,"sine",0.12);
+const sTick =()=>beep(430,0.07,"triangle",0.05);
+const sWin  =()=>{ beep(660,0.2); setTimeout(()=>beep(880,0.3),120); };
+const sLose =()=>beep(250,0.24,"sine",0.07);
+const sStart=()=>{ beep(520,0.13); setTimeout(()=>beep(760,0.2),140); };
+
+/* ============================== state ============================== */
+const UID = "p"+Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-3);
+let me={ id:UID, av:AVATARS[Math.floor(Math.random()*AVATARS.length)], since:Date.now() };
+let mode="menu";            // menu | practice | online
+let myVote=null, seenRound=-1, hold=false;
+let V=null;                 // the one shape the screen draws
+let H=null, bots=[];        // host state, and the practice room
+
+function newHost(seed){
+  H={ round:0, phase:"lobby", endsAt:0, color:"#6b6257",
+      votes:{}, scores:seed||{}, result:null, sudden:false, deck:false, hands:{} };
+}
+/* ------------------------------ the deck game ------------------------------
+   Eight colours, so eight cards, each spendable once. A deal is eight rounds,
+   which means every card you decline to spend is a card you will never spend:
+   hoarding is not free. Sitting a round out scores nothing but keeps the card,
+   and that is the whole point — once the colour the room is going to settle on
+   is one you have already spent, playing anything else both scores nothing and
+   burns a card, so passing strictly beats playing. That is a real decision,
+   and it is the first one in this game that is not about eyesight.        */
+const FULLHAND=255;                                  // eight bits, one per colour
+const holds=(mask,i)=> ((mask>>i)&1)===1;
+function dealHands(ps){ for(const p of ps) H.hands[p.id]=FULLHAND; }
+const spanOf = ()=> (H&&H.deck) ? DECK_ROUNDS : TOTAL;
+const myHand = ()=>{
+  if(!V||!V.deck) return FULLHAND;
+  const h=(V.hands||[]).find(x=>x[0]===UID);
+  return h?h[1]:FULLHAND;
+};
+function livePlayers(){
+  if(mode==="practice") return [me].concat(bots);
+  const now=Date.now(), out=[me];
+  for(const [id,e] of roster) if(id!==UID && now-e.at<GONE) out.push({id, av:e.av, since:e.since||0});
+  out.sort((a,b)=>a.id<b.id?-1:1);
+  return out;
+}
+/* ---------------------------- who runs the room ----------------------------
+   The room belongs to whoever got here first: that is the teacher, and it is
+   the one player who can never need to inherit a game from anybody.
+
+   Two rules keep every screen at the same answer. The office is sticky — a
+   host who is still present and still answering stays the host, whatever
+   anyone's clock says — and it is only re-elected when the chair is actually
+   empty, which is the moment the old host's heartbeat stops. A page that has
+   just opened is not eligible at all until it has listened for a couple of
+   seconds, and it says so in its own heartbeat rather than deciding it
+   privately, because a player everyone else has already elected but who
+   privately refuses the job leaves the room with no clock at all. That is
+   worse than either outcome and it is exactly what happened when a laptop
+   with a slow clock walked into a game in progress.                       */
+let settleAt=0;
+const settling = ()=> mode==="online" && Date.now()<settleAt;
+const isReady = id => id===UID ? !settling() : !!(roster.get(id)||{}).rdy;
+/* Someone I have never heard a heartbeat from ranks last, not first. Defaulting
+   an unknown arrival to zero made a stranger outrank the sitting host. */
+function arrival(id){
+  if(id===UID) return me.since;
+  const e=roster.get(id);
+  return e ? (e.since||0) : Infinity;
+}
+function beats(a,b){ const x=arrival(a), y=arrival(b); return x!==y ? x<y : a<b; }
+/* Does an incoming host outrank me? Whoever has the game further along wins,
+   because that is the state the room would lose; between two hosts equally far
+   along, the one who has been here longer keeps the office. */
+function hostWins(m){
+  const mine = (!H || H.phase==="lobby") ? -1 : H.round;
+  const theirs = (m.phase==="lobby") ? -1 : m.round;
+  return theirs!==mine ? theirs>mine : beats(m.f,UID);
+}
+function hostId(){
+  if(mode==="practice") return UID;
+  const ps=livePlayers(), live=new Set(ps.map(p=>p.id));
+  /* An incumbent only has to be alive. Readiness is deliberately not asked
+     about here: it is a fact that travels by heartbeat and so arrives at
+     different screens a moment apart, and hanging the succession on it made
+     two machines swap the office back and forth several times a second. */
+  if(V && V.host && live.has(V.host)) return V.host;
+  let best=null;
+  for(const p of ps) if(isReady(p.id) && (!best||beats(p.id,best))) best=p.id;
+  return best;          // nobody eligible yet: the chair stays empty rather than
+}                       // every page in a new room appointing itself at once
+const iAmHost = ()=> mode==="practice" || (mode==="online" && hostId()===UID);
+
+/* ============================== the host clock ==============================
+   Exactly one machine runs the clock: in practice mode this one, online the
+   player with the lowest id, recomputed every beat. Everything the host knows
+   travels in one message, so if the host closes their laptop the next player
+   picks the clock up from the last view they were sent, with nothing to
+   negotiate.                                                               */
+function hostStep(){
+  if(!H || !iAmHost()) return;
+  const now=Date.now(), ps=livePlayers();
+  for(const p of ps) if(H.scores[p.id]==null) H.scores[p.id]=0;
+
+  /* Taking the clock over from a host who left. Their last view is the whole
+     handover — round, colour, scores — and the votes they had collected are
+     gone, so the round is simply asked again. Keyed off the view being further
+     along than mine rather than off my own phase, because my phase may be
+     anything at all at the moment I inherit. */
+  if(V && V.host!==UID && V.phase!=="lobby" &&
+     (V.round>H.round || (V.round===H.round && H.phase==="lobby"))){
+    H.round=V.round; H.color=V.color; H.sudden=!!V.sudden;
+    H.scores=scoresFromView(V); H.votes={};
+    H.phase="vote"; H.endsAt=now+VOTE_MS;
+  }
+  /* Left on your own — everyone else closed a lid, or this tab lost the room
+     for a moment — the game waits rather than resets. Wiping back to the lobby
+     here used to throw away a game in progress during the second or two it
+     takes a dropped host to be noticed, and, worse, publish that empty lobby
+     to everyone still playing. */
+  if(ps.length<2 && H.phase!=="lobby"){
+    if(H.phase==="vote") H.endsAt=now+VOTE_MS;
+    else if(H.endsAt<now) H.endsAt=now+REVEAL_MS;
+    publish(); return;
+  }
+
+  if(H.phase==="lobby"){
+    /* Three players and a five second countdown is the default, but whoever
+       got here first is running the room and can hold it open for a class
+       still arriving, or start early with two. */
+    if(ps.length>=MINP && !hold){
+      if(!H.endsAt) H.endsAt=now+(mode==="practice"?1400:LOBBY_MS);
+      else if(now>=H.endsAt) hostStart(ps);
+    } else H.endsAt=0;
+  }
+  else if(H.phase==="vote"){
+    const waiting=ps.filter(p=>H.votes[p.id]==null).length;
+    if(!waiting || now>=H.endsAt) hostScore(ps);
+  }
+  else if(H.phase==="reveal"){ if(now>=H.endsAt) hostNext(ps); }
+  else if(H.phase==="over"){ if(now>=H.endsAt){ H.phase="lobby"; H.endsAt=0; H.scores={}; H.round=0; } }
+  publish();
+}
+function hostStart(ps){
+  H.scores={}; for(const p of ps) H.scores[p.id]=0;
+  H.deck=wantDeck; H.hands={}; dealHands(ps);
+  H.round=0; H.sudden=false; hold=false; hostRound();
+}
+function hostRound(){
+  H.round++; H.phase="vote"; H.votes={}; H.result=null;
+  const ps=livePlayers();
+  for(const p of ps) if(H.hands[p.id]==null) H.hands[p.id]=FULLHAND;   // a late arrival gets a full hand
+  if(H.deck && (H.round-1)%DECK_ROUNDS===0) dealHands(ps);             // a fresh deal
+  H.color=makeColor(H.round, spanOf()); H.endsAt=Date.now()+VOTE_MS;
+  if(mode==="practice") botsThink(H.round);
+}
+function hostScore(ps){
+  const counts=new Array(8).fill(0);
+  for(const p of ps){ const v=H.votes[p.id]; if(v!=null && v>=0) counts[v]++; }
+  const max=Math.max.apply(null,counts);
+  const winners = max>0 ? counts.map((c,i)=>c===max?i:-1).filter(i=>i>=0) : [];
+  const got=[];
+  /* Two groups of the same size both win. It is the generous reading, it keeps
+     a split room from being a round where nobody scores, and in the deck game
+     it softens the sting of having spent the card. */
+  for(const p of ps){
+    const v=H.votes[p.id];
+    if(v!=null && v>=0 && winners.indexOf(v)>=0){ H.scores[p.id]=(H.scores[p.id]||0)+1; got.push(p.id); }
+  }
+  H.result={counts,winners,got};
+  H.phase="reveal"; H.endsAt=Date.now()+REVEAL_MS;
+}
+function hostNext(ps){
+  if(H.round>=spanOf()){
+    let top=-1,n=0;
+    for(const p of ps){ const s=H.scores[p.id]||0; if(s>top){top=s;n=1;} else if(s===top) n++; }
+    if(n===1){ H.phase="over"; H.endsAt=Date.now()+OVER_MS; publish(); return; }
+    H.sudden=true;                                    // level at the top: play on
+  }
+  hostRound();
+}
+function hostVote(id, round, idx){
+  if(!H || H.phase!=="vote" || round!==H.round) return;
+  if(idx!==-1 && !(idx>=0&&idx<8)) return;                 // -1 is sitting the round out
+  if(H.votes[id]!=null) return;
+  if(idx>=0 && H.deck){
+    const hand=H.hands[id]==null?FULLHAND:H.hands[id];
+    if(!holds(hand,idx)) return;                           // that card is already spent
+    H.hands[id]=hand & ~(1<<idx);
+  }
+  H.votes[id]=idx; publish();
+}
+function hostView(){
+  const ps=livePlayers();
+  return { host:UID, round:H.round, phase:H.phase, left:Math.max(0,H.endsAt-Date.now()),
+    color:H.color, sudden:H.sudden, deck:!!H.deck, total:spanOf(),
+    hands: H.deck ? ps.map(p=>[p.id, H.hands[p.id]==null?FULLHAND:H.hands[p.id]]) : null,
+    players:ps.map(p=>[p.id,p.av,H.scores[p.id]||0, H.votes[p.id]!=null?1:0]),
+    votes: H.phase==="reveal" ? Object.keys(H.votes).map(k=>[k,H.votes[k]]) : null,
+    winners: H.phase==="reveal"&&H.result ? H.result.winners : null,
+    got: H.phase==="reveal"&&H.result ? H.result.got : null };
+}
+let sentKey="", sentAt=0;
+function publish(){
+  if(!iAmHost()) return;
+  const v=hostView();
+  adopt(v);
+  if(mode!=="online") return;
+  /* the clock ticks four times a second; the room only needs to hear about it
+     when something changed, or often enough to catch a late joiner up */
+  const key=JSON.stringify([v.round,v.phase,v.color,v.players,v.winners,v.hands]), now=Date.now();
+  if(key!==sentKey || now-sentAt>900){ sentKey=key; sentAt=now; netSend("gm",v); }
+}
+function scoresFromView(v){ const s={}; for(const p of (v.players||[])) s[p[0]]=p[2]; return s; }
+
+function adopt(v){
+  const wasRound=V?V.round:-1, wasPhase=V?V.phase:"";
+  v.endsAt=Date.now()+(v.left||0);
+  V=v;
+  if(v.round!==wasRound) myVote=null;
+  if(v.phase!==wasPhase||v.round!==wasRound){
+    if(v.phase==="vote") sStart();
+    else if(v.phase==="reveal") (v.got&&v.got.indexOf(UID)>=0) ? sWin() : sLose();
+  }
+  render();
+}
+
+/* ============================== drawing ==============================
+   Renders are cheap but not free, and more to the point a rebuild in the
+   middle of a CSS transition is what makes a screen flicker rather than
+   move. So the board only redraws when something it shows has actually
+   changed, and the parts that tick every frame — the clock bar, the lobby
+   countdown — are written straight into their own element.              */
+function buildTiles(){
+  document.getElementById("tiles").innerHTML = COLORS.map((c,i)=>
+    '<button class="tile" style="--c:'+c+'" onclick="pick('+i+')" aria-label="colour '+(i+1)+'">'+
+    '<span class="crown">\u2B50</span><span class="voters"></span></button>').join("");
+}
+const chipEls=new Map();
+function renderPeople(){
+  const list=(V&&V.players)||[];
+  const mine=list.find(p=>p[0]===UID);
+  const you=document.getElementById("you");
+  you.querySelector(".av").textContent=me.av;
+  you.querySelector(".sc").textContent=mine?mine[2]:0;
+
+  const wrap=document.getElementById("players"), keep=new Set();
+  for(const [id,av,score,voted] of list){
+    if(id===UID) continue;                       // you are the badge, not a chip
+    keep.add(id);
+    let el=chipEls.get(id);
+    if(!el){
+      el=document.createElement("div"); el.className="chip";
+      el.innerHTML='<span class="av"></span><span class="sc"></span>';
+      chipEls.set(id,el); wrap.appendChild(el);
+    }
+    const won=V.phase==="reveal"&&V.got&&V.got.indexOf(id)>=0;
+    const prev=el.dataset.sc;
+    el.querySelector(".av").textContent=av;
+    el.querySelector(".sc").textContent=score;
+    const cls="chip"+(voted&&V.phase==="vote"?" voted":"")+(won?" won":"");
+    if(el.className!==cls) el.className=cls;
+    if(prev!==undefined && +prev<score) bump(el);
+    el.dataset.sc=score;
+  }
+  for(const [id,el] of chipEls) if(!keep.has(id)){ el.remove(); chipEls.delete(id); }
+  wrap.classList.toggle("crowd", list.length>9);
+  if(mine && you.dataset.sc!==undefined && +you.dataset.sc<mine[2]) bump(you);
+  if(mine) you.dataset.sc=mine[2];
+}
+function bump(el){
+  const p=document.createElement("span"); p.className="plus"; p.textContent="+1";
+  el.appendChild(p); setTimeout(()=>p.remove(),1500);
+}
+function renderDots(){
+  const el=document.getElementById("dots");
+  const span=(V&&V.total)||TOTAL;
+  const total=(V&&V.round>span)?V.round:span;
+  if(el.childElementCount!==total){
+    el.innerHTML="";
+    for(let i=0;i<total;i++){ const d=document.createElement("div"); d.className="rd"; el.appendChild(d); }
+  }
+  const now=V?V.round:0;
+  [...el.children].forEach((d,i)=>{
+    const n=i+1, cls="rd"+(n<now?" done":n===now?" now":"")+(n>span?" sd":"");
+    if(d.className!==cls) d.className=cls;
+  });
+}
+let lastKey="";
+function render(force){
+  if(!V) return;
+  const key=[V.phase,V.round,V.color,myVote,JSON.stringify(V.players),
+             JSON.stringify(V.winners),JSON.stringify(V.votes),JSON.stringify(V.hands)].join("|");
+  if(!force && key===lastKey) return;
+  lastKey=key;
+
+  renderDots(); renderPeople();
+
+  const sw=document.getElementById("swatch");
+  if(V.round!==seenRound){
+    seenRound=V.round;
+    sw.classList.remove("swap"); void sw.offsetWidth; sw.classList.add("swap");
+  }
+  sw.style.background=V.color;
+  document.getElementById("hand").hidden = !(V.phase==="vote" && myVote==null && V.round<=2);
+
+  const tiles=document.getElementById("tiles");
+  tiles.classList.toggle("locked", V.phase!=="vote"||myVote!=null);
+  const pile=[[],[],[],[],[],[],[],[]];
+  const satOut=[];
+  const avOf=id=>{ const p=(V.players||[]).find(q=>q[0]===id); return p?p[1]:"\u2753"; };
+  if(V.phase==="reveal"&&V.votes){
+    for(const [id,idx] of V.votes){
+      if(idx<0) satOut.push(avOf(id));
+      else if(pile[idx]) pile[idx].push([avOf(id), id===UID]);
+    }
+  }
+  const hand=myHand();
+  [...tiles.children].forEach((t,i)=>{
+    const win=V.phase==="reveal"&&V.winners&&V.winners.indexOf(i)>=0;
+    const picked=myVote===i&&V.phase==="vote";
+    const spent=V.deck&&V.phase==="vote"&&!holds(hand,i)&&myVote!==i;   // the card in your hand
+                                                                        // right now is not "gone" yet
+    const cls="tile"+(picked?" picked":"")+(win?" win":"")+(spent?" spent":"")+
+              (((V.phase==="vote"&&myVote!=null&&myVote!==i)||(V.phase==="reveal"&&!win))?" dim":"");
+    if(t.className!==cls) t.className=cls;
+    const v=t.querySelector(".voters");
+    const want=picked ? "@me" : pile[i].map(x=>x[0]+(x[1]?"*":"")).join("");
+    if(v.dataset.k!==want){
+      v.dataset.k=want;
+      v.innerHTML = picked
+        ? '<span class="mypick">'+me.av+'</span>'
+        : pile[i].map((x,n)=>'<span class="'+(x[1]?"mine":"")+'" style="animation-delay:'+
+                             (n*55)+'ms">'+x[0]+'</span>').join("");
+    }
+  });
+  // the pass button, and who sat the round out
+  const pb=document.getElementById("pass"), sat=document.getElementById("sat");
+  pb.hidden = !(V.deck && V.phase==="vote");
+  pb.querySelector(".who").textContent=me.av;
+  pb.className = myVote===-1 ? "chosen" : "";
+  pb.disabled = myVote!=null;
+  const satKey=satOut.join("");
+  if(sat.dataset.k!==satKey){
+    sat.dataset.k=satKey;
+    sat.innerHTML = satOut.length
+      ? '<span class="lbl">\u23ED</span>'+satOut.map(a=>"<span>"+a+"</span>").join("")
+      : "";
+  }
+  tickClock();
+}
+/* Both waits are shown, because both were invisible before: how long you have
+   left to choose, and how long the room stays on the answer before the next
+   colour. The seconds are also spoken as a tick in the last five, since a
+   child looking at the colour is not looking at the clock. */
+let lastTick=-1;
+function tickClock(){
+  const bar=document.getElementById("clock"), wrap=document.getElementById("clockwrap"),
+        secs=document.getElementById("secs");
+  const running = V && (V.phase==="vote"||V.phase==="reveal");
+  if(!running){ wrap.style.opacity=.15; bar.style.width="100%"; bar.className=""; secs.textContent=""; return; }
+  const reveal=V.phase==="reveal", span=reveal?REVEAL_MS:VOTE_MS;
+  const left=Math.max(0,V.endsAt-Date.now()), s=Math.ceil(left/1000);
+  wrap.style.opacity=1;
+  bar.style.width=Math.max(0,Math.min(100,left/span*100))+"%";
+  bar.className = reveal ? "next" : (left<10000?"low":"");
+  secs.className = reveal ? "next" : (left<10000?"low":"");
+  secs.textContent = s;
+  if(!reveal && myVote==null && s<=5 && s>0 && s!==lastTick){ lastTick=s; sTick(); }
+  if(reveal || s>5) lastTick=-1;
+}
+
+/* ============================== picking ============================== */
+function startNow(){
+  if(!iAmHost()||!H||H.phase!=="lobby") return;
+  const ps=livePlayers();
+  if(ps.length<2) return;
+  hold=false; hostStart(ps); publish(); drawVeil();
+}
+function holdRoom(v){ hold=!!v; if(iAmHost()&&H) H.endsAt=0; drawVeil(); }
+function choose(i){
+  if(!V||V.phase!=="vote"||myVote!=null) return;
+  if(i>=0 && V.deck && !holds(myHand(),i)) return;         // that card is gone
+  myVote=i; if(i>=0) sPick(); else beep(330,0.12,"triangle",0.09);
+  if(iAmHost()) hostVote(UID,V.round,i); else netSend("vt",{r:V.round,c:i});
+  render();
+}
+/* declarations rather than consts: these are named by inline handlers in the
+   markup, and a function declaration is the shape that is unambiguously there */
+function pick(i){ choose(i); }
+function pass(){ choose(-1); }
+
+/* ============================== the cards ============================== */
+let setupTab="online", roomName="", botCount=5, veilKey="", wantDeck=false;
+const esc=t=>String(t==null?"":t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function drawVeil(){
+  const veil=document.getElementById("veil"), card=document.getElementById("veilCard");
+  const show = mode==="menu" || (V&&(V.phase==="lobby"||V.phase==="over"));
+  veil.hidden=!show;
+  if(!show){ veilKey=""; return; }
+  const ps=(V&&V.players)||[];
+  const key=[mode,setupTab,botCount,link.err,peerCount(),hold,iAmHost(),wantDeck,
+             V?V.phase:"",V?V.round:"",me.av,takenKey(),JSON.stringify(ps)].join("|");
+  if(key!==veilKey){
+    veilKey=key;
+    card.innerHTML = mode==="menu" ? menuHTML() : (V&&V.phase==="over") ? overHTML() : lobbyHTML();
+    if(V&&V.phase==="over") confetti();
+  }
+  const c=document.getElementById("count");                 // ticks on its own, no rebuild
+  if(c&&V){
+    const secs=V.endsAt?Math.max(0,Math.ceil((V.endsAt-Date.now())/1000)):null;
+    c.textContent = (V.phase==="lobby"&&secs!=null&&V.left) ? secs : ps.length+" / "+MINP;
+  }
+}
+/* Who has which animal. An animal already spoken for cannot be picked, and if
+   two players land on the same one anyway — they chose at the same moment, or
+   arrived from different corners of a room that had not met yet — the one who
+   joined later quietly moves to a free animal rather than both of them
+   spending the game unsure which is theirs. */
+function takenAvatars(){
+  const m=new Map();
+  if(mode==="practice"){ for(const b of bots) m.set(b.av,{id:b.id, since:0}); }
+  else { const now=Date.now();
+         for(const [id,e] of roster) if(now-e.at<GONE) m.set(e.av,{id, since:e.since||0}); }
+  return m;
+}
+/* Who has the better claim on an animal: whoever has been in the room longer.
+   Clocks between two laptops never agree exactly, so the id settles a tie and
+   keeps both sides at the same answer. Arrival order rather than id order
+   matters because it means nobody already playing ever has their animal taken
+   out from under them by somebody who just walked in. */
+function outranks(a,b){ return a.since!==b.since ? a.since<b.since : a.id<b.id; }
+const takenKey = ()=>[...takenAvatars().keys()].join("");
+function resolveAvatar(){
+  if(mode!=="online") return;
+  const t=takenAvatars(), holder=t.get(me.av);
+  if(holder && outranks(holder,{id:UID,since:me.since})){
+    const free=AVATARS.find(a=>!t.has(a));
+    if(free){ me.av=free; sendHello(false); if(iAmHost()&&H) publish(); render(true); drawVeil(); }
+  }
+}
+function avPicker(){
+  const t=takenAvatars();
+  return '<div class="avgrid">'+AVATARS.map(a=>{
+    const taken=t.has(a)&&t.get(a).id!==UID;
+    return '<button class="'+(me.av===a?"on":"")+(taken?" taken":"")+'"'+
+           (taken?' disabled':' onclick="setAv(\''+a+'\')"')+'>'+a+'</button>';
+  }).join("")+'</div>';
+}
+function setDeck(v){ wantDeck=!!v; drawVeil(); }
+function setAv(a){ me.av=a; drawVeil(); if(mode==="online") sendHello(false); if(iAmHost()&&H) publish(); render(true); }
+
+function menuHTML(){
+  return '<h1>Mudd<span class="a">le</span></h1>'+
+    '<p class="sub">A muddy colour appears. Everyone taps the colour they think it is closest to. '+
+    'You score only if you land in the biggest group &mdash; so tap what the room will tap, not what you see. '+
+    'If two groups tie for biggest, both score. Best with 5 to 15 players, and no reading needed once it starts.</p>'+
+    '<div class="lab">Pick your animal &mdash; this is how you find yourself on screen</div>'+avPicker()+
+    '<div class="lab">Game</div>'+
+    '<div class="row">'+
+      '<button class="btn'+(!wantDeck?" go":"")+'" onclick="setDeck(false)">Ten rounds</button>'+
+      '<button class="btn'+(wantDeck?" go":"")+'" onclick="setDeck(true)">Every colour once</button>'+
+    '</div>'+
+    '<p class="tiny" style="margin-top:.5em">'+(wantDeck
+      ? 'Eight cards, one of each colour, each played once. A deal is eight rounds, so a card you keep is a card you lose &mdash; and when the colour the room will settle on is one you have spent, sitting the round out beats burning another card.'
+      : 'Ten rounds. Every colour stays available every round.')+'</p>'+
+    '<div class="row" style="margin-top:1.2em">'+
+      '<button class="btn'+(setupTab==="online"?" go":"")+'" onclick="setupTab=\'online\';drawVeil()">Play with friends</button>'+
+      '<button class="btn'+(setupTab==="practice"?" go":"")+'" onclick="setupTab=\'practice\';drawVeil()">Practice alone</button>'+
+    '</div>'+
+    (setupTab==="online"
+      ? '<div class="lab">Room name &mdash; everyone types the same one</div>'+
+        '<input id="room" value="'+esc(roomName)+'" placeholder="for instance  ms-lee-class-4" '+
+        'onkeydown="if(event.key===\'Enter\')joinRoom(this.value)">'+
+        '<div class="row" style="margin-top:.7em"><button class="btn go" onclick="joinRoom(document.getElementById(\'room\').value)">Join room</button></div>'+
+        '<p class="tiny" style="margin-top:.9em">Everyone opens this same file and types the same room name. '+
+        'Play runs browser to browser and nothing is stored anywhere, so every player needs to be online '+
+        'at the same time.</p>'+
+        (link.err?'<p class="warn">'+esc(link.err)+'</p>':'')
+      : '<div class="lab">Computer players</div>'+
+        '<input type="range" min="2" max="11" value="'+botCount+'" '+
+        'oninput="botCount=+this.value;document.getElementById(\'bc\').textContent=this.value">'+
+        '<div class="big" id="bc">'+botCount+'</div>'+
+        '<div class="row"><button class="btn go" onclick="startPractice()">Start practice game</button></div>'+
+        '<p class="tiny" style="margin-top:.9em">The computer players guess the way a room of people tends to, '+
+        'which is a good way to show a child how it works before the real thing.</p>');
+}
+function hostAv(ps){ const h=ps.find(p=>p[0]===(V&&V.host)); return h?h[1]:"\u2753"; }
+function lobbyHTML(){
+  const ps=(V&&V.players)||[];
+  const need=Math.max(0,MINP-ps.length);
+  const waited=Math.round((Date.now()-link.since)/1000);
+  return '<h1>Mudd<span class="a">le</span></h1>'+
+    '<p class="sub">'+(mode==="online"?'Room <b>'+esc(roomName)+'</b>. ':'')+
+      (need? '<span class="spin"></span> Waiting for '+need+' more player'+(need>1?'s':'')+'.' : 'Starting\u2026')+'</p>'+
+    '<div class="ring">'+ps.map(p=>'<span class="'+(p[0]===UID?"self":"")+'">'+p[1]+'</span>').join("")+'</div>'+
+    '<div class="big" id="count">'+ps.length+' / '+MINP+'</div>'+
+    (mode==="online"
+      ? '<div class="links">'+link.rooms.map(r=>r.key+": "+(r.peers?"<b>linked</b>":"searching\u2026")).join("<br>")+'</div>'+
+        (need&&waited>25 ? '<p class="tiny" style="margin-top:.8em">Still nobody. Check that the others typed '+
+          'the room name exactly the same way, that they are online now, and that they are not on a network '+
+          'that blocks peer-to-peer traffic &mdash; some school and office wifi does. A phone hotspot is a good test.</p>' : '')+
+        (iAmHost()
+          ? '<div class="row" style="margin-top:.9em">'+
+            '<button class="btn go"'+(ps.length<2?' disabled':'')+' onclick="startNow()">Start now</button>'+
+            '<button class="btn'+(hold?' go':'')+'" onclick="holdRoom('+(hold?'false':'true')+')">'+
+            (hold?'Holding &mdash; tap to release':'Wait for more')+'</button></div>'+
+            '<div class="row" style="margin-top:.5em">'+
+            '<button class="btn'+(!wantDeck?" go":"")+'" onclick="setDeck(false)">Ten rounds</button>'+
+            '<button class="btn'+(wantDeck?" go":"")+'" onclick="setDeck(true)">Every colour once</button></div>'+
+            '<p class="tiny" style="margin-top:.6em">You arrived first, so this room is yours to run. '+
+            (hold?'It is held open until you start it.'
+                 :'It starts on its own five seconds after the third player joins.')+'</p>'
+          : '<p class="tiny" style="margin-top:.9em">'+hostAv(ps)+' got here first and will start the game.</p>')
+      : '')+
+    '<div class="lab">Your animal</div>'+avPicker()+
+    '<div class="row" style="margin-top:1em"><button class="btn" onclick="quit()">Leave</button></div>';
+}
+function overHTML(){
+  const ps=((V&&V.players)||[]).slice().sort((a,b)=>b[2]-a[2]);
+  const top=ps.length?ps[0][2]:0;
+  return '<div class="big" style="font-size:3.4em">'+(ps.length?ps[0][1]:"")+'</div>'+
+    '<h1 style="text-align:center;font-size:1.4em">Winner</h1>'+
+    '<div class="podium">'+ps.map((p,i)=>
+      '<div class="prow'+(i===0?" top":"")+(p[0]===UID?" self":"")+'"><span class="av">'+p[1]+'</span>'+
+      '<span class="bar"><i style="width:'+(top?Math.round(p[2]/top*100):0)+'%"></i></span>'+
+      '<span class="n">'+p[2]+'</span></div>').join("")+'</div>'+
+    '<p class="tiny">A new game starts here in a moment. Everyone keeps their seat.</p>'+
+    '<div class="row" style="margin-top:.8em"><button class="btn" onclick="quit()">Leave</button></div>';
+}
+let confettiRound=-1;
+function confetti(){
+  if(!V||confettiRound===V.round) return;
+  confettiRound=V.round;
+  for(let i=0;i<22;i++){
+    const d=document.createElement("div");
+    d.className="confetti"; d.textContent=["\u2B50","\u{1F386}","\u{1F31F}"][i%3];
+    d.style.left=Math.random()*100+"vw";
+    d.style.animationDuration=(2.4+Math.random()*2)+"s";
+    d.style.animationDelay=(Math.random()*1.4)+"s";
+    document.body.appendChild(d);
+    setTimeout(()=>d.remove(),6500);
+  }
+}
+
+/* ============================== computer players ============================== */
+/* Not colour matchers: guessers at what a room of people will say. Each has
+   its own eye and its own small bias, which is what makes a practice game feel
+   like a real one — the room mostly agrees, and sometimes splits in two.   */
+function makeBots(n){
+  const pool=AVATARS.filter(a=>a!==me.av).sort(()=>Math.random()-0.5);
+  const out=[];
+  for(let i=0;i<n;i++)
+    out.push({ id:"bot"+i, av:pool[i%pool.length], bot:true,
+               temp:0.45+Math.random()*1.05,             // decisive, or easily swayed
+               bias:Math.floor(Math.random()*8), pull:Math.random()*0.5 });
+  return out;
+}
+function botHand(id){
+  if(!H||!H.deck) return FULLHAND;
+  return H.hands[id]==null?FULLHAND:H.hands[id];
+}
+function botPick(bot,color){
+  /* Sampling the naming distribution, not measuring a distance. A cool-headed
+     player says whatever the room is likeliest to say; a waverer picks between
+     the top two, which is what makes a close colour split a practice room the
+     way it splits a real one. */
+  const p=nameScores(hex2rgb(color));
+  const hand=botHand(bot.id);
+  let w=p.map((v,i)=>Math.pow(v,1/bot.temp)*(i===bot.bias?1+bot.pull:1));
+  if(H&&H.deck){
+    /* With a hand, a computer player weighs whether the round is winnable at
+       all: if the colours the room is likely to settle on are ones it has
+       already spent, it keeps its cards rather than burning one for nothing. */
+    let live=0;
+    for(let i=0;i<8;i++){ if(!holds(hand,i)) w[i]=0; else live+=p[i]; }
+    if(live<0.28 && Math.random()<0.75) return -1;
+    if(w.every(v=>v===0)) return -1;
+  }
+  let r=Math.random()*w.reduce((a,b)=>a+b,0);
+  for(let i=0;i<8;i++){ r-=w[i]; if(r<=0) return i; }
+  return H&&H.deck ? -1 : 7;
+}
+function botsThink(round){
+  for(const b of bots){
+    setTimeout(()=>{
+      if(mode!=="practice"||!H||H.round!==round||H.phase!=="vote") return;
+      hostVote(b.id, round, botPick(b,H.color)); sTick();
+    }, 900+Math.random()*7000);
+  }
+}
+
+/* ============================== online ==============================
+   Trystero pairs browsers over WebRTC. Three lessons are baked in here.
+
+   The library is bundled into this file rather than fetched from a CDN,
+   because a page opened straight from the disk cannot import a module over
+   the network — which is exactly how most people will open this.
+
+   Two rendezvous strategies run at once, nostr relays and torrent trackers.
+   They use completely different infrastructure, so a network that blocks one
+   usually still passes the other, and a peer found by either is a peer.
+
+   Identity is a uid this page made up, carried inside every message, not the
+   transport's peer id. So the same player found twice over two strategies is
+   one player, and none of the game logic cares which pipe anything arrived
+   through.                                                               */
+const APPID="muddle-colour-consensus-7c31";
+const link={ rooms:[], err:"", since:0 };
+let roster=new Map(), claims=new Map(), beatTimer=null;
+const peerCount=()=>link.rooms.reduce((n,r)=>n+r.peers,0);
+
+/* Trystero has shipped two shapes for these over the years and a page in the
+   wild may meet either: an action can be a [send, onMessage] tuple or an
+   object whose onMessage is a settable property, and the peer callbacks can be
+   functions you call or properties you assign. Guessing wrong here fails
+   silently — the handler is simply never registered — so both are handled. */
+function actionPair(room,name){
+  const a=room.makeAction(name);
+  if(Array.isArray(a)) return {send:a[0], on:a[1]};
+  return {send:d=>a.send(d), on:f=>{ a.onMessage=f; }};
+}
+function onPeerEvent(room,key,fn){
+  try{ const cur=room[key]; if(typeof cur==="function"){ cur(fn); return; } }catch(e){}
+  try{ room[key]=fn; }catch(e){}
+}
+function joinRoom(raw){
+  const name=String(raw==null?"":raw).trim();
+  if(name.length<2){ link.err="Give the room a name of at least two characters."; drawVeil(); return; }
+  const TR=window.TRYSTERO;
+  if(!TR||!TR.strategies){ link.err="The peer-to-peer library did not load. Try re-downloading the file."; drawVeil(); return; }
+
+  roomName=name; link.err=""; link.since=Date.now(); link.rooms=[];
+  mode="online"; roster=new Map(); claims=new Map(); hold=false;
+  me.since=Date.now(); settleAt=me.since+2500;
+  const roomId="mdl-"+name.toLowerCase().replace(/\s+/g,"-").slice(0,40);
+
+  for(const key of Object.keys(TR.strategies)){
+    let room;
+    try{ room=TR.strategies[key]({appId:APPID}, roomId); }
+    catch(e){ continue; }                                   // one strategy short is not fatal
+    const entry={key, room, peers:0, act:{}};
+    for(const k of ["hi","vt","gm"]){
+      const p=actionPair(room,k);
+      entry.act[k]=p.send;
+      p.on(m=>onNet(k,m));
+    }
+    onPeerEvent(room,"onPeerJoin",()=>{ entry.peers++; sendHello(false); drawVeil(); });
+    onPeerEvent(room,"onPeerLeave",()=>{ entry.peers=Math.max(0,entry.peers-1); drawVeil(); });
+    link.rooms.push(entry);
+  }
+  if(!link.rooms.length){ mode="menu"; link.err="No way to reach the other players from this browser."; drawVeil(); return; }
+
+  newHost();
+  V={host:null, round:0, phase:"lobby", left:0, endsAt:0, color:"#6b6257",
+     players:[[UID,me.av,0,0]], votes:null, winners:null, got:null};
+  sendHello(false);
+  beatTimer=setInterval(beat,HB);
+  render(true); drawVeil();
+}
+function netSend(kind,payload){
+  const msg=Object.assign({f:UID},payload);
+  for(const r of link.rooms){ try{ r.act[kind](msg); }catch(e){} }
+}
+function sendHello(re){ if(mode==="online") netSend("hi",{av:me.av, t:me.since, rdy:!settling(), re:!!re}); }
+function onNet(kind,m){
+  if(!m||!m.f||m.f===UID||mode!=="online") return;
+  if(kind==="hi"){
+    const was=roster.get(m.f);
+    roster.set(m.f,{av:m.av||"\u2753", since:m.t||0, rdy:!!m.rdy, at:Date.now(),
+                    first:(was&&was.first)||Date.now()});
+    if(!m.re) sendHello(true);
+    resolveAvatar();
+    if(!was) drawVeil();
+    if(iAmHost()&&H) publish();
+    return;
+  }
+  if(kind==="vt"){ if(iAmHost()) hostVote(m.f,m.r,m.c); return; }
+  if(kind==="gm"){
+    /* Only a host sends these, and it signs them, so this is the room telling
+       me who is actually running it. Believe it unless somebody better is
+       broadcasting too.
+
+       Deciding instead from my own idea of who *ought* to be host was the bug
+       behind the worst symptom this game has had: a player whose guess differed
+       from the room's threw away every message from the real host, so it never
+       learned better, and sat alone in an empty lobby for the whole game while
+       everyone else played. A rule that filters out the evidence that would
+       correct it can never correct itself. */
+    if(m.host===m.f) claims.set(m.f, Date.now());
+    if(iAmHost()){
+      // two hosts: the live game beats the empty one, and only then does
+      // seniority decide. Yielding on seniority alone let a survivor who had
+      // just sat down in an empty lobby overrule the one holding the game.
+      if(m.host===m.f && hostWins(m)) adopt(m);
+      return;
+    }
+    const now=Date.now();
+    for(const [id,at] of claims)
+      if(id!==m.f && now-at<3500 && beats(id,m.f)) return;   // a better host is live
+    adopt(m); drawVeil();
+    if(m.phase==="vote"&&myVote!=null){         // a dropped vote packet: say it again
+      const mine=(m.players||[]).find(p=>p[0]===UID);
+      if(mine&&!mine[3]) netSend("vt",{r:m.round,c:myVote});
+    }
+  }
+}
+function beat(){
+  if(mode!=="online") return;
+  const now=Date.now();
+  for(const [id,e] of roster) if(now-e.at>=GONE) roster.delete(id);
+  sendHello(false);
+  resolveAvatar();
+  if(iAmHost()&&!H) newHost(V?scoresFromView(V):null);
+  drawVeil();
+}
+
+/* ============================== running ============================== */
+function startPractice(){ mode="practice"; bots=makeBots(botCount); newHost(); publish(); drawVeil(); }
+function quit(){
+  if(beatTimer){ clearInterval(beatTimer); beatTimer=null; }
+  for(const r of link.rooms){ try{ r.room.leave(); }catch(e){} }
+  link.rooms=[]; link.err=""; roster=new Map(); claims=new Map();
+  bots=[]; H=null; V=null; myVote=null; seenRound=-1; lastKey=""; hold=false;
+  for(const [,el] of chipEls) el.remove();
+  chipEls.clear();
+  mode="menu"; drawVeil();
+}
+setInterval(()=>{ hostStep(); tickClock(); drawVeil(); }, 250);
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden) sendHello(false); });
+
+buildTiles();
+document.getElementById("you").querySelector(".av").textContent=me.av;
+drawVeil();
+</script>
+</body>
+</html>
