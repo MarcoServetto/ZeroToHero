@@ -136,8 +136,8 @@ Nat:Sealed,DataType[Nat,Nat],SumNumber[Nat]{
 </code></pre>
 <p>As you can see, to call <code>Flow[E].sum</code>, we need an argument implementing
 <code>SumNumber[E]</code>.
-All the numeric types implement <code>SumNumber[_]</code>, so we can use any numeric value as as starting point for our sum.
-This patterns allows to limit what parameter types we can pass to a generic entity.
+All the numeric types implement <code>SumNumber[_]</code>, so we can use any numeric value as a starting point for our sum.
+This pattern allows us to limit what parameter types we can pass to a generic entity.
 The parameter type and the receiver generic type can cooperate to accept each other.
 Method <code>.join</code> works in the same conceptual way.</p>
 <h2>Lists</h2>
@@ -178,22 +178,28 @@ This bidirectional mapping makes it easy to simulate a 2D grid using a flat arra
 <pre><code>Grid:{
   .inner: List[Elem];
   .get(x: Nat, y: Nat): Elem -&gt; this.inner.get(y * 5 + x);
-  .y(index: Nat): Nat -&gt; index .div 5;
-  .x(index: Nat): Nat -&gt; index .rem 5;
+  .y(index: Nat): Nat -&gt; index .getTruncDiv 5;
+  .x(index: Nat): Nat -&gt; index .getRem 5;
   }
 </code></pre>
 <p>Note: since <code>index</code> is a Nat, the division is rounded down (<strong>integer division</strong>).
-For example <code>13 .div 5 = 2</code>; and the reminder/<code>.rem</code> operation returns the reminder of the
-integer division: <code>13 .rem 5 = 3</code></p>
+<code>.getTruncDiv</code> is short for &quot;get, truncated division&quot;: it divides and then truncates (cuts off) whatever comes after the decimal point.
+For example <code>13 .getTruncDiv 5 = 2</code>; and the reminder/<code>.getRem</code> operation returns the reminder of the
+integer division: <code>13 .getRem 5 = 3</code></p>
 <p>This kind of encoding was crucial in the past for extracting performance benefits from primitive machines with severe memory constraints. Today, while less common, it remains critical in some contexts.</p>
 <h3>The <code>.as</code> method</h3>
-<p><code>List[E].as</code> is a method creating a new list where the elements have gone through some kind of transformation.
-That is, the following three expressions are equivalent:</p>
-<pre><code>  Lists#(`3`,`4`,`5`)
-  Lists#(1,2,3).as{::+ 2 .str}
-  Lists#(1,2,3).flow.map{::+ 2 .str}.list
+<p><code>List[E].as</code> is <strong>not</strong> a general-purpose transformation method: for that, use <code>.flow.map{...}.list</code>, as we have already seen.
+Instead, <code>List[E].as</code> is a zero-cost retyping: the compiler checks that the function passed to it is <code>{::}</code> (or something reducible to it), and if so, reinterprets the list at a different, compatible element type, without touching a single element.
+<code>{::}</code> is the identity function; here are some of the retypings it lets <code>.as</code> perform, given</p>
+<pre><code>Animal: { .name: Str; }
+Dog: Animal { .name: Str; .bark: Str -&gt; `Woof`; }
 </code></pre>
-<p>While method <code>List[E].as</code> mostly behaves as <code>.flow.map.list</code>, the compiler can optimise it to run faster in a few crucial cases.</p>
+<p>all of this works too:</p>
+<pre><code>  Lists#(1,2,3).as{::}                                              //List[Nat] to itself
+  .greetAll(pets: List[mut Dog]): List[Dog] -&gt; pets.as{::}          //List[mut Dog] to List[Dog]
+  .allPets(pets: List[Dog]): List[Animal] -&gt; pets.as{::}            //List[Dog] to List[Animal], since Dog implements Animal
+  .allGroups(gs: List[List[Dog]]): List[List[Animal]] -&gt; gs.as{::.as{::}} //nested: one .as per level
+</code></pre>
 <h3>Lists and mutability</h3>
 <p>Stacks as shown before are always immutable, while lists support both mutable and immutable elements.
 Note how there are now two reference capabilities in play:
@@ -227,8 +233,9 @@ If we can not promote this result to <code>imm</code>, we can convert it to <cod
 There <code>{::}</code> will be desugared as <code>F[Num,Num]{a-&gt;a}</code>. That is, a simple identity function, mapping the elements to themselves. Since method .as returns an <code>imm List</code>, we are effectively converting the <code>mut List[E]</code> into an <code>imm List[E]</code>.
 This and a few other patterns are also optimised by the compiler to not create a new object but reuse the old one. Basically by calling this method we are guiding the type system to recognise that a <code>mut List[Num]</code> is really just an <code>imm List[Num]</code>.</p>
 <ul>
-<li><code>List[mut Animal]</code>, also written as <code>imm List[mut Animal]</code> behaves exactly like a <code>List[Animal]</code>, that is, an immutable list of immutable elements, but the type system does not know about this. As for before, if we have an <code>animals: List[mut Animal]</code> and we need a <code>List[Animal]</code> we can just call <code>animals.as{::}</code>.
-This last case often emerges from promotion: we may start with a <code>mut List[mut Animal]</code> and then turn it into immutable.</li>
+<li><code>List[mut Animal]</code>, also written as <code>imm List[mut Animal]</code>, behaves exactly like a <code>List[Animal]</code>, that is, an immutable list of immutable elements, but the type system does not know about this: <code>mut Animal</code> and <code>imm Animal</code> are different types.
+This is <code>.greetAll</code> from above: <code>pets.as{::}</code> is how we tell the type system that a <code>List[mut Dog]</code> is fine to also use as a <code>List[Dog]</code>.
+This case often emerges from promotion: we may start with a <code>mut List[mut Animal]</code> and then turn it into immutable.</li>
 </ul>
 <h3>Other core list methods: <code>+&gt;</code>, <code>&lt;+</code>, <code>++</code>, <code>.subList</code></h3>
 <p>We can concatenate lists and elements using methods <code>++</code>, <code>+&gt;</code> and <code>&lt;+</code>.
@@ -446,7 +453,7 @@ myCars.flow
   .get //this requires that there is exactly one max
 myCars.flow
   .max({::.driver}.then Older) //here we check using the Older comparator
-  .opt//this requires that there is exactly zero or one max
+  .getOpt//this requires that there is exactly zero or one max
 myCars.flow
   .max(OrderByCaseInsensitive.view{::.driver.name}.then {::.driver.age}) //here names ignoring case
   .first //this gives us an Opt[Car] and allows for further max cars to be discarded.

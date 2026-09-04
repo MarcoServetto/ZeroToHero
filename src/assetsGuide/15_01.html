@@ -41,9 +41,18 @@
 <h3>Local parameters (Locals)</h3>
 <p>Up to now, all the parameters we have seen are method parameters; either the receiver (parameter zero) or one of the others.
 This can encourage us to write repetitive and hard to read code.</p>
-<p>For example, we show below a difficult to read method computing the distance between two points; using the square root function (sqrt) present on <code>Nat</code>:</p>
+<p>A quick note on two naming conventions you will keep running into: methods starting with <code>get</code> and methods starting with <code>soft</code>.
+A <code>get</code> method promises a precise, correct answer, but only for the cases where one actually exists; the name warns that such a precise answer may not exists.
+<code>3.3 .getNat</code> can not return <code>3.3</code> as a <code>Nat</code>. There is no <code>Nat</code> precisely representing <code>3.3</code>.
+Instead of making up a arbitrary answer, <code>get</code> methods stop the whole execution.
+A <code>soft</code> method takes the opposite approach: it never stops the execution, and instead gives back the closest reasonable answer it
+can, even when an exact one is not possible.
+For example, we show below a difficult to read method computing the distance between two points;
+using the square root function (<code>.softSqrt</code>) present on <code>Nat</code>. Most numbers (like <code>2</code>)
+do not have a whole-number, or even a neat fractional, square root, so <code>.softSqrt</code> gives back the closest <code>Float</code> it can find.
+Then <code>.softNat</code> turns that <code>Float</code> back into a <code>Nat</code>, again taking the closest reasonable value: it rounds down, and clamps negative numbers to <code>0</code>.</p>
 <pre><code>.distance(p1: Point, p2: Point): Nat-&gt;
-  p1.x - (p2.x) * (p1.x - (p2.x)) + (p1.y - (p2.y) * (p1.y - (p2.y)))  .sqrt .nat  
+  p1.x - (p2.x) * (p1.x - (p2.x)) + (p1.y - (p2.y) * (p1.y - (p2.y)))  .softSqrt .softNat
 </code></pre>
 <p>Note that those are the needed parenthesis:
 <code>p1.x - p2.x</code> would be interpreted as <code>(p1.x - p2).x</code>
@@ -56,7 +65,7 @@ This method uses the Pythagorean theorem, but it is not ideal:</p>
 We can define a function on the fly and call it, as shown below:</p>
 <pre><code>.distance(p1: Point, p2: Point): Nat-&gt;
   F[Nat,Nat,Nat]{diffX, diffY -&gt;
-     (diffX * diffX) + (diffY * diffY).sqrt.nat }
+     (diffX * diffX) + (diffY * diffY).softSqrt.softNat }
   #( p1.x - (p2.x), p1.y - (p2.y) )
 </code></pre>
 <p>Theoretically, this new code achieves our goals, but most humans find this new version even harder to read.
@@ -64,7 +73,7 @@ We think this is mostly because</p>
 <ol>
 <li>The values for <code>diffX</code> and <code>diffY</code> are very far in the code from the declaration point of <code>diffX</code> and <code>diffX</code>.</li>
 <li>This new version is just much longer: we have to add the types for <code>diffX</code>, <code>diffY</code>, and the return type.</li>
-<li>This version is only working for two new parameters defined at the same time. What if we wanted to give a name to the result before <code>.sqrt</code>?</li>
+<li>This version is only working for two new parameters defined at the same time. What if we wanted to give a name to the result before <code>.softSqrt</code>?</li>
 </ol>
 <p>We first show how to solve those 3 issues in the core language, then we show a new form of syntactic sugar making this approach more readable.
 We can define a standard <code>Let</code> type allowing to define local parameters by generalising the idea of the code above:</p>
@@ -75,7 +84,7 @@ We can define a standard <code>Let</code> type allowing to define local paramete
   Let#(p1.x - (p2.x), {diffX -&gt;
   Let#(p1.y - (p2.y), {diffY -&gt;
   Let#((diffX * diffX) + (diffY * diffY), {res -&gt;
-  res.sqrt.nat
+  res.softSqrt.softNat
   })})})
 </code></pre>
 <p>now we can use any amount of lets to declare local bindings and use them in the rest of the code.
@@ -94,7 +103,7 @@ Let: { #[R]: Let[R] -&gt; {} }
   .let({p1.x - (p2.x)}, {diffX, self0 -&gt; self0
   .let({p1.y - (p2.y)}, {diffY, self1 -&gt; self1
   .let({(diffX * diffX) + (diffY * diffY)}, {res, self2 -&gt; self2
-  .return {res.sqrt.nat}
+  .return {res.softSqrt.softNat}
   })})})
 </code></pre>
 <p>I guess you are now very confused about the code above, and you may be thinking this is not much of an improvement.
@@ -115,7 +124,7 @@ and the second parameter is <code>{diffX, self0 -&gt; self0 ...}</code></p>
   .let diffX = {p1.x - (p2.x)}
   .let diffY = {p1.y - (p2.y)}
   .let res   = {(diffX * diffX) + (diffY * diffY)}
-  .return {res.sqrt.nat}
+  .return {res.softSqrt.softNat}
 </code></pre>
 <p>That is, the <code>=</code> takes the binding name on its left and uses it to forge an object literal implementing a single method with two arguments.
 The body of such a method is whatever method chain follows.
@@ -126,7 +135,7 @@ In the case of the <code>Let[R]</code>, it is just the same <code>Let[R]</code> 
   .let diffX= {p1.x - (p2.x)}           | .let({p1.x - (p2.x)}, {diffX, self0 -&gt; self0
   .let diffY= {p1.y - (p2.y)}           | .let({p1.y - (p2.y)}, {diffY, self1 -&gt; self1
   .let res={(diffX*diffX)+(diffY*diffY)}| .let({(diffX*diffX)+(diffY*diffY)},{res,self2-&gt;self2
-  .return {res.sqrt}                    | .return {res.sqrt}
+  .return {res.softSqrt.softNat}          | .return {res.softSqrt.softNat}
                                         | })})}) 
 </code></pre>
 <p>In the code above, we call <code>diffX</code>, <code>diffY</code> and <code>res</code> local parameters, or <strong>locals</strong> for short.
