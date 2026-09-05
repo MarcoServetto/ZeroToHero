@@ -6,3 +6,55 @@ LongHorizonTasks.txt if he wants another attempt).
 
 Each entry: the original task text, followed by its report (what was done,
 where results/PRs/issues/pages ended up, or the failure explanation).
+
+---
+
+Task:
+Look at the code generating the Html docs when a fearless package is
+compiled. Add a companion generation that generate minimal formatted
+text; designed to reduce text and minimise it to save tokens and to
+make this text a great input for a coding agent needing that docs to
+write code in Fearless. Basically plain text instead of HTML.
+Make sure to write in CLAUDE.md how to locate those files, so that it is easier to code in Fearless by looking to those instead of the full implementation of the standard library
+Make a PR on the original repo so that those files are created by the manager and portable fearless during compilation, exactly as for the html documentation. Every time the html is created/updated, so should the corresponding plain text file.
+
+Report:
+Both PRs are open, verified, and correctly targeted at the upstream FearlessLang org (not the marcoautomation fork). Here is the final report.
+
+## Summary
+
+Investigated and extended the Fearless doc-generation pipeline in Coordinator/src/docBuilder/ to also emit a compact plain-text companion doc alongside the existing per-package HTML doc, on every compile, in both the manager GUI and portable-fearless build paths -- as requested in the task.
+
+## What was found
+
+- All per-package HTML doc generation happens in exactly one place: HtmlDocBuilder.complete() (Coordinator/src/docBuilder/HtmlDocBuilder.java), which builds an HtmlDocRenderer and calls Fs.writeUtf8(htmlPath, renderer.render()). Verified via a repo-wide grep for Fs.writeUtf8 that this is the only writer of package doc HTML in the whole codebase.
+- HtmlDocBuilder is invoked from Coordinator.backend() -> NaiveBackendLogicMain.of(), which every package compile goes through (Layer.java's MiddleLayer/BaseLayer), so both the manager GUI's compile path and the portable-fearless compile path already share this single code path.
+- The one exception is the base package when a prebuilt cache is configured: BaseCacheBuilder.buildInto() (Coordinator/test/mainCoordinator/BaseCacheBuilder.java) compiles base once and copies base.html/base.json/base.jar into a baseCache folder. This is called by both DeployPortableFearless.main and DeployManagedFearless.main (the manager and portable-fearless deploy scripts) via BaseCacheBuilder.deployInto, and by RunIntegration's @BeforeAll.
+
+## What was changed
+
+- Coordinator/src/docBuilder/HtmlDocRenderer.java: added renderText() plus small private helpers (renderTypeText, renderMethodText, renderDocText, appendIndented). This reuses all of the existing filtering/sorting/naming logic (visibleTypes, visibleMethods, typeTitle, fromRefs, refName, the toStr compact signature printer) rather than duplicating it -- text and HTML share everything except links and markup. Deliberately left out of the text form (a genuine redesign, not a stripped-tags copy): HTML markup/anchors, the "typed literal/method variants" dumps, and the "No documentation yet." placeholder.
+- Coordinator/src/docBuilder/HtmlDocBuilder.java: complete() now writes <pkg>.txt next to <pkg>.html from the same HtmlDocRenderer instance.
+- Coordinator/test/mainCoordinator/BaseCacheBuilder.java: buildInto now also copies base.txt into baseCache.
+- Coordinator/test/docBuilder/DocBuilderTest.java: 5 new focused unit tests (no HTML markup leaks into renderText(); hidden anonymous literals still don't leak; missing docs produce no placeholder; doc prose/examples render indented under their method; inherited-method provenance renders as a plain from: line). Refactored the existing a/b/hidden test fixture into a shared fixtureBuilder() used by both the HTML and text fixture variants (net reduction, not growth).
+- StandardLibrary/CLAUDE.md (new file -- none existed before): documents where the generated .txt files land (dbgOut/baseCache/base.txt locally, <appDir>/stdLib/baseCache/base.txt inside a built app, <project>/.fearless_out/gen_java/<pkg>.txt for any other compiled project) and points at the generator, so a future Claude session reads these instead of the full base/**/*.fear sources when writing Fearless code.
+
+## Verification
+
+- Clean builds of Commons/Frontend/Coordinator throughout.
+- Fast Coordinator suite: 287/287 passing (282 baseline + 5 new).
+- Full suite including integrationTests (compiles real Fearless projects, runs BaseCacheBuilder.buildInto): 321 passed, 0 failed, 1 aborted -- isolated and confirmed that abort is pre-existing and unrelated (RealSourceOracleWithZipDslTest tries to materialize a filename containing ":", which Windows' filesystem simply refuses to create).
+- Manually inspected real output: StandardLibrary/dbgOut/baseCache/base.txt (about 377KB vs base.html's about 1.7MB) and the testDocs integration fixture's hello.txt (about 3.9KB vs hello.html's about 33KB) -- signatures, extends clauses, doc-comment prose, runnable examples, base-name shortening, and inherited-method from: lines all render correctly; no HTML leaking through; LF-only line endings.
+
+## What was intentionally left alone (not a failure, just out of scope)
+
+- The manager GUI's "Open docs" button (FolderInfo.openDocs()) still only opens .html files -- the task asked for file generation parity, not a UI change.
+- StandardLibrary/fearlessStandalone/base.html is a manually-committed release snapshot with no automated regeneration pipeline anywhere in this codebase (confirmed by grep) -- untouched.
+- Did not run a full jpackage-based portable/manager app build (slow, exercises OS packaging unrelated to this change). The exact shared code path it depends on (BaseCacheBuilder.buildInto) was directly exercised and verified via the test suite instead.
+
+## PRs opened (FearlessLang, via the marcoautomation fork)
+
+- https://github.com/FearlessLang/Coordinator/pull/88 -- the actual code + tests
+- https://github.com/FearlessLang/StandardLibrary/pull/41 -- the CLAUDE.md doc-location note
+
+Two PRs because the change spans two separate repos; they cross-reference each other but are independent (the StandardLibrary PR is documentation-only and doesn't require #88 to merge first for anything to keep working).
