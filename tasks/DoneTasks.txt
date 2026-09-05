@@ -6,3 +6,40 @@ LongHorizonTasks.txt if he wants another attempt).
 
 Each entry: the original task text, followed by its report (what was done,
 where results/PRs/issues/pages ended up, or the failure explanation).
+
+---
+
+Task:
+Make an example fearless project working with the logs.
+Check that the logs work from the manager gui and that they are actually displayed.
+If you find problems you may have to fix bugs and add features to the standard library about logging.
+Write a PR adding that example fearless to the integration tests.
+
+Report:
+Both PRs are open against the correct upstream (FearlessLang), the full test suite passes, the fix is verified end-to-end through the actual manager GUI, and the downloadable builds have been redeployed with the fix.
+
+What logging support existed before: the Fearless standard library already had three logging facilities declared in StandardLibrary/base/logs.fear -- base.Log (a file-backed singleton logger writing timestamped lines to .out/logs/_base/log.log, rotated on startup/shutdown), base.UnitTestLog (same mechanism, reserved for internal UnitTest library use), and base.InMemoryLog[T]/base.LogReader[T] (a documented, generic, in-memory logging API for capturing values during a run and reading them back). The Fearless Manager GUI already had a working "Logs" panel (Coordinator/src/managerInfo/FolderInfo.java + LogFiles.java) that lists .out/logs/**/*.log files for a registered project and lets you View/Copy/Delete them -- this UI machinery was already correct and already displayed base.Log output; it did not need fixing.
+
+What was found broken: base.InMemoryLog was completely non-functional, in two independent ways, both invisible until real code actually exercised the facility (nothing in the codebase called it before):
+1. InMemoryLog[T].log is declared as a runtime-backed "Magic!" method, but unlike Log/UnitTestLog, no hand-written Java backing existed anywhere for it -- every call crashed with "Magic! invocation".
+2. Even with that fixed, System.readLog handed each reader a brand new, empty list on every call instead of the log's real accumulated state, so nothing logged could ever be read back.
+3. A third, independent bug: the reader's "reject generic logs" guard checked the runtime class's simple name for a "$0" suffix, but that object is always the compiler's anonymous singleton class for a concrete log literal, and Class.getSimpleName() on an anonymous class is empty by Java's own contract -- so the check misfired on every concrete log, always throwing "Generic logs can not be read". The real arity-carrying name lives on the one interface that anonymous class implements.
+
+What was changed:
+- StandardLibrary/rt/InMemoryLog$2kk$1.java (new) -- backs .log with a small identity-keyed in-memory store, mirroring how rt/Vars$o$0.java keeps its own private helper alongside it.
+- StandardLibrary/rt/_System$2o$0.java -- readLog now hands the reader the same shared per-instance list instead of a fresh disconnected one.
+- StandardLibrary/rt/_LogReader$m8$1.java -- the generic-log check now inspects the instance's interface, not its own (anonymous) class; read/consume synchronize on the shared list, since Fearless's .flow.forEach over a read/imm source runs in parallel by default -- a real concern here (the example's loop genuinely executes concurrently; out-of-order log lines were observed firsthand before this was accounted for).
+- StandardLibrary/integrationTests/testLogging/_logging/_rank_app.fear (new) -- the example project: base.Log.log(...) calls at different points (start, per-item in a loop, a final summary), plus a base.InMemoryLog/LogReader used to count processed items and fold that count back into the final log line. No severity/level concept exists anywhere in the base library, so the example doesn't invent one.
+- Coordinator/test/integrationTests/RunIntegration.java -- added testLogging(), which runs the project, asserts the printed summary, and asserts managerInfo.LogFiles.list(root) -- the same lookup the manager GUI's Logs panel itself uses -- finds exactly the one log file produced and that its content is correct.
+
+How the manager GUI display was actually verified: built the manager with the fix in place, launched the real fearlessManaged0_001w.exe (via mouse/keyboard automation, screenshotting each step), registered the testLogging project via Add folder, clicked Compile then Run (output panel showed the run and "done, 3 steps recorded"), expanded the Logs section (listed the timestamped log file), and clicked View -- the dialog showed the real content matching the file on disk byte-for-byte. The "3 steps recorded" figure is proof both bugs are fixed together: it is only correct if InMemoryLog.log actually stored three entries and the reader actually read them back from the same storage.
+
+Test suite: full rebuild + test run before opening either PR. Frontend 712/712 passing; Coordinator full suite (including all integrationTests) 317/318 passing, with the one abort being a pre-existing, unrelated symlink-permission check (RealSourceOracleWithZipDslTest) untouched by this change.
+
+Nothing was cut from scope. The manager GUI's log-display panel itself needed no fix (it already worked for base.Log); the bug was entirely in the standard library's InMemoryLog facility, needed to make a complete example work, which the task explicitly anticipated might require fixing.
+
+Pull requests (both against FearlessLang, never the marcoautomation fork):
+- https://github.com/FearlessLang/StandardLibrary/pull/42 -- the fix + the new example project
+- https://github.com/FearlessLang/Coordinator/pull/89 -- the integration test wiring
+
+Also done: redeployed the portable + manager builds via the deploy-fearless-pages skill so the public downloads carry this fix immediately rather than waiting on a merge: https://marcoautomation.github.io/shared-docs/fearless/
