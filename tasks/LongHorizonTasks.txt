@@ -34,3 +34,149 @@ Write a PR adding that example fearless to the integration tests.
 
 Task:
 Currently running unit tests on fearless logs in a format that is compatible with what the Eclipse default plugin for JUnit6 can recognize. Is there a way to make so that that output is wired in the tests we see when we run all the tests on coordinator, so that we actually see in eclipse all those passing tests? I understand we may have to get some compromise, fine, let see what is the best we can easily get. I'm not sure how to report about this task. a PR would not make sense since it is about the eclipse set up and not the code; possibly something on the github pages with explanation and a zip to download and apply?
+
+Task:
+Make sure that the manager looks to the hard drive to refresh its GUIs only when the GUI is visible; if the GUI is hidden or closed, the virtual threads continuously looking to the hard drive should stop, and restart when the gui is visible again.
+
+
+Task: 
+A loaded project currently can be in states:
+-invalid content (file names etc)
+-not compiled no cache (no .fearless_out folder)
+-not compiled .fearless_out out of date
+-compiled
+-compiled and running
+
+Now we need to add a few states and we get
+
+-data:invalid content (file names etc)
+-code:invalid content (file names etc)
+-data:valid idle project
+-data:read write
+-data:read only 
+-code:not compiled no cache (no .fearless_out folder)
+-code:not compiled .fearless_out out of date
+-code:compiled
+-code:compiled and running
+
+
+The manager need to offer a text view of some metadata related to this.
+Look into standard library to understand the exact Info format (simplification of JSon, limited strings on safe characters and only Str/Obj/List and empty obj==empty str==empty list)
+
+We need to read and write some Info text into a file that needs to be saved in the manager folder, and the manager need to provide an editable view over it with a 'commit' button. The commit will have to check that the current state is correct and give an error otherwise. Look to how the fearless parser works, how errors are reported and try to keep the same style as much as possible.
+If correct, when the button is pressed the manager updates the file on disk. Note that 'correct' must mean much more then 'syntactically valid Info'; it must check for no repeated names/aliases etc.
+This is the format I would expect as an example:
+
+{
+"hello_world":{
+  "path":"C:/..../hello_world",
+  "kind":["code","compiled"],
+  "mains":["HelloWorld1","HelloWorld3"],//currently selected main
+  "reads":{"public_files":["PublicFiles","PublicFiles2"]},//the gui will infer the standard file name-> type id transformation; the file will just report it as an alias; Zero aliases or no entry for a project means the project is not readable/editable
+  "edits"{...}
+  },
+"public_files":{
+  "path":"..",
+  "kind":"data:readOnly",
+  },
+"public_data":{
+  "path":"..",
+  "kind":"data:readWrite",
+  }
+}
+Note: invalid or the various kinds of code are not there;
+the only four options for kind are
+"data:readOnly","data:readWrite", "code", "idle"
+
+Pending/dead/hanging links: What if a project mentions in any part of its state a project that does not exists or is "invalid content"? This project also becomes invalid content. Compiling one such project should give an error explaining the issue. data:invalid content should have a 'check' button, while code:invalid content should keep the 'compile' button, but they conceptually behave the same (reusing the compiler code when possible) they will give the error about why invalid.
+
+Crucially where the pending link is stored is relevant: a data folder does not become invalid because an invalid code folder can read it;
+but an invalid data folder makes an otherwise valid code folder invalid.
+
+All validity checks used on code are used on data folders; thus ensuring sane structure, names etc.
+
+Consider reusing the existing code/code structure to read jsons.
+
+If a manager somehow discovers that this configuration file is corrupted and now invalid, it refuses to start and reports the error.
+
+A project can have attributes unconnected to its kind; for example a code project that turns into data will keep the saved metadata about mains, reads, edits; and if reverted back to code, that metadata will become active again. This in turn means the top level metadata names must be defined to never overlap between kinds.
+
+all project are just 'idle' when directly loaded, and the Info can be edited to move them to code (and thus allow compile) or to data (and thus allow them to be inside reads/edits lists).
+
+To do this right, you probably have to fully redesign the way the manager saves/reads information on the disk. Much of the information that should now be in the Info file was handled differently.
+As part of completing this task, if there is any information that is not in the Info but still need to be saved, list it and explain why it exists.
+If it can easily be added to the Info, do so as part of this task.
+
+Once completed, make a PR and update the github pages zip.
+
+
+Task:
+We are expanding the state and correspondingly the gui of the fearless manager.
+Before, a loaded project currently can be in states:
+-invalid content (file names etc)
+-not compiled no cache (no .fearless_out folder)
+-not compiled .fearless_out out of date
+-compiled
+-compiled and running
+
+Now we are moving to the following:
+
+-data:invalid content (file names etc)
+-code:invalid content (file names etc)
+-data:valid idle project
+-data:read write
+-data:read only 
+-code:not compiled no cache (no .fearless_out folder)
+-code:not compiled .fearless_out out of date
+-code:compiled
+-code:compiled and running
+
+The manager need to show the current state and the user need to be able to move between states using the gui when reasonable; the state of each folder should be saved in the manager data.
+Moving in and out of invalid content: not done via the manager, done by changing the content on the hard drive, the manager discovers the change and moves the project in or out of invalid content.
+On default a folder with valid content that has not being acted upon in any way should start as data:valid idle project.
+a data:valid idle project should show buttons to become 'some kind of project'.
+-Become data->
+It becomes a data:read only project; similar to the mains to select, we now have to select what 'code' projects can read it; and near each one we can override a default and write a list of aliases, with the first element prewritten to be the standard filename to type conversion.
+
+-Become editable data->
+It becomes a data:read write project; similar to the mains to select, we now have to select what 'code' projects can read it; and near each one we can tick a box to allow writing, and override a default and write a list of aliases with the first element prewritten to be the standard filename to type conversion.
+
+-Become code->
+It becomes code:not compiled no cache; this is the starting point for the current manager. we will see the compile button that can be replaced by the run button with main selection etc exactly as today.
+The project will then 'naturally' move between the code kinds depending on the pressed buttons.
+The code will now also have a list of 'reads' and 'edits' with maps from project names to aliases as for before. Crucially those are just two views over the same data, not separated lists of permissions that have to agree.
+
+all the Data and Code kinds will have a button to go back to data:valid idle project (except data:valid idle project otherwise it would be a no op)
+
+Each kind will now have a different badge; currently we have a few badges including ! and X. Those are pretty good! we just need more kinds.
+
+As you can imagine, later on we will have APIs to allow code projects to read/edit data in Data projects.
+
+
+Task:
+Consider this repository
+https://github.com/FearlessLang/EclipsePlugin
+This is an old and not maintained Eclipse plugin for fearless.
+It was very limited and badly done by a much weaker AI never properly reviewed by a human, so take the content there as a way to understand 'what' we wanted to do not 'how'.
+
+In particular the crucial features are
+-the fearless errors get redirected to eclipse 'error showing' panels so that by clicking on the error we jump to the mentioned piece of code.
+This used to work.
+-when we run fearless tests, the test logs are in just the right format so that we can use the existing JUnit test result visualiser to show the results in a user friendly way. This also used to work.
+
+Other features, in particular how to visualise files and paths are not important.
+Note how there is simply nothing about interacting with the text of fearless files. This is fully out of scope.
+
+This plugin needs to work with a portable eclipse like the one downloaded from here
+https://www.eclipse.org/downloads/download.php?file=/technology/epp/downloads/release/2026-06/R/eclipse-java-2026-06-R-win32-x86_64.zip
+(parent page)
+https://www.eclipse.org/downloads/packages/
+Note we are not installing eclipse.
+
+Fearless has changed a lot from the time that plugin worked.
+Now we would need to somehow have a connection with the manager.
+Ideally, we can have a menu item that says connect with eclipse and that would ask to select the eclipse executable; examine the current eclipse, and if good, copy the right jars in the right places and other needed config files (like position of the manager etc).
+Then when eclipse runs again, it should be possible to 'open' a fearless project that the manager knows and thus connect eclipse with the running manager.
+
+I want you to make a PR to the https://github.com/FearlessLang/EclipsePlugin
+repository, and to coordinator, including the 'compiled/built' jars and other artefact from EclipsePlugin repository and any other change needed to make the manager connect with an existing eclipse
