@@ -6,3 +6,41 @@ LongHorizonTasks.txt if he wants another attempt).
 
 Each entry: the original task text, followed by its report (what was done,
 where results/PRs/issues/pages ended up, or the failure explanation).
+
+---
+
+Task:
+Consider this web based game
+https://github.com/MarcoServetto/ZeroToHero/blob/main/src/assetsLeo/SwordAndShieldMulti.html
+There is some issue on the peer to peer play over the internet connection.
+If one player take a very long time to do their more, the other player is disconnected.
+Overall, we should make this more resilient.
+-There should be some hearth beat of both players, even if they are not the player of the turn. Ideally a graphical element can show it, like the crown pulsating bigger and smaller when the hearth beat is received from that player.
+-If there is a disconnection, the browsers should try to keep the information about the current game alive and simply try to reconnect, using the same players name and room name.
+Make a PR with the fixed version.
+
+Report:
+PR: https://github.com/MarcoServetto/ZeroToHero/pull/10 (opened against MarcoServetto/ZeroToHero's main, from marcoautomation:overnight/2026-09-06-swordshield-p2p-resilience)
+
+Root cause: SwordAndShieldMulti.html already had an app-level heartbeat -- both players broadcast a "hello" over the Trystero/WebRTC data channel every 2 seconds regardless of whose turn it is, and a silent peer was declared gone after 12 seconds (six missed beats). The actual bug: a backgrounded browser tab gets its timers throttled by the browser itself (Chrome clamps a hidden tab's timers to roughly once a minute after a few minutes hidden), independent of any real network problem. Whoever is not on turn commonly tabs away, and anyone thinking for "a very long time" is also likely to have their screen lock or lose focus. Either way their heartbeats stop arriving well before the old 12-second window, so the other, still-focused player's client concludes they left and reassigns/loses their seat -- even though both browsers are still open and nothing actually failed. A second, separate gap: once reassigned this way, there was no way back except a full page reload.
+
+What was changed:
+- Raised the peer-gone timeout from 12s to 75s (clears realistic background throttling; genuine drops are unaffected since Trystero's own onPeerLeave still fires immediately on an actual transport failure).
+- Visible heartbeat: each player's existing crown SVG now pulses whenever that seat's heartbeat is actually seen -- own seat on send, opponent's seat on receipt.
+- Immediate heartbeat on visibilitychange so returning to a tab doesn't wait out the rest of the interval.
+- Self-healing reunion: a peer already given up on that resumes heartbeating under the same connection is resumed directly, instead of waiting forever for a spectator that will never come.
+- Reconnection across a reload/crash: the room name plus a per-browser random token are kept in localStorage. On load, a saved in-progress game auto-rejoins the same room with no retyping, and the surviving player recognizes the token and hands the seat back directly rather than waiting out the peer-gone timeout. Cleared on game-over or explicit new game.
+No build step or new dependency; still one self-contained HTML file. Single commit, 51 insertions/14 deletions.
+
+How it was actually tested: two independent, isolated headless Brave instances were driven via the Chrome DevTools Protocol (own user-data-dir/profile each), joined to the same real Trystero room over the live internet (no mocking), with the heartbeat-pulse function instrumented to count real invocations.
+1. Paired two real clients, confirmed opposite seats, confirmed a real move propagated peer to peer.
+2. Confirmed the heartbeat pulse fired for both seats on both clients within 5s of idling.
+3. Froze one browser's page (a genuine JS/timer stop, standing in for backgrounding) for 25s, longer than the old 12s cutoff: the other side never marked them lost -- reproducing the reported bug and confirming it's fixed.
+4. Froze it for 90s, past the new 75s limit: the surviving side correctly gave up at ~76s. Unfroze it -- both sides self-reunited within ~2s, no reload, records stayed in sync.
+5. Fully reloaded the frozen browser (fresh JS heap, same localStorage, brand-new Trystero peer id): it auto-rejoined the same room with zero manual input, and the survivor recognized its persisted token and reseated it on its original seat in ~1.0 second, with the game record matching.
+All tests passed against the actual, unmodified game code (no test-only shortcuts in the shipped file).
+
+Cut scope / honest caveats:
+- No human-visible "your name" field was added. Reconnection identity is a silent, persisted random token rather than something typed in -- nothing in the task required players to see each other's names, and a token needs no new UI. A visible-names feature would be a separate, larger UI change.
+- The mobile/OS-level "whole browser process discarded and restarted cold" case wasn't tested separately beyond what the reload test already covers (same code path either way -- it starts from an empty JS heap).
+- There's a known, narrow race that was deliberately left alone (consistent with how the rest of this file already tolerates similar races): if a spectator is mid-way through being appointed a vacant seat at the exact moment the original occupant's token-match reconnect also fires, both could briefly race for the same seat. In the common case this game is used for (a private two-person room, no spectators), this can't occur at all.
