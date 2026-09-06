@@ -217,3 +217,26 @@ The refactoring: Commons/src/tools/OpenPath.java's command() method hand-rolled 
 Verified behavior is unchanged by running both fast suites twice each, once with the change and once with it stashed away, and diffing the summaries: TestAllFrontend.java 712/712 both times; TestAllFrontendCoordinator.java 288/288 (1 pre-existing unrelated abort) both times.
 
 PR: https://github.com/FearlessLang/Commons/pull/25 -- confirmed open, targeting FearlessLang/Commons main.
+
+---
+
+Task:
+consider the code generation and the standard library, consider the way caching uses hash maps while static fields could be used. Look at how Logs are interacting with the code generation right now.
+Propose a change to the current caching set up (Cache/Norm etc) that relies on static fields when possible. This should remove one layer of hash map access in most cases.
+Make sure that this new set up still works fine for cache clearing etc.
+Then open a PR on the original repos.
+
+Report:
+Target identified: base.CacheF[R]/[A,R]/[A,B,R] and base.CacheMemo[R]/[A,R]/[A,B,R] in StandardLibrary/base/caching.fear, backed by hand-written Java interfaces in StandardLibrary/rt/caches/ that each held a ConcurrentHashMap<TheInterface,CacheN> keyed by `this`. Since these types are documented singletons, that map only ever holds exactly one entry per concrete implementing class -- the same "one static slot per implementor" situation base.FileLog/InMemoryLog already solved earlier the same day (Coordinator#93, StandardLibrary#43, merged) by having Backend.generateInterface emit a real field directly on each literal's own generated interface (a field declared inside a Java interface is implicitly public static final, which is the whole trick). This task generalizes that same mechanism to the Cache/Norm family.
+
+Ruled out, with reasons: base.CacheReprF[A,R]/[A,B,R] looks identical on the surface but its map is keyed by the runtime Repr[A] type token passed at each call, not by the singleton instance -- genuinely multi-entry, no static field can replace it. _ListNorm's intern cache and Frontend's inject.Methods.cache field are likewise genuine multi-key tables (a per-compile symbol table and a value-interning table respectively), not per-type singleton slots -- forcing the FileLog pattern onto either would be wrong-fit, not an improvement.
+
+Changes: the CacheF/CacheMemo backing interfaces had their "get my CacheN" logic extracted into a named accessor (_cache0/_cache1/_cache2), with the old ConcurrentHashMap.computeIfAbsent body kept as that accessor's default implementation -- the fallback for generic (arity>0) implementors, where one compiled Java class backs every type instantiation and can't hold an instance-specific field. The Cache0/Cache1/Cache2 records moved out of Norm$o$1.java into their own public files, since Backend.java needs to name them from generated interfaces in other packages and Java forbids two public top-level types per file. Cache.flush was rewritten to clear through the same _cache0/1/2 accessor instead of reaching into each interface's ConcurrentHashMap directly -- this is the correctness-critical part, since the old flush code would have silently missed clearing a real-field-backed instance entirely (it would never appear in that map). Backend.java gained cacheShape(Literal) (mirrors the existing implementsFileLog style) and emitCacheField, emitted right after the instance field (ordering matters: the cache field's initializer reads instance). Arity-0 literals get a real base.CacheN field overriding the shared default, via the same most-specific-default-method resolution FileLog's _log() already relies on.
+
+Cache-clearing was the main risk (a static field is permanent for the JVM's lifetime, unlike a hashmap entry that can be evicted) and was verified two ways: traced Cache.flush's rewritten implementation to confirm it clears both backing strategies uniformly through the shared accessor, and ran Coordinator's existing RunIntegration.testingNorms() test, which exact-string-asserts a Debug trace covering cache hits/misses, zero-arity caches, and Cache.flush for both families (MainFlushCache/MainFlushMemo in _rank_app.fear: cache, flush, recompute) -- the expected trace is unchanged.
+
+Verified with both the fast suite (TestAllFrontendCoordinator.java, 288/288 -- this run also caught a "two public types per file" compile error on the first attempt, via TestBuildBase's real one-off base compile) and the full integration suite (TestAllFrontendCoordinatorIntegration.java, 712+323 tests, 0 failures, 1 pre-existing unrelated abort, exit code 0) since this touches StandardLibrary's base.
+
+PRs (FearlessLang, via the marcoautomation fork):
+- https://github.com/FearlessLang/StandardLibrary/pull/44
+- https://github.com/FearlessLang/Coordinator/pull/99
