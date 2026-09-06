@@ -145,3 +145,17 @@ Published:
 - Incidental small PR (allowed by the task): https://github.com/FearlessLang/Coordinator/pull/90 -- one file, test-only, 24 lines.
 
 Session note: interrupted mid-verification by a platform rate limit, resumed via a coordinator message; on resume, actual git/Eclipse state was verified from scratch (found and cleaned up incidental Eclipse-project artifacts Eclipse had written into the live Coordinator working tree; none of that reached git) before finishing.
+
+---
+
+Task:
+Make sure that the manager looks to the hard drive to refresh its GUIs only when the GUI is visible; if the GUI is hidden or closed, the virtual threads continuously looking to the hard drive should stop, and restart when the gui is visible again.
+
+Report:
+Mechanism: Coordinator/src/manager/ManagerGui.java gained a synchronized windowVisible boolean plus a real blocking gate -- awaitWindowVisible() calls wait() while hidden, setWindowVisible() calls notifyAll() -- so the tick-loop virtual thread genuinely parks with zero wake-ups while the window isn't visible, rather than polling with the work skipped. tick() calls awaitWindowVisible() before doing any per-tick work (the elapsed-time label, shown.recheckFreshness(), recheckNextInRotation()). setWindowVisible(true) is called from showManager() (covers startup, the tray's "Show manager" item, tray-icon click, and new-project-message arrival) and from a new windowDeiconified handler (restoring a minimized window directly). setWindowVisible(false) is called from the existing windowClosing handler (closing hides rather than exits) and a new windowIconified handler (minimizing). Manager.watchMessages, the separate worker watching for new "open project" messages, was deliberately left running regardless of visibility -- it's how the manager notices new work while hidden in the tray. Only ManagerGui.java changed: 9 insertions, 1 deletion.
+
+Verified two ways. First, the fast suite (Coordinator/test/mainCoordinator/TestAllFrontendCoordinator.java): 288 passed, 0 failed, 1 aborted -- pre-existing and unrelated, present before this change too. Second, real GUI verification, since this behavior isn't exercised by the automated suite: rebuilt the actual fearlessManaged app-image, launched it, registered a real example project (01_hello_world), and drove it with genuine window/tray interactions while taking jcmd thread-dump snapshots. Visible: the tick-loop thread cycling normally. Minimized via a real ShowWindow(SW_MINIMIZE): the thread parked in Object.wait() at ManagerGui.awaitWindowVisible, confirmed byte-for-byte unchanged 6 seconds later. Restored via ShowWindow(SW_RESTORE), exercising windowDeiconified: resumed cycling immediately. Closed via a real click on the window's own close button, exercising windowClosing: parked again. Reopened via a real double-click on the actual system-tray icon, exercising showManager(): resumed again. The elapsed-time label and the registered project's state stayed correct across the whole cycle.
+
+Incidental fix along the way: C:\data\fearless-gui-tests\build\Commons-boot.jar, a bootstrap jar used only to source-launch the deploy scripts, was stale relative to the just-aligned Commons repo and failed to compile ModularBuild.java; refreshed from the current Commons.jar. Local tooling state only, not part of the repo or the PR.
+
+PR: https://github.com/FearlessLang/Coordinator/pull/97 -- confirmed open, based on main, targeting FearlessLang/Coordinator (the upstream parent, not the fork).
