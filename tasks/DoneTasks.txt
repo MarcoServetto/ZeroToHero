@@ -181,3 +181,23 @@ PRs (FearlessLang, via the marcoautomation fork):
 Pages: https://marcoautomation.github.io/shared-docs/fearless/ -- redeployed and confirmed live at Coordinator commit 9530751.
 
 Note for whoever reviews tonight's PRs: this PR and pull/97 (task 1, same night) both independently branched off upstream/main and both touch Coordinator's ManagerGui.java, so they will very likely conflict with each other at merge time -- neither was rebased onto the other, by design (each overnight task starts from a clean upstream/main).
+
+---
+
+Task:
+- make a file with all the .java files of common and frontend, with a preface mentioning the path of the file. Exclude all the test files
+- read that all-source file and find a bug. Think carefully about the code itself, do not rush to 'run some tests'; think about the logic.
+Then add a test verifying the found bug and mention this in the github pages.
+
+Report:
+Concatenated all non-test .java files from Commons/src (59 files) and Frontend/FearlessFrontend/src (78 files) -- 137 files, 13265 lines -- into one marked-up file and read it end to end reasoning about the logic, rather than pattern-matching or running the suite first.
+
+The bug: Commons/src/metaParser/MetaParser.java, method parseBack (the back-scanning mirror of parseFront). parseFront correctly does its bookkeeping using only sub-parser-relative deltas; parseBack was supposed to mirror that using limit() but instead read the outer, absolute this.limit field in three spots where it needed the locally-captured, slice-relative start value. Concretely: if index has already advanced past 0 before parseBack is called (an ordinary mid-parse state), slice.subList(end+drop, limit) throws IndexOutOfBoundsException because limit exceeds the slice's size; even at index==0 the final this.limit += end sets the limit past the token list's actual size instead of shrinking it, corrupting the cursor. A tell: parseBack's doc comment is a verbatim copy of parseFront's ("forward"->"backwards" in one line) and still says it parses from the *start* of the parser, unchanged from the copy-paste. parseBack currently has zero callers anywhere across all four repos -- unused, unexercised library code, presumably why this survived.
+
+Fix: a 3-line change using the locally-captured start instead of this.limit, and correctly shrinking the outer limit to index + end (mirroring how parseFront does this.index += end).
+
+Regression test added to Frontend/FearlessFrontend/test/fearlessParser/MiscTests.java (Commons itself has no test source tree) -- builds a 6-token parser, advances index to 2, calls parseBack, and asserts the exact resulting split and exact parser state afterward. Verified the test actually catches the bug by reverting the fix and rerunning: failed with the predicted IndexOutOfBoundsException at the predicted line; reapplied the fix, passed. Fast suites green with the fix in place: TestAllFrontend.java 713/713, TestAllFrontendCoordinator.java 288/288 (1 unrelated pre-existing abort).
+
+Outcome: FearlessLang/Commons#24 (the fix) was opened, then closed without merging by the project owner about 4.5 minutes later with no comment. Since the regression test in FearlessLang/Frontend#36 only makes sense together with #24, it was closed too, with an explanatory comment. Neither change landed. Given parseBack has no live callers today, this is plausibly a deliberate call that dead code isn't worth a fix commit, rather than disagreement that it's a real bug -- but no reason was given, so that reading is inference, not confirmed fact.
+
+Published https://marcoautomation.github.io/shared-docs/bug-reports/metaparser-parseback-index.html (linked from the site's index), revised after the closures to accurately say "fix proposed, closed without merging" rather than claiming it landed.
