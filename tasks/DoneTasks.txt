@@ -240,3 +240,26 @@ Verified with both the fast suite (TestAllFrontendCoordinator.java, 288/288 -- t
 PRs (FearlessLang, via the marcoautomation fork):
 - https://github.com/FearlessLang/StandardLibrary/pull/44
 - https://github.com/FearlessLang/Coordinator/pull/99
+
+---
+
+Task:
+Look at the standard library with a focus on the numeric types.
+Find any bug or inconsistency.
+Add tests verifying those bugs.
+Finally open a PR request with suggested changes.
+
+Report:
+Read all six numeric files in full (nat.fear, int.fear, num.fear, float.fear, byte.fear, range.fear, range_makers.fear -- 1772 lines).
+
+Main bug: Int.wrapIndex in int.fear has an inverted boolean guard -- written as `len == 0 .toOpt {this.getWrapIndex(len)}` where every sibling Opt-wrapper in the numeric hierarchy (Nat/Int/Byte's rem/truncDiv/div, Num's int/nat/byte, all eleven of Float's Opt-returning methods) correctly writes "<condition-meaning-safe> .toOpt {...}". Since Bool.toOpt only evaluates its block when the receiver is True, the bug means: for len==0 the guard is true and getWrapIndex(0) actually gets called, which throws (its own contract is "throws iff len==0"); for any len!=0 the guard is false and toOpt short-circuits to empty without ever calling getWrapIndex. Net effect: .wrapIndex can never return .some for any input -- the exact opposite of its own doc comment. Fix: `len != 0 .toOpt {this.getWrapIndex(len)}`.
+
+Important nuance flagged honestly rather than overclaimed: this bug is currently masked at runtime. StandardLibrary/rt/Int$c$0Instance.java independently reimplements wrapIndex as a correct native fast path, and since every real Int value is backed by that record, its method always wins over the buggy compiled default -- confirmed empirically, since the full integration suite (including the pre-existing auto-generated Int0Imm0WrapIndex1Test derived from the same doc comment) already passes unchanged with the bug present. Fixed anyway since the .fear source is the authoritative spec (and generates the published base.txt/base.html docs), it directly contradicts its own doc comment, and nothing but that redundant native override currently prevents the bug from being live -- a future simplification of rt/'s hand-duplicated fast paths would immediately resurface it. The Java backend file itself was deliberately left untouched, flagged in the PR as an optional follow-up for Marco to decide rather than changed unilaterally.
+
+Test added: extended IntWrapIndexTests in test_int.fear with .wrapIndex checks alongside the existing .getWrapIndex ones. Can't currently go red against the bug itself (the native override masks it either way) -- it locks in the documented contract and would catch a regression if that override is ever removed.
+
+Three secondary doc-only inconsistencies also fixed, none needing dedicated tests since nothing executes these worked-example strings: int.fear's own getTruncDiv example asserted the wrong sign for -7 getTruncDiv 2 (already correctly tested elsewhere as -3); byte.fear's =~~= range-maker example compared a Range[Byte] directly to a List[Byte], missing .list, unlike its ~~/~~=/=~~ siblings; int.fear/byte.fear's getDiv doc had a garbled throws-condition reworded to match nat.fear's correct wording, nat.fear/byte.fear's getTruncDiv doc example called the wrong method (.getDiv instead of .getTruncDiv) fixed to match int.fear's already-correct version, and int.fear's aluShiftLeft/aluShiftRight docs said "bits & 33"/"bits & 64" instead of "bits & 63" for "modulo 64", inconsistent with Nat's and Byte's correct wording for the same behavior.
+
+Verified by running TestAllFrontendCoordinatorIntegration.java (rebuilds base from source, runs the full Fearless unit-test suite) twice -- once on aligned upstream code before any change as a baseline, once after all fixes. Both runs: 324 tests found, 1 aborted (an unrelated download-timeout test, identical in both runs), 323 successful, 0 failed. No regressions.
+
+PR: https://github.com/FearlessLang/StandardLibrary/pull/45 -- confirmed open, targeting FearlessLang/StandardLibrary main.
