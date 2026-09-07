@@ -145,3 +145,146 @@ Published:
 - Incidental small PR (allowed by the task): https://github.com/FearlessLang/Coordinator/pull/90 -- one file, test-only, 24 lines.
 
 Session note: interrupted mid-verification by a platform rate limit, resumed via a coordinator message; on resume, actual git/Eclipse state was verified from scratch (found and cleaned up incidental Eclipse-project artifacts Eclipse had written into the live Coordinator working tree; none of that reached git) before finishing.
+
+---
+
+Task:
+Make sure that the manager looks to the hard drive to refresh its GUIs only when the GUI is visible; if the GUI is hidden or closed, the virtual threads continuously looking to the hard drive should stop, and restart when the gui is visible again.
+
+Report:
+Mechanism: Coordinator/src/manager/ManagerGui.java gained a synchronized windowVisible boolean plus a real blocking gate -- awaitWindowVisible() calls wait() while hidden, setWindowVisible() calls notifyAll() -- so the tick-loop virtual thread genuinely parks with zero wake-ups while the window isn't visible, rather than polling with the work skipped. tick() calls awaitWindowVisible() before doing any per-tick work (the elapsed-time label, shown.recheckFreshness(), recheckNextInRotation()). setWindowVisible(true) is called from showManager() (covers startup, the tray's "Show manager" item, tray-icon click, and new-project-message arrival) and from a new windowDeiconified handler (restoring a minimized window directly). setWindowVisible(false) is called from the existing windowClosing handler (closing hides rather than exits) and a new windowIconified handler (minimizing). Manager.watchMessages, the separate worker watching for new "open project" messages, was deliberately left running regardless of visibility -- it's how the manager notices new work while hidden in the tray. Only ManagerGui.java changed: 9 insertions, 1 deletion.
+
+Verified two ways. First, the fast suite (Coordinator/test/mainCoordinator/TestAllFrontendCoordinator.java): 288 passed, 0 failed, 1 aborted -- pre-existing and unrelated, present before this change too. Second, real GUI verification, since this behavior isn't exercised by the automated suite: rebuilt the actual fearlessManaged app-image, launched it, registered a real example project (01_hello_world), and drove it with genuine window/tray interactions while taking jcmd thread-dump snapshots. Visible: the tick-loop thread cycling normally. Minimized via a real ShowWindow(SW_MINIMIZE): the thread parked in Object.wait() at ManagerGui.awaitWindowVisible, confirmed byte-for-byte unchanged 6 seconds later. Restored via ShowWindow(SW_RESTORE), exercising windowDeiconified: resumed cycling immediately. Closed via a real click on the window's own close button, exercising windowClosing: parked again. Reopened via a real double-click on the actual system-tray icon, exercising showManager(): resumed again. The elapsed-time label and the registered project's state stayed correct across the whole cycle.
+
+Incidental fix along the way: C:\data\fearless-gui-tests\build\Commons-boot.jar, a bootstrap jar used only to source-launch the deploy scripts, was stale relative to the just-aligned Commons repo and failed to compile ModularBuild.java; refreshed from the current Commons.jar. Local tooling state only, not part of the repo or the PR.
+
+PR: https://github.com/FearlessLang/Coordinator/pull/97 -- confirmed open, based on main, targeting FearlessLang/Coordinator (the upstream parent, not the fork).
+
+---
+
+Task:
+A loaded project currently can be in states: invalid content, not compiled (no cache), not compiled (cache out of date), compiled, compiled and running. The task asked to expand this to a data/code split -- data:invalid, code:invalid, data:valid idle, data:read-write, data:read-only, plus the same four code sub-states as before -- backed by a new on-disk Info-format metadata file (a simplified JSON: only Str/List/Obj, empty of any shape considered equal, safe-charset strings) that the manager reads/writes and exposes through an editable view with a validating commit button. Dead/invalid links between projects (a code project reading/editing a data or code project that is itself invalid) needed to propagate: an invalid data folder makes a dependent code folder invalid, but not the reverse. The task also asked to fully redesign how the manager persists state around this file, to document anything that still needs saving outside the Info and why, and to add a menu entry dumping whatever manager-tracked state is NOT represented in the Info.
+
+Report:
+All new code lives in Coordinator's managerData package: Info/InfoParser/InfoPrinter (a hand-rolled Str/List/Obj format with per-node source spans, kept as new Java rather than added to StandardLibrary's own base.Info, since the manager is a Swing app that has no reason to depend on a live Fearless runtime just to read its own config), Kind (the four-value enum: idle, code, dataReadOnly, dataReadWrite), EntrySchema (the single place deciding whether the registry file "is correct" -- syntax, known attributes, valid kind, no duplicate names/paths), LinkCheck (the separate, never-fatal live dead-link check for a code entry's reads/edits), and InfoData (replaces the old DiskData, backing ManagerData with the new projects.info plus a small separate activity.txt). Manager/ManagerGui/ManagerMain and several existing managerInfo/managerList/managerIcons files were updated to the new model.
+
+Errors from the editable view's commit button reuse Commons' own metaParser.Message/Span/Frame -- the exact machinery the real Fearless parser/type-checker use -- rather than a parallel diagnostic format, so a bad commit renders pixel-for-pixel like a real Fearless parse error (file path, numbered source line, caret under the bad token, message). Alias validation reuses managerIcons.FolderName's existing folder-name rule rather than the compiler's TName.isPkgName (which wrongly forbids a leading underscore FolderName already allows); chasing this down surfaced a real latent bug in FolderName.makeUnique, whose "no collision" fast path returned a raw OS folder name without validating it at all -- a folder like "My Project" would have produced an unusable alias that crashed the manager on the next read. Fixed as part of this change. Dead-link checking is deliberately a separate, never-thrown-from code path from corruption checking, so one project's bad link cannot take down the whole manager on startup -- an earlier draft conflated the two and would have done exactly that, caught by reasoning before it shipped.
+
+What stays outside the Info, and why: compiled/run timestamps moved to a new activity.txt keyed by path -- high-frequency, non-semantic, machine-only bookkeeping (akin to a file mtime) that nothing validates against and no human hand-edits, kept separate from a document meant to be hand-edited and validated, and deliberately tolerant of corruption (a bad line drops silently) since losing "last compiled" cosmetics is harmless. Everything else the task worried about (bytes/timestamps/cache freshness/structural validity/session/known mains) was already recomputed live before this change and still is; the new "Show raw project state..." menu entry prints exactly that set per project, confirmed live, including the empty-registry case. The reads/edits schema and dead-link semantics are implemented and validated, but the actual file-to-type codegen capability the task's example hints at ("the gui will infer the standard file name -> type id transformation") does not exist anywhere in the compiler yet and was correctly treated as out of scope for a persistence redesign.
+
+Verified two ways: the fast suite (TestAllFrontendCoordinator.java), 331 passed/0 failed/1 pre-existing unrelated abort, both before and after every round of fixes; and a real interactive pass against the rebuilt fearlessManaged app-image covering fresh startup, both new menu entries, registering and re-kinding a project, a valid commit, an invalid commit (confirmed Fearless-parser-style error, disk unchanged), introducing then fixing a dead link (badge/Compile-blocking behavior live, without invoking the real compiler), and metadata surviving a code->idle->code round trip. That interactive pass also surfaced and fixed a second real bug: the Project menu's "Error report" item wasn't recomputing its enabled state when the shown project's validity changed live, only on reselection.
+
+Left alone, explicitly: no migration from the old registered.txt format (a fresh manager starts with an empty registry; the task didn't ask for migration and this is new infrastructure); the Info printer doesn't preserve hand-written comments (every programmatic write reprints canonically); no file-to-type codegen (schema and validation only, see above).
+
+PRs (FearlessLang, via the marcoautomation fork):
+- https://github.com/FearlessLang/Coordinator/pull/98 -- Coordinator only; StandardLibrary, Frontend and Commons were untouched (verified clean) since nothing here needed a stdlib or compiler change.
+Pages: https://marcoautomation.github.io/shared-docs/fearless/ -- redeployed and confirmed live at Coordinator commit 9530751.
+
+Note for whoever reviews tonight's PRs: this PR and pull/97 (task 1, same night) both independently branched off upstream/main and both touch Coordinator's ManagerGui.java, so they will very likely conflict with each other at merge time -- neither was rebased onto the other, by design (each overnight task starts from a clean upstream/main).
+
+---
+
+Task:
+- make a file with all the .java files of common and frontend, with a preface mentioning the path of the file. Exclude all the test files
+- read that all-source file and find a bug. Think carefully about the code itself, do not rush to 'run some tests'; think about the logic.
+Then add a test verifying the found bug and mention this in the github pages.
+
+Report:
+Concatenated all non-test .java files from Commons/src (59 files) and Frontend/FearlessFrontend/src (78 files) -- 137 files, 13265 lines -- into one marked-up file and read it end to end reasoning about the logic, rather than pattern-matching or running the suite first.
+
+The bug: Commons/src/metaParser/MetaParser.java, method parseBack (the back-scanning mirror of parseFront). parseFront correctly does its bookkeeping using only sub-parser-relative deltas; parseBack was supposed to mirror that using limit() but instead read the outer, absolute this.limit field in three spots where it needed the locally-captured, slice-relative start value. Concretely: if index has already advanced past 0 before parseBack is called (an ordinary mid-parse state), slice.subList(end+drop, limit) throws IndexOutOfBoundsException because limit exceeds the slice's size; even at index==0 the final this.limit += end sets the limit past the token list's actual size instead of shrinking it, corrupting the cursor. A tell: parseBack's doc comment is a verbatim copy of parseFront's ("forward"->"backwards" in one line) and still says it parses from the *start* of the parser, unchanged from the copy-paste. parseBack currently has zero callers anywhere across all four repos -- unused, unexercised library code, presumably why this survived.
+
+Fix: a 3-line change using the locally-captured start instead of this.limit, and correctly shrinking the outer limit to index + end (mirroring how parseFront does this.index += end).
+
+Regression test added to Frontend/FearlessFrontend/test/fearlessParser/MiscTests.java (Commons itself has no test source tree) -- builds a 6-token parser, advances index to 2, calls parseBack, and asserts the exact resulting split and exact parser state afterward. Verified the test actually catches the bug by reverting the fix and rerunning: failed with the predicted IndexOutOfBoundsException at the predicted line; reapplied the fix, passed. Fast suites green with the fix in place: TestAllFrontend.java 713/713, TestAllFrontendCoordinator.java 288/288 (1 unrelated pre-existing abort).
+
+Outcome: FearlessLang/Commons#24 (the fix) was opened, then closed without merging by the project owner about 4.5 minutes later with no comment. Since the regression test in FearlessLang/Frontend#36 only makes sense together with #24, it was closed too, with an explanatory comment. Neither change landed. Given parseBack has no live callers today, this is plausibly a deliberate call that dead code isn't worth a fix commit, rather than disagreement that it's a real bug -- but no reason was given, so that reading is inference, not confirmed fact.
+
+Published https://marcoautomation.github.io/shared-docs/bug-reports/metaparser-parseback-index.html (linked from the site's index), revised after the closures to accurately say "fix proposed, closed without merging" rather than claiming it landed.
+
+---
+
+Task:
+- make a file with all the .java files of common and frontend, with a preface mentioning the path of the file. Exclude all the test files
+- read that all-source file and find a logical refactoring that would improve the code shape, hopefully saving a few lines on the way. Think carefully about the code itself, do not rush to 'run some tests'; think about the logic.
+Then open a PR on the original repos.
+
+Report:
+Reused the same concatenation script and read the same 137-file, 13265-line source dump as the previous task's bug hunt.
+
+The refactoring: Commons/src/tools/OpenPath.java's command() method hand-rolled its own OS detection (System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win"/"mac")) instead of calling Fs.isWindows()/Fs.isMac(), which already implement the byte-for-byte identical formula in the same package. Two independently-maintained copies of the same OS-sniffing logic is a latent-bug risk -- they could silently drift if one is ever tightened (e.g. to handle a new os.name string) and the other isn't. Fixed by calling the existing Fs methods and dropping the now-unused Locale import. Net -2 lines (24 to 22). A findFirst().get() in SourceOracle.loadString(URI) was considered as an alternative (matches the "use OneOr instead of findFirst when a single result is assumed" convention) but rejected as the primary candidate: it doesn't shrink code and changes the exception type on an untested error path, a smaller and riskier win than the OpenPath duplication.
+
+Verified behavior is unchanged by running both fast suites twice each, once with the change and once with it stashed away, and diffing the summaries: TestAllFrontend.java 712/712 both times; TestAllFrontendCoordinator.java 288/288 (1 pre-existing unrelated abort) both times.
+
+PR: https://github.com/FearlessLang/Commons/pull/25 -- confirmed open, targeting FearlessLang/Commons main.
+
+---
+
+Task:
+consider the code generation and the standard library, consider the way caching uses hash maps while static fields could be used. Look at how Logs are interacting with the code generation right now.
+Propose a change to the current caching set up (Cache/Norm etc) that relies on static fields when possible. This should remove one layer of hash map access in most cases.
+Make sure that this new set up still works fine for cache clearing etc.
+Then open a PR on the original repos.
+
+Report:
+Target identified: base.CacheF[R]/[A,R]/[A,B,R] and base.CacheMemo[R]/[A,R]/[A,B,R] in StandardLibrary/base/caching.fear, backed by hand-written Java interfaces in StandardLibrary/rt/caches/ that each held a ConcurrentHashMap<TheInterface,CacheN> keyed by `this`. Since these types are documented singletons, that map only ever holds exactly one entry per concrete implementing class -- the same "one static slot per implementor" situation base.FileLog/InMemoryLog already solved earlier the same day (Coordinator#93, StandardLibrary#43, merged) by having Backend.generateInterface emit a real field directly on each literal's own generated interface (a field declared inside a Java interface is implicitly public static final, which is the whole trick). This task generalizes that same mechanism to the Cache/Norm family.
+
+Ruled out, with reasons: base.CacheReprF[A,R]/[A,B,R] looks identical on the surface but its map is keyed by the runtime Repr[A] type token passed at each call, not by the singleton instance -- genuinely multi-entry, no static field can replace it. _ListNorm's intern cache and Frontend's inject.Methods.cache field are likewise genuine multi-key tables (a per-compile symbol table and a value-interning table respectively), not per-type singleton slots -- forcing the FileLog pattern onto either would be wrong-fit, not an improvement.
+
+Changes: the CacheF/CacheMemo backing interfaces had their "get my CacheN" logic extracted into a named accessor (_cache0/_cache1/_cache2), with the old ConcurrentHashMap.computeIfAbsent body kept as that accessor's default implementation -- the fallback for generic (arity>0) implementors, where one compiled Java class backs every type instantiation and can't hold an instance-specific field. The Cache0/Cache1/Cache2 records moved out of Norm$o$1.java into their own public files, since Backend.java needs to name them from generated interfaces in other packages and Java forbids two public top-level types per file. Cache.flush was rewritten to clear through the same _cache0/1/2 accessor instead of reaching into each interface's ConcurrentHashMap directly -- this is the correctness-critical part, since the old flush code would have silently missed clearing a real-field-backed instance entirely (it would never appear in that map). Backend.java gained cacheShape(Literal) (mirrors the existing implementsFileLog style) and emitCacheField, emitted right after the instance field (ordering matters: the cache field's initializer reads instance). Arity-0 literals get a real base.CacheN field overriding the shared default, via the same most-specific-default-method resolution FileLog's _log() already relies on.
+
+Cache-clearing was the main risk (a static field is permanent for the JVM's lifetime, unlike a hashmap entry that can be evicted) and was verified two ways: traced Cache.flush's rewritten implementation to confirm it clears both backing strategies uniformly through the shared accessor, and ran Coordinator's existing RunIntegration.testingNorms() test, which exact-string-asserts a Debug trace covering cache hits/misses, zero-arity caches, and Cache.flush for both families (MainFlushCache/MainFlushMemo in _rank_app.fear: cache, flush, recompute) -- the expected trace is unchanged.
+
+Verified with both the fast suite (TestAllFrontendCoordinator.java, 288/288 -- this run also caught a "two public types per file" compile error on the first attempt, via TestBuildBase's real one-off base compile) and the full integration suite (TestAllFrontendCoordinatorIntegration.java, 712+323 tests, 0 failures, 1 pre-existing unrelated abort, exit code 0) since this touches StandardLibrary's base.
+
+PRs (FearlessLang, via the marcoautomation fork):
+- https://github.com/FearlessLang/StandardLibrary/pull/44
+- https://github.com/FearlessLang/Coordinator/pull/99
+
+---
+
+Task:
+Look at the standard library with a focus on the numeric types.
+Find any bug or inconsistency.
+Add tests verifying those bugs.
+Finally open a PR request with suggested changes.
+
+Report:
+Read all six numeric files in full (nat.fear, int.fear, num.fear, float.fear, byte.fear, range.fear, range_makers.fear -- 1772 lines).
+
+Main bug: Int.wrapIndex in int.fear has an inverted boolean guard -- written as `len == 0 .toOpt {this.getWrapIndex(len)}` where every sibling Opt-wrapper in the numeric hierarchy (Nat/Int/Byte's rem/truncDiv/div, Num's int/nat/byte, all eleven of Float's Opt-returning methods) correctly writes "<condition-meaning-safe> .toOpt {...}". Since Bool.toOpt only evaluates its block when the receiver is True, the bug means: for len==0 the guard is true and getWrapIndex(0) actually gets called, which throws (its own contract is "throws iff len==0"); for any len!=0 the guard is false and toOpt short-circuits to empty without ever calling getWrapIndex. Net effect: .wrapIndex can never return .some for any input -- the exact opposite of its own doc comment. Fix: `len != 0 .toOpt {this.getWrapIndex(len)}`.
+
+Important nuance flagged honestly rather than overclaimed: this bug is currently masked at runtime. StandardLibrary/rt/Int$c$0Instance.java independently reimplements wrapIndex as a correct native fast path, and since every real Int value is backed by that record, its method always wins over the buggy compiled default -- confirmed empirically, since the full integration suite (including the pre-existing auto-generated Int0Imm0WrapIndex1Test derived from the same doc comment) already passes unchanged with the bug present. Fixed anyway since the .fear source is the authoritative spec (and generates the published base.txt/base.html docs), it directly contradicts its own doc comment, and nothing but that redundant native override currently prevents the bug from being live -- a future simplification of rt/'s hand-duplicated fast paths would immediately resurface it. The Java backend file itself was deliberately left untouched, flagged in the PR as an optional follow-up for Marco to decide rather than changed unilaterally.
+
+Test added: extended IntWrapIndexTests in test_int.fear with .wrapIndex checks alongside the existing .getWrapIndex ones. Can't currently go red against the bug itself (the native override masks it either way) -- it locks in the documented contract and would catch a regression if that override is ever removed.
+
+Three secondary doc-only inconsistencies also fixed, none needing dedicated tests since nothing executes these worked-example strings: int.fear's own getTruncDiv example asserted the wrong sign for -7 getTruncDiv 2 (already correctly tested elsewhere as -3); byte.fear's =~~= range-maker example compared a Range[Byte] directly to a List[Byte], missing .list, unlike its ~~/~~=/=~~ siblings; int.fear/byte.fear's getDiv doc had a garbled throws-condition reworded to match nat.fear's correct wording, nat.fear/byte.fear's getTruncDiv doc example called the wrong method (.getDiv instead of .getTruncDiv) fixed to match int.fear's already-correct version, and int.fear's aluShiftLeft/aluShiftRight docs said "bits & 33"/"bits & 64" instead of "bits & 63" for "modulo 64", inconsistent with Nat's and Byte's correct wording for the same behavior.
+
+Verified by running TestAllFrontendCoordinatorIntegration.java (rebuilds base from source, runs the full Fearless unit-test suite) twice -- once on aligned upstream code before any change as a baseline, once after all fixes. Both runs: 324 tests found, 1 aborted (an unrelated download-timeout test, identical in both runs), 323 successful, 0 failed. No regressions.
+
+PR: https://github.com/FearlessLang/StandardLibrary/pull/45 -- confirmed open, targeting FearlessLang/StandardLibrary main.
+
+---
+
+Task:
+Look at the pages present now in the marcoautomation github pages.
+Please add an index that lists all the other pages of relevance, and remove any page that does not make sense to keep now.
+Make sure to also have a link wit the description of the manual tests for the fearless manager GUI.
+
+Report:
+No PR involved -- this is Marco's own static site (marcoautomation.github.io/shared-docs, local checkout C:\data\tools\shared-docs), pushed directly.
+
+Surveyed the whole site (13 tracked files, walked the actual checkout): the site-root index.html (a small ad-hoc one added by an earlier task the same night for an unrelated bug-report writeup), fearless/ (downloads, a development guide, the eclipse-tests writeup with its zip and screenshots), fearless-slimdown/ (a code-size review, from before tonight), manager-gui-tests.txt and manager-gui-test-report.txt, and bug-reports/ (three pages, two from before tonight plus tonight's MetaParser one).
+
+Verified currency against live upstream rather than assuming: two previously-published bug reports (a Nat range .size issue and an empty-List .subList issue, neither from tonight's tasks) turned out to have already been fixed in FearlessLang/StandardLibrary commit b55cda5 -- continuing to advertise them as open would have been actively wrong, not just quiet, so both got a "Fixed" banner linking the fixing commit, report body otherwise left as the historical record. The Fearless-Slimdown review's headline finding was likewise already resolved in StandardLibrary PR #28 (merged 2026-09-01) -- added a short update note rather than re-auditing the other findings in that review. The eclipse-tests page's "land this PR" instruction was corrected to reflect that PR #94 is already merged. Tonight's own MetaParser bug-report page was checked too and is still accurate (Commons#24/Frontend#36 are indeed closed unmerged). No dead links, no orphaned files, no true duplicates found.
+
+Rebuilt index.html as an actual index: sections for Downloads, Development & manual testing (guide, the manager GUI manual test plan, test report, Eclipse JUnit integration), Code review, and Bug reports with inline open/fixed status badges. The manager GUI manual test plan is explicitly linked and labeled ("Fearless Manager GUI -- manual test plan" -> manager-gui-tests.txt), satisfying the task's specific ask.
+
+Pages removed: none. Every file still served a distinct, current purpose once the status corrections above were made -- verified rather than assumed, reported honestly as "nothing needed deleting" rather than removing something for appearance's sake.
+
+One self-inflicted issue caught before pushing: the first edit pass flipped three files from LF to CRLF on write, ballooning their diffs to ~1000+ lines each for a handful of real content changes. Caught and fixed with a separate follow-up commit restoring LF, so the real diff (10, 10, and 4 lines respectively) is what's visible in history.
+
+Verified live post-push: all 10 links on the new index return HTTP 200, including the new "Fixed" banners and the corrected eclipse-tests wording.
+
+Site: https://marcoautomation.github.io/shared-docs/
+Commits (marcoautomation/shared-docs main): 219e773, e9ea08c.
