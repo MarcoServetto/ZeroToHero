@@ -585,3 +585,62 @@ Systematic safeguard: two new Coordinator tests (Commons has no test tree of its
 Verification: TestAllFrontend (Commons+Frontend) 718/718 passed. TestAllFrontendCoordinator (+Coordinator, excluding integrationTests) 344/344 passed, 1 pre-existing unrelated abort. Both run against the full three-repo change set. TestAllFrontendCoordinatorIntegration not run -- no StandardLibrary .fear source touched. Two pre-existing tests updated to match now-correct output: RealSourceOracleWithZipDslTest.err_visible_invalid_char and ProjectTreeErrorTest.emptyProject.
 
 Overlap with tonight's earlier PRs (task 4, checked as instructed at dispatch): Coordinator#104 makes the exact identical fix to Report.visibleInvalidChar() (raw char -> Message.displayChar(c)) and the identical RealSourceOracleWithZipDslTest line update, independently rediscovered from a clean upstream/main -- whichever of #104/#106 merges second will show an empty/already-applied diff on those specific hunks. Frontend#41 also touches TestParse.java but at entirely different line ranges -- no real conflict. Coordinator#105 and Frontend#42 touch disjoint files. This kind of same-night overlap is an accepted, known tradeoff of this loop (each task independently branches off a clean upstream/main by design), not a mistake.
+
+---
+
+Task:
+We are expanding the state and correspondingly the gui of the fearless manager.
+Before, a loaded project currently can be in states:
+-invalid content (file names etc)
+-not compiled no cache (no .fearless_out folder)
+-not compiled .fearless_out out of date
+-compiled
+-compiled and running
+
+Now we are moving to the following:
+
+-data:invalid content (file names etc)
+-code:invalid content (file names etc)
+-data:valid idle project
+-data:read write
+-data:read only
+-code:not compiled no cache (no .fearless_out folder)
+-code:not compiled .fearless_out out of date
+-code:compiled
+-code:compiled and running
+
+The manager need to show the current state and the user need to be able to move between states using the gui when reasonable; the state of each folder should be saved in the manager data.
+Moving in and out of invalid content: not done via the manager, done by changing the content on the hard drive, the manager discovers the change and moves the project in or out of invalid content.
+On default a folder with valid content that has not being acted upon in any way should start as data:valid idle project.
+a data:valid idle project should show buttons to become 'some kind of project'.
+-Become data->
+It becomes a data:read only project; similar to the mains to select, we now have to select what 'code' projects can read it; and near each one we can override a default and write a list of aliases, with the first element prewritten to be the standard filename to type conversion.
+
+-Become editable data->
+It becomes a data:read write project; similar to the mains to select, we now have to select what 'code' projects can read it; and near each one we can tick a box to allow writing, and override a default and write a list of aliases with the first element prewritten to be the standard filename to type conversion.
+
+-Become code->
+It becomes code:not compiled no cache; this is the starting point for the current manager. we will see the compile button that can be replaced by the run button with main selection etc exactly as today.
+The project will then 'naturally' move between the code kinds depending on the pressed buttons.
+The code will now also have a list of 'reads' and 'edits' with maps from project names to aliases as for before. Crucially those are just two views over the same data, not separated lists of permissions that have to agree.
+
+all the Data and Code kinds will have a button to go back to data:valid idle project (except data:valid idle project otherwise it would be a no op)
+
+Each kind will now have a different badge; currently we have a few badges including ! and X. Those are pretty good! we just need more kinds.
+
+As you can imagine, later on we will have APIs to allow code projects to read/edit data in Data projects.
+
+Report:
+This task closely parallels one already completed two nights earlier (FearlessLang/Coordinator#98, merged 2026-09-07) -- flagged to the dispatched subagent at dispatch time, and confirmed by it before writing any code: #98 had already built the Kind enum (idle/code/dataReadOnly/dataReadWrite), the Info-format persistence (EntrySchema/InfoParser/InfoPrinter), dead-link detection, and -- notably -- the 9-state FolderList.State enum already matched this task's state list exactly. But #98's only GUI for changing kind/reads/edits was a single global raw-text "Edit project metadata..." dialog: no per-project transition buttons, no per-project alias/checkbox editor, and 4 of the 9 states all rendered with the same "no badge" mark, visually indistinguishable. This task built the buttons/checkboxes/badges layer on top, without touching the persistence format. PR: https://github.com/FearlessLang/Coordinator/pull/107 -- independently confirmed OPEN, targeting FearlessLang/Coordinator main, from the marcoautomation fork, 11 files / +192-8, diff independently skimmed and matches the description below.
+
+What was built: ManagerData gained setKind(Path,Kind) and setLinks(Path,reads,edits); InfoData implements both via the existing updateEntry helper (same pattern as the pre-existing setSelectedMains). FolderInfo (the per-project detail panel) gained a kind-controls row -- "Become data"/"Become editable data"/"Become code" on an idle project, or a single "Back to idle" on every other kind, disabled while the project's session is busy -- and a Links section: for a code project, one row per registered data:* project; for a data:* project, one row per registered code project. Each row has a read checkbox, a write checkbox (only present at all when the data side is data:readWrite -- genuinely absent, not just disabled, for data:readOnly targets), and a text field for the alias list defaulting to FolderName.defaultTypeName(alias) the first time a row is checked. Alias text is validated against TName.isTypeName plus no-duplicates before being written, so the GUI can never hand EntrySchema something that fails to reparse on the next load. Both panels mutate the exact same reads/edits maps on the code project's own entry -- two renderings of the same data, not two lists that could disagree, per the task's explicit instruction. BadgeIcon gained idle (grey dot), dataReadOnly (blue "R"), dataReadWrite (purple "W"), compiled (green ">") marks, refactoring badge()/dot() to share the ring-drawing code rather than duplicating it -- all 9 FolderList.State values now render a visually distinct badge.
+
+A real bug found and fixed along the way: ManagerGui.showFolder reuses a cached FolderInfo per folder and never re-ran refresh() on reselection. Harmless before this change, but the new Links section depends on it: granting access from one project's panel and then switching to the other project's already-open panel showed stale (empty) data even though the write had genuinely succeeded on disk (confirmed via the raw projects.info file). Fixed with one line (shown.reload() on every selection, same method already used after a raw-text metadata commit); verified with a before/after screenshot pair.
+
+A separate, pre-existing bug found and explicitly NOT fixed: ticking a mains checkbox correctly persists to disk every time, but the Run button's enabled state doesn't follow it -- stays disabled after the first successful write. Traced this seriously rather than assuming it was unrelated: re-read the relevant methods (all untouched by this diff), then did the definitive test -- checked out pure unmodified upstream/main in the same working copy, rebuilt the manager from that, and reproduced the identical symptom, confirming it predates this task -- then restored the feature branch and re-verified it green before continuing. Flagged in the PR body as a follow-up, not fixed here.
+
+Interactive verification actually performed (not just code-read): built the real fearlessManaged app-image and drove it with real mouse/keyboard automation, screenshotting each step. Registered two real projects (01_hello_world as code, a plain-files folder as data) and exercised: idle -> Become data (blue "R" badge, confirmed no write checkbox appears anywhere for it) -> Back to idle (full round-trip); idle -> Become editable data (purple "W" badge) -> ticked read+write on a code project's row, watched the alias field prefill Kt_pubdata -> switched to that code project's own panel and confirmed the identical reads/edits shown there (the two-views claim, verified not just asserted); idle -> Become code (orange "!") -> real compile via a genuine child-JVM build, badge turned green ">". One environmental note: the app-image's own BaseCacheBuilder step failed with a NoSuchFileException on every attempt in this environment, reproduced identically on vanilla upstream/main too (pre-existing, unrelated) -- worked around each time by copying the already-valid StandardLibrary\dbgOut\baseCache\* into the freshly built app's stdLib\baseCache\, sufficient for real compiles to succeed; worth someone checking on this machine separately.
+
+Automated tests: TestAllFrontendCoordinator.java 346 tests, 345 passed, 1 pre-existing environment-conditional abort (same baseline #98 itself reported), 0 failed. New tests: InfoDataTest.setKindSurvivesAReRead, setLinksSurvivesAReReadAndKeepsReadsAndEditsIndependent; FolderNameTest.defaultTypeNameUppercasesTheFirstLetter; ManagerGuiShotTest.anIdleProjectOffersTheThreeBecomeButtons, aDataReadWriteProjectOffersLinksToRegisteredCodeProjects.
+
+Judgment calls flagged for Marco: only the three literal transition buttons plus one universal "Back to idle" -- no direct data:readOnly<->data:readWrite transition button (go through idle, or use the existing raw-text editor). Going back to idle does not clear mains/reads/edits -- inert while idle, reappear if the project becomes that kind again (matches an existing InfoDataTest that already asserted this for kind changes via raw-text commit). The alias field is a single-line space-separated text field, not a dedicated add/remove list widget -- smallest reasonable widget, consistent with how mains/pkgs are already rendered elsewhere in this panel.
