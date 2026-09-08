@@ -402,3 +402,42 @@ This uncommitted state was deliberately left in place rather than committed or c
 Not independently re-attempted or verified by the orchestrating session tonight: doing so would mean redoing the actual engineering work (understanding the new generator's design, running a full base rebuild, and likely debugging whatever the agent was mid-way through fixing when it was cut off), which is out of scope for bookkeeping and wasn't attempted given it was already well past this task's point of diminishing returns for tonight.
 
 This is a real, substantive chunk of progress (the gen_test removal and the shape of the Coordinator-side change both look complete), so it's a reasonable candidate to put back in tasks/LongHorizonTasks.txt for another attempt if wanted -- Marco's call, not assumed here.
+
+---
+
+Task:
+StandardLibrary's base.IsoPods# and base.FilterAny# (both in base/var.fear)
+are Magic! with no rt/ implementation at all -- currently they throw an
+explicit "not yet implemented" error at runtime (rt/IsoPods$5k$0.java,
+rt/FilterAny$lg$0.java, added in FearlessLang/StandardLibrary#50 just to
+get Coordinator#101's native-override check to pass honestly). Implement
+real semantics for both:
+- IsoPods#[T](val: iso T): mut IsoPod[T] -- construct a real capsule
+  wrapping an iso value, backing IsoPod[T]'s isClosed/peek/open/mutate
+  contract (base/var.fear).
+- FilterAny#[R](R,F[R,Bool],F[R]): R -- a generic filter-with-fallback:
+  return the first argument if it passes the predicate, otherwise call
+  the fallback. (Comment on the existing declaration: "Needed in some
+  cases. Should it be part of the magic?" -- worth deciding as part of
+  this task whether it should stay Magic! at all.)
+Study Var[E]/Vars#/rt/Var$c$1Instance.java as the closest existing
+example of a similar capability-system native realization. Conclude
+with a PR to FearlessLang/StandardLibrary, verified against
+TestAllFrontendCoordinatorIntegration.java.
+
+Report:
+Success. PR open at https://github.com/FearlessLang/StandardLibrary/pull/51 -- independently confirmed OPEN, targeting FearlessLang/StandardLibrary main, from the marcoautomation fork.
+
+IsoPods#[T](val: iso T): mut IsoPod[T] implemented as a real capsule in rt/IsoPods$5k$0.java, following the Var$c$1Instance convention from rt/Vars$o$0.java (per the task's instruction to study it). Added a package-private IsoPod$2s$1Instance class holding a plain Object field plus a closed boolean, implementing only the four genuinely abstract members of the generated IsoPod$2s$1 interface (isClosed/peek/open/mutate) -- look/isOpen/consume/blindMutate keep their real Fearless default bodies, deliberately not overridden, matching the "no redundant native override" lesson from the same-day PR #101 precedent (see the gen_test task's report above). .open asserts the precondition (assert closed, no message) and nulls the field on extraction so the pod doesn't retain a second reference to a value now uniquely owned elsewhere.
+
+FilterAny#[R](R,F[R,Bool],F[R]):R implemented as a two-line native dispatch: call the predicate, and if true return the value, else call and return the fallback.
+
+Should FilterAny# stay Magic!? Yes, verified empirically rather than by guesswork: a pure-Fearless translation (a ternary desugaring to a ThenElse[R] object literal) was temporarily added to var.fear, rebuilt, and let the real type checker rule on it, then reverted. At the declared R:** bound it's rejected because r can be instantiated with readH/mutH and can't be captured into the ternary's object literal. Even narrowed to R:iso,imm,mut,read it still fails: using r in the predicate call downgrades its inferred capability to read R for the .then branch, not a subtype of the general R needed there. Both are structural properties of this exact signature, not edge cases to route around -- so the existing comment's question ("Needed in some cases. Should it be part of the magic?") is answered: genuinely needed. The comment itself was left untouched.
+
+Doc-comment examples (//> runnable examples) were added to both declarations, covering capsule open/peek/mutate/isClosed state transitions and the predicate-true/predicate-false FilterAny# paths. These caught two real bugs in the first draft (c.++ instead of the correct operator-call form c++, and bare numeric literals defaulting to iso Nat instead of the Int a signature required) -- both surfaced only by RunIntegration.baseGeneratedExamples, since the fast test path never compiles doc-example text as code.
+
+Verified against TestAllFrontendCoordinatorIntegration.java (the task's required target): 376/377 successful, 0 failed, exit 0 (the 1 aborted test is pre-existing/unrelated, same count on a clean upstream/main baseline taken before this change). Also TestAllFrontendCoordinator.java (fast suite, run first while iterating): 340/341, 0 failed, same baseline.
+
+Process note for future sessions: a clean fast-suite pass is not sufficient validation for a new doc-comment example -- only the integration suite's baseGeneratedExamples test actually compiles and runs //> example text.
+
+Files changed: StandardLibrary/base/var.fear, StandardLibrary/rt/IsoPods$5k$0.java, StandardLibrary/rt/FilterAny$lg$0.java. A temporary debug edit to Coordinator/src/naiveBackend/NaiveBackendLogicMain.java (uncommenting an rmTree cleanup line, to inspect generated interface .java files during investigation) was reverted before finishing; all four repos independently confirmed with a clean working tree (each left on its own feature branch, not upstream/main -- align-branch resets this before the next dispatched task, same as every other night).
