@@ -513,3 +513,31 @@ Published: https://marcoautomation.github.io/shared-docs/fearless/zerotohero-ali
 Left for Marco to decide: whether the "//-"/divider collision should be fixed in the doc-comment scanner or in the guide's formatting style; how to word the Collections chapter's now-required capability annotation; how to triage the Vars$o$0 crash alongside the other 12 already-known StandardLibrary rt/-shadow findings.
 
 Note: this task's own subagent did its git work directly in the shared C:\data\fearlessBranch3\ZeroToHero working copy (same path this loop's bookkeeping uses) -- it created its own branch (fix-stale-gitignore-realmain) for the incidental fix, which changed what was checked out from under the bookkeeping branch mid-task. No harm resulted (working tree was clean, bookkeeping commits are safe on their own branch ref regardless of what's checked out), but fearlessBranch3/CLAUDE.md's step 7 was updated with guidance for future nights: check git status/branch before assuming the bookkeeping branch is still checked out whenever a task's own subject matter is ZeroToHero/FearlessTour itself.
+
+---
+
+Task:
+Look at the text of all the error messages, both in the coordinator and in frontend.
+Is there some inconsistency that we can fix?
+Finally open a PR request with suggested changes.
+
+Report:
+Reviewed all user-facing diagnostic text in Frontend's message package (parser/type-checker errors) and Coordinator's userMessages package (project-scan/build-cache errors), deliberately excluding fileSupport/FailureText.java (an explicit, self-annotated work-in-progress design draft with its own open review questions -- not shipped text). Found and fixed eight concrete, grounded inconsistencies -- each backed by a direct comparison to a sibling message, not restyled on taste -- verified with the fast test suites, and opened two PRs (one per repo, since GitHub PRs can't span repos):
+- https://github.com/FearlessLang/Frontend/pull/41 -- independently confirmed OPEN, targeting FearlessLang/Frontend main, from the marcoautomation fork.
+- https://github.com/FearlessLang/Coordinator/pull/104 -- independently confirmed OPEN, targeting FearlessLang/Coordinator main, from the marcoautomation fork.
+
+The one real bug (Frontend): Parser.parseSig() validates the RC prefix on a method declaration (disallowing iso as well as readH/mutH) but called disallowedReadHMutH, the message written for object literals -- so `A:{ iso .foo:Bar }` reported "not allowed on object literals" (wrong location) and suggested "Use one of read, mut, imm, iso.", listing iso as valid even though iso was the exact capability just rejected. A correctly-worded sibling, disallowedSigRC ("not allowed on method declarations" / "Use one of read, mut, imm."), already existed but was dead code -- never called. Fixed by wiring it up at the real call site.
+
+"can not" vs "cannot" (Frontend + Coordinator): the message package already used "cannot" 14 times against 8 "can not" for identical meaning -- one file, TypeSystemErrors.java, had both spellings side by side. Coordinator's userMessages had "Cannot" 14 times against 1 "Can not". Normalized to the dominant "cannot" (9 sites in Frontend, 1 in Coordinator).
+
+Missing trailing periods on sibling one-liners: disallowedReadHMutH's "not allowed on object literals" (vs. disallowedSigRC's version, which had one), nameNotInScope's "is not in scope" (vs. genericNotInScope's "is not in scope."), parameterNameExpected (vs. its neighboring one-line messages, all periods).
+
+Quoting convention (Frontend): badBound wrapped */** in single quotes -- the only place in the package not using the double-quote convention every other syntax example follows ("Foo[Bar]", ".m x = expression", etc.).
+
+Typos: "agains" -> "against", "Did you forgot" -> "Did you forget", "satify" -> "satisfy" (Frontend); "handleds" -> "handle" (2 sites), "differenty" -> "differently", "recursivelly" -> "recursively", "lenght" -> "length", "version control system" -> "systems" (Coordinator) -- each grounded by comparison to an already-correct sibling message saying the same thing correctly.
+
+Character-quoting safety gap (Coordinator): visibleInvalidChar rendered the bad character as raw '"+c+"' instead of Message.displayChar(c), unlike its direct sibling extInvalidChar (identical "unsupported character" situation). Since a "visible" name segment can contain any character -- control characters, half a surrogate pair -- this was a latent correctness gap, not just style: such input would print raw/garbled instead of being named or safely quoted.
+
+Verification: TestAllFrontend.java 718/718 passing, 0 failed. TestAllFrontendCoordinator.java 340/341 passing, 0 failed, 1 pre-existing abort (err_invisible_disk_zip_windows_bad_char_colon -- a test fixture that tries to create an on-disk file literally named with a ":", impossible on Windows; fails identically on a clean checkout before any of these changes). Exact-text test assertions were updated deliberately, each traced back to the corresponding source-text fix, not just to chase green: TestParse.java, TestInference.java, TypeInMethodTest.java, TypeSystemTest.java (Frontend); BadZipsTest.java, RealSourceOracleWithZipDslTest.java (Coordinator) -- including the three method-declaration RC tests (isoMethBad/readHMethBad/mutHMethBad) whose expected text changed entirely because of the disallowedSigRC wiring fix.
+
+Diff size: Frontend 9 files / 89+89 lines (mostly the mechanical "can not"->"cannot" sweep across ~50 near-identical TypeSystemTest.java assertions); Coordinator 4 files / 11+11 lines.
