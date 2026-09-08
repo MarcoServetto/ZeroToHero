@@ -1,67 +1,27 @@
 
 Task:
-Last night you wrote
-"""
-One self-inflicted issue caught before pushing: the first edit pass flipped three files from LF to CRLF on write, ballooning their diffs to ~1000+ lines each for a handful of real content changes. Caught and fixed with a separate follow-up commit restoring LF, so the real diff (10, 10, and 4 lines respectively) is what's visible in history.
-"""
-but I'm sure we have now added specific git annotations to make sure all stays LF all the time, what is going on? can you make sure the set up enforces this, and if something is missing do a PR to fix it/convince git to enforce it?
-Or was it about the github project that is ONLY on marco automation? if so just add the right set up to it directly since you can.
-
-
-
-Task:
-A task from last night was "Survey the pages on Marco's GitHub Pages site, build an index of everything worth keeping, remove stale pages, and make sure the Fearless manager GUI manual test plan is linked."
-But the resulting page is really the opposite of what I wanted.
-The first two entries are good; but there is kind of a lot of text around it, I expected something more direct.
-
-Then
-https://marcoautomation.github.io/shared-docs/manager-gui-test-report.txt
-This seems like a left over of past tests? it is even referring a specific action took after?
-
-the next one also is just the response of a specific task, but there is indeed something good to save
-""
-In Eclipse: Window > Show View > Other… > Java > JUnit if the view is not already open.
-Click the small ▼ dropdown next to the clock-with-arrow ("Test Run History") icon in the JUnit view's toolbar, choose Import…, and pick all_auto_tests.xml.
-""
-This is the useful long term info, that could go in a new file about similar 'set up cheatsheet' things.
-
-
-https://marcoautomation.github.io/shared-docs/bug-reports/metaparser-parseback-index.html
-is indeed still open and the file should stay, but.. not go in that page; that page should have stuff useful long term.
-Can you fix it?
-Note: also explain in the global CLAUDE.md how and when to update that page and the relevant sub pages.
+StandardLibrary's base.IsoPods# and base.FilterAny# (both in base/var.fear)
+are Magic! with no rt/ implementation at all -- currently they throw an
+explicit "not yet implemented" error at runtime (rt/IsoPods$5k$0.java,
+rt/FilterAny$lg$0.java, added in FearlessLang/StandardLibrary#50 just to
+get Coordinator#101's native-override check to pass honestly). Implement
+real semantics for both:
+- IsoPods#[T](val: iso T): mut IsoPod[T] -- construct a real capsule
+  wrapping an iso value, backing IsoPod[T]'s isClosed/peek/open/mutate
+  contract (base/var.fear).
+- FilterAny#[R](R,F[R,Bool],F[R]): R -- a generic filter-with-fallback:
+  return the first argument if it passes the predicate, otherwise call
+  the fallback. (Comment on the existing declaration: "Needed in some
+  cases. Should it be part of the magic?" -- worth deciding as part of
+  this task whether it should stay Magic! at all.)
+Study Var[E]/Vars#/rt/Var$c$1Instance.java as the closest existing
+example of a similar capability-system native realization. Conclude
+with a PR to FearlessLang/StandardLibrary, verified against
+TestAllFrontendCoordinatorIntegration.java.
 
 
 Task:
-Add a compile-time check in the Fearless Coordinator: when a package is compiled, for every method whose Fearless source has a real body (not abstract `;`, not a literal `Magic!` body), assert that no hand-written class under StandardLibrary's rt/ folder (and sub folders) both implements that method's generated interface AND overrides that method's mangled name. If one does, fail the build — two independent implementations of the same method must never coexist silently, since only the native one ever runs and nothing today checks they agree.
-
-Motivation: FearlessLang/StandardLibrary PR #45 (still open) fixes Int.wrapIndex in int.fear, whose guard was inverted (`len == 0` instead of `len != 0`). This was invisible because StandardLibrary/rt/Int$c$0Instance.java has a hand-written imm$wrapIndex$1 override that was correct and is the only implementation that ever actually runs (Int$c$0Instance is the only concrete class ever instantiated for Int) — the buggy Fearless body compiled fine and was never exercised.
-
-Where things live:
-- Coordinator/src/naiveBackend/Backend.java: generateInterface/emitTopMethod (~line 119-131) is where every bodied Fearless method becomes a Java `default` method on the type's generated interface. mangledMethodName(rc,m) (line 158) produces the name a native override must match (e.g. imm$wrapIndex$1); decTypeName(n) (line 146) produces the generated interface name (e.g. Int$c$0).
-- Coordinator/src/naiveBackend/NaiveBackendLogicMain.java (line 19-25) already receives rtPath and copies StandardLibrary/rt/*.java into every compiled package's output — the source folder to scan is already threaded through this call chain.
-- StandardLibrary/rt/*.java: study Int$c$0Instance.java as the running example.
-- Abstract-ness is `m.impl().isEmpty()` (Frontend/FearlessFrontend/src/inject/Methods.java:264) — already excluded by Backend's existing abs() branch, no new work needed there. Separately, `Magic!` (used in base/var.fear, base/caching.fear, base/errors.fear, base/_rank_base000.fear — not in the numeric types) is a body that IS present syntactically but means "native only, no real Fearless semantics" — trace how to detect a literal Magic! body from core.E at the point Backend.java sees it, and exclude it too.
-- Match by INTERFACE (a native class's `implements` clause, matched via decTypeName), never by bare method name — Byte, Int, and Nat all separately declare a bodied `.rem`, but only Byte$o$0Instance.java overrides imm$rem$1; matching by name alone wrongly flags Int.rem and Nat.rem too.
-
-Do not add a unit test checking this triggers only when needed, it would have to basically rebuild base and it would be quite slow, just experiment to see if it catches a newly introduced similar bug and record the success.
-
-Run the full TestAllFrontendCoordinatorIntegration.java before opening the PR, since this touches codegen used everywhere.
-
-
-
-Task:
-gen_test_byte.fear, gen_test_eset.fear, gen_test_float.fear, gen_test_int.fear, gen_test_nat.fear, gen_test_num.fear, gen_test_set.fear
-have been generated by a script manually and are now obsolete.
-Can you enrich the HTML generation so that it creates a main with one test per package, with appropriate inner structure?
-
-Step two, once we do create that file, can you remove those gen_tests and add running that file for base as an integration test?
-
-Conclude with a PR about the work done.
-
-
-Task:
-Try to understand how to build the ZeroToHero game in 
+Try to understand how to build the ZeroToHero game in
 https://github.com/MarcoServetto/ZeroToHero
 Some stuff is not super clear or not aligned with how the language is right now. Can you find out if something is off and needs to be 'aligned'? report on github pages. Do not 'read' the very many images; just focus on what is actually available as text.
 
