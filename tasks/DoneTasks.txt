@@ -441,3 +441,51 @@ Verified against TestAllFrontendCoordinatorIntegration.java (the task's required
 Process note for future sessions: a clean fast-suite pass is not sufficient validation for a new doc-comment example -- only the integration suite's baseGeneratedExamples test actually compiles and runs //> example text.
 
 Files changed: StandardLibrary/base/var.fear, StandardLibrary/rt/IsoPods$5k$0.java, StandardLibrary/rt/FilterAny$lg$0.java. A temporary debug edit to Coordinator/src/naiveBackend/NaiveBackendLogicMain.java (uncommenting an rmTree cleanup line, to inspect generated interface .java files during investigation) was reverted before finishing; all four repos independently confirmed with a clean working tree (each left on its own feature branch, not upstream/main -- align-branch resets this before the next dispatched task, same as every other night).
+
+---
+
+Task:
+I've received this bug report. Can you verify the staments and discuss?
+It it works and the proposed fix make sense, open a PR.
+--
+I would add this to Frontend/FearlessFrontend/test/typeSystem/TypeExpressionBoundsTest.java:
+package typeSystem;
+
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import core.FearlessException;
+
+class TypeExpressionBoundsTest extends testUtils.FearlessTestBase {
+  @Test void typeExpressionMustNotAllowMutationOfImmutableCell() {
+    assertThrows(FearlessException.class, () -> typeOk(List.of("""
+      Cell:{ read .get:base.Nat; mut .set(value:base.Nat):base.Void; }
+      Thaw[X:imm]:{ .apply(x:imm X):X -> x; }
+      User:{
+        .break(cell:imm Cell):base.Void ->
+          Thaw[mut Cell].apply(cell).set(1);
+      }
+      """)));
+  }
+}
+Verified: the test fails on current Frontend main (e40de33) because nothing is thrown—the entire program typechecks. Direct cell.set(1) is correctly rejected. This demonstrates compiler acceptance of the forbidden mutation; I did not execute a stateful cell at runtime.
+Temporarily adding k().check(t,bs,t.type()); at the start of checkType makes all 722 Frontend tests pass, including this regression, the reverse alias conversion, and two controls.
+--
+
+Report:
+Verdict: the bug report is correct, and the proposed fix is sound. PR opened at https://github.com/FearlessLang/Frontend/pull/40 -- independently confirmed OPEN, targeting FearlessLang/Frontend main, from the marcoautomation fork.
+
+Verified the claim by adding the reporter's exact test to FearlessFrontend/test/typeSystem/TypeExpressionBoundsTest.java against unmodified upstream main (e40de33, matching the report's cited commit): TestAllFrontend ran 718/719, the new test failing because nothing was thrown -- the malicious program typechecks cleanly, independently reproducing the report's central claim.
+
+Root cause, traced in Frontend/FearlessFrontend/src/typeSystem/TypeSystem.java: checkType (the E.Type case, handling surface syntax like Thaw[mut Cell] used directly as an expression) never called into Kinding to check that a type's actual generic arguments satisfy the declared bounds of the parameters they fill -- every other generic-instantiation site (csOk/checkC for supertypes, methOk for method signatures, CallTyping.checkTargsKinding for explicit call type arguments, checkLiteral for a literal's own self-type) already does this; checkType was the sole exception. This let Thaw[mut Cell] instantiate Thaw[X:imm]'s X with a mut capability despite the imm-only bound -- since .apply's parameter is viewpoint-adapted imm X (accepts anything) but its return type is bare X, the unchecked instantiation let a call fed only an imm Cell argument return as mut Cell, letting .set(1) mutate through it. Same bug class (generic capability/alias forging) as one fixed earlier the same day (commit 3cd43de, PR #38, TypeSystemBugs.md bug #2) but a genuinely different path -- that fix patched eqModXRC's subtyping comparison; this is a skipped bound check on a fresh instantiation, not a subtyping defect.
+
+Fix: applied the reporter's proposed one-line fix exactly as suggested -- k().check(t,bs,t.type()); at the start of checkType, reusing the identical Kinding.check call already used at the other four instantiation sites.
+
+Test strengthened beyond the report's proposal: the reporter's snippet used a bare assertThrows with no message check; every other test in the typeSystem package pairs assertThrows/typeFail with an exact rendered-message assertion (matching the project's standing strong-test-assertions preference), so the test was upgraded to typeFail(...) asserting the exact diagnostic text, captured verbatim from a real run and pinned.
+
+Verification (JDK 26, with the fix applied): TestAllFrontend 719/719 passing (0 failures), including the new regression test. TestAllFrontendCoordinator 340/341 passing, 1 pre-existing abort unrelated to this change (a Windows/NTFS path-with-colon limitation, confirmed by inspecting the failure detail) -- this run includes TestBuildBase, which compiles and runs the real StandardLibrary base package end-to-end through the patched Frontend, evidence the fix doesn't break real-world Fearless code. Both suites re-run clean a second time after finalizing the test's exact-message assertion.
+
+Also added: a third entry to Frontend/TypeSystemBugs.md (a maintained log of type-system soundness/crash bugs added hours earlier the same day, PR #39, with pseudocode before/after and a witness per entry), citing PR #40 -- kept in the same PR rather than a separate docs PR, per the project's single-PR-per-task convention.
+
+Files changed: Frontend/FearlessFrontend/src/typeSystem/TypeSystem.java (the one-line fix), Frontend/FearlessFrontend/test/typeSystem/TypeExpressionBoundsTest.java (new regression test), Frontend/TypeSystemBugs.md (new bug-log entry). All four repos independently confirmed with a clean working tree (each on its own feature branch, not upstream/main).
