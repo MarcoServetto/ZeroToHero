@@ -644,3 +644,48 @@ Interactive verification actually performed (not just code-read): built the real
 Automated tests: TestAllFrontendCoordinator.java 346 tests, 345 passed, 1 pre-existing environment-conditional abort (same baseline #98 itself reported), 0 failed. New tests: InfoDataTest.setKindSurvivesAReRead, setLinksSurvivesAReReadAndKeepsReadsAndEditsIndependent; FolderNameTest.defaultTypeNameUppercasesTheFirstLetter; ManagerGuiShotTest.anIdleProjectOffersTheThreeBecomeButtons, aDataReadWriteProjectOffersLinksToRegisteredCodeProjects.
 
 Judgment calls flagged for Marco: only the three literal transition buttons plus one universal "Back to idle" -- no direct data:readOnly<->data:readWrite transition button (go through idle, or use the existing raw-text editor). Going back to idle does not clear mains/reads/edits -- inert while idle, reappear if the project becomes that kind again (matches an existing InfoDataTest that already asserted this for kind changes via raw-text commit). The alias field is a single-line space-separated text field, not a dedicated add/remove list widget -- smallest reasonable widget, consistent with how mains/pkgs are already rendered elsewhere in this panel.
+
+---
+
+Task:
+Consider this repository
+https://github.com/FearlessLang/EclipsePlugin
+This is an old and not maintained Eclipse plugin for fearless.
+It was very limited and badly done by a much weaker AI never properly reviewed by a human, so take the content there as a way to understand 'what' we wanted to do not 'how'.
+
+In particular the crucial features are
+-the fearless errors get redirected to eclipse 'error showing' panels so that by clicking on the error we jump to the mentioned piece of code.
+This used to work.
+-when we run fearless tests, the test logs are in just the right format so that we can use the existing JUnit test result visualiser to show the results in a user friendly way. This also used to work.
+
+Other features, in particular how to visualise files and paths are not important.
+Note how there is simply nothing about interacting with the text of fearless files. This is fully out of scope.
+
+This plugin needs to work with a portable eclipse like the one downloaded from here
+https://www.eclipse.org/downloads/download.php?file=/technology/epp/downloads/release/2026-06/R/eclipse-java-2026-06-R-win32-x86_64.zip
+(parent page)
+https://www.eclipse.org/downloads/packages/
+Note we are not installing eclipse.
+
+Fearless has changed a lot from the time that plugin worked.
+Now we would need to somehow have a connection with the manager.
+Ideally, we can have a menu item that says connect with eclipse and that would ask to select the eclipse executable; examine the current eclipse, and if good, copy the right jars in the right places and other needed config files (like position of the manager etc).
+Then when eclipse runs again, it should be possible to 'open' a fearless project that the manager knows and thus connect eclipse with the running manager.
+
+I want you to make a PR to the https://github.com/FearlessLang/EclipsePlugin
+repository, and to coordinator, including the 'compiled/built' jars and other artefact from EclipsePlugin repository and any other change needed to make the manager connect with an existing eclipse
+
+Report:
+Partial success, honestly scoped rather than forced to a false "complete": the EclipsePlugin half is done and genuinely live-verified against a real portable Eclipse; the Coordinator-side "Connect with Eclipse" manager integration is fully designed but was not implemented -- the plugin work took longer than planned (real debugging, detailed below) and untested production code was deliberately not rushed into a shared repo. PR: https://github.com/FearlessLang/EclipsePlugin/pull/1 -- independently confirmed OPEN, targeting FearlessLang/EclipsePlugin main (independently confirmed to be the genuine parent, not itself a fork of something else) from the marcoautomation fork, 31 files / +182-2063. No Coordinator PR -- correctly, since no Coordinator source was ultimately changed (independently confirmed clean).
+
+Prior art found: the old EclipsePlugin repo turned out to be launch-delegate-based (new/import wizards, a custom .fear editor, decorators, a FearlessLaunchDelegate running the compiler itself as a subprocess) -- architecturally obsolete now that the manager owns compilation/running, and notably contained zero IMarker usage despite the task's claim that error-jumping "used to work," suggesting that half was likely never actually finished, consistent with the task's own warning about the old plugin's quality. Its JUnitPoller.java was genuinely useful prior art: it demonstrated Eclipse's public org.eclipse.jdt.junit.JUnitCore.importTestRunSession(File) API for programmatic (non-manual) JUnit-view import, reused in the new build. Also studied the earlier-night JUnit-XML task's work (Coordinator PR #90/#94): RunIntegration.java already converts StandardLibrary's unit-test log into JUnit XML -- confirmed the exact current code, planned to extract it into a reusable class, but did not get to implementing that extraction.
+
+What was built and verified (EclipsePlugin): a from-scratch OSGi bundle (kept the old project's naming/layout, none of its code) with a background Job polling every open project's .out/eclipse/ for a problems.txt and a junit_xml/report.xml every 2 seconds; a marker writer turning problems.txt into real Eclipse Problems-view entries (a declared marker type extending org.eclipse.core.resources.problemmarker, so the Problems view's own display/navigation just works); a JUnit importer calling the public importTestRunSession API directly, deduped on unchanged content; and an org.eclipse.ui.startup extension forcing the bundle out of lazy activation (without it nothing else in Eclipse ever touches these classes and the watcher never starts -- a real bug hit and fixed). Built with plain javac --release 21 + jar (no PDE/Tycho needed) against the real Eclipse install's own plugin jars -- targeting Java 21 specifically mattered: the first build defaulted to newer bytecode and threw UnsupportedClassVersionError against the Eclipse JVM, also a real bug, also fixed.
+
+Live verification, against the real portable Eclipse 2026-06 (C:\data\tools\eclipse, jar dropped into dropins/fearless/plugins/), driven via screenshot+synthetic-click: determined the exact real compile-error text format by deliberately breaking a copy of the helloWorld fixture and running the actual Coordinator compiler; hand-wrote a matching problems.txt and confirmed the Problems view showed a correctly-positioned entry (screenshotted); hand-wrote a JUnit-XML report (3 tests, 1 failure) and confirmed the JUnit view updated fully automatically (Runs: 3/3, Failures: 1, correct per-test icons) within the watcher's poll interval, no user action at all (screenshotted); confirmed via Eclipse's own Error Log that no bundle-resolution/activation errors exist for the shipped build.
+
+Known gap, honestly not shipped: double-clicking a marker correctly selects the target file but fails to open it -- no editor is registered for .fear (deliberately out of scope, since editing Fearless source text is explicitly excluded by the task). Attempted registering Eclipse's own generic TextEditor (not a custom Fearless editor) for .fear; after fixing the bytecode-version bug, still hit an unresolved CoreException loading that platform class from the extension point, even after matching the old plugin's full Require-Bundle set. Reverted rather than ship non-working code -- the shipped plugin.xml/MANIFEST.MF reflect only what was actually verified working.
+
+What's NOT done, with a concrete design ready for follow-up: no Coordinator code was written. Design, grounded in real reads of current source: a new menu item in manager.ManagerGui.menuBar() (Coordinator/src/manager/ManagerGui.java, next to the existing "Edit project metadata..."); the plugin jar checked into Coordinator (mirroring how the task asked for built artifacts to ship) and copied by that menu action into the chosen Eclipse's dropins/fearless/plugins/, with tools.PortableApp.prepareAppContent() (Commons/src/tools/PortableApp.java) gaining one more copy line so a rebuilt portable/manager app carries the jar too; a production JUnitReport class extracting RunIntegration.java's existing log-to-XML logic, called after a run completes; a production ProblemReport class regex-matching the compile child-process's captured output into the 3-field format the plugin already parses. None of this was implemented or tested, so no automated Fearless test suite was relevant to run tonight -- no Coordinator/Frontend/StandardLibrary/Commons source was ultimately changed.
+
+Left in place, not part of any git repo: C:\data\tools\eclipse\dropins\fearless\plugins\fearlessPluginProject_2.0.0.jar (the working build, installed in the shared portable Eclipse for direct poking); C:\data\fearlessBranch3\oldPluginStudy\ (working notes, copies of the old plugin's files). Scratch probe files used to capture the real compile-error text format were deleted before finishing.
