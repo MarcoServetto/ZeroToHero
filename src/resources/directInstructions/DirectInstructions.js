@@ -4,23 +4,23 @@ const initSlides= () => {
   const prev = document.getElementById('prevBtn');
   const next = document.getElementById('nextBtn');
   const nextLevelUrl = MetaData.str(document.body,'next');
+  const slideTemplate= i => document.getElementById('slide' + i);
   const maxIndex = (() => {
-  let i = 0; 
-    while (true) {
-      const ci = document.getElementById('content' + i++);
-    if (ci === null){return i - 2;}
-      }
-  })();
-  const allTextArea = i =>
-    Array.from(
-      document.getElementById('content' + i)
-      .querySelectorAll('textarea')
-      );
+    if (document.getElementById('content0') === null){ return -1; }
+    let i = 1;
+    while (slideTemplate(i) !== null){ i++; }
+    return i - 1;
+    })();
+  const allTextArea = i => {
+    const slide= document.getElementById('content' + i);
+    if (slide === null){ return []; }/*out of range: no slide, no text areas*/
+    return Array.from(slide.querySelectorAll('textarea'));
+    };
   const updateContent = () => {
-    Deck.hideAll('content');
-    document
-      .getElementById('content' + currentIndex)
-      .hidden = false;
+    ensureSlide(currentIndex);
+    document.querySelectorAll('.contentItem').forEach(c => c.hidden = true);
+    const slide= document.getElementById('content' + currentIndex);
+    if (slide !== null){ slide.hidden = false; }
     prev.disabled = (currentIndex === 0);
     next.disabled = (currentIndex === maxIndex);
     if (next.disabled){ Utils.showNextLevelButton(
@@ -28,6 +28,7 @@ const initSlides= () => {
       '<span class="emoji">🎉</span>',
       () => window.location.href = nextLevelUrl
       );}
+    refreshOverlay();
     };
   const getAlternativePairs= (t)=>{
     const altStr= MetaData.str(t, 'alternative');
@@ -139,8 +140,59 @@ const initSlides= () => {
       hintChar.hidden = true;
       }, duration);          
     };  
+  //slides after the first one wait in inert <template>s, so that their images
+  //start loading only once the slide before them is fully loaded
+  const overlay= Utils.getElementById('screenOverlay');
+  const loadingCircle= Utils.getElementById('loadingCircle');
+  const created= [];
+  const loaded= [];
+  let pageLoaded= false;
+  let overlayShown= true;/*the page starts on the initial black screen*/
+  const setOverlay= (show)=>{
+    if (overlayShown === show){ return; }
+    overlayShown = show;
+    loadingCircle.hidden = !show;
+    overlay.style.transition = show ? 'none' : 'opacity 0.5s ease-out';
+    overlay.style.opacity = show ? '1' : '0';
+    };
+  const refreshOverlay= ()=>{
+    if (!pageLoaded){ return; }/*BaseJs owns the initial black screen*/
+    if (currentIndex > maxIndex){ return; }/*no slide to wait for*/
+    setOverlay(!loaded[currentIndex]);
+    };
+  const loadNextSlide= ()=>{
+    if (!pageLoaded){ return; }
+    let i= 0;
+    while (i <= maxIndex && created[i]){ i++; }
+    if (i > maxIndex){ return; }
+    ensureSlide(i);
+    };
+  const slideLoaded= (i)=>{
+    if (loaded[i]){ return; }
+    loaded[i] = true;
+    if (i === currentIndex){ refreshOverlay(); }
+    loadNextSlide();
+    };
+  const ensureSlide= (i)=>{
+    if (i < 0 || i > maxIndex || created[i]){ return; }
+    created[i] = true;
+    if (i > 0){
+      const template= slideTemplate(i);
+      const slide= document.importNode(template.content.firstElementChild, true);
+      template.parentNode.insertBefore(slide, template);
+      }
+    allTextArea(i).forEach(textInit);
+    const img= document.getElementById('content' + i).querySelector('img');
+    if (img === null || (img.complete && img.naturalWidth > 0)){ return slideLoaded(i); }
+    const done= () => slideLoaded(i);
+    const failLoadImg= () => {
+      console.error(`Failed to load image for slide ${i}: ${img.src}`);
+      done();
+      };
+    img.addEventListener('load', done, { once: true });
+    img.addEventListener('error', failLoadImg, { once: true });
+    };
   //init
-  for (let i= 0; i <= maxIndex; i++){ allTextArea(i).forEach(textInit); }
   updateContent();
   const Buttons = initButtons(updateContent,{nextBtn,prevBtn,resetBtn,hintBtn});
   const InactiveNudge= inactiveNudge(Buttons.isFrozen,30000,()=>{
@@ -162,7 +214,12 @@ const initSlides= () => {
     messageIndex = (messageIndex + 1) % hintMessages.length;
     return res;
     };
-  document.querySelectorAll('img')//force img preloading
-    .forEach(img =>img.offsetHeight);
+  window.addEventListener("load", () => {//BaseJs is fading the black screen out
+    pageLoaded = true;
+    overlayShown = false;
+    loadingCircle.hidden = true;
+    loadNextSlide();
+    refreshOverlay();
+    });
   };
 initSlides();

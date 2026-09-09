@@ -204,9 +204,11 @@ const inactiveNudge= (isFrozenFun,initTime,initCallback) => {
       }
     };
   };
-  
-setTimeout(() => document.getElementById('screenOverlay')
-  .style.opacity = '0', 0);
+
+window.addEventListener("load", () => { // When all assets finish loading...
+  document.getElementById('screenOverlay').style.opacity = '0';
+  });
+
 /*  (()=>{//old overkill, remember why
 const overlay = document.getElementById('screenOverlay');
     setTimeout(() => { 

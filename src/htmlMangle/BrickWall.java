@@ -18,15 +18,15 @@ import resources.File;
  *   where the player has to remove all the unnecessary bricks.
  */
 public class BrickWall {
-  private static final int wallLength= 80;
-  private static final int pileLength= 53;
+  protected static final int wallLength= 80;
+  protected static final int pileLength= 53;
   
-  private final List<List<Brick>> pileRows= new ArrayList<>();
-  private final List<List<Brick>> wallRows= new ArrayList<>();
+  protected final List<List<Brick>> pileRows= new ArrayList<>();
+  protected final List<List<Brick>> wallRows= new ArrayList<>();
   private List<Brick> currentWallRowBricks= new ArrayList<>();
   private List<Brick> currentPileRowBricks= new ArrayList<>();
   
-  private final Days.LevelName name;
+  protected final Days.LevelName name;
   private final String solution;
   private int currentIndexAlongWallRow= 0;
   private int currentIndexAlongPileRow= 0;
@@ -54,6 +54,7 @@ public class BrickWall {
   public BrickWall addBrick(int indexSkip, boolean movable, String s) {
     currentIndexAlongWallRow += indexSkip;
     currentWallRowBricks.add(new Brick(s, movable, currentIndexAlongWallRow));
+    currentIndexAlongWallRow += s.length();
     return this;
     }
   public BrickWall addImmovable(int indexSkip, String s) { return addBrick(indexSkip, false, s); }
@@ -65,7 +66,7 @@ public class BrickWall {
       .replace("[###ANSWERWALL###]", renderAnswerWall());
     }
 
-  private String renderWall(List<List<Brick>> brickRows, int length, boolean isWall) {
+  protected String renderWall(List<List<Brick>> brickRows, int length, boolean isWall) {
     StringBuilder sb = new StringBuilder();
     for (List<Brick> sortedBricks : brickRows) {
       sb.append("<span class=\"brickRow\">");
