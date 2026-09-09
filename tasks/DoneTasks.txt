@@ -402,3 +402,290 @@ This uncommitted state was deliberately left in place rather than committed or c
 Not independently re-attempted or verified by the orchestrating session tonight: doing so would mean redoing the actual engineering work (understanding the new generator's design, running a full base rebuild, and likely debugging whatever the agent was mid-way through fixing when it was cut off), which is out of scope for bookkeeping and wasn't attempted given it was already well past this task's point of diminishing returns for tonight.
 
 This is a real, substantive chunk of progress (the gen_test removal and the shape of the Coordinator-side change both look complete), so it's a reasonable candidate to put back in tasks/LongHorizonTasks.txt for another attempt if wanted -- Marco's call, not assumed here.
+
+---
+
+Task:
+StandardLibrary's base.IsoPods# and base.FilterAny# (both in base/var.fear)
+are Magic! with no rt/ implementation at all -- currently they throw an
+explicit "not yet implemented" error at runtime (rt/IsoPods$5k$0.java,
+rt/FilterAny$lg$0.java, added in FearlessLang/StandardLibrary#50 just to
+get Coordinator#101's native-override check to pass honestly). Implement
+real semantics for both:
+- IsoPods#[T](val: iso T): mut IsoPod[T] -- construct a real capsule
+  wrapping an iso value, backing IsoPod[T]'s isClosed/peek/open/mutate
+  contract (base/var.fear).
+- FilterAny#[R](R,F[R,Bool],F[R]): R -- a generic filter-with-fallback:
+  return the first argument if it passes the predicate, otherwise call
+  the fallback. (Comment on the existing declaration: "Needed in some
+  cases. Should it be part of the magic?" -- worth deciding as part of
+  this task whether it should stay Magic! at all.)
+Study Var[E]/Vars#/rt/Var$c$1Instance.java as the closest existing
+example of a similar capability-system native realization. Conclude
+with a PR to FearlessLang/StandardLibrary, verified against
+TestAllFrontendCoordinatorIntegration.java.
+
+Report:
+Success. PR open at https://github.com/FearlessLang/StandardLibrary/pull/51 -- independently confirmed OPEN, targeting FearlessLang/StandardLibrary main, from the marcoautomation fork.
+
+IsoPods#[T](val: iso T): mut IsoPod[T] implemented as a real capsule in rt/IsoPods$5k$0.java, following the Var$c$1Instance convention from rt/Vars$o$0.java (per the task's instruction to study it). Added a package-private IsoPod$2s$1Instance class holding a plain Object field plus a closed boolean, implementing only the four genuinely abstract members of the generated IsoPod$2s$1 interface (isClosed/peek/open/mutate) -- look/isOpen/consume/blindMutate keep their real Fearless default bodies, deliberately not overridden, matching the "no redundant native override" lesson from the same-day PR #101 precedent (see the gen_test task's report above). .open asserts the precondition (assert closed, no message) and nulls the field on extraction so the pod doesn't retain a second reference to a value now uniquely owned elsewhere.
+
+FilterAny#[R](R,F[R,Bool],F[R]):R implemented as a two-line native dispatch: call the predicate, and if true return the value, else call and return the fallback.
+
+Should FilterAny# stay Magic!? Yes, verified empirically rather than by guesswork: a pure-Fearless translation (a ternary desugaring to a ThenElse[R] object literal) was temporarily added to var.fear, rebuilt, and let the real type checker rule on it, then reverted. At the declared R:** bound it's rejected because r can be instantiated with readH/mutH and can't be captured into the ternary's object literal. Even narrowed to R:iso,imm,mut,read it still fails: using r in the predicate call downgrades its inferred capability to read R for the .then branch, not a subtype of the general R needed there. Both are structural properties of this exact signature, not edge cases to route around -- so the existing comment's question ("Needed in some cases. Should it be part of the magic?") is answered: genuinely needed. The comment itself was left untouched.
+
+Doc-comment examples (//> runnable examples) were added to both declarations, covering capsule open/peek/mutate/isClosed state transitions and the predicate-true/predicate-false FilterAny# paths. These caught two real bugs in the first draft (c.++ instead of the correct operator-call form c++, and bare numeric literals defaulting to iso Nat instead of the Int a signature required) -- both surfaced only by RunIntegration.baseGeneratedExamples, since the fast test path never compiles doc-example text as code.
+
+Verified against TestAllFrontendCoordinatorIntegration.java (the task's required target): 376/377 successful, 0 failed, exit 0 (the 1 aborted test is pre-existing/unrelated, same count on a clean upstream/main baseline taken before this change). Also TestAllFrontendCoordinator.java (fast suite, run first while iterating): 340/341, 0 failed, same baseline.
+
+Process note for future sessions: a clean fast-suite pass is not sufficient validation for a new doc-comment example -- only the integration suite's baseGeneratedExamples test actually compiles and runs //> example text.
+
+Files changed: StandardLibrary/base/var.fear, StandardLibrary/rt/IsoPods$5k$0.java, StandardLibrary/rt/FilterAny$lg$0.java. A temporary debug edit to Coordinator/src/naiveBackend/NaiveBackendLogicMain.java (uncommenting an rmTree cleanup line, to inspect generated interface .java files during investigation) was reverted before finishing; all four repos independently confirmed with a clean working tree (each left on its own feature branch, not upstream/main -- align-branch resets this before the next dispatched task, same as every other night).
+
+---
+
+Task:
+I've received this bug report. Can you verify the staments and discuss?
+It it works and the proposed fix make sense, open a PR.
+--
+I would add this to Frontend/FearlessFrontend/test/typeSystem/TypeExpressionBoundsTest.java:
+package typeSystem;
+
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import core.FearlessException;
+
+class TypeExpressionBoundsTest extends testUtils.FearlessTestBase {
+  @Test void typeExpressionMustNotAllowMutationOfImmutableCell() {
+    assertThrows(FearlessException.class, () -> typeOk(List.of("""
+      Cell:{ read .get:base.Nat; mut .set(value:base.Nat):base.Void; }
+      Thaw[X:imm]:{ .apply(x:imm X):X -> x; }
+      User:{
+        .break(cell:imm Cell):base.Void ->
+          Thaw[mut Cell].apply(cell).set(1);
+      }
+      """)));
+  }
+}
+Verified: the test fails on current Frontend main (e40de33) because nothing is thrown—the entire program typechecks. Direct cell.set(1) is correctly rejected. This demonstrates compiler acceptance of the forbidden mutation; I did not execute a stateful cell at runtime.
+Temporarily adding k().check(t,bs,t.type()); at the start of checkType makes all 722 Frontend tests pass, including this regression, the reverse alias conversion, and two controls.
+--
+
+Report:
+Verdict: the bug report is correct, and the proposed fix is sound. PR opened at https://github.com/FearlessLang/Frontend/pull/40 -- independently confirmed OPEN, targeting FearlessLang/Frontend main, from the marcoautomation fork.
+
+Verified the claim by adding the reporter's exact test to FearlessFrontend/test/typeSystem/TypeExpressionBoundsTest.java against unmodified upstream main (e40de33, matching the report's cited commit): TestAllFrontend ran 718/719, the new test failing because nothing was thrown -- the malicious program typechecks cleanly, independently reproducing the report's central claim.
+
+Root cause, traced in Frontend/FearlessFrontend/src/typeSystem/TypeSystem.java: checkType (the E.Type case, handling surface syntax like Thaw[mut Cell] used directly as an expression) never called into Kinding to check that a type's actual generic arguments satisfy the declared bounds of the parameters they fill -- every other generic-instantiation site (csOk/checkC for supertypes, methOk for method signatures, CallTyping.checkTargsKinding for explicit call type arguments, checkLiteral for a literal's own self-type) already does this; checkType was the sole exception. This let Thaw[mut Cell] instantiate Thaw[X:imm]'s X with a mut capability despite the imm-only bound -- since .apply's parameter is viewpoint-adapted imm X (accepts anything) but its return type is bare X, the unchecked instantiation let a call fed only an imm Cell argument return as mut Cell, letting .set(1) mutate through it. Same bug class (generic capability/alias forging) as one fixed earlier the same day (commit 3cd43de, PR #38, TypeSystemBugs.md bug #2) but a genuinely different path -- that fix patched eqModXRC's subtyping comparison; this is a skipped bound check on a fresh instantiation, not a subtyping defect.
+
+Fix: applied the reporter's proposed one-line fix exactly as suggested -- k().check(t,bs,t.type()); at the start of checkType, reusing the identical Kinding.check call already used at the other four instantiation sites.
+
+Test strengthened beyond the report's proposal: the reporter's snippet used a bare assertThrows with no message check; every other test in the typeSystem package pairs assertThrows/typeFail with an exact rendered-message assertion (matching the project's standing strong-test-assertions preference), so the test was upgraded to typeFail(...) asserting the exact diagnostic text, captured verbatim from a real run and pinned.
+
+Verification (JDK 26, with the fix applied): TestAllFrontend 719/719 passing (0 failures), including the new regression test. TestAllFrontendCoordinator 340/341 passing, 1 pre-existing abort unrelated to this change (a Windows/NTFS path-with-colon limitation, confirmed by inspecting the failure detail) -- this run includes TestBuildBase, which compiles and runs the real StandardLibrary base package end-to-end through the patched Frontend, evidence the fix doesn't break real-world Fearless code. Both suites re-run clean a second time after finalizing the test's exact-message assertion.
+
+Also added: a third entry to Frontend/TypeSystemBugs.md (a maintained log of type-system soundness/crash bugs added hours earlier the same day, PR #39, with pseudocode before/after and a witness per entry), citing PR #40 -- kept in the same PR rather than a separate docs PR, per the project's single-PR-per-task convention.
+
+Files changed: Frontend/FearlessFrontend/src/typeSystem/TypeSystem.java (the one-line fix), Frontend/FearlessFrontend/test/typeSystem/TypeExpressionBoundsTest.java (new regression test), Frontend/TypeSystemBugs.md (new bug-log entry). All four repos independently confirmed with a clean working tree (each on its own feature branch, not upstream/main).
+
+---
+
+Task:
+Try to understand how to build the ZeroToHero game in
+https://github.com/MarcoServetto/ZeroToHero
+Some stuff is not super clear or not aligned with how the language is right now. Can you find out if something is off and needs to be 'aligned'? report on github pages. Do not 'read' the very many images; just focus on what is actually available as text.
+
+Report:
+Ran align-branch, then actually built the whole pipeline end-to-end rather than just reading source: compiled Commons/FearlessFrontend/Coordinator as real JPMS modules from that night's upstream sources, built ZeroToHero and its sibling repo FearlessTour against them, ran ZeroToHero's own game generator, and ran FearlessTour's 90 JUnit chapter tests (which compile embedded Fearless code through the real compiler).
+
+How ZeroToHero actually builds (previously undocumented -- no README in either repo): the playable puzzle game (ZeroToHero/src/levels, htmlMangle) is plain Java with hand-typed Fearless-looking text, never run through the real compiler despite module-info.java declaring requires Coordinator. The 28-chapter guide book (ZeroToHero/src/assetsGuide) is entirely generated by FearlessTour/src/compileHtml/CompileHtml.java, which reads FearlessTour/src/chaptersOfZeroToHero/ZH_*.java (JUnit tests) and writes straight into the sibling ZeroToHero checkout -- this wiring exists nowhere except that one source file. FearlessTour needs Coordinator's test source tree (Coordinator/test/mainCoordinator/ResolveResource.java), not the production module, plus manually-downloaded flexmark jars and a gitignored LocalResources.java. The full recipe was reconstructed and published to the setup cheatsheet so it doesn't need rediscovering.
+
+What's fine: regenerating the entire playable game and regenerating the entire guide book both reproduce the checked-in files byte-for-byte -- neither is stale relative to its own generator.
+
+What's misaligned: of FearlessTour's 90 chapter tests, 86 pass and 4 fail against that night's aligned compiler -- and since the guide is confirmed in sync, these are exactly what's live in the published guide. All 4 trace to three commits dated 2026-09-08 (the same day as this run): (1) Chapter 24 "Collections" -- a nested-generic-capability subtyping bug was fixed (Frontend@3cd43de, already logged on the site's type-system-bugs page); the chapter's example relied on the old, unsound behavior. (2) Chapters 22/23 "Show Tanks"/"Show All Tanks" -- a new "//-" doc-comment marker (Coordinator@22861bc) collides with these chapters' pre-existing "//----------" divider-comment style, breaking doc-comment attachment tracking -- a plain syntax collision, not a defect on either side. (3) Chapter 17 "ImplementingFromScratch" -- crashes the compiler outright via a freshly-landed StandardLibrary consistency check (Coordinator@c811ce3, which itself already found 12 similar pre-existing StandardLibrary issues, explicitly scoped as out-of-scope follow-up); correlates with the chapter being the only one of 90 that declares its own top-level type named Vars (colliding in name/shape with base.Vars) -- flagged as a correlation, not a proven cause, since the backend's synthetic-naming code wasn't traced far enough to be certain.
+
+Incidental fix: ZeroToHero/.gitignore had a stale line for a renamed package path. Fixed via https://github.com/MarcoServetto/ZeroToHero/pull/18 -- independently confirmed OPEN, targeting MarcoServetto/ZeroToHero main, from the marcoautomation fork.
+
+Published: https://marcoautomation.github.io/shared-docs/fearless/zerotohero-alignment.html -- independently confirmed live, content matches the claims above (86/90 passing, same three root causes). Also updated the site's index.html (new entry under Development & manual testing, independently confirmed live) and added a "Building and running ZeroToHero/FearlessTour" entry to fearless/setup-cheatsheet.txt.
+
+Left for Marco to decide: whether the "//-"/divider collision should be fixed in the doc-comment scanner or in the guide's formatting style; how to word the Collections chapter's now-required capability annotation; how to triage the Vars$o$0 crash alongside the other 12 already-known StandardLibrary rt/-shadow findings.
+
+Note: this task's own subagent did its git work directly in the shared C:\data\fearlessBranch3\ZeroToHero working copy (same path this loop's bookkeeping uses) -- it created its own branch (fix-stale-gitignore-realmain) for the incidental fix, which changed what was checked out from under the bookkeeping branch mid-task. No harm resulted (working tree was clean, bookkeeping commits are safe on their own branch ref regardless of what's checked out), but fearlessBranch3/CLAUDE.md's step 7 was updated with guidance for future nights: check git status/branch before assuming the bookkeeping branch is still checked out whenever a task's own subject matter is ZeroToHero/FearlessTour itself.
+
+---
+
+Task:
+Look at the text of all the error messages, both in the coordinator and in frontend.
+Is there some inconsistency that we can fix?
+Finally open a PR request with suggested changes.
+
+Report:
+Reviewed all user-facing diagnostic text in Frontend's message package (parser/type-checker errors) and Coordinator's userMessages package (project-scan/build-cache errors), deliberately excluding fileSupport/FailureText.java (an explicit, self-annotated work-in-progress design draft with its own open review questions -- not shipped text). Found and fixed eight concrete, grounded inconsistencies -- each backed by a direct comparison to a sibling message, not restyled on taste -- verified with the fast test suites, and opened two PRs (one per repo, since GitHub PRs can't span repos):
+- https://github.com/FearlessLang/Frontend/pull/41 -- independently confirmed OPEN, targeting FearlessLang/Frontend main, from the marcoautomation fork.
+- https://github.com/FearlessLang/Coordinator/pull/104 -- independently confirmed OPEN, targeting FearlessLang/Coordinator main, from the marcoautomation fork.
+
+The one real bug (Frontend): Parser.parseSig() validates the RC prefix on a method declaration (disallowing iso as well as readH/mutH) but called disallowedReadHMutH, the message written for object literals -- so `A:{ iso .foo:Bar }` reported "not allowed on object literals" (wrong location) and suggested "Use one of read, mut, imm, iso.", listing iso as valid even though iso was the exact capability just rejected. A correctly-worded sibling, disallowedSigRC ("not allowed on method declarations" / "Use one of read, mut, imm."), already existed but was dead code -- never called. Fixed by wiring it up at the real call site.
+
+"can not" vs "cannot" (Frontend + Coordinator): the message package already used "cannot" 14 times against 8 "can not" for identical meaning -- one file, TypeSystemErrors.java, had both spellings side by side. Coordinator's userMessages had "Cannot" 14 times against 1 "Can not". Normalized to the dominant "cannot" (9 sites in Frontend, 1 in Coordinator).
+
+Missing trailing periods on sibling one-liners: disallowedReadHMutH's "not allowed on object literals" (vs. disallowedSigRC's version, which had one), nameNotInScope's "is not in scope" (vs. genericNotInScope's "is not in scope."), parameterNameExpected (vs. its neighboring one-line messages, all periods).
+
+Quoting convention (Frontend): badBound wrapped */** in single quotes -- the only place in the package not using the double-quote convention every other syntax example follows ("Foo[Bar]", ".m x = expression", etc.).
+
+Typos: "agains" -> "against", "Did you forgot" -> "Did you forget", "satify" -> "satisfy" (Frontend); "handleds" -> "handle" (2 sites), "differenty" -> "differently", "recursivelly" -> "recursively", "lenght" -> "length", "version control system" -> "systems" (Coordinator) -- each grounded by comparison to an already-correct sibling message saying the same thing correctly.
+
+Character-quoting safety gap (Coordinator): visibleInvalidChar rendered the bad character as raw '"+c+"' instead of Message.displayChar(c), unlike its direct sibling extInvalidChar (identical "unsupported character" situation). Since a "visible" name segment can contain any character -- control characters, half a surrogate pair -- this was a latent correctness gap, not just style: such input would print raw/garbled instead of being named or safely quoted.
+
+Verification: TestAllFrontend.java 718/718 passing, 0 failed. TestAllFrontendCoordinator.java 340/341 passing, 0 failed, 1 pre-existing abort (err_invisible_disk_zip_windows_bad_char_colon -- a test fixture that tries to create an on-disk file literally named with a ":", impossible on Windows; fails identically on a clean checkout before any of these changes). Exact-text test assertions were updated deliberately, each traced back to the corresponding source-text fix, not just to chase green: TestParse.java, TestInference.java, TypeInMethodTest.java, TypeSystemTest.java (Frontend); BadZipsTest.java, RealSourceOracleWithZipDslTest.java (Coordinator) -- including the three method-declaration RC tests (isoMethBad/readHMethBad/mutHMethBad) whose expected text changed entirely because of the disallowedSigRC wiring fix.
+
+Diff size: Frontend 9 files / 89+89 lines (mostly the mechanical "can not"->"cannot" sweep across ~50 near-identical TypeSystemTest.java assertions); Coordinator 4 files / 11+11 lines.
+
+---
+
+Task:
+- make a file with all the .java and .fearless files of all the repos.
+Look at all the comments and select a few comments that can be reduced, remove or that need updating. We are aiming at some code reduction here.
+Finally open a PR request with suggested changes.
+
+Report:
+This task is a deliberate, Marco-requested exception to the standing "the LLM never touches comments" rule (that rule exists to stop incidental comment-deletion during unrelated work; this task is the opposite -- an explicit, reviewed comment-cleanup pass). Aligned all four repos, built a combined dump of every tracked .java/.fear/.fearless file via git ls-files (440 files, ~2.27MB), then surveyed comments via targeted greps (TODO/FIXME/HACK/XXX, commented-out-code patterns) and read each hit with full surrounding context, cross-referencing questionable ones with repo-wide git grep before deciding.
+
+12 spots across 11 files, all four repos, comment-only with no behavior change. Opened one PR per repo, each independently confirmed OPEN against the correct FearlessLang parent, and each diff independently skimmed and confirmed to match the report below -- small, targeted removals grounded in a concrete reason, not sweeping deletion:
+- https://github.com/FearlessLang/Commons/pull/28 -- removed a commented-out pre-ternary draft in TreeDiagnostics.java sitting directly above its own replacement, and a commented-out alternate Pop.left() implementation with no rationale for keeping it.
+- https://github.com/FearlessLang/Coordinator/pull/105 -- LimitedJsonParser.java and OutputOracle.java both carried the identical "don't filter to public-only" design rationale written as disabled code plus a trailing note; reworded to a plain comment keeping the reasoning, dropping the fake code. Removed a commented-out one-line draft of a ProcessBuilder call in Main.java (identical to the two-step version directly below it that superseded it), and two commented-out catch clauses in ProgrammaticMain.java that no longer apply to that method.
+- https://github.com/FearlessLang/Frontend/pull/42 -- removed two commented-out calls to LitAlign.setT/setMsT in InjectionSteps.java after confirming via repo-wide search that LitAlign no longer exists anywhere (dead references to a removed class); a commented-out, entirely unreferenced privateLike method in CompactPrinter.java; and an unexplained commented-out "return false;" above the real return in Gamma.java.
+- https://github.com/FearlessLang/StandardLibrary/pull/52 -- the task's "needs updating" category: base/errors.fear's _Throw.stackTrace carried "TODO: is this used?", verified yes (base/testing.fear's CheckSys.stackTrace, implemented by rt/_Throw$1c$0.java), so the now-answered question was removed. rt/gui/_Widgets.java had a commented-out mut$textHeight$1 plus "TODO: this can stay in pure fearless...", which turned out to already be done (base/gui/types.fear defines .textHeight on Button/Label as a pure-Fearless call to .textSize already) -- removed the resolved TODO and the superseded dead code.
+
+Deliberately left alone (rubric applied, not pattern-matched): genuine future-work TODOs with no evidence of staleness (flow.fear, map.fear, FearlessIcon.java, Manager.java); a deliberate "why we rejected this API" note (action.fear's .lazy rejection); FFI native-signature docs and "magic"-implementation docs, both of which explain otherwise-invisible behavior; ManagerMain.java's resource-policy/invariant comments; and FailureText.java's distinctive editorial review-note style, clearly deliberate and used throughout that file.
+
+Side-finding not acted on: Coordinator/src/fileSupport/FailureText.java:297 has a literal "https:TODO_TODO" placeholder inside a real user-facing crash-report string. Not a comment (out of this task's scope), and fixing it would mean inventing a URL not actually known -- flagged for Marco rather than guessed at.
+
+Verification: TestAllFrontendCoordinator.java (Commons+Frontend+Coordinator fast suite, run after all edits) 341 tests, 0 failed, 1 aborted (RealSourceOracleWithZipDslTest, the pre-existing unrelated Windows colon-in-filename limitation, not a file touched here). TestBuildBase (part of that same run) does a full compile+run of StandardLibrary's base package, directly exercising the edited errors.fear; the _Widgets.java edit is a pure whole-line comment/dead-code deletion verified via diff to touch no live line. Slow TestAllFrontendCoordinatorIntegration.java not run -- no //> doc example was touched. ZeroToHero/FearlessTour independently confirmed untouched (left out of scope by judgment).
+
+---
+
+Task:
+Make sure that no matter what an error message produced by fearless does not contain characters outside of the Str whitelist. I think there is an occurrent of the \u for the compact ...; should be just the normal ...' check for other similar things too.
+Finally open a PR request with suggested changes.
+
+Report:
+Found and independently diff-verified 6 concrete Str-whitelist (Fs.allowed) violations in Fearless-produced diagnostic text, across 3 repos, plus 2 new regression tests. Three PRs, confirmed OPEN against the correct FearlessLang repos -- note a real inter-PR dependency, merge Commons#29 first:
+- https://github.com/FearlessLang/Commons/pull/29 -- Message.sanitizeForCaret and the new PrettyFileName.sanitizeAscii.
+- https://github.com/FearlessLang/Coordinator/pull/106 -- depends on Commons#29 to compile.
+- https://github.com/FearlessLang/Frontend/pull/43 -- depends on Commons#29 for its tests to pass (just the corresponding expected-text updates).
+
+Violations found and fixed: (1) Commons/src/metaParser/Message.java's sanitizeForCaret() -- the highest-confidence bug, proven by existing tests: this method builds the caret-annotated source line shown under every "Illegal character" parse error, substituting illegal characters with '·' (middle dot) and '�' (replacement char) -- both themselves outside Fs.allowed, so the exact scenario this code handles produced a whitelist-violating message. TestParse.java's 6 err_illegal_*_char* tests already asserted this non-whitelisted output as "expected." Fixed to '_'/'?', tests updated to match (only the expected display changed, not the illegal input fed to the parser). (2) Coordinator/src/fileSupport/StringFiles.java's tail() -- Marco's specifically-suspected bug: used "…" (ellipsis) to mark a truncated line in the invalid-UTF-8 file-read error instead of plain "...". A downstream Message.displayString() call happened to neutralize it into "[U+2026]" today, so this wasn't a live leak, but that's an accident, not a guarantee, and "[U+2026]" wasn't the intended marker either. Fixed to "...". (3) Commons/src/metaParser/PrettyFileName.java's displayFileName() -- the deepest, highest-blast-radius gap: backs the "In file:" header on every located compiler error plus several other call sites, but never sanitized path content at all -- any project/install path containing a non-ASCII character (e.g. a non-English Windows username) would leak raw into nearly every error message. Added sanitizeAscii() and routed the result through it. (4) Coordinator/src/userMessages/UserError.java's path() -- the shared helper behind ~15 Violation/Report messages showing absolute system paths, passed its argument through raw; now routes through the new sanitizeAscii(). (5) Coordinator/src/userMessages/Report.java's visibleInvalidChar() -- embedded the actual offending character raw ("'"+c+"'"), i.e. the very character that triggered "unsupported character" could itself be non-whitelisted; its sibling extInvalidChar() two lines below already used Message.displayChar(c) correctly -- made consistent. (6) Report.java's projectEmpty() -- formatted the raw project-root Path directly instead of using the path() helper its immediate sibling folderNestedWithRegistered() uses for the same kind of value -- fixed to match.
+
+"Similar things" checked, found clean: Frontend's entire message package (10 files) and Coordinator's entire userMessages and fileSupport packages read in full -- every other dynamic value reaching user-facing text already routes consistently through Message.displayString/displayChar/Err.disp. Also checked NameSuggester.java and StandardLibrary .fear doc comments for stray typographic-Unicode literals (none found). docBuilder/HtmlDocRenderer.java's one — (em dash) is HTML-page-only output (browser-rendered, not a Str value or CLI message) -- deliberately left alone as out of scope.
+
+Systematic safeguard: two new Coordinator tests (Commons has no test tree of its own) -- StringFilesTest feeds invalid UTF-8 with a long valid prefix to exercise tail()'s truncation branch and asserts the whole message is Fs.allowed-only; UserErrorTest feeds UserError.path() and PrettyFileName.displayFileName() adversarial non-ASCII input and asserts whitelist compliance plus an ASCII no-op regression guard. Kept intentionally small (test the two fixed choke points with real adversarial input) rather than a source-text grep test, which would need per-file allowlisting for legitimate non-message \u uses elsewhere (BOM/line-separator handling in WindowsAssociations.java/MetaTokenizer.java).
+
+Verification: TestAllFrontend (Commons+Frontend) 718/718 passed. TestAllFrontendCoordinator (+Coordinator, excluding integrationTests) 344/344 passed, 1 pre-existing unrelated abort. Both run against the full three-repo change set. TestAllFrontendCoordinatorIntegration not run -- no StandardLibrary .fear source touched. Two pre-existing tests updated to match now-correct output: RealSourceOracleWithZipDslTest.err_visible_invalid_char and ProjectTreeErrorTest.emptyProject.
+
+Overlap with tonight's earlier PRs (task 4, checked as instructed at dispatch): Coordinator#104 makes the exact identical fix to Report.visibleInvalidChar() (raw char -> Message.displayChar(c)) and the identical RealSourceOracleWithZipDslTest line update, independently rediscovered from a clean upstream/main -- whichever of #104/#106 merges second will show an empty/already-applied diff on those specific hunks. Frontend#41 also touches TestParse.java but at entirely different line ranges -- no real conflict. Coordinator#105 and Frontend#42 touch disjoint files. This kind of same-night overlap is an accepted, known tradeoff of this loop (each task independently branches off a clean upstream/main by design), not a mistake.
+
+---
+
+Task:
+We are expanding the state and correspondingly the gui of the fearless manager.
+Before, a loaded project currently can be in states:
+-invalid content (file names etc)
+-not compiled no cache (no .fearless_out folder)
+-not compiled .fearless_out out of date
+-compiled
+-compiled and running
+
+Now we are moving to the following:
+
+-data:invalid content (file names etc)
+-code:invalid content (file names etc)
+-data:valid idle project
+-data:read write
+-data:read only
+-code:not compiled no cache (no .fearless_out folder)
+-code:not compiled .fearless_out out of date
+-code:compiled
+-code:compiled and running
+
+The manager need to show the current state and the user need to be able to move between states using the gui when reasonable; the state of each folder should be saved in the manager data.
+Moving in and out of invalid content: not done via the manager, done by changing the content on the hard drive, the manager discovers the change and moves the project in or out of invalid content.
+On default a folder with valid content that has not being acted upon in any way should start as data:valid idle project.
+a data:valid idle project should show buttons to become 'some kind of project'.
+-Become data->
+It becomes a data:read only project; similar to the mains to select, we now have to select what 'code' projects can read it; and near each one we can override a default and write a list of aliases, with the first element prewritten to be the standard filename to type conversion.
+
+-Become editable data->
+It becomes a data:read write project; similar to the mains to select, we now have to select what 'code' projects can read it; and near each one we can tick a box to allow writing, and override a default and write a list of aliases with the first element prewritten to be the standard filename to type conversion.
+
+-Become code->
+It becomes code:not compiled no cache; this is the starting point for the current manager. we will see the compile button that can be replaced by the run button with main selection etc exactly as today.
+The project will then 'naturally' move between the code kinds depending on the pressed buttons.
+The code will now also have a list of 'reads' and 'edits' with maps from project names to aliases as for before. Crucially those are just two views over the same data, not separated lists of permissions that have to agree.
+
+all the Data and Code kinds will have a button to go back to data:valid idle project (except data:valid idle project otherwise it would be a no op)
+
+Each kind will now have a different badge; currently we have a few badges including ! and X. Those are pretty good! we just need more kinds.
+
+As you can imagine, later on we will have APIs to allow code projects to read/edit data in Data projects.
+
+Report:
+This task closely parallels one already completed two nights earlier (FearlessLang/Coordinator#98, merged 2026-09-07) -- flagged to the dispatched subagent at dispatch time, and confirmed by it before writing any code: #98 had already built the Kind enum (idle/code/dataReadOnly/dataReadWrite), the Info-format persistence (EntrySchema/InfoParser/InfoPrinter), dead-link detection, and -- notably -- the 9-state FolderList.State enum already matched this task's state list exactly. But #98's only GUI for changing kind/reads/edits was a single global raw-text "Edit project metadata..." dialog: no per-project transition buttons, no per-project alias/checkbox editor, and 4 of the 9 states all rendered with the same "no badge" mark, visually indistinguishable. This task built the buttons/checkboxes/badges layer on top, without touching the persistence format. PR: https://github.com/FearlessLang/Coordinator/pull/107 -- independently confirmed OPEN, targeting FearlessLang/Coordinator main, from the marcoautomation fork, 11 files / +192-8, diff independently skimmed and matches the description below.
+
+What was built: ManagerData gained setKind(Path,Kind) and setLinks(Path,reads,edits); InfoData implements both via the existing updateEntry helper (same pattern as the pre-existing setSelectedMains). FolderInfo (the per-project detail panel) gained a kind-controls row -- "Become data"/"Become editable data"/"Become code" on an idle project, or a single "Back to idle" on every other kind, disabled while the project's session is busy -- and a Links section: for a code project, one row per registered data:* project; for a data:* project, one row per registered code project. Each row has a read checkbox, a write checkbox (only present at all when the data side is data:readWrite -- genuinely absent, not just disabled, for data:readOnly targets), and a text field for the alias list defaulting to FolderName.defaultTypeName(alias) the first time a row is checked. Alias text is validated against TName.isTypeName plus no-duplicates before being written, so the GUI can never hand EntrySchema something that fails to reparse on the next load. Both panels mutate the exact same reads/edits maps on the code project's own entry -- two renderings of the same data, not two lists that could disagree, per the task's explicit instruction. BadgeIcon gained idle (grey dot), dataReadOnly (blue "R"), dataReadWrite (purple "W"), compiled (green ">") marks, refactoring badge()/dot() to share the ring-drawing code rather than duplicating it -- all 9 FolderList.State values now render a visually distinct badge.
+
+A real bug found and fixed along the way: ManagerGui.showFolder reuses a cached FolderInfo per folder and never re-ran refresh() on reselection. Harmless before this change, but the new Links section depends on it: granting access from one project's panel and then switching to the other project's already-open panel showed stale (empty) data even though the write had genuinely succeeded on disk (confirmed via the raw projects.info file). Fixed with one line (shown.reload() on every selection, same method already used after a raw-text metadata commit); verified with a before/after screenshot pair.
+
+A separate, pre-existing bug found and explicitly NOT fixed: ticking a mains checkbox correctly persists to disk every time, but the Run button's enabled state doesn't follow it -- stays disabled after the first successful write. Traced this seriously rather than assuming it was unrelated: re-read the relevant methods (all untouched by this diff), then did the definitive test -- checked out pure unmodified upstream/main in the same working copy, rebuilt the manager from that, and reproduced the identical symptom, confirming it predates this task -- then restored the feature branch and re-verified it green before continuing. Flagged in the PR body as a follow-up, not fixed here.
+
+Interactive verification actually performed (not just code-read): built the real fearlessManaged app-image and drove it with real mouse/keyboard automation, screenshotting each step. Registered two real projects (01_hello_world as code, a plain-files folder as data) and exercised: idle -> Become data (blue "R" badge, confirmed no write checkbox appears anywhere for it) -> Back to idle (full round-trip); idle -> Become editable data (purple "W" badge) -> ticked read+write on a code project's row, watched the alias field prefill Kt_pubdata -> switched to that code project's own panel and confirmed the identical reads/edits shown there (the two-views claim, verified not just asserted); idle -> Become code (orange "!") -> real compile via a genuine child-JVM build, badge turned green ">". One environmental note: the app-image's own BaseCacheBuilder step failed with a NoSuchFileException on every attempt in this environment, reproduced identically on vanilla upstream/main too (pre-existing, unrelated) -- worked around each time by copying the already-valid StandardLibrary\dbgOut\baseCache\* into the freshly built app's stdLib\baseCache\, sufficient for real compiles to succeed; worth someone checking on this machine separately.
+
+Automated tests: TestAllFrontendCoordinator.java 346 tests, 345 passed, 1 pre-existing environment-conditional abort (same baseline #98 itself reported), 0 failed. New tests: InfoDataTest.setKindSurvivesAReRead, setLinksSurvivesAReReadAndKeepsReadsAndEditsIndependent; FolderNameTest.defaultTypeNameUppercasesTheFirstLetter; ManagerGuiShotTest.anIdleProjectOffersTheThreeBecomeButtons, aDataReadWriteProjectOffersLinksToRegisteredCodeProjects.
+
+Judgment calls flagged for Marco: only the three literal transition buttons plus one universal "Back to idle" -- no direct data:readOnly<->data:readWrite transition button (go through idle, or use the existing raw-text editor). Going back to idle does not clear mains/reads/edits -- inert while idle, reappear if the project becomes that kind again (matches an existing InfoDataTest that already asserted this for kind changes via raw-text commit). The alias field is a single-line space-separated text field, not a dedicated add/remove list widget -- smallest reasonable widget, consistent with how mains/pkgs are already rendered elsewhere in this panel.
+
+---
+
+Task:
+Consider this repository
+https://github.com/FearlessLang/EclipsePlugin
+This is an old and not maintained Eclipse plugin for fearless.
+It was very limited and badly done by a much weaker AI never properly reviewed by a human, so take the content there as a way to understand 'what' we wanted to do not 'how'.
+
+In particular the crucial features are
+-the fearless errors get redirected to eclipse 'error showing' panels so that by clicking on the error we jump to the mentioned piece of code.
+This used to work.
+-when we run fearless tests, the test logs are in just the right format so that we can use the existing JUnit test result visualiser to show the results in a user friendly way. This also used to work.
+
+Other features, in particular how to visualise files and paths are not important.
+Note how there is simply nothing about interacting with the text of fearless files. This is fully out of scope.
+
+This plugin needs to work with a portable eclipse like the one downloaded from here
+https://www.eclipse.org/downloads/download.php?file=/technology/epp/downloads/release/2026-06/R/eclipse-java-2026-06-R-win32-x86_64.zip
+(parent page)
+https://www.eclipse.org/downloads/packages/
+Note we are not installing eclipse.
+
+Fearless has changed a lot from the time that plugin worked.
+Now we would need to somehow have a connection with the manager.
+Ideally, we can have a menu item that says connect with eclipse and that would ask to select the eclipse executable; examine the current eclipse, and if good, copy the right jars in the right places and other needed config files (like position of the manager etc).
+Then when eclipse runs again, it should be possible to 'open' a fearless project that the manager knows and thus connect eclipse with the running manager.
+
+I want you to make a PR to the https://github.com/FearlessLang/EclipsePlugin
+repository, and to coordinator, including the 'compiled/built' jars and other artefact from EclipsePlugin repository and any other change needed to make the manager connect with an existing eclipse
+
+Report:
+Partial success, honestly scoped rather than forced to a false "complete": the EclipsePlugin half is done and genuinely live-verified against a real portable Eclipse; the Coordinator-side "Connect with Eclipse" manager integration is fully designed but was not implemented -- the plugin work took longer than planned (real debugging, detailed below) and untested production code was deliberately not rushed into a shared repo. PR: https://github.com/FearlessLang/EclipsePlugin/pull/1 -- independently confirmed OPEN, targeting FearlessLang/EclipsePlugin main (independently confirmed to be the genuine parent, not itself a fork of something else) from the marcoautomation fork, 31 files / +182-2063. No Coordinator PR -- correctly, since no Coordinator source was ultimately changed (independently confirmed clean).
+
+Prior art found: the old EclipsePlugin repo turned out to be launch-delegate-based (new/import wizards, a custom .fear editor, decorators, a FearlessLaunchDelegate running the compiler itself as a subprocess) -- architecturally obsolete now that the manager owns compilation/running, and notably contained zero IMarker usage despite the task's claim that error-jumping "used to work," suggesting that half was likely never actually finished, consistent with the task's own warning about the old plugin's quality. Its JUnitPoller.java was genuinely useful prior art: it demonstrated Eclipse's public org.eclipse.jdt.junit.JUnitCore.importTestRunSession(File) API for programmatic (non-manual) JUnit-view import, reused in the new build. Also studied the earlier-night JUnit-XML task's work (Coordinator PR #90/#94): RunIntegration.java already converts StandardLibrary's unit-test log into JUnit XML -- confirmed the exact current code, planned to extract it into a reusable class, but did not get to implementing that extraction.
+
+What was built and verified (EclipsePlugin): a from-scratch OSGi bundle (kept the old project's naming/layout, none of its code) with a background Job polling every open project's .out/eclipse/ for a problems.txt and a junit_xml/report.xml every 2 seconds; a marker writer turning problems.txt into real Eclipse Problems-view entries (a declared marker type extending org.eclipse.core.resources.problemmarker, so the Problems view's own display/navigation just works); a JUnit importer calling the public importTestRunSession API directly, deduped on unchanged content; and an org.eclipse.ui.startup extension forcing the bundle out of lazy activation (without it nothing else in Eclipse ever touches these classes and the watcher never starts -- a real bug hit and fixed). Built with plain javac --release 21 + jar (no PDE/Tycho needed) against the real Eclipse install's own plugin jars -- targeting Java 21 specifically mattered: the first build defaulted to newer bytecode and threw UnsupportedClassVersionError against the Eclipse JVM, also a real bug, also fixed.
+
+Live verification, against the real portable Eclipse 2026-06 (C:\data\tools\eclipse, jar dropped into dropins/fearless/plugins/), driven via screenshot+synthetic-click: determined the exact real compile-error text format by deliberately breaking a copy of the helloWorld fixture and running the actual Coordinator compiler; hand-wrote a matching problems.txt and confirmed the Problems view showed a correctly-positioned entry (screenshotted); hand-wrote a JUnit-XML report (3 tests, 1 failure) and confirmed the JUnit view updated fully automatically (Runs: 3/3, Failures: 1, correct per-test icons) within the watcher's poll interval, no user action at all (screenshotted); confirmed via Eclipse's own Error Log that no bundle-resolution/activation errors exist for the shipped build.
+
+Known gap, honestly not shipped: double-clicking a marker correctly selects the target file but fails to open it -- no editor is registered for .fear (deliberately out of scope, since editing Fearless source text is explicitly excluded by the task). Attempted registering Eclipse's own generic TextEditor (not a custom Fearless editor) for .fear; after fixing the bytecode-version bug, still hit an unresolved CoreException loading that platform class from the extension point, even after matching the old plugin's full Require-Bundle set. Reverted rather than ship non-working code -- the shipped plugin.xml/MANIFEST.MF reflect only what was actually verified working.
+
+What's NOT done, with a concrete design ready for follow-up: no Coordinator code was written. Design, grounded in real reads of current source: a new menu item in manager.ManagerGui.menuBar() (Coordinator/src/manager/ManagerGui.java, next to the existing "Edit project metadata..."); the plugin jar checked into Coordinator (mirroring how the task asked for built artifacts to ship) and copied by that menu action into the chosen Eclipse's dropins/fearless/plugins/, with tools.PortableApp.prepareAppContent() (Commons/src/tools/PortableApp.java) gaining one more copy line so a rebuilt portable/manager app carries the jar too; a production JUnitReport class extracting RunIntegration.java's existing log-to-XML logic, called after a run completes; a production ProblemReport class regex-matching the compile child-process's captured output into the 3-field format the plugin already parses. None of this was implemented or tested, so no automated Fearless test suite was relevant to run tonight -- no Coordinator/Frontend/StandardLibrary/Commons source was ultimately changed.
+
+Left in place, not part of any git repo: C:\data\tools\eclipse\dropins\fearless\plugins\fearlessPluginProject_2.0.0.jar (the working build, installed in the shared portable Eclipse for direct poking); C:\data\fearlessBranch3\oldPluginStudy\ (working notes, copies of the old plugin's files). Scratch probe files used to capture the real compile-error text format were deleted before finishing.
