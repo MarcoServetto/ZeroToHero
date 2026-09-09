@@ -95,13 +95,19 @@ record Image(Days.LevelName name, List<TArea> areas, Map<Integer, String> map){
     if(!map.containsKey(index)){ System.err.println("Image "+index+" is missing in "+name.directoryName()); }
     return map.getOrDefault(index,"ImageNotFound.jpg");
     }
-  String body(int index){ return
+  String div(int index){ return
      "<div class=\"contentItem\" id=\"content"+index+"\" hidden>\n"
     +"<img class=\"img_16_9\" src=\""+indexToName(index+1)+"\" draggable=\"false\"/>\n"
     + IntStream.range(0, areas.size())
         .mapToObj(i->areas.get(i).body(index,i))
         .collect(Collectors.joining("\n"))
     +"\n</div>";
+    }
+  //Only the first slide is in the DOM, the others wait in inert <template>s:
+  //their images start loading only when DirectInstructions.js clones them in
+  String body(int index){
+    if (index == 0){ return div(index); }
+    return "<template id=\"slide"+index+"\">\n"+div(index)+"\n</template>";
     }
   }
 record TArea(String original,String solution,String alternatives,Range r){

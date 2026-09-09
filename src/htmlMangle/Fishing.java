@@ -15,32 +15,14 @@ public class Fishing {
       +"</script>";
   }
   private String fishes(){
-    return fishes.stream().map(Fishing::jsonString).collect(Collectors.joining(","));
+    return fishes.stream()
+      .map(Escape::escapeForHtmlScripts)
+      .map(s -> "\"" + s + "\"")
+      .collect(Collectors.joining(","));
   }
   public String build(int points){
     return name.htmlNextLevel(File.Fishing_html.text,
         "data-required=\""+points+"\"")
       .replace("[###BODY###]", generate(points));
   }
-  private static String jsonString(String s){
-  var res= new StringBuilder("\"");
-  for (var i= 0; i < s.length(); i++){
-    var c= s.charAt(i);
-    switch(c){
-      case '"'  -> res.append("\\\"");
-      case '\\' -> res.append("\\\\");
-      case '\b' -> res.append("\\b");
-      case '\f' -> res.append("\\f");
-      case '\n' -> res.append("\\n");
-      case '\r' -> res.append("\\r");
-      case '\t' -> res.append("\\t");
-      case '<'  -> res.append("\\u003C");
-      default -> {
-        if (c < 32) res.append("\\u%04X".formatted((int)c));
-        else res.append(c);
-      }
-    }
-  }
-  return res.append("\"").toString();
-}
 }

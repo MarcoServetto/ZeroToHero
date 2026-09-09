@@ -2,7 +2,7 @@
 
 // Forest Minigame Settings
 const travelSpeed= 500; // Constant speed along a path
-const maxLineLength= 80; // Maximum amount of characters for each line in the output box
+const maxLineLength= 94; // Maximum amount of characters for each line in the output box
 const textOutputSpeed= 50; // ms per character to appear
 
 class Node {
@@ -52,8 +52,8 @@ const normalNodes= Array.from(nodesRaw).map(c => new Node(c.cx.baseVal.value, c.
 const finishNodes= Array.from(finishNodesRaw).map(c => new Node(c.cx.baseVal.value, c.cy.baseVal.value));
 const nodes= normalNodes.concat(finishNodes);
 
-var interactionEnabled= true;
-var currentNode= nodes[0]; // The node the player is currently on
+let interactionEnabled= true;
+let currentNode= nodes[0]; // The node the player is currently on
 const actionStack= [];
 
 let textToAnimate= ""; // Remaining characters to add to output
@@ -87,7 +87,7 @@ const undo= () => {
 
 let panicToHideId= null;
 const hintChar= document.getElementById("hintCharacter");
-const displayPanicMessage= (msg, duration) => {
+const displayPanicMessage= (msg) => {
   clearTimeout(panicToHideId);
   const speechBubble= hintChar.querySelector(".speechBubble");
   speechBubble.textContent = msg;
@@ -167,17 +167,11 @@ const onFinishNode= () => { return finishNodes.some(n => n.equals(currentNode));
 const travelFail= (n1, n2) => { console.log("Cannot travel between ", n1, n2); }
 const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
   if (!interactionEnabled) { return; }
+  if (checkOverLength(getOutputText())) { return; }
   const n1= new Node(x1, y1);
   const n2= new Node(x2, y2);
   if (!(currentNode.equals(n1) || currentNode.equals(n2))) {
     travelFail(n1, n2);
-    return;
-    }
-  const code= Utils.getElementById(edgeId).textContent;
-  if (checkOverLength(getOutputText())) {
-    displayPanicMessage("We've picked up too much! Try the Undo button.", 5000);
-    output.classList.add("incorrectGlow");
-    showIncorrect();
     return;
     }
   actionStack.push(new Action(currentNode, currentCode));
@@ -191,6 +185,7 @@ const travelPath= (edgeId, x1, y1, mx, my, x2, y2) => {
     otherNode= n2;
     }
   submitBtn.disabled = !onFinishNode();
+  const code= Utils.getElementById(edgeId).textContent;
   currentCode += code
   textToAnimate += code;
   animateTravelPath(otherNode.x, otherNode.y, mx, my, currentNode.x, currentNode.y); // It's backwards somehow :/
@@ -245,8 +240,18 @@ const escapeHtml= str => {
     .replace(/>/g, "&gt;");
   }
 
+let alreadyShowIncorrect= false;
 const animateText= () => {
-  if (textToAnimate.length === 0) { return; }
+  if (textToAnimate.length === 0) {
+	if (!alreadyShowIncorrect && checkOverLength(getOutputText())) {
+      displayPanicMessage("We've picked up too much! Try the Undo button.");
+      output.classList.add("incorrectGlow");
+      showIncorrect();
+	  alreadyShowIncorrect = true;
+      }
+    return;
+    }
+  alreadyShowIncorrect = false;
   const first= textToAnimate[0];
   textToAnimate = textToAnimate.slice(1);
   const current= getOutputText();

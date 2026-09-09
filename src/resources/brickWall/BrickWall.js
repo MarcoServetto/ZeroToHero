@@ -1,143 +1,79 @@
-const wall= Utils.getElementById("wall");
-const brickRows= document.querySelectorAll(".brickRow");
-const movableBricks= document.querySelectorAll(".brick.movable");
-const movingBricksDiv= Utils.getElementById("movingBricks");
-const pile= Utils.getElementById("pile");
-const gameArea= Utils.getElementById("gameArea");
+const answerWall= Utils.getElementById("answerWall");
+const scale= Utils.getElementById("scale");
 
 const solution= MetaData.str(wall, "solution");
+const maxTilt= 80;
 
-const space= "\u00A0";
+let vibratingBrick= null;
 
-let dragging= false;
-let currentEmpty= null; // The current empty span the mouse is on while dragging
+const hintChar= document.getElementById("hintCharacter");
+const displayPanicMessage= (msg, image) => {
+  hintChar.querySelector(".panicImg").src = "../../assets/panic/" + image;
+  const speechBubble= hintChar.querySelector(".speechBubble");
+  speechBubble.textContent = msg;
+  hintChar.hidden = false;
+  };
 
-const isEmpty= e => e && e.classList && e.classList.contains("empty");
-
-const setEmpty= e => {
-  const len = e.textContent.length;
-  const parent = e.parentElement;
-  e.removeEventListener("pointerdown", movableBrickEventListeners.get(e));
-  movableBrickEventListeners.delete(e);
-  for (let i = 0; i < len; i++) {
-    const empty = document.createElement("span");
-    empty.className = "empty";
-    empty.textContent = space;
-    parent.insertBefore(empty, e);
-  }
-  e.remove();
-  }
-
-const createGhost= e => {
-  const ghost= document.createElement("span");
-  ghost.textContent = e.textContent;
-  ghost.className = "brick movable ghost";
-  ghost.style.position = "absolute";
-  movingBricksDiv.appendChild(ghost);
-  return ghost;
-  }
-
-let ghostBrick= null;
-const movableBrickEventListeners= new Map();
-
-// Given an empty span the mouse is over, find the run of consecutive
-// empty siblings starting at it that can fit the brick's length.
-const findSlot= (startSpan, length) => {
-  const slot= [];
-  let cur= startSpan;
-  while (cur && slot.length < length && isEmpty(cur)) {
-    slot.push(cur);
-    cur = cur.nextElementSibling;
-    }
-  return slot.length === length ? slot : null;
-  }
-
-const getBrickPosFromMouse= (brick, event) => {
-  const rect= brick.getBoundingClientRect();
-  const gameAreaRect= gameArea.getBoundingClientRect();
-  return [event.clientX - gameAreaRect.left - rect.width/2, event.clientY - gameAreaRect.top - rect.height/2];
-  }
-
-const registerMovable= e => {
-  const handler= event => {
-    dragging = true;
-    ghostBrick = createGhost(e);
-	const pos= getBrickPosFromMouse(e, event);
-    ghostBrick.style.left = `${pos[0]}px`;
-    ghostBrick.style.top = `${pos[1]}px`;
-    if (e.parentElement !== pile) {
-      setEmpty(e);
-      } else { e.remove(); }
-    };
-  e.addEventListener("pointerdown", handler);
-  movableBrickEventListeners.set(e, handler);
-}
-
-movableBricks.forEach(b => registerMovable(b));
-
-document.addEventListener("pointermove", e => {
-  if (ghostBrick === null) { return; }
-
-  ghostBrick.style.visibility = "hidden";
-  const target= document.elementFromPoint(e.clientX, e.clientY);
-  ghostBrick.style.visibility = "";
-
-  const slot= isEmpty(target) ? findSlot(target, ghostBrick.textContent.length) : null;
-
-  if (slot !== null) {
-    const rect= slot[0].getBoundingClientRect();
-    const gameAreaRect= gameArea.getBoundingClientRect();
-    ghostBrick.style.left = `${rect.left - gameAreaRect.left}px`;
-    ghostBrick.style.top = `${rect.top - gameAreaRect.top}px`;
-    currentEmpty = slot[0];
-    } else {
-    const pos= getBrickPosFromMouse(ghostBrick, e);
-    ghostBrick.style.left = `${pos[0]}px`;
-    ghostBrick.style.top = `${pos[1]}px`;
-    currentEmpty = null;
-    }
+const brickWall= initBrickWall({
+  wall,
+  pile,
+  gameArea,
+  movingBricksDiv,
+  glideTime: 500,
+  onBrickPickedUp: () => {
+    answerWall.classList.add("hidden");
+    if (vibratingBrick !== null) { vibratingBrick.classList.remove("vibrate"); }
+    vibratingBrick = null;
+    hintChar.hidden = true;
+    },
+  onBrickCommitted: () => {
+    updateVisuals();
+    },
   });
 
-document.addEventListener("pointerup", e => {
-  if (ghostBrick === null) { return; }
-  ghostBrick.classList.remove("ghost");
+const weigh= str => str.replace(/[\s\u00A0]/g, "").length;
 
-  const text= ghostBrick.textContent;
-  const slot= currentEmpty !== null ? findSlot(currentEmpty, text.length) : null;
+const updateVisuals= () => {
+  const wallCount= weigh(brickWall.normaliseWallText());
+  const solCount= weigh(Utils.normalize(solution));
+  const balanced= wallCount === solCount;
 
-  if (slot !== null) {
-    // commit: turn the run of empties into a single placed brick
-    const parent= slot[0].parentElement;
-    const ref= slot[0];
-    const placed= document.createElement("span");
-    placed.textContent = text;
-    placed.className = "brick movable";
-    parent.insertBefore(placed, ref);
-    slot.forEach(s => s.remove());
-    registerMovable(placed);
-    ghostBrick.remove();
-    } else {
-    // miss, or not enough consecutive empties: send back to pile
-    ghostBrick.style.position = "";
-    ghostBrick.style.left = "";
-    ghostBrick.style.top = "";
-    pile.appendChild(ghostBrick);
-    registerMovable(ghostBrick);
+  const ratio= solCount === 0 ? 0 : (wallCount - solCount) / solCount;
+  const clamped= Math.max(-1, Math.min(1, ratio));
+
+  scale.style.setProperty("--tilt", `${balanced ? 0 : clamped * maxTilt}deg`);
+  scale.classList.toggle("balanced", balanced);
+  };
+
+const _findFirstWrongBrick= (brickRows, solution) => {
+  const sol= Utils.normalize(solution);
+  let raw= "";
+  for (const r of brickRows) {
+    for (const c of r.children) {
+      const text= c.textContent;
+      for (let i= 0; i < text.length; i++) {
+        raw += text[i];
+        if (!sol.startsWith(Utils.normalize(raw))) { return c.original ? c.original : c; }
+        }
+      }
+    raw += "\n";
+    if (!sol.startsWith(Utils.normalize(raw))) { return null; }
     }
-  currentEmpty = null;
-  ghostBrick = null;
-  dragging = false;
-  });
+  return null;
+  };
 
-const normaliseWallText= () => {
-  let str= "";
-  brickRows.forEach(r => {
-    [...r.children].forEach(c => { str += c.textContent; });
-    str += "\n";
-    });
-  str = Utils.normalize(str);
-  console.log(str);
-  return str;
+const findFirstWrongBrick= () => {
+  return _findFirstWrongBrick(brickWall.brickRows, solution);
+  };
+
+const findFirstWrongBrickReversed= () => {
+  const reversedRows= [...brickWall.brickRows].reverse().map(row => ({
+    children: [...row.children].reverse().map(child => ({
+      original: child,
+      textContent: child.textContent.split("").reverse().join("")
+      }))
+    }));
+  return _findFirstWrongBrick(reversedRows, solution.split('').reverse().join(''));
   };
 
 const onComplete= () => {
@@ -146,20 +82,54 @@ const onComplete= () => {
   Utils.checkExists(nextLevelUrl);
   setTimeout(() => window.location.href = nextLevelUrl, 5000);
   };
-const onFail= () => { console.log("Nay"); };
+
+const onFail= () => {
+  let wrongBrick= findFirstWrongBrick();
+  if (wrongBrick === null) {
+    displayPanicMessage("Everything looks right so far, but there's still some bricks missing.", "panicThumbs1.png");
+    return;
+    }
+  if (wrongBrick.classList.contains("movable")) {
+    wrongBrick.classList.add("vibrate");
+    vibratingBrick = wrongBrick;
+    displayPanicMessage("Something doesn't seem right. That brick is shaking!", "panic20.png");
+    return;
+    }
+  wrongBrick = findFirstWrongBrickReversed();
+  if (wrongBrick !== null && wrongBrick.classList.contains("movable")) {
+    wrongBrick.classList.add("vibrate");
+    vibratingBrick = wrongBrick;
+    displayPanicMessage("Something doesn't seem right. That brick is shaking!", "panic20.png");
+    return;
+    }
+  displayPanicMessage("I'm so confused, something doesn't seem right.", "panic27.png");
+  };
 
 const checkSolution= () => {
-  const wallText= normaliseWallText();
+  const wallText= brickWall.normaliseWallText();
   if (wallText === Utils.normalize(solution)) { onComplete(); }
   else { onFail(); }
   };
 
 const hint= () => {
-  console.log("Hint");
+  answerWall.classList.remove("hidden");
   };
+
+scale.addEventListener("mouseenter", () => {
+  const tilt= getComputedStyle(scale).getPropertyValue("--tilt");
+  if (tilt === "0deg") { displayPanicMessage("You've got the right amount of bricks. But are they correct?", "panicThumbs1.png"); }
+  else if (tilt.startsWith("-")) { displayPanicMessage("Keep going, we're not done yet.", "panic25.png"); }
+  else { displayPanicMessage("There's too many bricks on the wall! Take some away.", "panic01.png"); }
+  });
+
+scale.addEventListener("mouseleave", () => {
+  hintChar.hidden = true;
+  });
 
 const buttonActions= {
   submitBtn: checkSolution,
   hintBtn: hint,
   };
 const Buttons= initButtons(() => {}, buttonActions);
+
+updateVisuals();
