@@ -143,7 +143,6 @@ const initSlides= () => {
   //slides after the first one wait in inert <template>s, so that their images
   //start loading only once the slide before them is fully loaded
   const overlay= Utils.getElementById('screenOverlay');
-  const loadingCircle= Utils.getElementById('loadingCircle');
   const created= [];
   const loaded= [];
   let pageLoaded= false;

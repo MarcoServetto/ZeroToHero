@@ -205,8 +205,11 @@ const inactiveNudge= (isFrozenFun,initTime,initCallback) => {
     };
   };
 
+const loadingCircle= Utils.getElementById("loadingCircle");
+
 window.addEventListener("load", () => { // When all assets finish loading...
   document.getElementById('screenOverlay').style.opacity = '0';
+  loadingCircle.hidden = true;
   });
 
 /*  (()=>{//old overkill, remember why
