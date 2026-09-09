@@ -73,7 +73,6 @@ const checkCheckpoint= () => {
       onComplete();
       return;
       }
-    Utils.flashImage("rgba(0, 0, 0, 0)","levelEndCharacter","translateY(-5%)");
     wallCorrectGlow();
     }
   };
@@ -87,6 +86,7 @@ const onComplete= () => {
 
 const checkpointReturn= () => {
   if (currentCheckpointStack.length === 0) { return; }
+  movingBricksDiv.replaceChildren();
   const wallCopy= currentCheckpointStack.at(-1).element.cloneNode(true);
   bottom.replaceWith(wallCopy);
   bottom = wallCopy;
@@ -107,11 +107,12 @@ const checkpointReturn= () => {
       checkCheckpoint();
       },
     });
+  brickWall.runGravity();
   };
 
 const buttonActions= {
   checkpointReturnBtn: checkpointReturn,
-  hintBtn: () => {},
+  //hintBtn: () => {},
   };
 const Buttons= initButtons(() => {}, buttonActions);
 
