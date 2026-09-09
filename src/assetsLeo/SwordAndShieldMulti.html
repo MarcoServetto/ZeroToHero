@@ -584,10 +584,10 @@ function drawBoard(prev){
     const [x,y] = cellXY(r,c), k = key(r,c);
     if(HEADS[k]!==undefined){
       const o = HEADS[k];
-      s += '<g transform="translate('+x+','+y+')">'+
+      s += '<g transform="translate('+x+','+y+')"><g data-crown="'+o+'">'+
            '<g class="glow"><polygon points="'+diamond(H+5)+'" fill="'+ACC[o]+'" opacity=".18"/></g>'+
            '<polygon points="'+diamond(H-1)+'" fill="'+(o===0?"#4a3a12":"#161c44")+'" stroke="'+ACC[o]+'" stroke-width="2.5"/>'+
-           '<path d="M -13,7 L -13,-3 L -6.5,2 L 0,-8 L 6.5,2 L 13,-3 L 13,7 Z" fill="'+ACC[o]+'"/></g>';
+           '<path d="M -13,7 L -13,-3 L -6.5,2 L 0,-8 L 6.5,2 L 13,-3 L 13,7 Z" fill="'+ACC[o]+'"/></g></g>';
     } else if(OUT.has(k)){
       s += '<polygon transform="translate('+x+','+y+')" points="'+diamond(H-1)+
            '" fill="#0a0d11" stroke="#242c34" stroke-width="1" stroke-dasharray="4 4"/>';
@@ -919,7 +919,7 @@ function render(prev){
   drawBoard(prev);
   document.getElementById("who").innerHTML = whoHTML();
   schedulePassCheck();
-  if(net.on) netPush();
+  if(net.on){ netPush(); if(state.gameOver) netClearResume(); }
   overlay(); toast(); flash = "";
 }
 /* one confirm box in the game's own style, used wherever we must ask */
@@ -2056,18 +2056,27 @@ const HB_MS = 2000;      // how often we announce ourselves
 const GONE_MS = 8000;    // no word for this long and we forget a waiting peer
 /* There used to be no inactivity limit inside a game at all: a partner was
    only lost when the transport itself gave up, which a frozen tab may never
-   do. Twelve seconds against a two second heartbeat is six missed beats. */
-const PEER_GONE_MS = 12000;
+   do. A backgrounded tab's timers can get throttled to roughly once a
+   minute, so the limit must clear that or a long, tabbed-away turn reads as
+   a departure. */
+const PEER_GONE_MS = 75000;
 const APPOINT_MS = 6000; // leave a handed-out seat this long before re-offering
 const OFFER_MS = 1500;   // resend an unanswered offer this often
 const COMMIT_MS = 7000;  // give up waiting for a confirm
 
 const net = { on:false, phase:"off", room:null, sendRec:null, hi:null,
-              role:"free", seat:null, peer:null, name:"", roster:new Map(),
+              role:"free", seat:null, peer:null, peerTok:null, name:"", roster:new Map(),
               openSeat:null, appoint:null,
               offer:null, commit:null, hbTimer:null, trace:[], lastSent:null,
               applying:false, calling:false, lost:false, base:0, err:"" };
 let trystero = null, netProbeTimer = null;
+const MY_TOK = (()=>{
+  try{
+    let t = localStorage.getItem("sns-net-tok");
+    if(!t){ t = Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem("sns-net-tok", t); }
+    return t;
+  } catch(e){ return null; }
+})();
 
 /* true whenever the local player must keep their hands off the board */
 function netLocked(){ return net.on && (net.applying || net.lost || state.turn!==net.seat); }
@@ -2125,7 +2134,12 @@ function netForMe(m){ return !m.to || m.to === trystero.selfId; }
 function netHello(target, re){
   if(!net.hi || !trystero) return;
   netTo(target, {t:"hello", free:netFree(), pair:netMyPair(), re:!!re,
-                 role:net.role, seat:net.seat, open:net.openSeat});
+                 role:net.role, seat:net.seat, open:net.openSeat, tok:MY_TOK});
+}
+function heartbeatPulse(seat){
+  const g = document.querySelector('[data-crown="'+seat+'"]');
+  if(g) g.animate([{transform:"scale(1)"},{transform:"scale(1.16)",offset:.5},{transform:"scale(1)"}],
+                  {duration:1100,easing:"ease-in-out"});
 }
 function netLive(){
   const now = Date.now(), out = [];
@@ -2192,10 +2206,11 @@ function netTakeSeat(peerId, seat, recStr){
   netClearOffer(); netClearCommit();
   if(netProbeTimer){ clearTimeout(netProbeTimer); netProbeTimer = null; }
   const fresh = net.role!=="watch";
-  net.role="player"; net.on=true; net.seat=seat; net.peer=peerId;
+  net.role="player"; net.on=true; net.seat=seat; net.peer=peerId; net.peerTok=null;
   net.openSeat=null; net.lost=false; net.phase="play";
   AI=[false,false]; aiPaused=false;
   document.getElementById("setup").hidden = true;
+  netSaveResume();
   if(fresh){ newGame(); state.meta = {ai:["online","online"]}; }
   netTrace("seated as "+PNAME[seat]);
   logMsg("You are now playing "+PNAME[seat]+".", true);
@@ -2234,7 +2249,7 @@ function netBegin(two){
   netClearOffer(); netClearCommit();
   if(netProbeTimer) clearTimeout(netProbeTimer);
   net.seat = two.indexOf(trystero.selfId);
-  net.peer = two[1-net.seat];
+  net.peer = two[1-net.seat]; net.peerTok = null;
   net.phase = "play"; net.on = true; net.role = "player"; net.openSeat = null;
   netTrace("paired with "+netShort(net.peer)+" as "+PNAME[net.seat]);
   netHello(null, true);                            // the room is busy now
@@ -2284,6 +2299,18 @@ async function netJoin(rawName){
       net.roster.set(id, {free:!!m.free, pair:m.pair||null, role:m.role||"free",
                           seat:(m.seat==null?null:m.seat), open:(m.open==null?null:m.open),
                           at:Date.now(), first:(was && was.first) || Date.now()});
+      if(id===net.peer) net.peerTok = m.tok || net.peerTok;
+      if(m.role==="player" && (m.seat===0 || m.seat===1)) heartbeatPulse(m.seat);
+      if(net.role==="player" && net.openSeat!=null && net.peerTok && m.tok && m.tok===net.peerTok){
+        netTrace(netShort(id)+" reconnected — handing back their seat");
+        net.peerTok = null;
+        net.appoint = {to:id, at:Date.now()};
+        netTo(id, {t:"seat", seat:net.openSeat, rec:state.rec.join(" ")});
+      } else if(net.role==="player" && net.openSeat!=null && m.role==="player" && m.seat===net.openSeat){
+        netTrace(netShort(id)+" is back — resuming with them");
+        net.peer = id; net.openSeat = null; net.appoint = null; net.lost = false;
+        net.lastSent = null; netTo(id, {t:"catchup"}); render();
+      }
       if(net.role==="player" && net.openSeat!=null) netTryAppoint();
       /* a tab that froze and then thawed still believes it is playing; its
          seat has since been handed on, so tell it to sit down and watch */
@@ -2342,7 +2369,7 @@ async function netJoin(rawName){
         if(id!==net.peer) netTo(id, {t:"unseat"});   // too late, a race
         return;
       }
-      net.peer = id; net.openSeat = null; net.appoint = null; net.lost = false;
+      net.peer = id; net.peerTok = null; net.openSeat = null; net.appoint = null; net.lost = false;
       net.lastSent = null;                     // make sure they get the record
       netTrace(netShort(id)+" took "+PNAME[m.seat]);
       logMsg(PNAME[m.seat]+" is taken over by another player.", true);
@@ -2373,6 +2400,7 @@ function netTick(){
   if(!net.room){ if(net.hbTimer){ clearInterval(net.hbTimer); net.hbTimer=null; } return; }
   if(net.on){
     netHello(null, true);                            // every beat once a game is on
+    if(net.role==="player") heartbeatPulse(net.seat);
     const now = Date.now();
     if(net.role==="player"){
       if(net.peer){
@@ -2393,8 +2421,10 @@ function netTick(){
   netTryPair();
   drawSetup();
 }
+document.addEventListener("visibilitychange", ()=>{ if(net.on) netHello(null, true); });
 
 function netCancel(){
+  netClearResume();
   const n = net.name;
   netReset();
   net.name = n; net.err = ""; setupOnline = true;
@@ -2409,10 +2439,13 @@ function netReset(){
   if(net.hbTimer) clearInterval(net.hbTimer);
   if(net.room){ try { net.room.leave(); } catch(e){} }
   net.on=false; net.phase="off"; net.room=null; net.sendRec=null; net.hi=null; net.hbTimer=null;
-  net.role="free"; net.seat=null; net.peer=null; net.roster=new Map();
+  net.role="free"; net.seat=null; net.peer=null; net.peerTok=null; net.roster=new Map();
   net.openSeat=null; net.appoint=null;
   net.applying=false; net.calling=false; net.lost=false; net.base=0; net.lastSent=null;
 }
+function netSaveResume(){ try{ localStorage.setItem("sns-net-resume", net.name); }catch(e){} }
+function netClearResume(){ try{ localStorage.removeItem("sns-net-resume"); }catch(e){} }
+function netLoadResume(){ try{ return localStorage.getItem("sns-net-resume"); }catch(e){ return null; } }
 
 /* An undo shortens the record, so a remote update is not always an
    extension. When it is, we play the new tokens out one at a time. When it
@@ -2488,6 +2521,7 @@ async function netApplyOne(str){
 function netStartGame(){
   AI = [false,false]; aiPaused = false; net.role = "player";
   document.getElementById("setup").hidden = true;
+  netSaveResume();
   newGame();
   state.meta = {ai:["online","online"]};
   net.base = state.rec.length; net.lastSent = state.rec.join(" ");
@@ -2562,7 +2596,8 @@ function drawSetup(){
          '<button class="wide primary" onclick="netJoin(document.getElementById(\'netName\').value)">'+
          'Connect &#9654;</button></div>'+
          '<p class="hint" style="margin:8px 0 0">Whichever of you arrives first waits for the other; sides are '+
-         'handed out automatically. Play goes browser to browser, with nothing stored anywhere.</p>';
+         'handed out automatically. Play goes browser to browser; only the room name is kept on this '+
+         'device, to rejoin automatically if this tab closes mid-game.</p>';
     if(net.err) s += '<p class="netmsg">'+esc(net.err)+'</p>';
   }
   s += '</div>';
@@ -2574,7 +2609,7 @@ function drawSetup(){
   if(setupOnline){ const i = document.getElementById("netName"); if(i){ i.focus(); i.select(); } }
 }
 function startGame(){
-  netReset();
+  netReset(); netClearResume();
   aiPaused = false;                  // a loaded record leaves the computer paused
   AI = [setupSel[0]==="human"?false:setupSel[0], setupSel[1]==="human"?false:setupSel[1]];
   document.getElementById("setup").hidden = true;
@@ -2584,7 +2619,9 @@ function startGame(){
 
 fit();
 newGame();
-openSetup();
+const resumeName = netLoadResume();
+if(resumeName){ document.getElementById("setup").hidden = false; netJoin(resumeName); }
+else openSetup();
 </script>
 </body>
 </html>
