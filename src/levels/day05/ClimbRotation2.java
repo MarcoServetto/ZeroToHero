@@ -16,7 +16,7 @@ West : Direction { North }
 
 R:{
   .r(d: Direction): Direction -> d.turn;
-  +(r: R): R-> { d -> this.r(r.r d) };
+  +(r: R): R-> { .r(d)-> this.r(r.r d) };
   .twice: R -> this + this;
   }
 """)

@@ -57,13 +57,13 @@ a single method with a single parameter by directly calling methods on that para
 There is a convenient sugar for this case! `::`
 We can write just:
 ```
-Rotate90: Rotation{::turn }
+Rotate90: Rotation{::.turn }
 ```
 This means that we can write:
 ```
-Rotate180: Rotation{::turn::turn<#[0|#|.turn|#|.turn.turn|#| 180|#|.reverse]#>}
+Rotate180: Rotation{::.turn.turn<#[0|#|.turn|#|.turn.turn|#| 180|#|.reverse]#>}
 ```
-to rotate twice and even 
+to rotate twice and even
 ```
 Rotate0: Rotation{::}
 ```

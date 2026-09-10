@@ -29,7 +29,7 @@ Rotation: {
   .r🧨o͠ta̶te(d:D🪱i͟r🪲e̴c🪦t͠i🧃o̷n):D🦠i̸r͜e🫧cti̶o🕷️n->
     d.t🫥u̸r🪤n;
   +(r:Ro͟ta̸t͜i🪰o̶n):R🪦o̸t͟a🫥t͜i🪲o͠n->
-    {d -> ____.ro͢t🪱a̷te(r.r🪰ot͟a🧫t͜e(_))};
+    {.rotate(d)-> ____.ro͢t🪱a̷te(r.r🪰ot͟a🧫t͜e(_))};
   .t🕳️w͢i🦠c̶e: R🪳o🧬t̷at͜i🪰o̶n->
     this + ____;
 }
@@ -38,7 +38,7 @@ Rotation: {
   .rotate(d: Direction): Direction ->
     d.turn;
   +(r:Ro͟ta̸t͜i🪰o̶n):R🪦o̸t͟a🫥t͜i🪲o͠n->
-    {d -> ____.ro͢t🪱a̷te(r.r🪰ot͟a🧫t͜e(_))};
+    {.rotate(d)-> ____.ro͢t🪱a̷te(r.r🪰ot͟a🧫t͜e(_))};
   .t🕳️w͢i🦠c̶e: R🪳o🧬t̷at͜i🪰o̶n->
     this + ____;
 }
@@ -49,7 +49,7 @@ Rotation: {
   .rotate(d: Direction): Direction ->
     d.turn;
   +(r:Ro͟ta̸t͜i🪰o̶n):R🪦o̸t͟a🫥t͜i🪲o͠n->
-    {d -> ____.ro͢t🪱a̷te(r.r🪰ot͟a🧫t͜e(_))};
+    {.rotate(d)-> ____.ro͢t🪱a̷te(r.r🪰ot͟a🧫t͜e(_))};
   .t🕳️w͢i🦠c̶e: R🪳o🧬t̷at͜i🪰o̶n->
     this + ____;
 }
@@ -58,7 +58,7 @@ Rotation: {
   .rotate(d: Direction): Direction ->
     d.turn;
   +(r: Rotation): Rotation ->
-    { d -> this.rotate( r.rotate(d) ) };
+    { .rotate(d)-> this.rotate( r.rotate(d) ) };
   .t🕳️w͢i🦠c̶e: R🪳o🧬t̷at͜i🪰o̶n->
     this + ____;
 }
@@ -69,7 +69,7 @@ Rotation: {
   .rotate(d: Direction): Direction ->
     d.turn;
   +(r: Rotation): Rotation ->
-    { d -> this.rotate( r.rotate(d) ) };
+    { .rotate(d)-> this.rotate( r.rotate(d) ) };
   .t🕳️w͢i🦠c̶e: R🪳o🧬t̷at͜i🪰o̶n->
     this + ____;
 }
@@ -78,7 +78,7 @@ Rotation: {
   .rotate(d: Direction): Direction ->
     d.turn;
   +(r: Rotation): Rotation ->
-    { d -> this.rotate( r.rotate(d) ) };
+    { .rotate(d)-> this.rotate( r.rotate(d) ) };
   .twice: Rotation->
     this + this;
 }
@@ -86,23 +86,21 @@ Rotation: {
     .image(2)
       .area(20, 95,     0.5, 55, """
 DrillDown: {
-  #d: Direction: Direction ->
+  #(d: Direction): Direction ->
     Rotation
       .twice________________________
       ______________________________
       ______________________________
       .rotate(d)
-  }
 }
 """, """
 DrillDown: {
-  #d: Direction: Direction ->
+  #(d: Direction): Direction ->
     Rotation
       .twice.twice.twice.twice.twice
       .twice.twice.twice.twice.twice
       .twice.twice
       .rotate(d)
-  }
 }
 """)
     .image(9)
