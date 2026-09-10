@@ -13,7 +13,7 @@ public class FishingComb implements Function<Days.LevelName,String>{
     .fish("East")
     .fish("South@:Direction{@@E@@a@@s@@t}")
     .fish("Rotation:{\n  .rotate(d: Direction)@@:Direction->d.turn;\n  }")
-    .fish("+(r:Rotation):Rotation->{d->this.rotate(r.rotate(d))}")
+    .fish("+(r:Rotation):Rotation->{.rotate(d)->this.rotate(r.rotate(d))}")
     .fish("Stone.break")
     .fish("""
 Archers: {#(h: Direction, a: Direction): Archer ->

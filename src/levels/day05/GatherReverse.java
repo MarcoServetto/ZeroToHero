@@ -14,10 +14,10 @@ East : Direction { South }
 South: Direction { West  }
 West : Direction { North }
 
-Rotation:{
-  .rotate(d: Direction): Direction -> d.turn;
-  +(r: Rotation): Rotation-> { d -> this.rotate(r.rotate(d)) };
-  .twice: Rotation -> this + this;
+R:{
+  .r(d: Direction): Direction -> d.turn;
+  +(r: R): R-> { .r(d)-> this.r(r.r d) };
+  .twice: R -> this + this;
   }
 """)
         // code with title, group img, img num
