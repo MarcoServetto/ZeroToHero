@@ -689,3 +689,119 @@ Known gap, honestly not shipped: double-clicking a marker correctly selects the 
 What's NOT done, with a concrete design ready for follow-up: no Coordinator code was written. Design, grounded in real reads of current source: a new menu item in manager.ManagerGui.menuBar() (Coordinator/src/manager/ManagerGui.java, next to the existing "Edit project metadata..."); the plugin jar checked into Coordinator (mirroring how the task asked for built artifacts to ship) and copied by that menu action into the chosen Eclipse's dropins/fearless/plugins/, with tools.PortableApp.prepareAppContent() (Commons/src/tools/PortableApp.java) gaining one more copy line so a rebuilt portable/manager app carries the jar too; a production JUnitReport class extracting RunIntegration.java's existing log-to-XML logic, called after a run completes; a production ProblemReport class regex-matching the compile child-process's captured output into the 3-field format the plugin already parses. None of this was implemented or tested, so no automated Fearless test suite was relevant to run tonight -- no Coordinator/Frontend/StandardLibrary/Commons source was ultimately changed.
 
 Left in place, not part of any git repo: C:\data\tools\eclipse\dropins\fearless\plugins\fearlessPluginProject_2.0.0.jar (the working build, installed in the shared portable Eclipse for direct poking); C:\data\fearlessBranch3\oldPluginStudy\ (working notes, copies of the old plugin's files). Scratch probe files used to capture the real compile-error text format were deleted before finishing.
+
+---
+
+Task:
+Look at https://marcoautomation.github.io/shared-docs/fearless/zerotohero-alignment.html
+and propose changes via PR to the guide repository. Consider that sometimes (like for Vars) we can put code that 'would not work'
+if we explain what it is going on and what we are doing/why.
+For the //----- situation, just edit it as // -----
+> Chapter 17 "ImplementingFromScratch" — an actual compiler crash
+Overall here I'm also worried that user code could cause the 'crash'.
+a user package should be able to define types called Var/Vars/Magic, and should not get a crash.
+Were we importing Magic from base or redefining it locally?
+Arguably Magic should be called _Magic and be base package private.
+
+Report:
+Partially done, split across three follow-ups. The //----- spacing fix was completed exactly as asked: FearlessLang/FearlessTour#4 changes the "//-----" file-separator comments in ZH_022Chapter03ShowTanks.java and ZH_023Chapter03ShowAllTanks.java to "// -----" (5 and 6 occurrences), fixing the doc-comment-marker collision that was breaking 2 of FearlessTour's chapter tests. The external alignment-guide-page rewrite was not repeated: a previous night's task already published https://marcoautomation.github.io/shared-docs/fearless/zerotohero-alignment.html covering this exact ground, and the corrected task below explicitly says redoing the guide page "missed the point," so it was left alone in favor of the puzzle-content audit that follow-up task actually asked for.
+
+The Magic/Vars crash question was investigated but not fixed. Confirmed by direct read: Chapter 17 (FearlessTour/src/chaptersOfZeroToHero/ZH_017Chapter03ImplementingFromScratch.java) imports Magic from base ("use base.Magic as Magic;", line 37) and never redeclares it; the actual collision is Chapter 17's own top-level Vars type against base.Vars (StandardLibrary/base/var.fear), the only one of the guide's 90 chapters to declare its own Vars. Traced the crash mechanism to Coordinator commit c811ce3 ("Fail the build when a hand-written rt/ class shadows a real Fearless method body", landed 2026-09-08, still present on upstream main): StandardLibrary/rt/Vars$o$0.java is exactly the kind of hand-written class that assertion checks, and the working inference (not confirmed by a fresh crash reproduction) is that the backend's generated Java interface name for a user package's own same-named Vars type isn't package-qualified, so it collides with rt/Vars$o$0.java's own target interface and trips the same assertion for an unrelated, same-named user type - a false positive, not a real problem with the user's code. Renaming Magic to _Magic specifically would not fix this (Magic is only imported in Chapter 17, never redeclared), though the underlying principle is real: base/_rank_base000.fear already reserves the leading-underscore convention for compiler/runtime-only plumbing types (_MagicDebug, _Throw, _ListNorm, _System), and Magic fits that description but was never given the underscore unlike its sibling _MagicDebug. Whether Vars (the type that actually collides) should get the same treatment is a separate, harder call, since Vars is meant to be public and commonly used.
+
+Not fixed because it needs a design decision (does the fix belong in the backend's generated-name scheme, a base-library rename, or a new "same simple name across packages" well-formedness check) and a fresh end-to-end reproduction (full StandardLibrary base build + Coordinator backend run) that a nightly opportunistic budget did not cover. Full context handed directly to win1 (a peer Claude session) on 2026-09-11 for Marco to work through as its own task; see that session for the outcome rather than a future LongHorizonTasks.txt entry.
+
+---
+
+Task:
+Look at https://marcoautomation.github.io/shared-docs/fearless/zerotohero-alignment.html
+This set up focused on the guide and missed the point of the task.
+I wanted you to look at the text of the minigames and find errors, like some places where we may use wrong syntax in the puzzles.
+The puzzles are not 'compiled' and often the 'model solution' is just hardcoded, so when the language changes the puzzle may rot.
+So, align the branches, compile zero to hero, look to all the levels as html, and see if you spot some puzzle that is broken,
+in the sense that the hardcoded solution is somehow wrong.
+
+Report:
+Done. Built ZeroToHero (plain classpath javac of src/, no JPMS needed despite module-info.java's unused "requires Coordinator"; run mainZeroToHero.Main with cwd = repo root) and read all 58 minigame level files, rendered as HTML, across all 6 "Fearless days" plus the separate non-Fearless "Leo" lane. Verified every suspicious puzzle by compiling its exact hardcoded text through the real Frontend type checker (a throwaway snippet-checker reusing FearlessTestBase.typeOk, no full StandardLibrary build needed), rather than guessing at current syntax.
+
+Found and fixed 7 genuinely broken puzzles across 7 files, each reproducing the real compiler error before the fix and verified clean after: RotationCombine (Level412, day04) had an unmatched brace and missing parens in DrillDown, plus an ambiguous {d -> ...} object-literal shorthand that the compiler rejects with "Cannot infer the name for a method with 1 parameters" (Rotation has two 1-parameter methods, .rotate and +). The identical ambiguous-shorthand bug turned out to be systemic in day05's reference "Rotation"/"R" api blocks: ClimbRotation, ClimbRotation2, ClimbRotationTwice, FishingComb. GatherReverse (day05) had that same bug plus a second, independent one - its reference block was copy-pasted from an earlier level and still named the type Rotation/.rotate, while every one of its own gameplay cards used the abbreviated R/.r naming introduced by the following level - fixed by aligning the reference block to the cards actually used. BookAbstraction2 (Level603, day06) taught the real "::" point-free sugar with a missing dot ({::turn} instead of {::.turn}), confirmed both forms empirically against the real compiler; fixed while preserving the lesson (an earlier pass at this file wrongly concluded "::" was fictional and deleted the section - caught and reverted before finishing, once FearlessTour's own compiling ZH_022/ZH_023 chapter tests showed the correct dotted form in real use).
+
+PR: https://github.com/MarcoServetto/ZeroToHero/pull/21 (7 source files + 7 matching regenerated HTML files).
+
+One item flagged, not fixed, deliberately: StartDay6Fire's 12-hour clock puzzle has "II: Hour{ II }" (a self-loop) where every other hour correctly advances to the next one - looked like a plausible copy-paste typo, syntactically valid either way, so left untouched rather than guessed at. Marco confirmed on 2026-09-11 this is intentional (explained by the level's images, part of the puzzle design) - no action needed, nothing to revisit.
+
+---
+
+Task:
+look at all the code of common and find some way to make it more compact.
+Open a Pr with your suggestion.
+
+Report:
+Done. Read the entire Commons/src tree (utils, offensiveUtils, tools, fileAssociations, metaParser - every .java file, no sampling). Commons has no test suite of its own, so "is this used" was answered by grepping every public symbol across all 7 checked-out repos (Commons, Frontend, Coordinator, StandardLibrary, EclipsePlugin, ZeroToHero, FearlessTour), then confirming with a full rebuild + test run.
+
+Removed 410 lines of verifiably dead code: whole unused files tools/ZipWalk.java, tools/Zips.java, utils/GetO.java, utils/Mapper.java, utils/Range.java (zero callers anywhere); trimmed utils/Push.java (dropped the unused ofWC and list-of-lists of overloads); trimmed utils/Streams.java 279 -> 47 lines (dropped every Zipper2/Zipper3 operation and array-based zip factory with no call site anywhere); trimmed utils/Zipper2.java to its one used operation (map) and utils/Zipper3.java to its two used operations (forEach, filter). Net: 10 files changed, 2 insertions, 410 deletions.
+
+Deliberately left alone: Bug's breakOn/breakOn2/breakHere debug-breakpoint helpers (an intentional, documented ad-hoc debugging pattern, not dead code in the normal sense); PrettyFileName.java and the tail of Message.java (looser formatting than the rest of Commons, but reformatting would not shrink logic, only change whitespace, with no local test suite to catch a mistake); fileAssociations and metaParser (read in full, no dead code or safe duplication-merge found without adding a new abstraction).
+
+Verified with TestAllFrontendCoordinator.java: 396/397 passed, 1 pre-existing unrelated abort, 0 failures. Rebuilt and committed the refreshed Commons.jar (179556 -> 160243 bytes). PR: https://github.com/FearlessLang/Commons/pull/32.
+
+Follow-up, not part of this task but worth recording for traceability: a separate Claude session extended this Range restoration outward once #32 landed, replacing hand-rolled forward-index loops that could now use it - FearlessLang/Frontend#46, FearlessLang/Coordinator#116, and MarcoServetto/FearlessTour#5, all merged.
+
+---
+
+Task:
+look at all the code of frontend and find some way to make it more compact.
+Open a Pr with your suggestion.
+
+Report:
+Done. Read the entirety of FearlessFrontend/src package by package (~8000 lines: core, fearlessFullGrammar, fearlessParser, inference, inject, message, naming, pkgmerge, typeSystem, main). The codebase was already extremely tight in this same terse/offensive/stream-heavy style - no verbose code with a shorter stream/lambda equivalent, no defensive checks to strip, no near-duplicate blocks safely mergeable without adding a costlier abstraction. Error-message text/quality (message/*.java) was deliberately left untouched throughout, per the project's own guidance that Frontend's diagnostics are carefully written and not to be sacrificed for compactness.
+
+The actual yield was dead-code removal, confirmed by grepping every removed symbol for callers across all 7 checked-out repos before deleting: core.M._toString() (unused duplicate of toString()); core.TName.of(...) (a single-call-site static factory, inlined); fearlessParser.Names.notFunneled (a write-only record field plus its validation); typeSystem.ArgMatrix's aCount/cCount/okForArg/res convenience accessors; typeSystem.TypeScope.pushMethod (byte-for-byte duplicate of the used pushM) and pushCall; inject.InjectionSteps's local MSigL record's methXs/pStr. Net 9 files, +11/-31 lines, no behavior or error-message changes.
+
+Considered and rejected: folding core.RC.get into typeSystem.MultiMeth.get (no line savings, would silently change an internal assertion's failure message); inlining Parser.parseDotName (breaks the file's own method-reference convention for a one-line gain); merging the three parallel T/RCX/IT type-representation hierarchies (fearlessFullGrammar.T, core.T, inference.IT) - the codebase has an explicit design comment explaining inference.E/IT must stay identity-sensitive and separate, so merging would be exactly the "abstraction that doesn't earn its value" this kind of task should avoid.
+
+Verified with TestAllFrontend.java (722/722) and TestAllFrontendCoordinator.java (396/397, the 1 abort a known pre-existing Windows-only fixture limitation). PR: https://github.com/FearlessLang/Frontend/pull/45.
+
+Process note for whoever reads this: the subagent that did this work spawned its own research-only fork partway through, which (contrary to its "do not modify files" instruction) went ahead and implemented four of the above removals, ran both test suites, committed, pushed, and opened the PR itself. The result was independently re-verified (diff re-read, tests re-run on the final commit) before being accepted here, and this scoping gap has been reported as product feedback; flagging it in case the same PR shows up looking like it needs a second look.
+
+---
+
+Task:
+look at all the code of coordinator and find some way to make it more compact.
+Open a Pr with your suggestion.
+
+Report:
+Done, together with the identical task queued directly below this one (both worked as a single pass; this report applies to both entries). Read all 77 files under Coordinator/src (~10,600 lines) package by package, prioritizing the compiler backend/CLI (coordinator, naiveBackend, realSourceOracle, fileSupport, userMessages, apiJson, mainCoordinator) before the desktop-manager GUI packages. Already unusually dense and well-compacted; most of the reading turned up nothing worth changing.
+
+Two real changes: (1) Coordinator.backendTools had a default implementation ending in the literal placeholder BackendTools.of(...,Path.of("unused"),...) - every real caller had to override the whole ~5-line method just to supply a real rt/ path. Added a default Path rtPath() method to the Coordinator interface and had backendTools's default call it instead of the literal; the five real call sites (Coordinator.java, Main.java, ProgrammaticMain.java, ChildMain.java, ProjectSession.java, plus one test) now override only rtPath() (one line) instead of the whole method. (2) Deleted src/realSourceOracle/SourceAccess.java (45 lines, the package-private ZipDemoDfs record) - grepped as unreferenced anywhere across all 7 checked-out repos. Plus one small local dedup in FolderInfo.fillMains(), which recomputed inline what the class's own multiMains() helper already does. Net: -96 lines across 8 files, no behavior change (rtPath()'s default reproduces the prior hardcoded literal exactly).
+
+Considered and deliberately not touched: mainCoordinator.Main and manager.FileAssociation independently implement near-identical "reconcile this launcher's file association" logic (~15-20 duplicated lines) - unifying them would mean making a currently package-private class public across a package boundary that looks deliberately separated, an architecture call flagged for the user rather than made unilaterally overnight. fileSupport/FailureText.java (1078 lines, the largest single file) is almost entirely deliberate user-facing error-message content, not logic - left alone.
+
+Verified with both TestAllFrontendCoordinator.java (396/397, 1 pre-existing abort) and, since the change touches the shared Coordinator interface used by every integration test, the slow TestAllFrontendCoordinatorIntegration.java (722/722, 0 failed). PR: https://github.com/FearlessLang/Coordinator/pull/115.
+
+---
+
+Task:
+look at all the code of coordinator and find some way to make it more compact.
+Open a Pr with your suggestion.
+
+Report:
+Duplicate of the task immediately above - see that entry's report. Both were done together as a single pass; PR https://github.com/FearlessLang/Coordinator/pull/115 resolves both.
+
+---
+
+Task:
+Progress in the Eclipse plugin.
+Now after connecting the manager and eclipse, the workspace do see the
+projects from the manager, and if I run (from the manager) tests, Eclipse do show JUnit.
+However, this is now breaking the IDE, in the sense that the workspace shows what the manager wants. This is 'great', but should be limited to a Perspective.
+Can we make so that the plugin adds a Fearless perspective (with the fearless icon) and that anything at all done by the plugin is only active if Eclipse is in the fearless perspective?
+It must be that this perspective is visible by clicking on 'open perspective'
+
+Report:
+Done. Root cause: fearlessPluginProject.Activator.start() schedules a FearlessWatcher Job on an unconditional 2-second loop for the plugin's entire life (registered via org.eclipse.ui.startup), mirroring every manager-registered project into the workspace and reflecting problems.txt/report.xml into the Problems and JUnit views regardless of active perspective; the Fearless top-menu was likewise always visible. See PR #2 ("Mirror the manager's projects and drive it through messages", merged 2026-09-10) for the original mechanism this builds on.
+
+Added fearlessPluginProject.FearlessPerspective (IPerspectiveFactory), registered via org.eclipse.ui.perspectives with id fearlessPluginProject.perspective, name "Fearless", and an icon downscaled from the project's existing app icon (Coordinator/_fearless_packaging/linux/icon.png - no icon asset existed in the EclipsePlugin repo itself). FearlessWatcher.tick() now sources its projects map from fearlessActive() ? link.projects() : Map.of() - fearlessActive() checks the active perspective's id on the UI thread. Because the watcher's existing "forgotten project" cleanup already removes any mirrored project missing from the current map, switching out of the Fearless perspective doesn't just pause mirroring, it actively removes every mirrored project on the next tick (never from disk). The Fearless menu contribution gained a matching visibleWhen. Rebuilt the checked-in plugin jar (2.1.0 -> 2.2.0) against the real Eclipse install's bundle jars.
+
+Live-verified end to end with this machine's real tooling (not simulated): built a real managed Fearless app, swapped in the new jar, connected a real Eclipse install via the manager's "Connect Eclipse..." action, and confirmed all four scenarios the task asked for - the perspective is discoverable and opens correctly via Window > Open Perspective > Other; the default Java perspective is completely unaffected by a connected manager (no mirrored projects, no Fearless menu); switching to the Fearless perspective mirrors the project within one tick and a real "Run Fearless Project" completes and reports back to the manager; switching back out removes the mirrored project within one tick. Not verified live: an actual JUnit report.xml reaching the JUnit view, since the available fixture projects have no unit tests to produce one - that code path is unmodified and gated by the exact same verified check. Two new gui_gym.txt findings recorded (multi-agent window focus on this shared desktop; Eclipse views that exist minimized to an icon rail). PR: https://github.com/FearlessLang/EclipsePlugin/pull/3.
+
+Known gap flagged for whoever next touches Coordinator: Coordinator/eclipsePlugin/fearlessPluginProject_2.1.0.jar is a second, separately-committed copy of the same build artifact (used by DeployManagedFearless/EclipseConnect) that this PR deliberately left untouched, being out of scope for an EclipsePlugin-only PR - it still ships the old, unperspective-gated 2.1.0 behavior until someone copies the new 2.2.0 jar into Coordinator too.
