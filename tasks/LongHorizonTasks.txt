@@ -23,3 +23,41 @@ Open a PR with your refactoring.
 Then read all the generated html and check for reasonable/minimal improvements in the text, like typos or minor rewordings.
 Then open a PR on the guide (yes this means that when I accept this PR we should also regenerate the html and put zero to hero up to date to, but this is out of scope now)
 
+
+Task:
+This was the finding of another agent
+--
+I read the whole type checker (typeSystem/*, core/*, the inject/inference layer feeding it) and then attacked it with probe programs compiled against the built Frontend. Every attempt to break immutability failed correctly: capturing mut into imm methods and escaping via promotion, read -> imm result strengthening with fresh state, iso params captured plus used, read/imm X with iso/hygienic bounds, iso Box[mut A] element extraction, leaking a read alias out of a readH/mutH argument through a closure (the H results stay hygienic because mutH is not a subtype of read), generic invariance vs. X/rc X redundancy. The capability calculus is implemented faithfully; I could not produce a mutation of an immutable object.
+
+The bug I did find: an iso object literal cannot refer to itself
+
+An explicitly iso literal with a self name rejects every use of self, with a wrong diagnosis:
+
+parameter "self" has type "mut Counter".
+parameter "self" can observe mutation; thus it cannot be captured in the "iso" object literal instance of "iso Counter"
+
+Mechanism: TypeSystem.litOk (Frontend/FearlessFrontend/src/typeSystem/TypeSystem.java:179) adds this to gamma as mut Counter (rc.isoToMut()) and then runs ViewPointAdaptation.of over the whole gamma, self included. ViewPointAdaptation.discard (ViewPointAdaptation.java:40) treats self like any external captured variable: literal is iso and mut Counter is not iso/imm, so DropMutInImm. The drop rule is right for captured variables (an iso literal must not alias outside mutable state) but self is the object itself, not something captured. For mut/read/imm literals the same code path happens to compute the right this type (mut/read/imm per method), which is why it went unnoticed.
+
+There is no workaround: the promotion route (mut Counter{'self ...} returned as iso Counter) is deliberately closed for named literals (checkLiteral requires thisName == "_"), so today no iso literal can name itself. mut/read/imm methods all fail the same way (probed all three, plus self.inc.inc chains).
+
+Test
+
+File: Frontend/FearlessFrontend/test/typeSystem/TypeSystemTest.java (uses its existing ok helper; currently fails with the error above, passes once fixed):
+
+@Test void isoLiteralCanUseItsSelfName(){ok(List.of("""
+Counter:{ mut .inc: mut Counter; read .get: base.Nat; mut .inc2: mut Counter }
+Make:{ #: iso Counter -> iso Counter{'self
+  mut .inc: mut Counter -> self;
+  read .get: base.Nat -> 0;
+  mut .inc2: mut Counter -> self.inc.inc;
+  } }
+"""));}
+
+Two controls that pass today and should keep passing (worth adding next to it so the fix does not over-reach): iso Box{ read .get: A -> a } with a: iso A (captured iso becomes imm, fine), and the unnamed mut Counter{...} returned as iso Counter (promotion).
+
+Fix direction, for when you want it: adapt the captured environment first and add this afterwards with the method's own capability (mut/read/imm for iso literals, as the other literal kinds already get), instead of routing this through discard. I have not changed any code.
+--
+What is the most direct code change to accept this agent suggested behaviour?
+Open a PR to show it, I may accept it.
+
+
