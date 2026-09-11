@@ -1,0 +1,125 @@
+Task:
+Find any dead code or simple code space saving refactoring in Frontend.
+Open a PR with your refactoring.
+
+Report:
+Read all of Frontend/FearlessFrontend/src (~8000 lines). Two earlier overnight
+passes had already removed the obvious dead code, so this pass cross-checked
+every method declaration against a whole-tree grep (all seven sibling repos)
+and found 9 genuinely unused methods (47 lines, 8 files) to remove: unused
+literal/parse helpers, an unused Sig accessor, unused Monotonicity call-arg
+wrappers whose underlying slots are used directly elsewhere, and two small
+injection helpers. Two commented-out blocks with their own "kept as
+documentation/debugging" rationale were deliberately left alone. Verified with
+TestAllFrontend.java (722/722) and TestAllFrontendCoordinator.java (397/397).
+PR: https://github.com/FearlessLang/Frontend/pull/47 (open).
+
+Task:
+Verify that the current fearlessPortable works on linux as expected.
+Open a PR with your refactoring.
+
+Report:
+Built the portable app image via DeployPortableFearless.java. Ran the console
+launcher against StandardLibrary/integrationTests/helloWorld: compiled and
+ran the project, correct stdout and correct Fearless stack trace for the
+project's deliberate error case. Ran the windowed launcher against the same
+project: identical output rendered in a Swing "Fearless output" window
+(screenshotted). Launched with no arguments (backgrounded, then killed per
+the known hang-on-no-args behavior) and confirmed the "Welcome to Fearless"
+GUI renders correctly (screenshotted). No Linux-specific breakage found
+(paths, native deps, permissions, jpackage output). TestAllFrontendCoordinator
+also run for extra confidence: 397/397. No code changes were needed; no PR
+opened. Added working screenshot technique (xwininfo+xwd+convert, since
+gnome-screenshot and the GNOME screenshot D-Bus portal both fail in this
+session) to /data/AgentsCoordination/gui_gym.txt for future agents.
+
+Task:
+Verify that the current fearlessManager (less the eclipse plugin part) works on linux as expected.
+Open a PR with your refactoring.
+
+Report:
+Built the manager app image via DeployManagedFearless.java and launched it.
+The "Fearless Manager" window renders correctly (menu bar, registered-projects
+panel, live-incrementing status-bar timer confirmed correct over ~9 minutes),
+stdout/stderr stayed empty the whole time, no crash. Could NOT click through
+interactive workflows (open/create project, build, run): this session's
+synthetic input injection is broken end to end (xdotool/XTest clicks and keys
+are silently swallowed; a ydotoold fallback daemon gets killed within seconds
+whenever left running in the background, regardless of run_in_background or
+sandbox settings) - confirmed via an X11 control test (xev logs zero
+synthesized events while logging real ones normally), so this is an
+environment limitation, not a fearlessManager defect. No bug found in the app
+itself; no code changes; no PR opened. Documented the input-injection
+limitation and a screenshot retry note in gui_gym.txt. Follow-up: someone
+should investigate either why ydotoold-as-background-process gets killed
+here, or why this compositor rejects XTest fake input, before the next
+GUI-driving task is attempted.
+
+Task:
+Verify that the current eclipse plugin works on linux as expected.
+Open a PR with your refactoring.
+
+Report:
+Confirmed a real, shipping bug: Coordinator/eclipsePlugin/fearlessPluginProject_2.1.0.jar
+(copied verbatim into a connected Eclipse's dropins by manager.EclipseConnect.connect)
+was still the pre-perspective-gate build from before EclipsePlugin PR #3, while
+EclipsePlugin/Artefact/plugins/ had already moved on to the perspective-gated
+2.2.0.jar - so "Connect Eclipse" from the manager was still shipping the old,
+ungated mirroring behavior. Replaced the checked-in jar with the current 2.2.0
+build (verified byte-for-byte and by manifest version); grep confirmed no
+source references the old filename. Verified: TestAllFrontendCoordinator
+397/397, a full DeployManagedFearless rebuild picks up only the 2.2.0 jar, and
+a real Eclipse install at /data/tools/eclipse ran 4+ minutes with the new
+dropin with no .metadata/.log errors and no ERROR/Exception in -consolelog
+output. Could NOT visually/interactively confirm the Fearless perspective
+appears in the Open Perspective dialog: real Eclipse (GTK/SWT) and Firefox
+produce no window visible to xwininfo/xdotool/wmctrl at all in this session
+(unlike Swing/X11-native apps, which do) - a new, separate limitation from the
+input-injection one, noted in gui_gym.txt along with an untried fix
+(GDK_BACKEND=x11) and a fallback verification method (workspace .log file +
+-consolelog stdout) for future Eclipse-family verification.
+PR: https://github.com/FearlessLang/Coordinator/pull/119 (open, two binary
+jars changed).
+
+Task:
+On the FearlessGuide: run the junit tests and if you find something failing, think how to solve it and open a PR with your refactoring.
+
+Report:
+Got FearlessTour's junit tests (src/markDownTests, 90 tests across 31
+chaptersOfZeroToHero containers) building and running for the first time this
+cycle (no build script exists there); the exact classpath/jars/commands are
+recorded in this PR's description for future reference (Flexmark + JetBrains
+annotations jars from externalJars/readme.txt, Commons/FearlessFrontend/
+Coordinator module jars, junit-jupiter-api 6.1.3 plus its transitive
+jspecify-1.0.0 dependency, run via org.junit.platform.console.ConsoleLauncher
+on a plain classpath). Found 1 failure out of 90: ZH_024Chapter03Collections's
+Collections-chapter .view example failed to typecheck with a bare lambda
+(F[read Car,Person] not a subtype of the declared F[read Car,read Person]
+parameter). Cross-checked against StandardLibrary's own integration test
+(test_comparators.fear), which already uses an explicit type witness for the
+same OrderBy.view call, confirming the guide had drifted from the required
+idiom rather than the language being broken. Fixed with the same explicit
+witness (one line). Re-ran: 90/90 passing.
+PR: https://github.com/MarcoServetto/FearlessTour/pull/6 (open).
+
+Task:
+On the FearlessGuide: check for some code that is present in the guide but not checked via junit tests in the guide and add the test.
+If enabling the test inside the English of the guide is non trivial, just add it as a test at the bottom (see how it is done already in many places).
+
+Report:
+In the same Collections chapter (ZH_024Chapter03Collections.java), the guide
+defines a named top-level comparator (ByCats:OrderBy[Person]) and shows two
+usages of it directly in narrative prose (ByCats.view{::.driver} and
+{::.age}.then ByCats), all outside any OMIT_START/OMIT_END block, so none of
+it was ever compiled or checked despite demonstrating a real, guide-recommended
+idiom. Added a bottom-of-class compiled test suite (TestByCatsNamedComparator,
+following the file's own established pattern for this) covering both prose
+usages plus a tie-break case. Since PR #6 above was not yet merged when this
+task ran, the same one-line .view witness fix was carried onto this branch too
+so the suite is clean standalone; expect a small, trivial conflict/duplicate
+diff between PR #6 and PR #7 when merging both - resolve by taking either
+copy of that one line. Final: 90/90 passing.
+PR: https://github.com/MarcoServetto/FearlessTour/pull/7 (open). Other
+untested-but-present gaps noticed and left out of scope: a broader sweep of
+other chapters for prose-only example code, and three pre-existing
+commented-out Sets#(...) lines in TestMapsAndSets.
