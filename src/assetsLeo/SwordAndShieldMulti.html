@@ -2136,15 +2136,22 @@ function netHello(target, re){
   netTo(target, {t:"hello", free:netFree(), pair:netMyPair(), re:!!re,
                  role:net.role, seat:net.seat, open:net.openSeat, tok:MY_TOK});
 }
-function heartbeatPulse(seat){
+function troublePulse(seat){
   const g = document.querySelector('[data-crown="'+seat+'"]');
-  if(g) g.animate([{transform:"scale(1)"},{transform:"scale(1.16)",offset:.5},{transform:"scale(1)"}],
+  if(g) g.animate([{filter:"drop-shadow(0 0 0 #ff3b3b)"},
+                   {filter:"drop-shadow(0 0 9px #ff3b3b)",offset:.5},
+                   {filter:"drop-shadow(0 0 0 #ff3b3b)"}],
                   {duration:1100,easing:"ease-in-out"});
 }
 function netLive(){
   const now = Date.now(), out = [];
   for(const [id,e] of net.roster) if(now-e.at < GONE_MS) out.push([id,e]);
   return out;
+}
+function seatTrouble(seat){
+  let last = 0;
+  for(const [,e] of net.roster) if(e.role==="player" && e.seat===seat) last = Math.max(last, e.at);
+  return last>0 && Date.now()-last >= GONE_MS;
 }
 
 /* --- the handshake --- */
@@ -2300,7 +2307,6 @@ async function netJoin(rawName){
                           seat:(m.seat==null?null:m.seat), open:(m.open==null?null:m.open),
                           at:Date.now(), first:(was && was.first) || Date.now()});
       if(id===net.peer) net.peerTok = m.tok || net.peerTok;
-      if(m.role==="player" && (m.seat===0 || m.seat===1)) heartbeatPulse(m.seat);
       if(net.role==="player" && net.openSeat!=null && net.peerTok && m.tok && m.tok===net.peerTok){
         netTrace(netShort(id)+" reconnected — handing back their seat");
         net.peerTok = null;
@@ -2400,8 +2406,8 @@ function netTick(){
   if(!net.room){ if(net.hbTimer){ clearInterval(net.hbTimer); net.hbTimer=null; } return; }
   if(net.on){
     netHello(null, true);                            // every beat once a game is on
-    if(net.role==="player") heartbeatPulse(net.seat);
     const now = Date.now();
+    for(let seat=0; seat<2; seat++) if(seatTrouble(seat)) troublePulse(seat);
     if(net.role==="player"){
       if(net.peer){
         const e = net.roster.get(net.peer);
