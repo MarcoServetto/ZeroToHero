@@ -15,7 +15,7 @@ public class IntroLevel implements Function<Days.LevelName,String>{
     String methInCurly="Declare the method BETWEEN the curly {..}";
     return new htmlMangle.DirectInstructions(name,this.getClass().getSimpleName())
     // topStart/end   leftStart/end
-    .image(12)
+    .unlockedImage().image(11)
       .area(15, 30,     3, 48, "", "Hear:{}",List.of(
         "Hear{}", "You forgot the colon (:)",
         "Hear:()","Curly parenthesis, not round ones",

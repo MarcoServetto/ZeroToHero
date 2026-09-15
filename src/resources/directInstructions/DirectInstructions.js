@@ -16,18 +16,28 @@ const initSlides= () => {
     if (slide === null){ return []; }/*out of range: no slide, no text areas*/
     return Array.from(slide.querySelectorAll('textarea'));
     };
+  const isUnlocked= (i) => {
+    const slide= document.getElementById('content' + i);
+    return slide !== null && slide.dataset.unlocked === 'true';
+    };
+  const refreshNextButton = () => {
+    const atEnd= (currentIndex === maxIndex);
+    const canAdvance= !atEnd && (isUnlocked(currentIndex) || checkSolution().length === 0);
+    next.disabled = !canAdvance;
+    next.classList.toggle('correctGlow', canAdvance);
+    if (atEnd){ Utils.showNextLevelButton(
+      document.getElementById('endButtonPlaceholder'),
+      '<span class="emoji">🎉</span>',
+      () => window.location.href = nextLevelUrl
+      );}
+    };
   const updateContent = () => {
     ensureSlide(currentIndex);
     document.querySelectorAll('.contentItem').forEach(c => c.hidden = true);
     const slide= document.getElementById('content' + currentIndex);
     if (slide !== null){ slide.hidden = false; }
     prev.disabled = (currentIndex === 0);
-    next.disabled = (currentIndex === maxIndex);
-    if (next.disabled){ Utils.showNextLevelButton(
-      document.getElementById('endButtonPlaceholder'),
-      '<span class="emoji">🎉</span>',
-      () => window.location.href = nextLevelUrl
-      );}
+    refreshNextButton();
     refreshOverlay();
     };
   const getAlternativePairs= (t)=>{
@@ -56,35 +66,7 @@ const initSlides= () => {
   const checkSolution= () => allTextArea(currentIndex)
     .map(checkSolutionTA).filter(s=>s !== "");
   const prevBtn= () => { if (currentIndex > 0){ currentIndex--; } };
-  const showMessageBox= (msg)=> Utils.showMessageBox(`
-    <div>
-    <p style="font-size: 2.5ex; text-align: center;">
-    <strong>${msg}</strong>
-    </p>
-    <hr>
-    <p>Game explanation:</p>
-    <ul>
-      <li>🖊️ Complete the text area with the needed content.</li>
-      <li>⟳ You can reset the text area to the original content by pressing the blue ⟳ button.</li>
-      <li>❓ You can see a solution hint via the ❓ button.</li>
-      <li>🎉 At the end, you can go to the next level by pressing on the symbol <span class="emoji">🎉</span>.</li>
-    </ul>
-    <hr>
-    <p>☑️ Click here to make this message disappear</p>
-    </div>
-    `,0,true,Buttons.freezeToken,()=>{});
-  const msgClass=(e)=> e === defaultMsg ? "" : 'class="customMessage"'; 
-  const nextBtn= () => {
-    const errs= checkSolution();
-    if (errs.length === 0){ 
-      if (currentIndex < maxIndex){ currentIndex++; }
-      return;
-      }
-    let msg = errs
-      .map(e => `<span ${msgClass(e)}>${e}</span>`)
-      .join("<br>");
-    return showMessageBox(msg);
-    };
+  const nextBtn= () => { if (currentIndex < maxIndex){ currentIndex++; } };
   const resetBtn = () => {
     const textAreas = allTextArea(currentIndex);
     textAreas.forEach(t => t.value = MetaData.str(t, 'original'));
@@ -118,6 +100,7 @@ const initSlides= () => {
       t.classList.remove("correctGlow", "incorrectGlow");
       let msg= checkSolutionTA(t);
       customErrorMessage= "";
+      refreshNextButton();
       if (msg === defaultMsg){ return; }
       if (msg === "") { t.classList.add("correctGlow"); return; }
       customErrorMessage= msg;      
