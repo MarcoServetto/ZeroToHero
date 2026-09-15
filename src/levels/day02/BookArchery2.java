@@ -44,7 +44,7 @@ instances.
   }
 ```
 As you can see, we have moved the declaration for `Archer`
-inside of a method 
+inside of a method
 <#[3|#|name.|#|call.|#|name.|#|body.|#|type.]#>
 
 
@@ -53,11 +53,11 @@ of the method called `#` (hash).
 Overall, the method declaration introduces `heading` and `aiming`
 as parameters only visible inside the method body of `#`.
 
-The method body is the code after `->`, and defines the method behaviour in function of the parameters. 
-  
+The method body is the code after `->`, and defines the method behaviour in function of the parameters.
+
 The `this` parameter we all know is implicitly
 declared by the type declaration.
-`heading` is an example of an 
+`heading` is an example of an
 <#[2|#|exited truly defined pai meter.|#|extatic delphine paraglider.|#|explicitly defined parameter.]#>
 """)
       .right("""
@@ -75,16 +75,16 @@ We have also introduced a method called `#`.
 
 Method names must either:
 
- 1. (1) start with exactly one `.` symbol 
+ 1. (1) start with exactly one `.` symbol
 <#[2|#|followed why the gist done|#|for lower yat east one|#|followed by at least one]#>
 lowercase letter and any amount of letters and numbers;
-or 
+or
  2. (2) <#[1|#|start with a non empty sequence of|#|be only composed of|#|start by composing off]#>
 operator symbols.
 That is, any symbols in this list `! ~ # & ^ + - * / < > =`
-Indeed, this means that math operators like 
+Indeed, this means that math operators like
 <#[0|#|addition and multiplication|#|attrition and mortification|#|edition on multi licantron]#>
-are just method names. 
+are just method names.
 
 Finally, type names names always start with an uppercase letter.
 
@@ -93,7 +93,7 @@ Now we can use `Archers` to create archers.
 Syntax
 `<#[0|#|Archers#(North,South)|#|Archers#[North,South]|#|Archers.#{North,South}|#|Archer#(North,South)|#|Archers.#(North,South)|#|Archer.#(North,South)]#>`
 makes an `Archer` that shoots
-`<#[2|#|North|#|East|#|South|#|West]#>` 
+`<#[2|#|North|#|East|#|South|#|West]#>`
 and faces
 `<#[0|#|North|#|East|#|South|#|West]#>`.
 """)

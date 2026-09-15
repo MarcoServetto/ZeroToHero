@@ -55,8 +55,8 @@ Fearless actions are a way to handle behaviour that can fail while recovering po
 <li>Code 2: <code>Try#{Directions.map.get(`Nope`)}</code> returns an object of type <code>Action[Direction]</code>.</li>
 <li>Code 3: <code>Directions.map.tryGet(`Nope`)</code> behaves identically to Code 2, but could be faster.</li>
 </ul>
-<p>We can use code 1 when we trust that the error will not raise, or because if the error condition happens, then what we want is for the program to terminate with a good error message.
-When we want to consciously extract an element that may or may not be there, with the intention that the element being missing does not represent an error, we can use the method <code>.opt</code>, as in <code>Directions.map.opt(</code>Nope<code>)</code>, returning an <code>Opt[Direction]</code>.</p>
+<p>We can use code 1 when we trust that the error will not be raised, or because if the error condition happens, then what we want is for the program to terminate with a good error message.
+When we want to consciously extract an element that may or may not be there, with the intention that the element being missing does not represent an error, we can use the method <code>.opt</code>, as in <code>Directions.map.opt(`Nope`)</code>, returning an <code>Opt[Direction]</code>.</p>
 <p>Using <code>Try#</code> or <code>.tryGet</code> means that we suspect that the value may not be there because of some buggy logic or input.</p>
 <h2>Actions</h2>
 <p><code>Action[R]</code> is conceptually similar to <code>Opt[E]</code>, but</p>
@@ -74,14 +74,14 @@ Action[R:**]: {
   }
 </code></pre>
 <p>The <code>ActionMatch[R,RR]</code> type is unsurprising. Very similar to <code>OptMatch[T,R]</code> or <code>StackMatch[T,R]</code>.
-As we discussed before, remember that <code>R:*</code> stays for <code>R:imm,mut,read</code> and <code>R:**</code> includes all of the reference capabilities.
+As we discussed before, remember that <code>R:*</code> stands for <code>R:imm,mut,read</code> and <code>R:**</code> includes all of the reference capabilities.
 At its core, Action has a very simple implementation.
 We call the generic parameters <code>R</code> and <code>RR</code> to suggest that <code>R</code> is the result of the action, while <code>RR</code> is the result of processing either the action result or the <code>Info</code>.</p>
 <p><code>Action[R]</code> has a single abstract <code>.run</code> method that takes an <code>ActionMatch[R,RR]</code>.
 Note how everything is either <code>mut</code> or <code>**</code>. This is because actions are often used together with side effects and mutations.
 The actual implementation of <code>Action[R]</code> also offers some convenience methods (<code>.map</code>,<code>.mapInfo</code>, <code>.andThen</code>, <code>!</code> and <code>.context</code>).
-Methods <code>!</code> and <code>.context</code> are widely used and beginner friendly, while method <code>.map</code>, and <code>.andThen</code> are used more rarely.
-Here we exam those methods one by one:</p>
+Methods <code>!</code> and <code>.context</code> are widely used and beginner friendly, while methods <code>.map</code> and <code>.andThen</code> are used more rarely.
+Here we examine those methods one by one:</p>
 <blockquote>
 <p>Note: Action.mapInfo is also present, but we do not discuss it in the guide</p>
 </blockquote>
@@ -121,13 +121,14 @@ However, actions that do no actions when called are misleading, so the code abov
 <pre><code>Action[R:**]: {
   mut .run[RR:**](mut ActionMatch[R,RR]): RR;
   ..
-  mut .context(msg: read F[Str]): mut Action[R] -&gt; {m -&gt; this.run{
+  mut .context(msg: read LazyInfo): mut Action[R] -&gt; {m -&gt; this.run{
     .ok x   -&gt; m.ok(x);
-    .info i -&gt; m.info(Infos.msg(msg#) + i);
+    .info i -&gt; m.info(msg#.info + i);
     }};
   }
 </code></pre>
 <p>Method <code>.context</code> is a convenience method to add contextual information to actions.
+Its parameter <code>msg: read LazyInfo</code> is a lazy <code>F[read ToInfo]</code>: any lazy value that can become an <code>Info</code> is accepted, so a lazy <code>Str</code>, as used below, works because <code>Str</code> implements <code>ToInfo</code>.
 Internally, it uses method <code>Info+</code>, that we have not seen yet:
 The method <code>Info+</code> makes it easy to compose information together.
 Two <code>Info</code> messages are concatenated, two <code>Info</code> lists are concatenated and two <code>Info</code> maps are merged:</p>
@@ -153,7 +154,7 @@ attempted access in position 5 over a list of size 3</p>
 <h4>Method <code>Action[R].map</code></h4>
 <pre><code>MF[R:**]: { mut #: R } //mutable function, seen before
 Action[R:**]: {
-  mut .run[RR:**](mut ActionMatch[R,RR]): RR,
+  mut .run[RR:**](mut ActionMatch[R,RR]): RR;
   mut .map[RR:**](f: mut MF[R,RR]): mut Action[RR] -&gt; {m -&gt; this.run{
     .ok x   -&gt; m.ok(f#x);
     .info i -&gt; m.info(i);
@@ -189,7 +190,7 @@ Action[R:**]: {
 <p>We can see <code>.andThen</code> as a version of <code>.map</code> allowing more control over how the resulting <code>Action[RR]</code> is created.</p>
 <p>The <code>.map</code> method takes a function that transforms a value of type <code>R</code> into a new value of type <code>RR</code>. This transformation is straightforward and direct. If <code>Action[R]</code> contains a value, that value is transformed using the provided function to produce an <code>Action[RR]</code>.
 If the original <code>Action[R]</code> is successful (i.e., produces a value), <code>.map</code> applies the function to this value and wraps the result in a new <code>Action[RR]</code>. If the original <code>Action[R]</code> is a failure (i.e., produces an <code>Info</code> object), <code>.map</code> does nothing to the failure information—it simply carries it forward unchanged.</p>
-<p><code>.andThen</code> extends the functionality of <code>.map</code> by allowing the transformation function itself to produce the new <code>Action[RR]</code>. This is useful when the transformation’s outcome isn’t just a value, but a new computation or action that might itself succeed or fail.
+<p><code>.andThen</code> extends the functionality of <code>.map</code> by allowing the transformation function itself to produce the new <code>Action[RR]</code>. This is useful when the transformation's outcome isn't just a value, but a new computation or action that might itself succeed or fail.
 The function used in <code>.andThen</code> takes a value of type <code>R</code> and returns a new <code>Action[RR]</code>.
 Method <code>.andThen</code> is designed to handle nested actions. If the original <code>Action[R]</code> is successful, <code>.andThen</code> uses the value to generate a new <code>Action[RR]</code> using the provided function. This new Action is then executed as part of the overall computation. If the original <code>Action[R]</code> is a failure, both <code>.map</code> and <code>.andThen</code> simply propagate the failure information.
 Method <code>.andThen</code> is particularly useful in scenarios where subsequent actions depend on the results of previous ones.
@@ -224,17 +225,17 @@ read F[Void] is a very unusual type, but this seems to be the good use case: it 
 </blockquote>
 <pre><code>Points: F[Nat,Nat,Point], FromInfo[Point] {
 
-  .fromInfo(i) -&gt; Points#(i.map.get(`x`).msg.nat, i.map.get(`y`).msg.nat);
+  .fromInfo(i) -&gt; Points#(i.getMap.get(`x`).getMsg.getNat, i.getMap.get(`y`).getMsg.getNat);
 
   # x, y -&gt;Block#
     .do { x.checkInRange(0,10) }
     .do { y.checkInRange(0,10) }
     .return{ Point: DataType[Point,Point]{'self
-      .x: Nat -&gt; x,
-      .y: Nat -&gt; y,
-      +(other: Point): Point -&gt; Points#(other.x + x, other.y + y),
-      .move(d: Direction): Point -&gt; self + ( d.point ),
-      .cmp {.x,.y}1, {.x,.y}2, m -&gt; x1 &lt;=&gt; (x1,m &amp;&amp; { y1 &lt;=&gt;(y2,m) };
+      .x: Nat -&gt; x;
+      .y: Nat -&gt; y;
+      +(other: Point): Point -&gt; Points#(other.x + x, other.y + y);
+      .move(d: Direction): Point -&gt; self + ( d.point );
+      .cmp {.x,.y}1, {.x,.y}2, m -&gt; x1 &lt;=&gt; (x2, m &amp;&amp; { y1 &lt;=&gt; (y2,m) });
       .hash -&gt; x.hash.hashWith(y.hash);
       .info -&gt; Infos.map(`x`,x,  `y`,y);
       .str -&gt; `[` + x + `, ` + y + `]`;
@@ -266,7 +267,7 @@ stack trace:
 ...
 </code></pre>
 <p>The first chunk prints the info.
-it could be just <code>.msg</code> or could be richer if the info contained more data.
+It could be just <code>.msg</code> or could be richer if the info contained more data.
 But we also get this <strong>stack trace</strong> details.
 What is that about?
 It is about the set of active calls when the error leaked.</p>
@@ -340,11 +341,11 @@ When failures occur, it is crucial that they produce clear and understandable er
 <p>By inserting run time checks as shown above, we can minimise the lifetime of faulty executions, and ensure that the code only receives correct data. We need to be proactive rather than reactive, preventing issues from going unnoticed and causing further complications down the line.
 With immutable objects like <code>Point</code>, it is usually sufficient to insert appropriate checks during object creation.
 We will later see other techniques supporting offensive programming when working with mutable data.</p>
-<p>Some programmers think the code should simply never fail by construction; basically it should encode the proof of it's own correctness inside it's structure.
+<p>Some programmers think the code should simply never fail by construction; basically it should encode the proof of its own correctness inside its structure.
 While amazing in theory, this mindset causes issues in the real world, where programmers are negotiating their code quality with time and skill constraints.
-Bob, the stressed programmer would probably chose to somehow twist the intended behaviour in subtle ways so that the code compiles and he does not get fired.
+Bob, the stressed programmer would probably choose to somehow twist the intended behaviour in subtle ways so that the code compiles and he does not get fired.
 The offensive programming philosophy instead gives plenty of escape hatches to Bob:
-he can produce code working correctly in most real situations, while failing with observed bugs when needed. This explicitly and sincerely communicate what is going on.</p>
+he can produce code working correctly in most real situations, while failing with observed bugs when needed. This explicitly and sincerely communicates what is going on.</p>
 <p>The whole idea of offensive programming is that code should fail immediately when an unexpected situation is detected.
 This does have a cost: the programmer must take an active role and write checks to detect unexpected situations.</p>
 <p>The standard library helps: methods like ...... all fail early.
@@ -356,7 +357,7 @@ In Fearless both issues are solved at the same time by tunable assertion levels.
 <p>There are many different layers of assertions:</p>
 <ul>
 <li>assert:  observed bug: the code of this package has a bug.</li>
-<li>assertPre: precondition violation: the code of this package has been called with parameters that violate it's requirements.</li>
+<li>assertPre: precondition violation: the code of this package has been called with parameters that violate its requirements.</li>
 <li>assertSys: The program is fine but the system running this program does not support the needed requirements. For example, a file must be present for the application to work; memory or stack are insufficient; OS resources can not be obtained.</li>
 <li>assertNetwork: The program and the system are fine, but some needed remote service is unavailable.</li>
 <li>given that there are already 4 levels, we also have <code>.assert5</code>... <code>.assert16</code> to cover other user defined situations. <code>assert1</code>..<code>assert4</code> are aliases for those shown named assertion kinds.</li>
@@ -405,7 +406,7 @@ Block# //many options for the actual API
 <li>write the failure on a log and continue</li>
 <li>use a recovery expression and write the failure on a log.(only available if recovery provided)</li>
 </ul>
-<p>This encompass the ignore/evaluate the check and ignore/evaluate the recovery.
+<p>This encompasses the ignore/evaluate the check and ignore/evaluate the recovery.
 An assert without a recovery is equivalent to an assert where the recovery is the identity function, so we pass the same value, and an assert with no value is equivalent to having/returning <code>Void</code>.</p>
 <p>Under this, disabled is kind of ambiguous and we may want more names.</p>
 <p>The idea is that we want to have a Software produce line:
