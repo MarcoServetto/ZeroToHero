@@ -79,11 +79,57 @@ const initSlides= () => {
     }
   const checkSolution= () => allTextArea(currentIndex)
     .map(checkSolutionTA).filter(s=>s !== "");
+  const getProtectedRanges= (t)=>{
+    const str= MetaData.str(t, 'protected');
+    if (!str){ return []; }
+    return str.split(',').map(part => {
+      const [start,end]= part.split('-').map(Number);
+      return {start,end};
+      });
+    };
+  const renderProtectOverlay= (t)=>{
+    const el= t.protectOverlayEl;
+    if (!el){ return; }
+    el.textContent= '';
+    const v= t.value;
+    let pos= 0;
+    t.protectedRanges.forEach(r => {
+      el.append(document.createTextNode(v.slice(pos, r.start)));
+      const span= document.createElement('span');
+      span.className= 'protectedSpan';
+      span.textContent= v.slice(r.start, r.end);
+      el.append(span);
+      pos= r.end;
+      });
+    el.append(document.createTextNode(v.slice(pos)));
+    };
+  const editRange= (t, e)=>{
+    let start= t.selectionStart, end= t.selectionEnd;
+    if (start === end && e.inputType === 'deleteContentBackward'){ start= Math.max(0, start - 1); }
+    if (start === end && e.inputType === 'deleteContentForward'){ end= Math.min(t.value.length, end + 1); }
+    return {start, end};
+    };
+  const guardProtected= (t, e)=>{
+    const {start, end}= editRange(t, e);
+    const hit= t.protectedRanges.some(r => start < r.end && end > r.start);
+    if (hit){ e.preventDefault(); return; }
+    const inserted= e.data ? e.data.length : 0;
+    const delta= inserted - (end - start);
+    if (delta === 0){ return; }
+    t.protectedRanges= t.protectedRanges.map(r =>
+      start >= r.end ? r : { start: r.start + delta, end: r.end + delta });
+    };
   const prevBtn= () => { if (currentIndex > 0){ currentIndex--; } };
   const nextBtn= () => { if (currentIndex < maxIndex){ currentIndex++; } };
   const resetBtn = () => {
     const textAreas = allTextArea(currentIndex);
-    textAreas.forEach(t => t.value = MetaData.str(t, 'original'));
+    textAreas.forEach(t => {
+      t.value = MetaData.str(t, 'original');
+      if (t.protectOverlayEl){
+        t.protectedRanges = getProtectedRanges(t);
+        renderProtectOverlay(t);
+        }
+      });
     };
   const hintBtn = () => {
     const tas= allTextArea(currentIndex);
@@ -94,6 +140,7 @@ const initSlides= () => {
       t.dataset.tempValue = t.value;
       t.value = '';
       t.style.backgroundColor = 'rgba(196, 179, 167, 1)';
+      if (t.protectOverlayEl){ t.protectOverlayEl.style.visibility = 'hidden'; }
       });
     setTimeout(() => tas.forEach(t =>{
       t.value = MetaData.str(t, 'solution');
@@ -102,6 +149,10 @@ const initSlides= () => {
       t.value = t.dataset.tempValue;
       t.disabled = false;
       t.style.backgroundColor = '';
+      if (t.protectOverlayEl){
+        t.protectOverlayEl.style.visibility = '';
+        renderProtectOverlay(t);
+        }
       }), 1550);
     };
   const moveCursorTo= (el) => {
@@ -151,11 +202,23 @@ const initSlides= () => {
     };
   const textInit= t =>{
     t.value = MetaData.str(t, 'original');
+    t.protectedRanges = getProtectedRanges(t);
+    if (t.protectedRanges.length > 0){
+      const overlay= document.createElement('div');
+      overlay.className= 'overlayTextarea protectOverlay';
+      overlay.setAttribute('style', t.getAttribute('style'));
+      t.parentNode.insertBefore(overlay, t);
+      t.classList.add('hasProtected');
+      t.protectOverlayEl= overlay;
+      renderProtectOverlay(t);
+      t.addEventListener('beforeinput', e => guardProtected(t, e));
+      }
     let tokenLastInput= {};
     t.addEventListener('input', () => {
+      renderProtectOverlay(t);
       const currentInput= {};
       tokenLastInput = currentInput;/*update token*/
-      if (t.classList.contains("incorrectGlow")){ displayPanicMessage("",1); }      
+      if (t.classList.contains("incorrectGlow")){ displayPanicMessage("",1); }
       t.classList.remove("correctGlow", "incorrectGlow");
       let msg= checkSolutionTA(t);
       customErrorMessage= "";
