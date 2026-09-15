@@ -61,11 +61,17 @@ const initSlides= () => {
     return pairs;
     }
   const defaultMsg= "Complete all the text to continue!";
+  const getOrSolutions= (t)=>{
+    const orStr= MetaData.str(t, 'orsolution');
+    if (!orStr){ return []; }
+    return orStr.split('|###|').map(s => Utils.normalize(s));
+    }
   const checkSolutionTA= (t)=>{
     const userInput = Utils.normalize(t.value);
     const solution = Utils.normalize(MetaData.str(t, 'solution'));
     const alts= getAlternativePairs(t);
     if (userInput === solution){ return ""; }
+    if (getOrSolutions(t).includes(userInput)){ return ""; }
     for (const { altSolution, altMessage } of alts){
       if (userInput === altSolution){ return altMessage; }
       }

@@ -43,7 +43,15 @@ public class DirectInstructions {
   public DirectInstructions area(double minX, double maxX, double minY, double maxY,String original, String solution,List<String> alternatives){
     if (Main.debug){ original= solution; }
     var alts=alternatives.stream().collect(Collectors.joining("|###|"));
-    current.areas().add(new TArea(original,solution,alts,new Range(minX,maxX,minY,maxY)));
+    current.areas().add(new TArea(original,solution,alts,"",new Range(minX,maxX,minY,maxY)));
+    return this;
+    }
+  public DirectInstructions orSolutions(String... orSolutions){
+    var areas= current.areas();
+    int last= areas.size()-1;
+    var a= areas.get(last);
+    areas.set(last, new TArea(a.original(),a.solution(),a.alternatives(),
+      String.join("|###|", orSolutions),a.r()));
     return this;
     }
   public static String intoSolution(String s){
@@ -114,7 +122,7 @@ record Image(Days.LevelName name, List<TArea> areas, Map<Integer, String> map, b
     return "<template id=\"slide"+index+"\">\n"+div(index)+"\n</template>";
     }
   }
-record TArea(String original,String solution,String alternatives,Range r){
+record TArea(String original,String solution,String alternatives,String orSolutions,Range r){
   String lift(String s){ return s
     .replace("\r","")
     .replace("\n", "\\n");
@@ -126,6 +134,7 @@ record TArea(String original,String solution,String alternatives,Range r){
     +"data-solution=\""+Escape.escapeForHtmlAttribute(solution)+"\"\n"
     +"data-original=\""+Escape.escapeForHtmlAttribute(original)+"\"\n"
     +"data-alternative=\""+Escape.escapeForHtmlAttribute(alternatives)+"\"\n"
+    +"data-orsolution=\""+Escape.escapeForHtmlAttribute(orSolutions)+"\"\n"
     +"autocomplete=\"off\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\"></textarea>";
     }
   }
