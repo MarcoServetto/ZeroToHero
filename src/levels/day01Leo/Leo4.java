@@ -36,6 +36,6 @@ public class Leo4 implements Function<Days.LevelName,String>{
   public static String lambdas=Leo1.bools+"\n"+"""
     {x -> x + 1}# 5  -> 5 + 1
     {x, y -> x * y }#(1,4)  -> 1 * 4
-    {y, x -> (y + 1) * x }#(2,3)  -> (3 + 1) * 2    
+    {y, x -> (y + 1) * x }#(2,3)  -> (3 + 1) * 2
     """;
 }

@@ -1,0 +1,80 @@
+name: Deploy ZeroToHero pages
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with: { path: src/ZeroToHero }
+      - uses: actions/checkout@v7
+        with: { repository: FearlessLang/Commons, path: src/Commons }
+      - uses: actions/checkout@v7
+        with: { repository: FearlessLang/Frontend, path: src/Frontend }
+      - uses: actions/checkout@v7
+        with: { repository: FearlessLang/Coordinator, path: src/Coordinator }
+      - uses: actions/checkout@v7
+        with: { repository: MarcoServetto/FearlessTour, path: src/FearlessTour }
+      - name: Install JDK 26
+        shell: bash
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/jdk.tar.gz" https://download.oracle.com/java/26/archive/jdk-26.0.2_linux-x64_bin.tar.gz
+          mkdir -p "$RUNNER_TEMP/jdk"
+          tar -xzf "$RUNNER_TEMP/jdk.tar.gz" -C "$RUNNER_TEMP/jdk" --strip-components=1
+          echo "JAVA_BIN=$RUNNER_TEMP/jdk/bin/java" >> "$GITHUB_ENV"
+      - name: Download FearlessTour external jars
+        shell: bash
+        run: |
+          dest="$GITHUB_WORKSPACE/src/FearlessTour/externalJars"
+          base="https://repo1.maven.org/maven2/com/vladsch/flexmark"
+          for j in flexmark flexmark-ext-tables flexmark-util-ast flexmark-util-builder flexmark-util-collection flexmark-util-data flexmark-util-dependency flexmark-util-format flexmark-util-html flexmark-util-misc flexmark-util-options flexmark-util-sequence flexmark-util-visitor; do
+            curl -fsSL -o "$dest/$j-0.64.8.jar" "$base/$j/0.64.8/$j-0.64.8.jar"
+          done
+          curl -fsSL -o "$dest/annotations-24.0.1.jar" "https://repo1.maven.org/maven2/org/jetbrains/annotations/24.0.1/annotations-24.0.1.jar"
+      - name: Generate LocalResources.java
+        shell: bash
+        run: |
+          prefix="${GITHUB_WORKSPACE//\\//}/src"
+          cat > "$GITHUB_WORKSPACE/src/Coordinator/Build/src/resources/LocalResources.java" <<JAVA
+          package resources;
+          import java.nio.file.Path;
+          public class LocalResources{
+            private static Path prefix= Path.of("$prefix");
+            static public final Path stLibPath= prefix.resolve("StandardLibrary","base");
+            static public final Path stLibRTPath= prefix.resolve("StandardLibrary","rt");
+            static public final Path stLibDebugOut= prefix.resolve("StandardLibrary","dbgOut");
+            static public final Path integrationTests= prefix.resolve("StandardLibrary","integrationTests");
+            static public final Path commonsSrc= prefix.resolve("Commons","src");
+            static public final Path frontendSrc= prefix.resolve("Frontend","FearlessFrontend","src");
+            static public final Path frontendSrcModule= prefix.resolve("Frontend","FearlessFrontend","srcModule");
+            static public final Path coordinatorSrc= prefix.resolve("Coordinator","src");
+            static public final Path coordinatorSrcModule= prefix.resolve("Coordinator","srcModule");
+            static public final Path controllerSrc= prefix.resolve("Controllers","src");
+            static public final Path controllerSrcModule= prefix.resolve("Controllers","srcModule");
+            static public final Path portableFolderOut= prefix.resolve("out","fearlessArtefact");
+            static public final Path managedFolderOut= prefix.resolve("out","fearlessManagedArtefact");
+            static public final Path badZipCorpous= prefix.resolve("Coordinator","badZips");
+            static public final Path packaging= prefix.resolve("Coordinator","_fearless_packaging");
+          }
+          JAVA
+      - name: Generate pages
+        shell: bash
+        working-directory: src/Coordinator/Build/src
+        run: "\"$JAVA_BIN\" -ea --module-path ../../../Commons/Commons.jar --add-modules Commons scripts/DeployZeroToHeroPages.java"
+      - name: Commit and push regenerated pages
+        shell: bash
+        working-directory: src/ZeroToHero
+        run: |
+          git add src/assetsDest src/assetsLeo src/assetsGuide
+          if git diff --cached --quiet; then
+            echo "No page changes to publish"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "Regenerate ZeroToHero and guide pages"
+            git push
+          fi

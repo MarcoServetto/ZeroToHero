@@ -11,7 +11,7 @@ public class GatherTrueDecl implements Function<Days.LevelName,String>{
 //This code is visible by all the cards
 //The code of a direction also assumes
 //the other three directions to be
-//declared as shown in the exercises before 
+//declared as shown in the exercises before
 Direction: { .turn: Direction; }
 """)
 
@@ -19,7 +19,7 @@ Direction: { .turn: Direction; }
     .card("1-North\nNorth: Direction { .turn-> East; }",1,BrownMushroom,1)
     .card("2-North\nNorth: Direction { East; }",1,BrownMushroom,3)
     .card("3-South\nSouth: Direction { .turn-> West; }",3,Eggplant,11)
-    .card("4-West\nWest: Direction { .turn-> North; }",4,YellowFlower,7)    
+    .card("4-West\nWest: Direction { .turn-> North; }",4,YellowFlower,7)
     .card("5-East\nEast: Direction { South }",2,Tomato,1)
     .card("6-East\nEast: Direction { .turn-> South; }",2,Tomato,10)
     .card("""
@@ -27,7 +27,7 @@ Direction: { .turn: Direction; }
       West: Direction { .turn[]()-> North; }
       //Remember: [] and () can be omitted, thus
       //code with extra [] and () is still valid
-      """,4,YellowFlower,1)    
+      """,4,YellowFlower,1)
     .cardTrash("8-North\nNorth: Direction { ->East; }",BrownMushroom,13)
     .card("""
       9-North
@@ -55,5 +55,5 @@ Direction: { .turn: Direction; }
      West: Direction { turn-> North; }
      //Something smells strange here.
      //Can you see the issue?
-     """,YellowFlower,10)    
+     """,YellowFlower,10)
     .build(); } }

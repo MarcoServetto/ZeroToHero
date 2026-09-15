@@ -35,7 +35,7 @@ public class CollectText {
       .addS(levels.resolve("Level307", "Level307.html"))
       .addS(levels.resolve("Level308", "Level308.html"))
       .addS(levels.resolve("Level309", "Level309.html"))
-      
+
       .addS(resources.resolve("Book.html"))
       .addS(resources.resolve("Climb.html"))
       .addS(resources.resolve("DirectInstructions.html"))
@@ -83,7 +83,7 @@ public class CollectText {
       .add(resources.resolve("File.java"))
       .add(htmlMangle.resolve("Escape.java"))
       .add(htmlMangle.resolve("Range.java"))
-      
+
       .add(resources.resolve("BaseJs.js"))
       .add(resources.resolve("Question.js"))
       .add(resources.resolve("Score.js"))
@@ -102,9 +102,9 @@ public class CollectText {
       .add(walking.resolve("Walking.css"))
       .addS(gather.resolve("Gather.css"))
       .addS(book.resolve("Book.css"))
-      .addS(climb.resolve("Climb.css"))      
-      
-      .build();    
+      .addS(climb.resolve("Climb.css"))
+
+      .build();
     String currentTask= """
 Currently, I'm trying to get the Walking minigame to be more compact.
 In particular, file GameOptions.js looks really redundant.
@@ -178,7 +178,7 @@ We distinguish update "a = b" from initialization "a= b".
 Thus,
   const x= 3; //Good
   const x = 3; //Bad: this is initialization
-  let x= 3;//Good, still initialization    
+  let x= 3;//Good, still initialization
   if (cond){ x = 3; }//Good, this is update
 
 Offensive programming:
@@ -186,8 +186,8 @@ As much as possible, we follow offensive programming where we
 check that anything exists and has the expected shape, and throw errors
 if this is not the case. We can do this with 'Utils.checkExists' and other
 methods. This is in contrast with many common JS patterns where
-a reasonable default is selected instead. The objective here is to fail 
-fast and fail in a very self evident way. 
+a reasonable default is selected instead. The objective here is to fail
+fast and fail in a very self evident way.
 ----------------
 All code you will suggest must follow the existing conventions, including style
 and file paths (for example, using ../../resources/... )
@@ -197,7 +197,7 @@ Whenever possible, try to reuse existing code/css instead of repeating it.
 This may include moving css into the base css so that it can be seen in multiple minigames.
 ----------------
 - First, confirm that you have all the information needed to answer.
-I may have forgot to include some files. If some file or function is referenced but is 
+I may have forgot to include some files. If some file or function is referenced but is
 not included in the provided data, please tell me about it so that I can add it.
 Do not try to give a solution from incomplete data.
 - If you think you have all the data, try to help for a solution.
@@ -224,7 +224,7 @@ Do not try to give a solution from incomplete data.
   private static final Path day02 = levelsDir.resolve("day02");
   private static final Path day03 = levelsDir.resolve("day03");
 
-  
+
   private static final FilesIn files= new FilesIn(workingDir)
     .ignore("*.png")
     .ignore("*.jpg")
