@@ -119,11 +119,17 @@ const initSlides= () => {
     t.protectedRanges= t.protectedRanges.map(r =>
       start >= r.end ? r : { start: r.start + delta, end: r.end + delta });
     };
+  const lockTextArea= (t) => { t.locked = true; t.disabled = true; };
   const prevBtn= () => { if (currentIndex > 0){ currentIndex--; } };
-  const nextBtn= () => { if (currentIndex < maxIndex){ currentIndex++; } hidePanicMessage(); };
+  const nextBtn= () => {
+    if (checkSolution().length === 0){ allTextArea(currentIndex).forEach(lockTextArea); }
+    if (currentIndex < maxIndex){ currentIndex++; }
+    hidePanicMessage();
+    };
   const resetBtn = () => {
     const textAreas = allTextArea(currentIndex);
     textAreas.forEach(t => {
+      if (t.locked){ return; }
       t.value = MetaData.str(t, 'original');
       if (t.protectOverlayEl){
         t.protectedRanges = getProtectedRanges(t);
@@ -148,7 +154,7 @@ const initSlides= () => {
       }), showDelay);
     setTimeout(() => tas.forEach(t => {
       t.value = t.dataset.tempValue;
-      t.disabled = false;
+      t.disabled = t.locked;
       t.style.backgroundColor = '';
       if (t.protectOverlayEl){
         t.protectOverlayEl.style.visibility = '';
@@ -192,7 +198,7 @@ const initSlides= () => {
     const finish= () => {
       exampleCursor.classList.remove('pressing');
       exampleCursor.hidden = true;
-      t.disabled = false;
+      t.disabled = t.locked;
       t.value = before;
       t.dispatchEvent(new Event('input'));
       token.unfreeze();
@@ -203,6 +209,7 @@ const initSlides= () => {
     };
   const textInit= t =>{
     t.value = MetaData.str(t, 'original');
+    t.locked = false;
     t.protectedRanges = getProtectedRanges(t);
     if (t.protectedRanges.length > 0){
       const overlay= document.createElement('div');
@@ -225,7 +232,7 @@ const initSlides= () => {
       customErrorMessage= "";
       refreshNextButton();
       if (msg === defaultMsg){ return; }
-      if (msg === "") { t.classList.add("correctGlow"); return; }
+      if (msg === "") { t.classList.add("correctGlow"); hidePanicMessage(); return; }
       customErrorMessage= msg;      
       setTimeout(() => {
         if (tokenLastInput !== currentInput){ return; }
@@ -309,6 +316,7 @@ const initSlides= () => {
     const tas= allTextArea(currentIndex);
     if (tas.length === 0) { return; }
     if (customErrorMessage !== ""){ return; }
+    if (checkSolution().length === 0){ return; }
     displayPanicMessage(nextHint(),8000);
     });
   let messageIndex = 0;
