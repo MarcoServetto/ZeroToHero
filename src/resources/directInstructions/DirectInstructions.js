@@ -120,7 +120,7 @@ const initSlides= () => {
       start >= r.end ? r : { start: r.start + delta, end: r.end + delta });
     };
   const prevBtn= () => { if (currentIndex > 0){ currentIndex--; } };
-  const nextBtn= () => { if (currentIndex < maxIndex){ currentIndex++; } };
+  const nextBtn= () => { if (currentIndex < maxIndex){ currentIndex++; } hidePanicMessage(); };
   const resetBtn = () => {
     const textAreas = allTextArea(currentIndex);
     textAreas.forEach(t => {
@@ -134,7 +134,8 @@ const initSlides= () => {
   const hintBtn = () => {
     const tas= allTextArea(currentIndex);
     if (tas.length === 0) { return; }
-    Buttons.freezeFor(2000);
+    const showDelay= 100, showDuration= 1450 * 1.5, freezeBuffer= 450;
+    Buttons.freezeFor(showDelay + showDuration + freezeBuffer);
     tas.forEach(t => {
       t.disabled = true;
       t.dataset.tempValue = t.value;
@@ -144,7 +145,7 @@ const initSlides= () => {
       });
     setTimeout(() => tas.forEach(t =>{
       t.value = MetaData.str(t, 'solution');
-      }), 100);
+      }), showDelay);
     setTimeout(() => tas.forEach(t => {
       t.value = t.dataset.tempValue;
       t.disabled = false;
@@ -153,7 +154,7 @@ const initSlides= () => {
         t.protectOverlayEl.style.visibility = '';
         renderProtectOverlay(t);
         }
-      }), 1550);
+      }), showDelay + showDuration);
     };
   const moveCursorTo= (el) => {
     const g= gameArea.getBoundingClientRect();
@@ -243,8 +244,13 @@ const initSlides= () => {
     panicToHideId = setTimeout(()=>{
       customErrorMessage = "";
       hintChar.hidden = true;
-      }, duration);          
-    };  
+      }, duration);
+    };
+  const hidePanicMessage= () => {
+    clearTimeout(panicToHideId);
+    customErrorMessage= "";
+    document.getElementById("hintCharacter").hidden= true;
+    };
   //slides after the first one wait in inert <template>s, so that their images
   //start loading only once the slide before them is fully loaded
   const overlay= Utils.getElementById('screenOverlay');
