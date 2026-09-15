@@ -3,6 +3,9 @@ const initSlides= () => {
   let customErrorMessage= "";
   const prev = document.getElementById('prevBtn');
   const next = document.getElementById('nextBtn');
+  const example = document.getElementById('exampleBtn');
+  const exampleCursor = document.getElementById('exampleCursor');
+  const gameArea = document.getElementById('gameArea');
   const nextLevelUrl = MetaData.str(document.body,'next');
   const slideTemplate= i => document.getElementById('slide' + i);
   const maxIndex = (() => {
@@ -19,6 +22,10 @@ const initSlides= () => {
   const isUnlocked= (i) => {
     const slide= document.getElementById('content' + i);
     return slide !== null && slide.dataset.unlocked === 'true';
+    };
+  const isExampleSlide= (i) => {
+    const slide= document.getElementById('content' + i);
+    return slide !== null && slide.dataset.example === 'true';
     };
   const refreshNextButton = () => {
     const atEnd= (currentIndex === maxIndex);
@@ -37,6 +44,7 @@ const initSlides= () => {
     const slide= document.getElementById('content' + currentIndex);
     if (slide !== null){ slide.hidden = false; }
     prev.disabled = (currentIndex === 0);
+    example.hidden = !isExampleSlide(currentIndex);
     refreshNextButton();
     refreshOverlay();
     };
@@ -89,6 +97,51 @@ const initSlides= () => {
       t.disabled = false;
       t.style.backgroundColor = '';
       }), 1550);
+    };
+  const moveCursorTo= (el) => {
+    const g= gameArea.getBoundingClientRect();
+    const r= el.getBoundingClientRect();
+    exampleCursor.style.left= (r.left + r.width / 2 - g.left) + 'px';
+    exampleCursor.style.top= (r.top + r.height / 2 - g.top) + 'px';
+    };
+  const exampleBtn= () => {
+    const tas= allTextArea(currentIndex);
+    if (tas.length === 0){ return; }
+    const t= tas[0];
+    const before= t.value;
+    const solution= MetaData.str(t, 'solution');
+    const token= Buttons.freezeToken();
+    t.disabled = true;
+    const typeChar= (i) => {
+      t.value = solution.slice(0, i);
+      t.dispatchEvent(new Event('input'));
+      if (i === solution.length){ setTimeout(showCursor, 400); return; }
+      setTimeout(() => typeChar(i + 1), 90);
+      };
+    const showCursor= () => {
+      moveCursorTo(t);
+      exampleCursor.hidden = false;
+      setTimeout(pressCursor, 700);
+      };
+    const pressCursor= () => {
+      moveCursorTo(next);
+      setTimeout(mimePress, 700);
+      };
+    const mimePress= () => {
+      exampleCursor.classList.add('pressing');
+      setTimeout(finish, 500);
+      };
+    const finish= () => {
+      exampleCursor.classList.remove('pressing');
+      exampleCursor.hidden = true;
+      t.disabled = false;
+      t.value = before;
+      t.dispatchEvent(new Event('input'));
+      token.unfreeze();
+      };
+    t.value = '';
+    t.dispatchEvent(new Event('input'));
+    setTimeout(() => typeChar(1), 300);
     };
   const textInit= t =>{
     t.value = MetaData.str(t, 'original');
@@ -176,7 +229,7 @@ const initSlides= () => {
     };
   //init
   updateContent();
-  const Buttons = initButtons(updateContent,{nextBtn,prevBtn,resetBtn,hintBtn});
+  const Buttons = initButtons(updateContent,{nextBtn,prevBtn,resetBtn,hintBtn,exampleBtn});
   const InactiveNudge= inactiveNudge(Buttons.isFrozen,30000,()=>{
     const tas= allTextArea(currentIndex);
     if (tas.length === 0) { return; }

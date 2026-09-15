@@ -29,13 +29,14 @@ public class DirectInstructions {
     current= i;
     images.add(i);
     }
-  public DirectInstructions image(){ commit(new Image(name, new ArrayList<>(), map, false)); return this; }
+  public DirectInstructions image(){ commit(new Image(name, new ArrayList<>(), map, false, false)); return this; }
   public DirectInstructions image(int size){
     assert size>0;
     if(size==1){ return image(); }
     return image().image(size-1);
     }
-  public DirectInstructions unlockedImage(){ commit(new Image(name, new ArrayList<>(), map, true)); return this; }
+  public DirectInstructions unlockedImage(){ commit(new Image(name, new ArrayList<>(), map, true, false)); return this; }
+  public DirectInstructions exampleImage(){ commit(new Image(name, new ArrayList<>(), map, false, true)); return this; }
   public DirectInstructions area(double minX, double maxX, double minY, double maxY,String original, String solution){
     return area(minX,maxX,minY,maxY,original,solution,List.of());
     }
@@ -91,13 +92,15 @@ public class DirectInstructions {
     return map;
   }
 }
-record Image(Days.LevelName name, List<TArea> areas, Map<Integer, String> map, boolean unlocked){
+record Image(Days.LevelName name, List<TArea> areas, Map<Integer, String> map, boolean unlocked, boolean example){
   String indexToName(int index){
     if(!map.containsKey(index)){ System.err.println("Image "+index+" is missing in "+name.directoryName()); }
     return map.getOrDefault(index,"ImageNotFound.jpg");
     }
   String div(int index){ return
-     "<div class=\"contentItem\" id=\"content"+index+"\""+(unlocked ? " data-unlocked=\"true\"" : "")+" hidden>\n"
+     "<div class=\"contentItem\" id=\"content"+index+"\""
+    +(unlocked ? " data-unlocked=\"true\"" : "")
+    +(example ? " data-example=\"true\"" : "")+" hidden>\n"
     +"<img class=\"img_16_9\" src=\""+indexToName(index+1)+"\" draggable=\"false\"/>\n"
     + IntStream.range(0, areas.size())
         .mapToObj(i->areas.get(i).body(index,i))
