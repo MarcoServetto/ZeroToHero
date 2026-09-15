@@ -462,3 +462,213 @@ proposal. Full text at
 /data/fearlessBranch3/overnightLogs/2026-09-13-eclipse-autocomplete-design/proposal.md
 (machine-local, 522 lines, with a validation prototype next to it) for
 Marco to review before any of it becomes a real PR.
+
+Task:
+
+Compare
+https://marcoautomation2.github.io/shared-docs/linuxresults.html
+https://marcoautomation2.github.io/shared-docs/winresults.html
+Is there some common failure? some failure only on one system?
+Are the two tests even trying to test the same events?
+Make a consolidated report on github pages on what is wrong, both in sense
+of what is wrong on both systems but also in the sense of what is wrong
+with the testing suites.
+
+Report:
+Read both reports directly rather than trusting either one's headline
+numbers. Common failure: DesktopDragTest's file-drag-into-folder fails
+reproducibly on both OSes, but via different assertions (Windows aborts
+pre-drag inside Pilot.changed; Linux fails its own final file-location
+check after the drag completes) - flagged as the same brittle test, not
+confirmed to be the same underlying bug. Linux-only: LinuxAssociations.put()
+names the hicolor icon-theme directory after the PNG's own pixel size,
+never a declared hicolor standard size, so the file icon never registers.
+Windows-only: the Manager Output panel auto-scrolls past the first lines
+after 5 runs, violating the plan's own "no scroll needed" requirement, not
+cross-checked on Linux since the Linux report never broke that test into
+steps. Testing-suite problems found: the shared manual plan
+(manager-gui-tests.txt) is written in Windows-only terms (.exe, Explorer)
+with no Linux variant; the Linux report's own status banner (1360/1360)
+contradicts its own results table (which sums to 2636) plus a mislabeled
+footnote row, an arithmetic bug in report generation rather than in the
+actual run; Windows reports 2 unnamed JUnit assumption-skipped tests that
+Linux shows none of, left open. The four core JUnit suites (981/258/1276/121
+tests) matched exactly on both OSes, genuinely apples-to-apples there. Both
+runs independently discovered the same undocumented "Become code" click
+requirement.
+Report: https://marcoautomation2.github.io/shared-docs/linux-windows-comparison-2026-09-14.html
+Issue filed: https://github.com/FearlessLang/Controllers/issues/27
+(DesktopDragTest cross-platform flakiness, no fix attempted).
+
+Task:
+
+Consider this:
+https://marcoautomation2.github.io/shared-docs/gui-test-automation-2026-09-13.html
+A PR on automation was opened because of this report, this shows a
+misunderstanding, those files should stay local. The point should be to
+build some fast checks that can fail loud if something is wrong to trigger
+an agent driven check and an improvement of the automatic one.
+Arguably until we manage to make TestAgentTools from
+https://marcoautomation2.github.io/shared-docs/winresults.html or
+https://marcoautomation2.github.io/shared-docs/linuxresults.html pass, this
+is too early.
+Make a github pages report (linuxSlowTestAgentTools) actually explaining
+why we are still failing the simple TestAgentTools when driven by the
+agent.
+Is the model loop moving the cursor, make a screenshot, confirm the cursor
+is where intended, then either move again or do the drag/drop, or has the
+model loop being arrogantly attempting multiple operations without an
+actual screenshot in the middle of all of them? try to actually do the
+TestAgentTools slow and steady and to make the automated script out of a
+working set up. Try to discover how brittle really is, how many pixels of
+error do we have?
+
+Report:
+Root cause of the Linux DesktopDragTest failure found by single-stepping
+every Pilot call with a screenshot in between: not blind chaining of
+operations, and not pixel-positioning brittleness. row()'s screenshot-diff
+(Pilot.changed) locks onto a bottom-right status-bar text label instead of
+either folder icon, because this window's 2-entry layout is a single
+horizontal row, not the vertical list row() assumes - both VK_DOWN and
+VK_UP returned the identical wrong rectangle, so the drag ran between two
+coincident bogus points in the status bar. Matches Controllers#27's Linux
+symptom exactly (row()/drag() complete without error, file never moves).
+No pixel brittleness was detectable in glide/click/drag targeting itself
+(precise clicks landed exactly on ~64px icons repeatedly); Pilot.shot()
+never renders the cursor glyph on this GNOME/Wayland setup though, so
+verification has to use side effects instead of a visible cursor - added to
+gui_gym.txt, with Nautilus-specific findings split into a new
+gui_nautilus_gym.txt. With hand-verified icon coordinates, the unmodified
+pilot.drag() primitive completed the real file move 3/3 trials, confirming
+the primitive itself is sound. Also found and documented (not a product
+bug) that splitting a drag across separate JVM/Robot instances injects a
+spurious mousePress that aborts native Wayland drag-and-drop. Read PR #12
+(the earlier task's committed pixel-coordinate automation scripts) in full,
+judged the "should stay local" concern valid since the PR's own text
+concedes the fragility, and closed it with an explanatory comment (nobody
+had acted on it yet). Posted the precise mechanistic root cause as a
+comment on Controllers#27, correcting the original "stray window focus"
+guess; left the issue open since the fix needs a real redesign of row(),
+not a one-line patch. No PR opened (no code changed, findings only).
+Report: https://marcoautomation2.github.io/shared-docs/linuxSlowTestAgentTools.html
+Log: /data/fearlessBranch3/overnightLogs/2026-09-14-slow-testagenttools/log.md
+(machine-local).
+
+Task:
+
+Standard library, Enum, Enums.
+Look at the fearless tour and the discussions about Enum/Enums.
+Add Enum/Enums to the standard library, add some related tests and open a
+PR with your suggested changes.
+
+Report:
+Implemented Enum[E]/Enums[E] in StandardLibrary/base/datatypes/enum.fear,
+following FearlessTour's ZH_026Chapter04Enumerations.java example
+(Direction/North/East/South/West). Enums[E] gives .list, .map (Str to E),
+.indexMap (Str to Nat), .fromInfo; Enum[E] gives .enums, .info, .index
+(declaration-order position). Key deviation from the tour, called out in
+the PR: the tour's sample assumes a fully generic default body can call
+methods on the type parameter E itself, but Fearless has no bounded
+generics or F-bounded self-types (verified against the compiler and
+Frontend's grammar/typechecker), so Enums[E] takes an explicit ToStrBy[E]
+witness (.strBy, usually {::}), matching the same "by" pattern already used
+throughout base for List/Map/Set/DataType; each family/value still supplies
+.close/.cmp/.hash/.imm once each, the same amount of boilerplate as every
+other concrete DataType implementer in base. Added
+integrationTests/testingStandardLibrary/_test/test_enum.fear, a full
+Direction family exercising .list, .str, .index, .map, .fromInfo,
+==/</>, .hash, .match, .info, .imm, wired into MyTests.
+TestAllFrontendCoordinatorIntegration.java green, 295/295, including the
+new suite.
+PR: https://github.com/FearlessLang/StandardLibrary/pull/64 (open).
+Open question for Marco: whether the missing bounded-generics/self-types
+capability is worth adding to the type system, or whether this per-family
+boilerplate is the intended permanent shape.
+
+Task:
+
+Standard library Str and Info.
+We should make a method in Infos that makes an Info from a Str.
+Consider
+FromInfo[T]: { .fromInfo(i: Info): T }
+Look at the fearless tour.
+Is there an equivalent FromStr method?
+Try to understand who 'should' implement FromInfo and who should implement
+FromStr.
+Arguably Infos should implement FromStr, and should take a string as
+produced by Info.str and turn it back into the same info.
+
+Open a PR with your suggested Standard library changes to implement
+Str->Info, other Str->xxx and all the tests verifying this works as
+intended.
+
+Report:
+Confirmed the task's own hypothesis: FromInfo[T] stays per-type (each
+type's own companion object - Points, Directions, Enums, etc - since
+decoding into a domain type needs per-type shape knowledge), while a
+generic Str to Info parser belongs once on Infos, the existing companion
+object for Info; FearlessTour already referenced Infos.fromStr without it
+ever being implemented in base, which was the real gap. Verified the round
+trip is genuinely lossless: since Info.cmp/.hash are themselves defined via
+.str, the real correctness bar is fromStr(s).str == s, which holds. One
+real quirk found and handled: _InfoToStr renders EmptyInfo as a bare
+non-JSON token for any nested empty Info, not just top-level, so the parser
+accepts that token everywhere a value is expected, keeping it an exact
+inverse; no ambiguity otherwise since real messages are always quoted.
+Added Str.bool/Str.getBool (Bool.str was the only base type with .str but
+no inverse; Int/Nat/Byte/Float/Num already round-trip); no shared FromStr
+interface added since it would not shrink the code. Added
+test_info_from_str.fear (format-lock, round-trip and error tests) and
+StrParseBoolTests in test_str.fear, both wired into MyTests. Fixed one real
+doc-comment bug caught by the build along the way (unresolved single-
+backtick reference to pos). TestAllFrontendCoordinator 258/258 and
+TestAllFrontendCoordinatorIntegration 295/295 (+981/981) pass.
+PR: https://github.com/FearlessLang/StandardLibrary/pull/65 (open, branch
+infos-fromstr-roundtrip). Notes a possible trivial line-adjacency conflict
+with PR #64 in _rank_app.fear's MyTests block, with the resolution stated
+in the PR description.
+Open question for Marco: whether fromStr should tolerate whitespace for
+hand-authored config files - deliberately left out since .str never emits
+whitespace.
+
+Task:
+
+consider
+https://github.com/FearlessLang/Controllers/pull/26
+and this last reply:
+the Linux system tray icon was rewritten from AWT TrayIcon to a native
+StatusNotifierItem served over D-Bus, since XEmbed clicks were getting
+lost via xembedsniproxy on KDE/X11; is this change making the icon "not
+actually on the tray" and possibly hidden? if the old code manages to get
+an icon on the tray at all, there must be a way to make that icon
+responsive - please research this deeply online, there must be people
+discussing the same problem.
+
+Report:
+Read Controllers PR #26 in full: open, not merged, stacked on merged
+#25/#24/#23; no separate review comments exist, the pasted text is the
+PR's own description, which already admits the KDE click fix is unverified
+("left to the reporter"). Core finding: the SNI rewrite is the right call,
+not overreach. The click loss on KDE/X11 is a real, roughly decade-old,
+upstream KDE bug inside xembedsniproxy (KDE bugs 355504 and 356500,
+explicitly reproduced with Java/JavaEmbeddedFrame windows, still
+reproducing in 2024/2025 on Plasma 6.6 per a KDE Discuss thread), with no
+application-side workaround found anywhere; Fearless does not own or ship
+that proxy, so there is nothing on the Fearless side left to fix. The
+"hidden icons" concern is real Plasma UX behavior but not a regression:
+sniproxy.cpp itself already reports every proxied XEmbed icon, including
+the old AWT one, to Plasma as an SNI item with Status=Active, the identical
+value gui.Sni sets - old and new code have identical visibility exposure,
+SNI just removes the click-dropping proxy layer. First-run hiding under
+Plasma's Auto setting is a generic, protocol-agnostic desktop behavior
+(mirrors Windows 11's own new-tray-icon hiding). XEmbed is legacy
+everywhere now (KDE/GNOME/other shells are SNI-first, XEmbed survives only
+via compatibility shims Fearless does not own), confirming SNI as the
+future-proof choice. No superior fix was found and the PR text already
+states the hidden-icon caveat accurately, so no comment was added to PR
+#26 and gui.Sni itself was not touched (research-only task). One open item
+carried over: the PR still has not been verified on real KDE hardware by
+anyone, including this session (no KDE available here).
+Report: https://marcoautomation2.github.io/shared-docs/tray-icon-research-2026-09-15.html
+Log: /data/fearlessBranch3/overnightLogs/2026-09-15-tray-icon-research/log.md
+(machine-local).
