@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Walking levels: the error-context corner case</title>
+<style>
+  body{font-family:Georgia,serif;max-width:780px;margin:2rem auto;padding:0 1rem;
+    line-height:1.55;color:#222;background:#fdfdfb;}
+  h1{font-size:1.6rem;} h2{font-size:1.25rem;margin-top:2.2rem;border-bottom:1px solid #ccc;padding-bottom:.2rem;}
+  h3{font-size:1.05rem;margin-top:1.4rem;}
+  code,pre{font-family:Consolas,Menlo,monospace;background:#f1f0ec;}
+  pre{padding:.7rem;overflow-x:auto;border-left:3px solid #999;}
+  code{padding:.1rem .25rem;}
+  .file{color:#555;font-size:.9rem;}
+  table{border-collapse:collapse;width:100%;margin:1rem 0;}
+  td,th{border:1px solid #ccc;padding:.4rem .6rem;text-align:left;vertical-align:top;}
+  .verdict{background:#eef6ee;border-left:4px solid #4a8;padding:.8rem 1rem;margin:1rem 0;}
+  footer{margin-top:3rem;font-size:.85rem;color:#666;border-top:1px solid #ccc;padding-top:1rem;}
+</style>
+</head>
+<body>
+
+<h1>Walking levels: the error-context corner case</h1>
+<p class="file">Unofficial analysis, published from the marcoautomation2 fork of ZeroToHero.
+Not affiliated with, and not merged into, the upstream project.</p>
+
+<p>This page reviews the "Walking" minigame in ZeroToHero: a series of levels where the
+player highlights a span of text inside a code snippet and classifies it as one of
+Parameter, MethodCall, ObjectLiteral, MethodDeclaration, TypeDeclaration, Type, Comment
+or Error. Every walking puzzle lives in
+<code>ZeroToHero/src/levels/day01/Walking1.java</code>,
+<code>Walking2.java</code>, <code>WalkingBack.java</code>,
+<code>day03/WalkingBoomerangParam.java</code>, <code>day03/WalkingExplainClimb.java</code>,
+<code>day04/WalkingToForest.java</code> and <code>day05/WalkingHomeAlive.java</code>,
+and all of them run on the same engine,
+<code>ZeroToHero/src/htmlMangle/Walking.java</code> plus
+<code>ZeroToHero/src/resources/walking/Walking.js</code>.</p>
+
+<h2>The mechanism</h2>
+<p>Each question stores four things: the full text, the highlighted character, the
+exact start/end of the "correct" selection, and the required option. The checker in
+<code>Walking.js</code> is:</p>
+<pre>const isCorrectAnswer= option=>{
+ const isErrorType= requiredOption === 8;
+ return option === requiredOption && (isErrorType || isCorrectSelection());
+};</pre>
+<p>Two different leniencies live in this game, and they should not be confused with
+each other:</p>
+<ul>
+<li><b>Error-answer leniency.</b> When the required option is Error, the exact
+selection does not matter, only the button pressed does. This is not the corner case
+under discussion here: it is a deliberate, and reasonable, simplification for
+"something here is broken, point at roughly the right thing and say so."</li>
+<li><b>Local-validity-despite-broken-neighbor leniency.</b> This is the actual
+corner case: a puzzle whose correct answer is <i>not</i> Error, even though the text
+outside the selected span, if it had to parse on its own, would not be valid Fearless
+and is not written as a comment either. The player is expected to find "the smallest
+self-contained syntactic unit around the highlighted character" and judge only that
+unit, ignoring genuinely broken material sitting right next to it.</li>
+</ul>
+
+<h2>How many puzzles use the corner case, and where</h2>
+<p>Across all 7 Walking files (55 questions total), exactly <b>3</b> questions rely on
+the local-validity-despite-broken-neighbor corner case:</p>
+<table>
+<tr><th>File / question</th><th>Selected unit</th><th>What is broken nearby</th></tr>
+<tr><td class="file">Walking1.java, question 7 (of 13)</td>
+<td><code>//Ok, if you answered all correct, the</code> &rarr; Comment</td>
+<td>The snippet ends with a bare <code>+%/--%--</code> line, outside the comment,
+with no <code>//</code> in front of it.</td></tr>
+<tr><td class="file">Walking1.java, question 8 (of 13)</td>
+<td><code>//Why the question before was a</code> &rarr; Comment</td>
+<td>Same trailing bare <code>+%/--%--</code> line. This question is the one that
+explicitly tells the player the rule: "Error outside the smallest valid syntactical
+unit do not impact the answer."</td></tr>
+<tr><td class="file">day03/WalkingExplainClimb.java, question 3 (of 12)</td>
+<td><code>North.turn</code> &rarr; MethodCall</td>
+<td>The whole surrounding sentence ("As we have seen, operations move forward into
+results. For example ` ... ` becomes `East.turn` that becomes `South`.") is plain
+narrative English text with backticks, never wrapped in <code>//</code> or
+<code>/* */</code>.</td></tr>
+</table>
+<p>That is it: 3 out of 55, all in day 1 and day 3, and two of the three are the pair
+that explains the rule to the player in the same breath. Everywhere else in the
+Walking levels, story text that is not meant to be code is always wrapped in a real
+comment, so there is nothing broken left outside the selection for the leniency to
+matter. The corner case is real, but it is small and, in 2 of its 3 uses, it teaches
+itself.</p>
+
+<h3>Why it exists</h3>
+<p>The Walking levels are a hybrid: they are a text adventure whose narration and
+whose Fearless code share one text box. Two honest ways exist to keep code and story
+apart: keep every non-code sentence inside <code>//</code> (which the levels do
+almost everywhere), or accept that, once in a while, a line of dialogue slips through
+without a comment marker and let the puzzle still be gradeable. What the corner case
+actually teaches is exactly what a real editor's error-recovery parser does: find the
+nearest well-formed node around the cursor and reason about it, even though the file
+as a whole does not parse. That is a genuine, transferable skill, not an artifact of
+the puzzle format.</p>
+
+<h2>The other, undisclosed corner case: top level vs method body</h2>
+<p>Fearless's own parser treats "top level" and "inside a method body" as different
+grammars: <code>FearlessFrontend/src/fearlessParser/Parser.java</code> has a
+dedicated <code>checkCommonTopLevelIssues</code> pass and a dedicated
+<code>topLevelNotATypeDeclaration</code> error, precisely because a bare expression
+that is fine inside a method body (<code>East</code>, <code>North.turn</code>,
+<code>1 + 2</code>) is rejected at the top level, where only type declarations are
+allowed. The Walking levels never tell the player which of the two grammars is in
+force for a given puzzle; they simply pick whichever reading makes their intended
+answer correct.</p>
+<p>Concretely, at least 8 of the 55 questions only make sense once the player
+silently assumes "this snippet is inside a method body": <code>North</code> and
+<code>East</code> classified as ObjectLiteral with nothing around them (Walking1
+question 4, Walking2 question 1, WalkingExplainClimb question 5), the three
+<code>this.turn.turn</code> / <code>this.turn</code> questions in WalkingBack.java
+(<code>this</code> has no meaning at the top level at all), the chained
+<code>South.turn.turn.turn</code> questions at the end of Walking2.java, and the bare
+<code>Hungry ++ ++</code> / <code>Famished++ ++</code> questions in
+WalkingHomeAlive.java. Meanwhile most of the day03-day05 puzzles wrap the same kind
+of content in a real top-level type declaration
+(<code>Boomerang: { .throw(dir: Direction): Direction -> dir.reverse }</code>) and
+so are unambiguous either way. The two styles are mixed in the same pool of
+questions with no marker distinguishing them.</p>
+
+<h2>What other similar setups do</h2>
+<p>Three patterns recur in tools that face the same problem, of a snippet whose
+meaning depends on an invisible frame:</p>
+<ul>
+<li><b>Fix one frame and always assume it.</b> Language playgrounds that accept a
+bare snippet (Try Haskell's <code>ghci</code>-style prompt, most "paste a Rust
+expression" playgrounds) do not let the ambiguity travel with the snippet: they
+wrap every submission in the same fixed shell (an implicit <code>main</code>, an
+implicit REPL statement) every single time, and document that choice once, up
+front. The user never has to guess which grammar applies to the fragment they see;
+the tool has already decided, permanently, and told them so.</li>
+<li><b>Make the frame visible in the UI, not just in the grammar.</b> Editors that
+support both "module" and "script" modes for the same language (for instance a
+playground with an explicit "wrap in body" toggle) put the choice in a visible
+control next to the code, rather than folding it invisibly into what counts as a
+correct answer.</li>
+<li><b>Side-step single-answer classification altogether.</b> Regex Crossword avoids
+the entire "is this reading valid" problem by making the puzzle a constraint
+satisfaction (the same cell is checked against every clue that touches it) instead
+of "classify this fragment against one hidden canonical parse." Duolingo's exercise
+grader, similarly, is built to tolerate more than one acceptable surface form rather
+than asserting there is exactly one correct reading of what the learner typed.</li>
+</ul>
+<p>None of these tools solve the problem by asking the learner to silently infer,
+per exercise, which of two valid grammars is in play. They either fix the frame
+once and say so, show the frame, or change the win condition so a single hidden
+parse is no longer required.</p>
+
+<h2>Recommendation</h2>
+<div class="verdict">
+<p><b>Keep the local-validity-despite-broken-neighbor corner case.</b> It appears 3
+times in 55 questions, it is not hidden (2 of the 3 uses are the questions that
+explain the rule), and removing it would either force every stray line of dialogue
+into a comment (fine, but a real constraint on future level writing, since it is
+already the de facto convention almost everywhere else) or throw away a small,
+genuine lesson about local error recovery. Simplifying it away buys almost nothing:
+there are only 3 instances to begin with, and it would still be necessary to explain
+the "smallest self-contained unit" rule that the corner case exists to demonstrate.
+If anything, tighten the convention: every future Walking question whose surrounding
+text is not code should either be a real <code>//</code> comment or, if it is meant
+to be graded as broken, an Error question, so the count stays this small on
+purpose rather than by accident.</p>
+<p><b>Do not keep the undisclosed top-level-vs-method-body switch.</b> Unlike the
+first corner case, this one is not explained anywhere in the game, is used more
+often (at least 8 questions), and has no in-puzzle payoff: the player is never told
+there are two grammars, so they cannot learn the distinction, they can only
+guess which one the author had in mind. The fix costs nothing structurally, since
+the grading code does not care which frame was assumed, only the surrounding prose
+does. Concretely: pick one fixed default for the Walking game and say so once, in
+the introduction of the first level, in the same direct style already used for the
+error-leniency rule ("in these puzzles, code is always the inside of a method body,
+unless it is written as <code>Name: { ... }</code>, which is valid on its own").
+Then bring the outliers in line with that stated rule: the bare
+<code>North</code> / <code>East</code> / <code>this.turn.turn</code> /
+<code>Hungry ++ ++</code> questions already read naturally as "inside a method
+body" and need no rewrite once the rule is stated; only the framing sentence is
+missing, not the puzzles themselves. This is the same move every playground in the
+research above makes: fix the frame, then disclose it, rather than leaving two
+valid readings and picking whichever one is convenient for that day's puzzle.</p>
+</div>
+
+<footer>
+Findings and opinion only; this page is not a change to the ZeroToHero game and is
+not part of any pull request.
+</footer>
+</body>
+</html>
