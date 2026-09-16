@@ -355,6 +355,7 @@ const Walking= (score) => {
   if (score.score() >= requiredPoints){ showNextLevelButton(); rightAfterPass += 1; }
   if (rightAfterPass > 5){ rightAfterPass = 3; setTimeout(Utils.flashGreen, 900); }
  };
+ const failWaitMs= longW=>longW ? 10000 : 5000;
  const handleIncorrectAnswer= (currentQuestion) => {
   const longW= score.streak() > 1;
   score.doFailure();
@@ -366,6 +367,9 @@ const Walking= (score) => {
   currentQuestion.toSolution();
   currentQuestion.selectionEvent();
   hintStart(currentQuestion,opt);
+  if (opt === 8){
+   displayPanicMessage(currentQuestion.extractStr('errorexplanation'),failWaitMs(longW));
+  }
 
   let fall= null;
   currentQuestion.setOnTextPress(()=>{ if (fall){ fall.stop(); } });
@@ -379,7 +383,7 @@ const Walking= (score) => {
   });
  };
  const playFallAnimation= (longW,requiredOption,motivation,onDone)=>{//we should find an elegant way to still display the motivation
-  const waitT= longW ? 10000 : 5000;
+  const waitT= failWaitMs(longW);
   const freeze= Buttons.freezeFor(waitT+100);
   const timers= [];
   const flashers= [];

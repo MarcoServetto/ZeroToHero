@@ -24,7 +24,7 @@ Starving:HungerLevel{Starving}
 //You said that at our home village we can fish.
 @[Hungry ++ @@++]@
 """, MethodCall)
-    .question("""
+    .error("""
 @[HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
 Comfortable:HungerLevel{Snacky}
@@ -35,7 +35,10 @@ Starving:HungerLevel{Starving}
 
 //Should we fish?
 Famished ++@@++]@
-""", Error)
+""",
+      "'Famished ++++' has no space between the two '++' calls, so the four "
+      +"plus signs read as one unrecognized '++++' token instead of two "
+      +"chained '++' method calls")
     .question("""
 HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
@@ -49,7 +52,7 @@ Starving:HungerLevel{Starving}
 @[Famished@@++]@ ++
 """, MethodCall)
 
-    .question("""
+    .error("""
 HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
 Comfortable:HungerLevel{Snacky}
@@ -61,7 +64,10 @@ Starving:HungerLevel{Starving}
 //But I'm a rabbit. Vegetarian,
 //like all Rabbits.
 @[Starving++@@++]@
-""",Error)
+""",
+      "'Starving++++' has no space between the two '++' calls, so the four "
+      +"plus signs read as one unrecognized '++++' token instead of two "
+      +"chained '++' method calls")
 
     .build();
     }

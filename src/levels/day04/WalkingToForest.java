@@ -16,14 +16,19 @@ public class WalkingToForest implements Function<Days.LevelName,String>{
       Bed:{ .getUp: North; }
       Out:{ #: Direction -> @[Bed.getUp@@.turn]@; }
       """, MethodCall)
-    .question("""
+    .error("""
       @[// Your legs and arms tired from yesterday,
          you ask him if @@it is far.]@
-      """, Error)
-    .question("""
+      """,
+      "only the first line starts with //; 'you ask him if it is far.' is a "
+      +"second line with no // of its own, so it sits outside the comment "
+      +"as plain English text")
+    .error("""
       @[No, no. It would be hard to carry everything
       back if it was too @@far!]@
-      """, Error)
+      """,
+      "this is an English sentence with no // or /* */ anywhere around it, "
+      +"so the parser sees only unrecognized code")
     .question("""
       @[// Make an East@@.turn here!]@
       """, Comment)

@@ -27,6 +27,15 @@ public class Walking {
     return question(text,option,"",showExample);
   }
   public Walking question(String text, WalkingOption option, String motivation, boolean showExample){
+    assert option != Option.Error:"error questions require an explanation: use error(text,explanation)";
+    commit(parse(text,option,motivation,showExample,""));
+    return this;
+  }
+  public Walking error(String text, String explanation){
+    commit(parse(text,Option.Error,"",false,explanation));
+    return this;
+  }
+  private WQuestion parse(String text, WalkingOption option, String motivation, boolean showExample, String explanation){
     text = Escape.cleanUp(text);
     int start= text.indexOf("@[");
     assert start >= 0:text;
@@ -37,14 +46,15 @@ public class Walking {
     int end= text.indexOf("]@");
     assert end >= 0:text;
     text = text.replace("]@","");
-    commit(new WQuestion(Escape.escapeForHtmlAttribute(text), sel,start,end,option,motivation,showExample));
-    return this;
+    return new WQuestion(Escape.escapeForHtmlAttribute(text), sel,start,end,option,motivation,showExample,
+        Escape.escapeForHtmlAttribute(explanation));
   }
   public Walking question(String text,int sel, int start, int end, WalkingOption option){
     return question(text,sel,start,end,option,"");
   }
   public Walking question(String text,int sel, int start, int end, WalkingOption option,String motivation){
-    commit(new WQuestion(text, sel,start,end,option,motivation,false));
+    assert option != Option.Error:"error questions require an explanation: use error(text,explanation)";
+    commit(new WQuestion(text, sel,start,end,option,motivation,false,""));
     return this;
   }
   public String build(){    
@@ -89,7 +99,7 @@ public class Walking {
     Error;
   }
 }
-record WQuestion(String text, int sel, int start, int end, htmlMangle.Walking.WalkingOption option, String motivation, boolean showExample){
+record WQuestion(String text, int sel, int start, int end, htmlMangle.Walking.WalkingOption option, String motivation, boolean showExample, String errorExplanation){
   String body(int index) {
       var option=(java.lang.Enum<?>)this.option();
       return "<textarea class=\"overlayTextarea\"\n"
@@ -102,6 +112,7 @@ record WQuestion(String text, int sel, int start, int end, htmlMangle.Walking.Wa
           + "    data-option=\"" + (option.ordinal()+1) + "\"\n"
           + "    data-motivation=\""+motivation+ "\"\n"
           + (showExample ? "    data-example=\"true\"\n" : "")
+          + (errorExplanation.isEmpty() ? "" : "    data-errorexplanation=\""+errorExplanation+"\"\n")
           + "    autocomplete=\"off\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" readonly hidden></textarea>";
   }
 }

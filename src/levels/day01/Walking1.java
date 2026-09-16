@@ -42,13 +42,19 @@ public class Walking1 implements Function<Days.LevelName,String>{
       //around the highlighted/selected character.
       //This time it is an object literal.
       """,ObjectLiteral)
-    .question("@[+%/-@@-%--]@",Error)
-    .question("""
+    .error("@[+%/-@@-%--]@",
+      "the symbol run +%/--%-- is not a comment, a parameter, a method call, "
+      +"an object literal, a method declaration, a type declaration, or a type: "
+      +"the grammar has no rule for it")
+    .error("""
       //Text +%/--%-- outside of comments
       //is an error. When there is an error,
       //it does not matter what you select.
       @[Just press @@error :-)]@
-      """,Error)
+      """,
+      "the line 'Just press error :-)' is plain English text, not preceded "
+      +"by // and not inside a /* */ block, so it is code the parser must "
+      +"reject")
     .question("""
       @[//@@Ok, if you answered all correct, the]@
       //next level button will appear after you
@@ -75,16 +81,22 @@ public class Walking1 implements Function<Days.LevelName,String>{
     .question("""
         @[North.@@turn]@
         """, MethodCall)
-    .question("""
+    .error("""
         @[South t@@urn]@
         //Note the missing dot!
-        """, Error)
-    .question("""
+        """,
+      "'South turn' juxtaposes two identifiers separated only by whitespace: "
+      +"a method call needs a dot between the receiver and the method name, "
+      +"as in 'South.turn'")
+    .error("""
       @[Mistakes are not just welcome,
       Mistakes are necessary.
       Do mistakes on purpose in
       order to experiment@@.]@
-      """, Error)
+      """,
+      "this is an English sentence with commas and a period, not preceded "
+      +"by // and not inside a /* */ block, so the parser sees it as code "
+      +"it cannot recognize")
     .question("""
         @[/*This is a multiline comment.
         This is the last question of this batch,
