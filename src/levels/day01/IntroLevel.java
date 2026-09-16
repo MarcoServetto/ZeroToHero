@@ -34,7 +34,7 @@ public class IntroLevel implements Function<Days.LevelName,String>{
         "see:{}", "You need See with uppercase S"
         ))
     .image()
-      .area(33, 80,    45, 98, "/*<*/\nSee:/*>*//*<*/{}\nHear:/*>*/{}",last=
+      .area(33, 80,    45, 98, "\n/*<*/See:/*>*//*<*/{}\nHear:/*>*/{}",last=
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}",List.of(
                                "See:{}\nHear:{}\nSense:{}\nSee:Sense{}\nHear:Sense{}",noAdd,
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nSee:{}\nHear:{}",noAdd,
@@ -57,7 +57,7 @@ public class IntroLevel implements Function<Days.LevelName,String>{
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}\nEast:{}\nSouth:{}","Forgot West",
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}\nEast:{}\nWest:{}","Forgot South"))
     .image(2)
-      .area( 2, 85,    55, 98, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\n/*>*//*<*/\nNorth:/*>*//*<*/{}\nEast:/*>*//*<*/{}\nWest:/*>*//*<*/{}\nSouth:/*>*/{}",last=
+      .area( 2, 85,    55, 98, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\n/*>*/\n/*<*/North:/*>*//*<*/{}\nEast:/*>*//*<*/{}\nWest:/*>*//*<*/{}\nSouth:/*>*/{}",last=
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}",List.of(
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\nDirection:{}","Write Direction before North",
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:North{}\nDirection:East{}\nDirection:West{}\nDirection:South{}\nDirection:{}","Write North:Direction, not Direction:North",
