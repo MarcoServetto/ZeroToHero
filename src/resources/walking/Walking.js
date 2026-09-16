@@ -199,6 +199,10 @@ const ColorQuestion= (q,isFrozen)=>{
   const r= currentSelectionRange();
   return r.start === startOk && r.end === endOk && allExplicitSelected(startOk,endOk);
  };
+ const isOverSelection= ()=>{
+  const r= currentSelectionRange();
+  return r.start <= startOk && r.end >= endOk && (r.start < startOk || r.end > endOk);
+ };
  const isCorrectAnswer= option=>{
   const isErrorType= requiredOption === 8;
   return option === requiredOption && (isErrorType || isCorrectSelection());
@@ -233,7 +237,7 @@ const ColorQuestion= (q,isFrozen)=>{
  q.addEventListener('keydown',e=>e.preventDefault());
  return {
   toSolution,toSingle,currentSelection,
-  isCorrectAnswer,isCorrectSelection,needsSelectionPrompt,
+  isCorrectAnswer,isCorrectSelection,isOverSelection,needsSelectionPrompt,
   active,keepFocus,selectionEvent,
   extractStr,extractInt,
   addClass,removeClass,setPostSelect,setHintBlink,setOnTextPress,
@@ -356,8 +360,10 @@ const Walking= (score) => {
   if (rightAfterPass > 5){ rightAfterPass = 3; setTimeout(Utils.flashGreen, 900); }
  };
  const failWaitMs= longW=>longW ? 10000 : 5000;
- const handleIncorrectAnswer= (currentQuestion) => {
+ const overSelectionHint= 'remember, select the smallest syntactically self-contained unit';
+ const handleIncorrectAnswer= (currentQuestion,option) => {
   const longW= score.streak() > 1;
+  const overSelected= option === currentQuestion.requiredOption && currentQuestion.isOverSelection();
   score.doFailure();
   currentBonusElem.textContent = 0;
   currentQuestion.failCount += 1;
@@ -369,6 +375,8 @@ const Walking= (score) => {
   hintStart(currentQuestion,opt);
   if (opt === 8){
    displayPanicMessage(currentQuestion.extractStr('errorexplanation'),failWaitMs(longW));
+  } else if (overSelected && Math.random() < 1 / 3){
+   displayPanicMessage(overSelectionHint,failWaitMs(longW));
   }
 
   let fall= null;
@@ -419,7 +427,7 @@ const Walking= (score) => {
    return;
   }
   const nope= !currentQuestion.isCorrectAnswer(option);
-  if (nope){ handleIncorrectAnswer(currentQuestion); return; }
+  if (nope){ handleIncorrectAnswer(currentQuestion,option); return; }
   currentQuestion.failCount = 0;
   Buttons.freezeFor(500);
   handleCorrectAnswer();
