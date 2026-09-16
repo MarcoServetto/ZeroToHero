@@ -27,11 +27,47 @@ const initSlides= () => {
     const slide= document.getElementById('content' + i);
     return slide !== null && slide.dataset.example === 'true';
     };
+  const unlockedGlowDelay= 35000;
+  let unlockedGlowTimerId= null;
+  let unlockedGlowReady= false;
+  let unlockedGlowArmedFor= null;
+  const armUnlockedGlowTimer= () => {
+    if (unlockedGlowArmedFor === currentIndex){ return; }
+    unlockedGlowArmedFor= currentIndex;
+    clearTimeout(unlockedGlowTimerId);
+    unlockedGlowReady= false;
+    if (!isUnlocked(currentIndex)){ return; }
+    unlockedGlowTimerId= setTimeout(() => {
+      unlockedGlowReady= true;
+      refreshNextButton();
+      }, unlockedGlowDelay);
+    };
+  const exampleButtonDelay= 60000;
+  let exampleButtonTimerId= null;
+  let exampleButtonReady= false;
+  let exampleButtonArmedFor= null;
+  const refreshExampleButton= () => {
+    example.hidden= !(isExampleSlide(currentIndex) && exampleButtonReady);
+    };
+  const armExampleButtonTimer= () => {
+    if (exampleButtonArmedFor === currentIndex){ return; }
+    exampleButtonArmedFor= currentIndex;
+    clearTimeout(exampleButtonTimerId);
+    exampleButtonReady= false;
+    if (!isExampleSlide(currentIndex)){ return; }
+    exampleButtonTimerId= setTimeout(() => {
+      exampleButtonReady= true;
+      refreshExampleButton();
+      }, exampleButtonDelay);
+    };
   const refreshNextButton = () => {
     const atEnd= (currentIndex === maxIndex);
     const canAdvance= !atEnd && (isUnlocked(currentIndex) || checkSolution().length === 0);
     next.disabled = !canAdvance;
-    next.classList.toggle('correctGlow', canAdvance);
+    const shouldGlow= canAdvance && (allTextArea(currentIndex).length > 0
+      ? checkSolution().length === 0
+      : unlockedGlowReady);
+    next.classList.toggle('correctGlow', shouldGlow);
     if (atEnd){ Utils.showNextLevelButton(
       document.getElementById('endButtonPlaceholder'),
       '<span class="emoji">🎉</span>',
@@ -44,7 +80,9 @@ const initSlides= () => {
     const slide= document.getElementById('content' + currentIndex);
     if (slide !== null){ slide.hidden = false; }
     prev.disabled = (currentIndex === 0);
-    example.hidden = !isExampleSlide(currentIndex);
+    armExampleButtonTimer();
+    refreshExampleButton();
+    armUnlockedGlowTimer();
     refreshNextButton();
     refreshOverlay();
     };
@@ -176,11 +214,14 @@ const initSlides= () => {
     const solution= MetaData.str(t, 'solution');
     const token= Buttons.freezeToken();
     t.disabled = true;
+    const typeIntervalMs= 900;
+    const cursorArriveWaitMs= 1800;/*matches the CSS glide duration for exampleCursor*/
+    const pressHoldMs= 1000;
     const typeChar= (i) => {
       t.value = solution.slice(0, i);
       t.dispatchEvent(new Event('input'));
       if (i === solution.length){ setTimeout(showCursor, 400); return; }
-      setTimeout(() => typeChar(i + 1), 90);
+      setTimeout(() => typeChar(i + 1), typeIntervalMs);
       };
     const showCursor= () => {
       moveCursorTo(t);
@@ -189,11 +230,11 @@ const initSlides= () => {
       };
     const pressCursor= () => {
       moveCursorTo(next);
-      setTimeout(mimePress, 700);
+      setTimeout(mimePress, cursorArriveWaitMs);
       };
     const mimePress= () => {
       exampleCursor.classList.add('pressing');
-      setTimeout(finish, 500);
+      setTimeout(finish, pressHoldMs);
       };
     const finish= () => {
       exampleCursor.classList.remove('pressing');
