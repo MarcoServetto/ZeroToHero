@@ -203,6 +203,12 @@ const ColorQuestion= (q,isFrozen)=>{
   const isErrorType= requiredOption === 8;
   return option === requiredOption && (isErrorType || isCorrectSelection());
  };
+ const isDefaultSelection= ()=>{
+  const r= currentSelectionRange();
+  return !noRedChar() && r.start === redChar && r.end === redChar + 1;
+ };
+ const needsSelectionPrompt= ()=>
+  requiredOption !== 8 && isDefaultSelection() && (endOk - startOk) !== 1;
  const active= Log.tag('colorActive',flag=>{
   q.hidden = true;
   pane.hidden = !flag;
@@ -227,7 +233,7 @@ const ColorQuestion= (q,isFrozen)=>{
  q.addEventListener('keydown',e=>e.preventDefault());
  return {
   toSolution,toSingle,currentSelection,
-  isCorrectAnswer,isCorrectSelection,
+  isCorrectAnswer,isCorrectSelection,needsSelectionPrompt,
   active,keepFocus,selectionEvent,
   extractStr,extractInt,
   addClass,removeClass,setPostSelect,setHintBlink,setOnTextPress,
@@ -247,6 +253,18 @@ const Walking= (score) => {
   b.classList.add('hintCorrect');
  };
  const hintStop= q=>{ q.setHintBlink(on=>{}); hintClear(); };
+ const hintChar= Utils.getElementById('hintCharacter');
+ let panicToHideId= null;
+ const displayPanicMessage= (msg,duration) => {
+  clearTimeout(panicToHideId);
+  hintChar.querySelector('.speechBubble').textContent = msg;
+  hintChar.hidden = false;
+  panicToHideId= setTimeout(()=>{ hintChar.hidden = true; },duration);
+ };
+ const hidePanicMessage= () => {
+  clearTimeout(panicToHideId);
+  hintChar.hidden = true;
+ };
  const gameArea= Utils.getElementById('gameArea');
  const exampleBtn= Utils.getElementById('exampleBtn');
  const exampleCursor= Utils.getElementById('exampleCursor');
@@ -297,6 +315,7 @@ const Walking= (score) => {
   currentQuestionIndex = i;
   questions.forEach(q => q.active(false));
   questions[currentQuestionIndex].active(true);
+  hidePanicMessage();
   updateContent();
  };
  const updateContent= () => {
@@ -391,6 +410,10 @@ const Walking= (score) => {
  };
  const handleButtonClick = Log.tag('handleButtonClick', (option) => {
   const currentQuestion = questions[currentQuestionIndex];
+  if (currentQuestion.needsSelectionPrompt()){
+   displayPanicMessage('select text first\nthen press button',4000);
+   return;
+  }
   const nope= !currentQuestion.isCorrectAnswer(option);
   if (nope){ handleIncorrectAnswer(currentQuestion); return; }
   currentQuestion.failCount = 0;
