@@ -11,7 +11,7 @@ public class Archery1 implements Function<Days.LevelName,String>{
       //shooting and then moving
       //to hit the targets
       //Use 'methodName -> methodBody;'
-      
+
       Direction:{ .turn: Direction }
       North:Direction{ East  }
       East: Direction{ South }
@@ -20,7 +20,7 @@ public class Archery1 implements Function<Days.LevelName,String>{
       Archer:{
         .heading: Direction;
         .aiming:  Direction;
-        }      
+        }
       """;
   String acc(String annotated){
     String question= intro + annotated;
@@ -34,59 +34,59 @@ public class Archery1 implements Function<Days.LevelName,String>{
     .area(l, intro+"""
       Archer1:Archer{
         .heading-> _____,
-        .aiming -> _____, 
+        .aiming -> _____,
         }
       """,intro+"""
       Archer1:Archer{
         .heading-> North;
-        .aiming -> South; 
+        .aiming -> South;
         }""")
     .image(2).area(l, intro+"""
       Archer2:Archer{
         .heading-> _____;
-        ________________; 
+        ________________;
         }
       """,intro+"""
       Archer2:Archer{
         .heading-> North;
-        .aiming -> West; 
+        .aiming -> West;
         }
     """)
     .image(2).area(l, acc("""
       Archer3:Archer{/*[*/
         .heading-> East;
-        .aiming -> West; 
+        .aiming -> West;
       /*]*/}
       //Remember to use the ->
       """))
     .image(2).area(l, acc("""
       Archer4:Archer{/*[*/
         .heading-> East;
-        .aiming -> North; 
+        .aiming -> North;
       /*]*/}
       """))
     .image(2).area(l, acc("""
       Archer5:Archer{/*[*/
         .heading-> East;
-        .aiming -> South; 
+        .aiming -> South;
       /*]*/}
       """))
     .image(2).area(l, acc("""
       Archer6:Archer{/*[*/
         .heading-> South;
-        .aiming -> North; 
+        .aiming -> North;
       /*]*/}
       """))
     .image(2).area(l, acc("""
       Archer7:Archer{/*[*/
         .heading-> South;
-        .aiming -> East; 
+        .aiming -> East;
       /*]*/}
       """))
     .image(2).area(l, acc("""
       Archer8:Archer{/*[*/
         .heading-> West;
-        .aiming -> East; 
+        .aiming -> East;
       /*]*/}
       """))
     .image(3)

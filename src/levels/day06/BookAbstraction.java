@@ -12,7 +12,7 @@ public class BookAbstraction implements Function<Days.LevelName,String>{
       .left("""
 ## Type names, method names, parameter names.
 Our code is like a building, making a big building requires a lot of work,
-and if it gets too big, it will 
+and if it gets too big, it will
 <#[0|#|collapse.|#|be amazing.|#|stink.|#|sink.]#>
 
 We need to find ways to build small, well organized, strong code structures.
@@ -42,7 +42,7 @@ We have a few kinds of names. `Direction` and `North` are
 <#[0|#|type names|#|type declarations|#|method names|#|method declarations|#|parameter names|#|parameter declarations]#>
 `.turn` and `.heading` are
 <#[2|#|type names|#|type declarations|#|method names|#|method declarations|#|parameter names|#|parameter declarations]#>
-and `this` and `r` are 
+and `this` and `r` are
 <#[4|#|type names|#|type declarations|#|method names|#|method declarations|#|parameter names|#|parameter declarations]#>.
 
 #### __Those names forge a world where our code can run.__
@@ -50,14 +50,14 @@ and `this` and `r` are
 We encode behavior by
 <#[0|#|passing|#|copying|#|repeating|#|twisting]#>
 values around from method to method.
-Parameter names are used to hold those 
+Parameter names are used to hold those
 <#[1|#|types|#|values|#|declarations|#|implementations]#>
 while we wire them from one place to another.
 We can see a value as a person and a parameter name as a work uniform that many people can use.
 But, the person needs to have the right size to fit those clothes.
 The person size is the type of the value, while the uniform size is the type
 of the <#[2|#|meter|#|parcel|#|parameter|#|person]#>.
-This makes reasoning about coding 
+This makes reasoning about coding
 <#[3|#|intense|#|redundant|#|boring|#|easier]#>:
 only certain values can be passed into certain methods.
 """)

@@ -11,10 +11,10 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
     // selected, start, end, option
     .question("""
       @[Panic shook me awake, his voice urgent.
-      "Wake up! We're going to climb the hill 
+      "Wake up! We're going to climb the hill
       nearby to collect mushrooms. The rain last
       night should have triggered a good harvest!"
-      
+
       I blinked, still groggy, but the excitement
       in his tone was contagious. The thought of
       fresh mushrooms, sprouting in the damp earth
@@ -28,7 +28,7 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
     .question("""
       As we have seen, operations move forward into results.
       For example `@[North@@.turn]@.turn` becomes `East.turn`
-      that becomes `South`.      
+      that becomes `South`.
       """,MethodCall)
     .question("""
       @[/Climbing is all about recognizing those natural
@@ -41,7 +41,7 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
       @[No@@rth]@
       """,ObjectLiteral)
     .question("""
-        @[/ * Getting there@@! * /]@      
+        @[/ * Getting there@@! * /]@
         """,Error)
     .question("""
       @[//@@/Still here? how many times did]@
@@ -49,7 +49,7 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
       ///are you still sea sick?
       """,Comment)
     .question("""
-      // No worry, back to walking,                        
+      // No worry, back to walking,
             @[// We are near @@there!]@
       """, Comment)
     .question("""

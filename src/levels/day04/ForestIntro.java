@@ -15,7 +15,7 @@ public class ForestIntro implements Function<Days.LevelName, String>{
 //complete correct code
 /*
 Panic: It's quite easy to get
-lost here. Make sure to 
+lost here. Make sure to
 remember your directions!
 */
 

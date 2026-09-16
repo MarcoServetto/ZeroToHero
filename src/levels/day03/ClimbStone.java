@@ -11,7 +11,7 @@ public class ClimbStone implements Function<Days.LevelName,String>{
     Stone:  { .break: Rock   -> Rock;   }
     Rock:   { .break: Pebble -> Pebble; }
     Pebble: { .break: Sand   -> Sand;   }
-    Sand:   { .break: Sand   -> Sand;   }                          
+    Sand:   { .break: Sand   -> Sand;   }
     """)
     .question("""
       Those stones are breaking.

@@ -24,7 +24,7 @@ Rotate3600: {
       .turn.turn.turn.turn
       .turn.turn.turn.turn;
   }
-  """, """
+""", """
 Rotate3600: {
   #(d: Direction): Direction ->
     d
@@ -39,6 +39,6 @@ Rotate3600: {
       .turn.turn.turn.turn
       .turn.turn.turn.turn;
   }
-  """)
+""")
     .image(10)
     .build(); } }

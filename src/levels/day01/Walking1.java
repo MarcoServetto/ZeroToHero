@@ -10,7 +10,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
     return new htmlMangle.Walking(name,33)
     // selected, start, end, option
     .question("""
-      //Press the first button to the right, then 
+      //Press the first button to the right, then
       //observe the screen. Some of this text will pulse.
       @[//Select the pulsing text@@!]@
       //A button will pulse. Press that button!
@@ -30,27 +30,27 @@ public class Walking1 implements Function<Days.LevelName,String>{
       //the highlighted character and press 'comment'.
       //The highlighted character is
       //the currently selected character.
-      //Valid selections must include the highlighted character. 
+      //Valid selections must include the highlighted character.
       """,Comment)
     .question("""
       @[No@@rth]@
       //In this kind of puzzle, we select the
       //smallest self contained unit of code
-      //around the highlighted/selected character. 
-      //This time it is an object literal. 
+      //around the highlighted/selected character.
+      //This time it is an object literal.
       """,ObjectLiteral)
     .question("@[+%/-@@-%--]@",Error)
     .question("""
       //Text +%/--%-- outside of comments
       //is an error. When there is an error,
       //it does not matter what you select.
-      @[Just press @@error :-)]@ 
+      @[Just press @@error :-)]@
       """,Error)
     .question("""
       @[//@@Ok, if you answered all correct, the]@
       //next level button will appear after you
       //answer this one.
-      //Otherwise, you will be asked to do      
+      //Otherwise, you will be asked to do
       //more questions and maybe also to redo
       //some of the past questions.
       +%/--%--
@@ -65,7 +65,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
       +%/--%--
       """,Comment)
     .question("""
-      //Ok, back to some questions.                        
+      //Ok, back to some questions.
       //This is a method call!
       @[East@@.turn]@
       """, MethodCall)
@@ -77,11 +77,11 @@ public class Walking1 implements Function<Days.LevelName,String>{
         //Note the missing dot!
         """, Error)
     .question("""
-      @[Mistakes are not just welcome, 
+      @[Mistakes are not just welcome,
       Mistakes are necessary.
       Do mistakes on purpose in
       order to experiment@@.]@
-      """, Error)    
+      """, Error)
     .question("""
         @[/*This is a multiline comment.
         This is the last question of this batch,

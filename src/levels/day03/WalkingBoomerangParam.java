@@ -11,7 +11,7 @@ public class WalkingBoomerangParam implements Function<Days.LevelName,String>{
     // selected, start, end, option
     .question("""
       @[Boomerang@@: {
-        .throw(dir: Direction): Direction -> dir.reverse 
+        .throw(dir: Direction): Direction -> dir.reverse
         }]@
       """,TypeDeclaration)
     .question("""
@@ -31,7 +31,7 @@ public class WalkingBoomerangParam implements Function<Days.LevelName,String>{
       """,Parameter)
     .question("""
       @[Boomerang: {
-        .throw(dir: Direction): Direction -> dir.reverse 
+        .throw(dir: Direction): Direction -> dir.reverse
         @@}]@
       """,TypeDeclaration)
     .question("""
@@ -51,7 +51,7 @@ public class WalkingBoomerangParam implements Function<Days.LevelName,String>{
       """,Parameter)
     .question("""
       @[Boom@@erang: {
-        .throw(dir: Direction): Direction -> dir.reverse 
+        .throw(dir: Direction): Direction -> dir.reverse
         }]@
       """,TypeDeclaration)
     .question("""
