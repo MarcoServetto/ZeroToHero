@@ -125,6 +125,16 @@ const initSlides= () => {
       return {start,end};
       });
     };
+  const appendProtectedText= (el, text) => {
+    text.split('\n').forEach((line, i) => {
+      if (i>0){ el.append(document.createTextNode('\n')); }
+      if (line === ''){ return; }
+      const span= document.createElement('span');
+      span.className= 'protectedSpan';
+      span.textContent= line;
+      el.append(span);
+      });
+    };
   const renderProtectOverlay= (t)=>{
     const el= t.protectOverlayEl;
     if (!el){ return; }
@@ -133,13 +143,26 @@ const initSlides= () => {
     let pos= 0;
     t.protectedRanges.forEach(r => {
       el.append(document.createTextNode(v.slice(pos, r.start)));
-      const span= document.createElement('span');
-      span.className= 'protectedSpan';
-      span.textContent= v.slice(r.start, r.end);
-      el.append(span);
+      appendProtectedText(el, v.slice(r.start, r.end));
       pos= r.end;
       });
     el.append(document.createTextNode(v.slice(pos)));
+    };
+  const closeZeroGaps= (t) => {
+    for (let i=0;i<t.protectedRanges.length-1;i++){
+      const a= t.protectedRanges[i], b= t.protectedRanges[i+1];
+      if (a.end !== b.start){ continue; }
+      const pos= a.end;
+      t.value= t.value.slice(0,pos) + ' ' + t.value.slice(pos);
+      const selStart= t.selectionStart, selEnd= t.selectionEnd;
+      if (selStart>=pos || selEnd>=pos){
+        t.setSelectionRange(selStart>=pos?selStart+1:selStart, selEnd>=pos?selEnd+1:selEnd);
+        }
+      for (let j=i+1;j<t.protectedRanges.length;j++){
+        const r= t.protectedRanges[j];
+        t.protectedRanges[j]= {start:r.start+1, end:r.end+1};
+        }
+      }
     };
   const editRange= (t, e)=>{
     let start= t.selectionStart, end= t.selectionEnd;
@@ -171,6 +194,7 @@ const initSlides= () => {
       t.value = MetaData.str(t, 'original');
       if (t.protectOverlayEl){
         t.protectedRanges = getProtectedRanges(t);
+        closeZeroGaps(t);
         renderProtectOverlay(t);
         }
       });
@@ -252,6 +276,7 @@ const initSlides= () => {
     t.value = MetaData.str(t, 'original');
     t.locked = false;
     t.protectedRanges = getProtectedRanges(t);
+    closeZeroGaps(t);
     if (t.protectedRanges.length > 0){
       const overlay= document.createElement('div');
       overlay.className= 'overlayTextarea protectOverlay';
@@ -264,6 +289,7 @@ const initSlides= () => {
       }
     let tokenLastInput= {};
     t.addEventListener('input', () => {
+      closeZeroGaps(t);
       renderProtectOverlay(t);
       const currentInput= {};
       tokenLastInput = currentInput;/*update token*/
