@@ -232,7 +232,8 @@ const ColorQuestion= (q,isFrozen)=>{
   extractStr,extractInt,
   addClass,removeClass,setPostSelect,setHintBlink,setOnTextPress,
   isBlinking:()=>blinking,
-  solved:false,requiredOption,inner:()=>q
+  solved:false,requiredOption,inner:()=>q,visible:()=>pane,
+  isExample:extractStr('example') === 'true',failCount:0
  };
 };
 
@@ -246,6 +247,48 @@ const Walking= (score) => {
   b.classList.add('hintCorrect');
  };
  const hintStop= q=>{ q.setHintBlink(on=>{}); hintClear(); };
+ const gameArea= Utils.getElementById('gameArea');
+ const exampleBtn= Utils.getElementById('exampleBtn');
+ const exampleCursor= Utils.getElementById('exampleCursor');
+ const moveCursorTo= el=>{
+  const g= gameArea.getBoundingClientRect();
+  const r= el.getBoundingClientRect();
+  exampleCursor.style.left= (r.left + r.width / 2 - g.left) + 'px';
+  exampleCursor.style.top= (r.top + r.height / 2 - g.top) + 'px';
+ };
+ const refreshExampleButton= ()=>{
+  const q= questions[currentQuestionIndex];
+  exampleBtn.hidden= !(q.isExample && q.failCount > 3);
+ };
+ const exampleBtnAction= ()=>{
+  const q= questions[currentQuestionIndex];
+  const btn= optBtns[q.requiredOption-1];
+  const token= Buttons.freezeToken();
+  const cursorArriveWaitMs= 1800;
+  const pressHoldMs= 1000;
+  const showSelection= ()=>{
+   q.toSolution();
+   q.selectionEvent();
+   moveCursorTo(q.visible());
+   exampleCursor.hidden= false;
+   setTimeout(moveToButton,1200);
+  };
+  const moveToButton= ()=>{
+   moveCursorTo(btn);
+   setTimeout(mimePress,cursorArriveWaitMs);
+  };
+  const mimePress= ()=>{
+   exampleCursor.classList.add('pressing');
+   setTimeout(finish,pressHoldMs);
+  };
+  const finish= ()=>{
+   exampleCursor.classList.remove('pressing');
+   exampleCursor.hidden= true;
+   q.active(true);
+   token.unfreeze();
+  };
+  showSelection();
+ };
  const nextQuestion= () => {
   const completed= questions.every(q => q.solved);
   if (completed){ questions.forEach(q => q.solved = false); }
@@ -259,6 +302,7 @@ const Walking= (score) => {
  const updateContent= () => {
   requiredPointsElem.textContent = requiredPoints;
   resetAnimationSpeed();
+  refreshExampleButton();
  };
  const speedUp= ()=>{
   var x=score.justFailed()? 1 : score.streak()+1;
@@ -296,6 +340,7 @@ const Walking= (score) => {
   const longW= score.streak() > 1;
   score.doFailure();
   currentBonusElem.textContent = 0;
+  currentQuestion.failCount += 1;
   const opt= currentQuestion.requiredOption;
   const motivation= currentQuestion.extractStr('motivation');
 
@@ -348,11 +393,12 @@ const Walking= (score) => {
   const currentQuestion = questions[currentQuestionIndex];
   const nope= !currentQuestion.isCorrectAnswer(option);
   if (nope){ handleIncorrectAnswer(currentQuestion); return; }
+  currentQuestion.failCount = 0;
   Buttons.freezeFor(500);
   handleCorrectAnswer();
   nextQuestion();
  });
- const buttonActions = {};
+ const buttonActions = { exampleBtn:exampleBtnAction };
  for (const index in OptionExplanations){
   buttonActions['btn' + index]= ()=>handleButtonClick(Number(index));
  }

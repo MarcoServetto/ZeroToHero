@@ -10,11 +10,14 @@ public class Walking1 implements Function<Days.LevelName,String>{
     return new htmlMangle.Walking(name,33)
     // selected, start, end, option
     .question("""
-      //Press the first button to the right, then
-      //observe the screen. Some of this text will pulse.
-      @[//Select the pulsing text@@!]@
-      //A button will pulse. Press that button!
-      """,Comment)
+      // You need to do two actions:
+      //(1) Select the correct text
+      //(2) press the correct button
+
+      @[//Select all and only this lin@@e]@
+
+      //Press the button 'comment'
+      """,Comment,true)
     .question("""
       @[/*
       This is the walking minigame
