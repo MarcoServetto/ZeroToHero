@@ -125,6 +125,20 @@ const initSlides= () => {
       return {start,end};
       });
     };
+  const findChunkRanges= (value, chunks) => {
+    const ranges= [];
+    let searchFrom= 0;
+    for (const chunk of chunks){
+      const pos= value.indexOf(chunk, searchFrom);
+      if (pos<0){ continue; }/*protected text no longer present: leave it unprotected rather than misbehave*/
+      ranges.push({start:pos, end:pos+chunk.length});
+      searchFrom= pos+chunk.length;
+      }
+    return ranges;
+    };
+  const recomputeProtectedRanges= (t) => {
+    t.protectedRanges= findChunkRanges(t.value, t.protectedChunks);
+    };
   const appendProtectedText= (el, text) => {
     text.split('\n').forEach((line, i) => {
       if (i>0){ el.append(document.createTextNode('\n')); }
@@ -153,15 +167,14 @@ const initSlides= () => {
       const a= t.protectedRanges[i], b= t.protectedRanges[i+1];
       if (a.end !== b.start){ continue; }
       const pos= a.end;
-      t.value= t.value.slice(0,pos) + ' ' + t.value.slice(pos);
+      const onFreshLine= t.value[pos-1]==='\n' && t.value[pos]!=='\n';
+      const filler= onFreshLine ? '\n' : ' ';
       const selStart= t.selectionStart, selEnd= t.selectionEnd;
+      t.value= t.value.slice(0,pos) + filler + t.value.slice(pos);
       if (selStart>=pos || selEnd>=pos){
         t.setSelectionRange(selStart>=pos?selStart+1:selStart, selEnd>=pos?selEnd+1:selEnd);
         }
-      for (let j=i+1;j<t.protectedRanges.length;j++){
-        const r= t.protectedRanges[j];
-        t.protectedRanges[j]= {start:r.start+1, end:r.end+1};
-        }
+      recomputeProtectedRanges(t);
       }
     };
   const editRange= (t, e)=>{
@@ -171,14 +184,11 @@ const initSlides= () => {
     return {start, end};
     };
   const guardProtected= (t, e)=>{
+    if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo'){ return; }
     const {start, end}= editRange(t, e);
     const hit= t.protectedRanges.some(r => start < r.end && end > r.start);
-    if (hit){ e.preventDefault(); return; }
-    const inserted= e.data ? e.data.length : 0;
-    const delta= inserted - (end - start);
-    if (delta === 0){ return; }
-    t.protectedRanges= t.protectedRanges.map(r =>
-      start >= r.end ? r : { start: r.start + delta, end: r.end + delta });
+    const atLeadingEdge= start===end && start===0 && t.protectedRanges.some(r => r.start===0);
+    if (hit || atLeadingEdge){ e.preventDefault(); }
     };
   const lockTextArea= (t) => { t.locked = true; t.disabled = true; };
   const prevBtn= () => { if (currentIndex > 0){ currentIndex--; } };
@@ -193,7 +203,7 @@ const initSlides= () => {
       if (t.locked){ return; }
       t.value = MetaData.str(t, 'original');
       if (t.protectOverlayEl){
-        t.protectedRanges = getProtectedRanges(t);
+        recomputeProtectedRanges(t);
         closeZeroGaps(t);
         renderProtectOverlay(t);
         }
@@ -275,9 +285,10 @@ const initSlides= () => {
   const textInit= t =>{
     t.value = MetaData.str(t, 'original');
     t.locked = false;
-    t.protectedRanges = getProtectedRanges(t);
+    t.protectedChunks= getProtectedRanges(t).map(r => t.value.slice(r.start, r.end));
+    recomputeProtectedRanges(t);
     closeZeroGaps(t);
-    if (t.protectedRanges.length > 0){
+    if (t.protectedChunks.length > 0){
       const overlay= document.createElement('div');
       overlay.className= 'overlayTextarea protectOverlay';
       overlay.setAttribute('style', t.getAttribute('style'));
@@ -289,6 +300,7 @@ const initSlides= () => {
       }
     let tokenLastInput= {};
     t.addEventListener('input', () => {
+      recomputeProtectedRanges(t);
       closeZeroGaps(t);
       renderProtectOverlay(t);
       const currentInput= {};
