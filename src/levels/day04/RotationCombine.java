@@ -28,10 +28,10 @@ West : Direction { North }
 Rotation: {
   .r🧨o͠ta̶te(d:D🪱i͟r🪲e̴c🪦t͠i🧃o̷n):D🦠i̸r͜e🫧cti̶o🕷️n->
     d.t🫥u̸r🪤n;
-  +(r:Ro͟ta̸t͜i🪰o̶n):R🪦o̸t͟a🫥t͜i🪲o͠n->
+/*<*/  +(r:Ro͟ta̸t͜i🪰o̶n):R🪦o̸t͟a🫥t͜i🪲o͠n->
     {.rotate(d)-> ____.ro͢t🪱a̷te(r.r🪰ot͟a🧫t͜e(_))};
   .t🕳️w͢i🦠c̶e: R🪳o🧬t̷at͜i🪰o̶n->
-    this + ____;
+    this + ____;/*>*/
 }
 """, """
 Rotation: {
@@ -50,8 +50,8 @@ Rotation: {
     d.turn;
   +(r:Ro͟ta̸t͜i🪰o̶n):R🪦o̸t͟a🫥t͜i🪲o͠n->
     {.rotate(d)-> ____.ro͢t🪱a̷te(r.r🪰ot͟a🧫t͜e(_))};
-  .t🕳️w͢i🦠c̶e: R🪳o🧬t̷at͜i🪰o̶n->
-    this + ____;
+/*<*/  .t🕳️w͢i🦠c̶e: R🪳o🧬t̷at͜i🪰o̶n->
+    this + ____;/*>*/
 }
 """, """
 Rotation: {

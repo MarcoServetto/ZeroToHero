@@ -3,6 +3,9 @@ const initSlides= () => {
   let customErrorMessage= "";
   const prev = document.getElementById('prevBtn');
   const next = document.getElementById('nextBtn');
+  const example = document.getElementById('exampleBtn');
+  const exampleCursor = document.getElementById('exampleCursor');
+  const gameArea = document.getElementById('gameArea');
   const nextLevelUrl = MetaData.str(document.body,'next');
   const slideTemplate= i => document.getElementById('slide' + i);
   const maxIndex = (() => {
@@ -16,18 +19,33 @@ const initSlides= () => {
     if (slide === null){ return []; }/*out of range: no slide, no text areas*/
     return Array.from(slide.querySelectorAll('textarea'));
     };
+  const isUnlocked= (i) => {
+    const slide= document.getElementById('content' + i);
+    return slide !== null && slide.dataset.unlocked === 'true';
+    };
+  const isExampleSlide= (i) => {
+    const slide= document.getElementById('content' + i);
+    return slide !== null && slide.dataset.example === 'true';
+    };
+  const refreshNextButton = () => {
+    const atEnd= (currentIndex === maxIndex);
+    const canAdvance= !atEnd && (isUnlocked(currentIndex) || checkSolution().length === 0);
+    next.disabled = !canAdvance;
+    next.classList.toggle('correctGlow', canAdvance);
+    if (atEnd){ Utils.showNextLevelButton(
+      document.getElementById('endButtonPlaceholder'),
+      '<span class="emoji">🎉</span>',
+      () => window.location.href = nextLevelUrl
+      );}
+    };
   const updateContent = () => {
     ensureSlide(currentIndex);
     document.querySelectorAll('.contentItem').forEach(c => c.hidden = true);
     const slide= document.getElementById('content' + currentIndex);
     if (slide !== null){ slide.hidden = false; }
     prev.disabled = (currentIndex === 0);
-    next.disabled = (currentIndex === maxIndex);
-    if (next.disabled){ Utils.showNextLevelButton(
-      document.getElementById('endButtonPlaceholder'),
-      '<span class="emoji">🎉</span>',
-      () => window.location.href = nextLevelUrl
-      );}
+    example.hidden = !isExampleSlide(currentIndex);
+    refreshNextButton();
     refreshOverlay();
     };
   const getAlternativePairs= (t)=>{
@@ -43,11 +61,17 @@ const initSlides= () => {
     return pairs;
     }
   const defaultMsg= "Complete all the text to continue!";
+  const getOrSolutions= (t)=>{
+    const orStr= MetaData.str(t, 'orsolution');
+    if (!orStr){ return []; }
+    return orStr.split('|###|').map(s => Utils.normalize(s));
+    }
   const checkSolutionTA= (t)=>{
     const userInput = Utils.normalize(t.value);
     const solution = Utils.normalize(MetaData.str(t, 'solution'));
     const alts= getAlternativePairs(t);
     if (userInput === solution){ return ""; }
+    if (getOrSolutions(t).includes(userInput)){ return ""; }
     for (const { altSolution, altMessage } of alts){
       if (userInput === altSolution){ return altMessage; }
       }
@@ -55,71 +79,160 @@ const initSlides= () => {
     }
   const checkSolution= () => allTextArea(currentIndex)
     .map(checkSolutionTA).filter(s=>s !== "");
+  const getProtectedRanges= (t)=>{
+    const str= MetaData.str(t, 'protected');
+    if (!str){ return []; }
+    return str.split(',').map(part => {
+      const [start,end]= part.split('-').map(Number);
+      return {start,end};
+      });
+    };
+  const renderProtectOverlay= (t)=>{
+    const el= t.protectOverlayEl;
+    if (!el){ return; }
+    el.textContent= '';
+    const v= t.value;
+    let pos= 0;
+    t.protectedRanges.forEach(r => {
+      el.append(document.createTextNode(v.slice(pos, r.start)));
+      const span= document.createElement('span');
+      span.className= 'protectedSpan';
+      span.textContent= v.slice(r.start, r.end);
+      el.append(span);
+      pos= r.end;
+      });
+    el.append(document.createTextNode(v.slice(pos)));
+    };
+  const editRange= (t, e)=>{
+    let start= t.selectionStart, end= t.selectionEnd;
+    if (start === end && e.inputType === 'deleteContentBackward'){ start= Math.max(0, start - 1); }
+    if (start === end && e.inputType === 'deleteContentForward'){ end= Math.min(t.value.length, end + 1); }
+    return {start, end};
+    };
+  const guardProtected= (t, e)=>{
+    const {start, end}= editRange(t, e);
+    const hit= t.protectedRanges.some(r => start < r.end && end > r.start);
+    if (hit){ e.preventDefault(); return; }
+    const inserted= e.data ? e.data.length : 0;
+    const delta= inserted - (end - start);
+    if (delta === 0){ return; }
+    t.protectedRanges= t.protectedRanges.map(r =>
+      start >= r.end ? r : { start: r.start + delta, end: r.end + delta });
+    };
+  const lockTextArea= (t) => { t.locked = true; t.disabled = true; };
   const prevBtn= () => { if (currentIndex > 0){ currentIndex--; } };
-  const showMessageBox= (msg)=> Utils.showMessageBox(`
-    <div>
-    <p style="font-size: 2.5ex; text-align: center;">
-    <strong>${msg}</strong>
-    </p>
-    <hr>
-    <p>Game explanation:</p>
-    <ul>
-      <li>🖊️ Complete the text area with the needed content.</li>
-      <li>⟳ You can reset the text area to the original content by pressing the blue ⟳ button.</li>
-      <li>❓ You can see a solution hint via the ❓ button.</li>
-      <li>🎉 At the end, you can go to the next level by pressing on the symbol <span class="emoji">🎉</span>.</li>
-    </ul>
-    <hr>
-    <p>☑️ Click here to make this message disappear</p>
-    </div>
-    `,0,true,Buttons.freezeToken,()=>{});
-  const msgClass=(e)=> e === defaultMsg ? "" : 'class="customMessage"'; 
   const nextBtn= () => {
-    const errs= checkSolution();
-    if (errs.length === 0){ 
-      if (currentIndex < maxIndex){ currentIndex++; }
-      return;
-      }
-    let msg = errs
-      .map(e => `<span ${msgClass(e)}>${e}</span>`)
-      .join("<br>");
-    return showMessageBox(msg);
+    if (checkSolution().length === 0){ allTextArea(currentIndex).forEach(lockTextArea); }
+    if (currentIndex < maxIndex){ currentIndex++; }
+    hidePanicMessage();
     };
   const resetBtn = () => {
     const textAreas = allTextArea(currentIndex);
-    textAreas.forEach(t => t.value = MetaData.str(t, 'original'));
+    textAreas.forEach(t => {
+      if (t.locked){ return; }
+      t.value = MetaData.str(t, 'original');
+      if (t.protectOverlayEl){
+        t.protectedRanges = getProtectedRanges(t);
+        renderProtectOverlay(t);
+        }
+      });
     };
   const hintBtn = () => {
     const tas= allTextArea(currentIndex);
     if (tas.length === 0) { return; }
-    Buttons.freezeFor(2000);
+    const showDelay= 100, showDuration= 1450 * 1.5, freezeBuffer= 450;
+    Buttons.freezeFor(showDelay + showDuration + freezeBuffer);
     tas.forEach(t => {
       t.disabled = true;
       t.dataset.tempValue = t.value;
       t.value = '';
       t.style.backgroundColor = 'rgba(196, 179, 167, 1)';
+      if (t.protectOverlayEl){ t.protectOverlayEl.style.visibility = 'hidden'; }
       });
     setTimeout(() => tas.forEach(t =>{
       t.value = MetaData.str(t, 'solution');
-      }), 100);
+      }), showDelay);
     setTimeout(() => tas.forEach(t => {
       t.value = t.dataset.tempValue;
-      t.disabled = false;
+      t.disabled = t.locked;
       t.style.backgroundColor = '';
-      }), 1550);
+      if (t.protectOverlayEl){
+        t.protectOverlayEl.style.visibility = '';
+        renderProtectOverlay(t);
+        }
+      }), showDelay + showDuration);
+    };
+  const moveCursorTo= (el) => {
+    const g= gameArea.getBoundingClientRect();
+    const r= el.getBoundingClientRect();
+    exampleCursor.style.left= (r.left + r.width / 2 - g.left) + 'px';
+    exampleCursor.style.top= (r.top + r.height / 2 - g.top) + 'px';
+    };
+  const exampleBtn= () => {
+    const tas= allTextArea(currentIndex);
+    if (tas.length === 0){ return; }
+    const t= tas[0];
+    const before= t.value;
+    const solution= MetaData.str(t, 'solution');
+    const token= Buttons.freezeToken();
+    t.disabled = true;
+    const typeChar= (i) => {
+      t.value = solution.slice(0, i);
+      t.dispatchEvent(new Event('input'));
+      if (i === solution.length){ setTimeout(showCursor, 400); return; }
+      setTimeout(() => typeChar(i + 1), 90);
+      };
+    const showCursor= () => {
+      moveCursorTo(t);
+      exampleCursor.hidden = false;
+      setTimeout(pressCursor, 700);
+      };
+    const pressCursor= () => {
+      moveCursorTo(next);
+      setTimeout(mimePress, 700);
+      };
+    const mimePress= () => {
+      exampleCursor.classList.add('pressing');
+      setTimeout(finish, 500);
+      };
+    const finish= () => {
+      exampleCursor.classList.remove('pressing');
+      exampleCursor.hidden = true;
+      t.disabled = t.locked;
+      t.value = before;
+      t.dispatchEvent(new Event('input'));
+      token.unfreeze();
+      };
+    t.value = '';
+    t.dispatchEvent(new Event('input'));
+    setTimeout(() => typeChar(1), 300);
     };
   const textInit= t =>{
     t.value = MetaData.str(t, 'original');
+    t.locked = false;
+    t.protectedRanges = getProtectedRanges(t);
+    if (t.protectedRanges.length > 0){
+      const overlay= document.createElement('div');
+      overlay.className= 'overlayTextarea protectOverlay';
+      overlay.setAttribute('style', t.getAttribute('style'));
+      t.parentNode.insertBefore(overlay, t);
+      t.classList.add('hasProtected');
+      t.protectOverlayEl= overlay;
+      renderProtectOverlay(t);
+      t.addEventListener('beforeinput', e => guardProtected(t, e));
+      }
     let tokenLastInput= {};
     t.addEventListener('input', () => {
+      renderProtectOverlay(t);
       const currentInput= {};
       tokenLastInput = currentInput;/*update token*/
-      if (t.classList.contains("incorrectGlow")){ displayPanicMessage("",1); }      
+      if (t.classList.contains("incorrectGlow")){ displayPanicMessage("",1); }
       t.classList.remove("correctGlow", "incorrectGlow");
       let msg= checkSolutionTA(t);
       customErrorMessage= "";
+      refreshNextButton();
       if (msg === defaultMsg){ return; }
-      if (msg === "") { t.classList.add("correctGlow"); return; }
+      if (msg === "") { t.classList.add("correctGlow"); hidePanicMessage(); return; }
       customErrorMessage= msg;      
       setTimeout(() => {
         if (tokenLastInput !== currentInput){ return; }
@@ -138,8 +251,13 @@ const initSlides= () => {
     panicToHideId = setTimeout(()=>{
       customErrorMessage = "";
       hintChar.hidden = true;
-      }, duration);          
-    };  
+      }, duration);
+    };
+  const hidePanicMessage= () => {
+    clearTimeout(panicToHideId);
+    customErrorMessage= "";
+    document.getElementById("hintCharacter").hidden= true;
+    };
   //slides after the first one wait in inert <template>s, so that their images
   //start loading only once the slide before them is fully loaded
   const overlay= Utils.getElementById('screenOverlay');
@@ -193,11 +311,12 @@ const initSlides= () => {
     };
   //init
   updateContent();
-  const Buttons = initButtons(updateContent,{nextBtn,prevBtn,resetBtn,hintBtn});
+  const Buttons = initButtons(updateContent,{nextBtn,prevBtn,resetBtn,hintBtn,exampleBtn});
   const InactiveNudge= inactiveNudge(Buttons.isFrozen,30000,()=>{
     const tas= allTextArea(currentIndex);
     if (tas.length === 0) { return; }
     if (customErrorMessage !== ""){ return; }
+    if (checkSolution().length === 0){ return; }
     displayPanicMessage(nextHint(),8000);
     });
   let messageIndex = 0;
