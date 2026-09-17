@@ -36,9 +36,8 @@ Starving:HungerLevel{Starving}
 //Should we fish?
 Famished ++@@++]@
 """,
-      "'Famished ++++' has no space between the two '++' calls, so the four "
-      +"plus signs read as one unrecognized '++++' token instead of two "
-      +"chained '++' method calls")
+      "`++++` without spaces is not `++` twice")
+//hard case: syntactically this is ok, usually walking care about syntax only. Also we have top level and method body together
     .question("""
 HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
@@ -65,9 +64,7 @@ Starving:HungerLevel{Starving}
 //like all Rabbits.
 @[Starving++@@++]@
 """,
-      "'Starving++++' has no space between the two '++' calls, so the four "
-      +"plus signs read as one unrecognized '++++' token instead of two "
-      +"chained '++' method calls")
+   "`++++` without spaces is not `++` twice")
 
     .build();
     }
