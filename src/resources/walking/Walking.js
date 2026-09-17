@@ -194,6 +194,8 @@ const ColorQuestion= (q,isFrozen)=>{
   const r= currentSelectionRange();
   return originalText.slice(r.start,r.end);
  };
+ const clearSelection= ()=>{ selected = new Set(); refresh(); };
+ const cellAt= i=>cells[i] || null;
  const includesRed= ()=>{
   const r= selectedBounds();
   return noRedChar() || (r.start <= redChar && r.end > redChar && selected.has(redChar));
@@ -252,7 +254,8 @@ const ColorQuestion= (q,isFrozen)=>{
   addClass,removeClass,setPostSelect,setHintBlink,setOnTextPress,
   isBlinking:()=>blinking,
   solved:false,requiredOption,inner:()=>q,visible:()=>pane,
-  isExample:extractStr('example') === 'true',failCount:0
+  isExample:extractStr('example') === 'true',failCount:0,demoShown:false,
+  startOk,endOk,cellAt,selectAt:selectIndex,clearSelection
  };
 };
 
@@ -279,7 +282,6 @@ const Walking= (score) => {
   hintChar.hidden = true;
  };
  const gameArea= Utils.getElementById('gameArea');
- const exampleBtn= Utils.getElementById('exampleBtn');
  const exampleCursor= Utils.getElementById('exampleCursor');
  const moveCursorTo= el=>{
   const g= gameArea.getBoundingClientRect();
@@ -287,38 +289,45 @@ const Walking= (score) => {
   exampleCursor.style.left= (r.left + r.width / 2 - g.left) + 'px';
   exampleCursor.style.top= (r.top + r.height / 2 - g.top) + 'px';
  };
- const refreshExampleButton= ()=>{
-  const q= questions[currentQuestionIndex];
-  exampleBtn.hidden= !(q.isExample && q.failCount > 3);
- };
- const exampleBtnAction= ()=>{
-  const q= questions[currentQuestionIndex];
+ const stepMs= 380;
+ const moveWaitMs= 500;
+ const pressHoldMs= 600;
+ const playExample= (q)=>{
   const btn= optBtns[q.requiredOption-1];
   const token= Buttons.freezeToken();
-  const cursorArriveWaitMs= 1800;
-  const pressHoldMs= 1000;
-  const showSelection= ()=>{
-   q.toSolution();
-   q.selectionEvent();
-   moveCursorTo(q.visible());
-   exampleCursor.hidden= false;
-   setTimeout(moveToButton,1200);
-  };
-  const moveToButton= ()=>{
-   moveCursorTo(btn);
-   setTimeout(mimePress,cursorArriveWaitMs);
-  };
-  const mimePress= ()=>{
-   exampleCursor.classList.add('pressing');
-   setTimeout(finish,pressHoldMs);
-  };
   const finish= ()=>{
    exampleCursor.classList.remove('pressing');
    exampleCursor.hidden= true;
    q.active(true);
    token.unfreeze();
   };
-  showSelection();
+  const mimePress= ()=>{
+   exampleCursor.classList.add('pressing');
+   setTimeout(finish,pressHoldMs);
+  };
+  const moveToButton= ()=>{
+   moveCursorTo(btn);
+   setTimeout(mimePress,moveWaitMs);
+  };
+  const selectStep= i=>{
+   if (i >= q.endOk){ setTimeout(moveToButton,moveWaitMs); return; }
+   const cell= q.cellAt(i);
+   if (cell){ moveCursorTo(cell); }
+   q.selectAt(i);
+   setTimeout(()=>selectStep(i + 1),stepMs);
+  };
+  q.toSingle();
+  q.clearSelection();
+  const firstCell= q.cellAt(q.startOk);
+  if (firstCell){ moveCursorTo(firstCell); }
+  exampleCursor.hidden= false;
+  setTimeout(()=>selectStep(q.startOk),moveWaitMs);
+ };
+ const maybeShowExample= ()=>{
+  const q= questions[currentQuestionIndex];
+  if (!q.isExample || q.failCount <= 3 || q.demoShown){ return; }
+  q.demoShown = true;
+  playExample(q);
  };
  const nextQuestion= () => {
   const completed= questions.every(q => q.solved);
@@ -334,7 +343,7 @@ const Walking= (score) => {
  const updateContent= () => {
   requiredPointsElem.textContent = requiredPoints;
   resetAnimationSpeed();
-  refreshExampleButton();
+  maybeShowExample();
  };
  const speedUp= ()=>{
   var x=score.justFailed()? 1 : score.streak()+1;
@@ -438,11 +447,12 @@ const Walking= (score) => {
   const nope= !currentQuestion.isCorrectAnswer(option);
   if (nope){ handleIncorrectAnswer(currentQuestion,option); return; }
   currentQuestion.failCount = 0;
+  currentQuestion.demoShown = false;
   Buttons.freezeFor(500);
   handleCorrectAnswer();
   nextQuestion();
  });
- const buttonActions = { exampleBtn:exampleBtnAction };
+ const buttonActions = {};
  for (const index in OptionExplanations){
   buttonActions['btn' + index]= ()=>handleButtonClick(Number(index));
  }
