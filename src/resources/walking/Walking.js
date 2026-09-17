@@ -155,6 +155,7 @@ const ColorQuestion= (q,isFrozen)=>{
   if (frameText){
    const legend= document.createElement('legend');
    legend.textContent = frameText;
+   legend.style.backgroundColor = pane.style.backgroundColor;
    pane.append(legend);
   }
   for (let i=0;i<originalText.length;i += 1){
