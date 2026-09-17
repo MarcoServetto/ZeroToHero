@@ -77,9 +77,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
         @[South t@@urn]@
         //Note the missing dot!
         """,
-      "'South turn' juxtaposes two identifiers separated only by whitespace: "
-      +"a method call needs a dot between the receiver and the method name, "
-      +"as in 'South.turn'")
+      "The method name is `.turn`, not `turn`")
     .error("""
       @[Mistakes are not just welcome,
       Mistakes are necessary.
