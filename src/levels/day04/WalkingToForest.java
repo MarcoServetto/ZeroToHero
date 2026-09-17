@@ -20,15 +20,12 @@ public class WalkingToForest implements Function<Days.LevelName,String>{
       @[// Your legs and arms tired from yesterday,
          you ask him if @@it is far.]@
       """,
-      "only the first line starts with //; 'you ask him if it is far.' is a "
-      +"second line with no // of its own, so it sits outside the comment "
-      +"as plain English text")
+      "`//` is a SINGLE LINE comment, so the other line is broken!")
     .error("""
       @[No, no. It would be hard to carry everything
       back if it was too @@far!]@
       """,
-      "this is an English sentence with no // or /* */ anywhere around it, "
-      +"so the parser sees only unrecognized code")
+      "English must go in comments")
     .question("""
       @[// Make an East@@.turn here!]@
       """, Comment)
