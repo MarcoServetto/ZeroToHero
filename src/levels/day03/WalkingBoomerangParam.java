@@ -9,62 +9,62 @@ public class WalkingBoomerangParam implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Walking(name,20)
     // selected, start, end, option
-    .question("""
+    .questionTopLevel("""
       @[Boomerang@@: {
         .throw(dir: Direction): Direction -> dir.reverse
         }]@
       """,TypeDeclaration)
-    .question("""
+    .questionTopLevel("""
       Boomerang: {
         @[.throw(dir: Direction): Direction @@-> dir.reverse]@
         }
       """,MethodDeclaration)
-    .question("""
+    .questionTopLevel("""
       Boomerang: {
         .throw(dir: Direction): Direction -> @[dir.r@@everse]@
         }
       """,MethodCall)
-    .question("""
+    .questionTopLevel("""
       Boomerang: {
         .throw(dir: Direction): Direction -> @[d@@ir]@.reverse
         }
       """,Parameter)
-    .question("""
+    .questionTopLevel("""
       @[Boomerang: {
         .throw(dir: Direction): Direction -> dir.reverse
         @@}]@
       """,TypeDeclaration)
-    .question("""
+    .questionTopLevel("""
       Boomerang: {
         @[.throw(dir: Direction)@@: Direction -> dir.reverse]@
         }
       """,MethodDeclaration)
-    .question("""
+    .questionTopLevel("""
       Boomerang: {
         .throw(dir: Direction): Direction -> @[dir@@.reverse]@
         }
       """,MethodCall)
-    .question("""
+    .questionTopLevel("""
       Boomerang: {
         .throw(dir: Direction): Direction -> @[@@dir]@.reverse
         }
       """,Parameter)
-    .question("""
+    .questionTopLevel("""
       @[Boom@@erang: {
         .throw(dir: Direction): Direction -> dir.reverse
         }]@
       """,TypeDeclaration)
-    .question("""
+    .questionTopLevel("""
       Boomerang: {
         .throw(dir: @[Dir@@ection]@): Direction -> dir.reverse
         }
       """,Type)
-    .question("""
+    .questionTopLevel("""
       Boomerang: {
         .throw(dir: Direction): @[Dir@@ection]@ -> dir.reverse
         }
       """,Type)
-    .question("""
+    .questionTopLevel("""
       Boomerang: {
         @[.throw(d@@ir: Direction): Direction -> dir.reverse]@
         }

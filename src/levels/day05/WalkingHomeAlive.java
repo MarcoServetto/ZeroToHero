@@ -9,10 +9,10 @@ public class WalkingHomeAlive implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Walking(name, 18)
     // selected, start, end, option
-    .question("""
+    .questionTopLevel("""
 @[// ++ Ok, lets go home @@finally]@
 """, Comment)
-    .question("""
+    .questionTopLevel("""
 HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
 Comfortable:HungerLevel{Snacky}
@@ -22,9 +22,9 @@ Famished:HungerLevel{Starving}
 Starving:HungerLevel{Starving}
 
 //You said that at our home village we can fish.
-@[Hungry ++ @@++]@
+Check:{ #: HungerLevel -> @[Hungry ++ @@++]@; }
 """, MethodCall)
-    .error("""
+    .errorTopLevel("""
 @[HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
 Comfortable:HungerLevel{Snacky}
@@ -34,11 +34,10 @@ Famished:HungerLevel{Starving}
 Starving:HungerLevel{Starving}
 
 //Should we fish?
-Famished ++@@++]@
+Check:{ #: HungerLevel -> Famished ++@@++; }]@
 """,
       "`++++` without spaces is not `++` twice")
-//hard case: syntactically this is ok, usually walking care about syntax only. Also we have top level and method body together
-    .question("""
+    .questionTopLevel("""
 HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
 Comfortable:HungerLevel{Snacky}
@@ -48,10 +47,10 @@ Famished:HungerLevel{Starving}
 Starving:HungerLevel{Starving}
 
 //Panic: You can fish if you want.
-@[Famished@@++]@ ++
+Check:{ #: HungerLevel -> @[Famished@@++]@ ++; }
 """, MethodCall)
 
-    .error("""
+    .errorTopLevel("""
 HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
 Comfortable:HungerLevel{Snacky}
@@ -62,7 +61,7 @@ Starving:HungerLevel{Starving}
 
 //But I'm a rabbit. Vegetarian,
 //like all Rabbits.
-@[Starving++@@++]@
+Check:{ #: HungerLevel -> @[Starving++@@++]@; }
 """,
    "`++++` without spaces is not `++` twice")
 

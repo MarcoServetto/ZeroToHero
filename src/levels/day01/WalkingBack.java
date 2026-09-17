@@ -9,10 +9,10 @@ public class WalkingBack implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Walking(name,25)
     // selected, start, end, option
-    .question("@[th@@is]@.turn.turn",Parameter)
-    .question("@[this.@@turn]@.turn",MethodCall)
-    .question("@[this.turn.t@@urn]@",MethodCall)
-    .question("""
+    .questionMethodBody("@[th@@is]@.turn.turn",Parameter)
+    .questionMethodBody("@[this.@@turn]@.turn",MethodCall)
+    .questionMethodBody("@[this.turn.t@@urn]@",MethodCall)
+    .questionTopLevel("""
       Direction:{
         .turn: Direction;
         @[.reverse: Direction @@-> this.turn.turn;]@
@@ -20,7 +20,7 @@ public class WalkingBack implements Function<Days.LevelName,String>{
       //remember, if there is the ->
       //then it is not a 'method call'
       """,MethodDeclaration)
-    .question("""
+    .questionTopLevel("""
         Direction:{
           .turn: Direction;
           .reverse: Direction -> @[th@@is]@.turn.turn;
@@ -29,21 +29,21 @@ public class WalkingBack implements Function<Days.LevelName,String>{
         //is called indentation. Indentation makes
         //code more readable.
         """,Parameter)
-    .question("@[No@@rth:{East}]@",TypeDeclaration)
-    .question("North:{@[Ea@@st]@}",ObjectLiteral)
-    .question("North:{.turn->@[Ea@@st]@}",ObjectLiteral)
-    .error("@[.north{East@@}]@",
+    .questionTopLevel("@[No@@rth:{East}]@",TypeDeclaration)
+    .questionTopLevel("North:{@[Ea@@st]@}",ObjectLiteral)
+    .questionTopLevel("North:{.turn->@[Ea@@st]@}",ObjectLiteral)
+    .errorTopLevel("@[.north{East@@}]@",
       "Top level code starts with Uppercase!")
-    .question("""
+    .questionTopLevel("""
       //Single line comments start with two
       @[//slash (/) and en@@d with the end of line]@
       """,Comment)
-    .question("""
+    .questionMethodBody("""
       /*Multi line comments start with slash star
       and end with star slash*/@[Ea@@st]@
       //Code can be around them!
       """,ObjectLiteral)
-    .error("""
+    .errorTopLevel("""
       /*Any text inside comments is ok*/
       But outside @[@@]@ it is not!
       """,

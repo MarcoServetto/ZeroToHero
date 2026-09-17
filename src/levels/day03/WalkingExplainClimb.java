@@ -9,7 +9,7 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Walking(name,23)
     // selected, start, end, option
-    .error("""
+    .errorTopLevel("""
       @[Panic shook me awake, his voice urgent.
       "Wake up! We're going to climb the hill
       nearby to collect mushrooms. The rain last
@@ -22,44 +22,44 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
       was enough to get me moving.@@.
       ]@""",
       "English text must be in comments (//.. or /*..*/)")
-    .question("""
+    .questionTopLevel("""
         @[//Let me repeat: We need to @@CLIMB the hill nearby]@
         //Climbing is tricky, I hope you are ready!
         ]@""",Comment)
-    .question("""
-      As we have seen, operations move forward into results.
-      For example `@[North@@.turn]@.turn` becomes `East.turn`
-      that becomes `South`.
+    .questionMethodBody("""
+      /*As we have seen, operations move forward into results.
+      For example */@[North@@.turn]@/*.turn becomes East.turn
+      that becomes South.*/
       """,MethodCall)
-    .error("""
+    .errorTopLevel("""
       @[/Climbing is all about recognizing those natural
       /transitions etched in the shapes of the rocks.
       /At any moment, grab onto the rock that represents
       /a small step @@forward.]@
       """,
       "a comment needs `//`, not just `/`")
-    .question("""
+    .questionMethodBody("""
       //We are near there, just a few more steps toward
       @[No@@rth]@
       """,ObjectLiteral)
-    .error("""
+    .errorTopLevel("""
         @[/ * Getting there@@! * /]@
         """,
       "Note the space in `/ *`. A multiline comment start with `/*`")
-    .question("""
+    .questionTopLevel("""
       @[//@@/Still here? how many times did]@
       ///you stumble today?
       ///are you still sea sick?
       """,Comment)
-    .question("""
+    .questionTopLevel("""
       // No worry, back to walking,
             @[// We are near @@there!]@
       """, Comment)
-    .question("""
+    .questionTopLevel("""
       //Here it is the
       @[Hill@@:{}]@
       """, TypeDeclaration)
-    .question("""
+    .questionTopLevel("""
   Archer: {
     .heading: Direction -> heading;
     .aiming:  Direction -> aiming;
@@ -67,7 +67,7 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
     .headTo(d: Direction):Archer -> Archers#(d, aiming);
     }
 """, Parameter)
-    .question("""
+    .questionTopLevel("""
   Archer: {
     .heading: Direction -> heading;
     .aiming:  Direction -> aiming;
@@ -75,7 +75,7 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
     @[.headTo(@@d: Direction):Archer -> Archers#(d, aiming);]@
     }
 """, MethodDeclaration)
-    .question("""
+    .questionTopLevel("""
   Archer: {
     .heading: Direction -> heading;
     .aiming:  Direction -> aiming;

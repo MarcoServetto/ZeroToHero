@@ -9,7 +9,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Walking(name,33)
     // selected, start, end, option
-    .question("""
+    .questionTopLevel("""
       // You need to do two actions:
       //(1) Select the correct text
       //(2) press the correct button
@@ -18,7 +18,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
 
       //Press the button 'comment'
       """,Comment,true)
-    .question("""
+    .questionTopLevel("""
       @[/*
       This is the walking minigame
       Select all the code and press 'comment'.
@@ -27,7 +27,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
       Text useful for explanation but
       ignored in execution@@.
       */]@""",Comment)
-    .question("""
+    .questionTopLevel("""
       @[//This is a @@single line comment]@
       //Select all and only the line with
       //the highlighted character and press 'comment'.
@@ -35,23 +35,23 @@ public class Walking1 implements Function<Days.LevelName,String>{
       //the currently selected character.
       //Valid selections must include the highlighted character.
       """,Comment)
-    .question("""
+    .questionMethodBody("""
       @[No@@rth]@
       //In this kind of puzzle, we select the
       //smallest self contained unit of code
       //around the highlighted/selected character.
       //This time it is an object literal.
       """,ObjectLiteral)
-    .error("@[+%/-@@-%--]@",
+    .errorTopLevel("@[+%/-@@-%--]@",
       "Text +%/--%-- is not valid code, just gibberish")
-    .error("""
+    .errorTopLevel("""
       //Text +%/--%-- outside of comments
       //is an error. When there is an error,
       //it does not matter what you select.
       @[Just press @@error :-)]@
       """,
       "the text `Just press error :-)` is English, Not code.\n English need to go in comments")
-    .question("""
+    .questionTopLevel("""
       @[//@@Ok, if you answered all correct, the]@
       //next level button will appear after you
       //answer this one.
@@ -60,32 +60,32 @@ public class Walking1 implements Function<Days.LevelName,String>{
       //some of the past questions.
       //+%/--%--
       """,Comment)
-    .question("""
+    .questionTopLevel("""
       @[//@@Why the question before was a]@
       //comment and not error?
       //because the creazy +%/--%-- text was in a comment.
       """,Comment)
-    .question("""
+    .questionMethodBody("""
       //Ok, back to some questions.
       //This is a method call!
       @[East@@.turn]@
       """, MethodCall)
-    .question("""
+    .questionMethodBody("""
         @[North.@@turn]@
         """, MethodCall)
-    .error("""
+    .errorMethodBody("""
         @[South t@@urn]@
         //Note the missing dot!
         """,
       "The method name is `.turn`, not `turn`")
-    .error("""
+    .errorTopLevel("""
       @[Mistakes are not just welcome,
       Mistakes are necessary.
       Do mistakes on purpose in
       order to experiment@@.]@
       """,
       "this is plain English not in a comment")
-    .question("""
+    .questionTopLevel("""
         @[/*This is a multiline comment.
         This is the last question of this batch,
         after, they will just repeat.

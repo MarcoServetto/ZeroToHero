@@ -17,25 +17,34 @@ public class Walking {
   private void commit(WQuestion q){
     qs.add(q);
   }
-  public Walking question(String text, WalkingOption option){
-    return question(text,option,"",false);
+  public Walking questionTopLevel(String text, WalkingOption option){
+    return question(text,option,"",false,Frame.TopLevel);
   }
-  public Walking question(String text, WalkingOption option, String motivation){
-    return question(text,option,motivation,false);
+  public Walking questionTopLevel(String text, WalkingOption option, boolean showExample){
+    return question(text,option,"",showExample,Frame.TopLevel);
   }
-  public Walking question(String text, WalkingOption option, boolean showExample){
-    return question(text,option,"",showExample);
+  public Walking questionMethodBody(String text, WalkingOption option){
+    return question(text,option,"",false,Frame.MethodBody);
   }
-  public Walking question(String text, WalkingOption option, String motivation, boolean showExample){
+  public Walking questionMethodBody(String text, WalkingOption option, boolean showExample){
+    return question(text,option,"",showExample,Frame.MethodBody);
+  }
+  private Walking question(String text, WalkingOption option, String motivation, boolean showExample, Frame frame){
     assert option != Option.Error:"error questions require an explanation: use error(text,explanation)";
-    commit(parse(text,option,motivation,showExample,""));
+    commit(parse(text,option,motivation,showExample,"",frame));
     return this;
   }
-  public Walking error(String text, String explanation){
-    commit(parse(text,Option.Error,"",false,explanation));
+  public Walking errorTopLevel(String text, String explanation){
+    return error(text,explanation,Frame.TopLevel);
+  }
+  public Walking errorMethodBody(String text, String explanation){
+    return error(text,explanation,Frame.MethodBody);
+  }
+  private Walking error(String text, String explanation, Frame frame){
+    commit(parse(text,Option.Error,"",false,explanation,frame));
     return this;
   }
-  private WQuestion parse(String text, WalkingOption option, String motivation, boolean showExample, String explanation){
+  private WQuestion parse(String text, WalkingOption option, String motivation, boolean showExample, String explanation, Frame frame){
     text = Escape.cleanUp(text);
     int start= text.indexOf("@[");
     assert start >= 0:text;
@@ -47,15 +56,7 @@ public class Walking {
     assert end >= 0:text;
     text = text.replace("]@","");
     return new WQuestion(Escape.escapeForHtmlAttribute(text), sel,start,end,option,motivation,showExample,
-        Escape.escapeForHtmlAttribute(explanation));
-  }
-  public Walking question(String text,int sel, int start, int end, WalkingOption option){
-    return question(text,sel,start,end,option,"");
-  }
-  public Walking question(String text,int sel, int start, int end, WalkingOption option,String motivation){
-    assert option != Option.Error:"error questions require an explanation: use error(text,explanation)";
-    commit(new WQuestion(text, sel,start,end,option,motivation,false,""));
-    return this;
+        Escape.escapeForHtmlAttribute(explanation),frame);
   }
   public String build(){    
     String body= IntStream.range(0, qs.size())
@@ -98,8 +99,18 @@ public class Walking {
     Comment,
     Error;
   }
+  public enum Frame{
+    TopLevel("🏛️","this code is to be understood as 'top level code'"),
+    MethodBody("⚙️","this code is to be understood as 'method body'");
+    public final String icon;
+    public final String tooltip;
+    Frame(String icon, String tooltip){
+      this.icon= icon;
+      this.tooltip= tooltip;
+    }
+  }
 }
-record WQuestion(String text, int sel, int start, int end, htmlMangle.Walking.WalkingOption option, String motivation, boolean showExample, String errorExplanation){
+record WQuestion(String text, int sel, int start, int end, htmlMangle.Walking.WalkingOption option, String motivation, boolean showExample, String errorExplanation, htmlMangle.Walking.Frame frame){
   String body(int index) {
       var option=(java.lang.Enum<?>)this.option();
       return "<textarea class=\"overlayTextarea\"\n"
@@ -111,6 +122,8 @@ record WQuestion(String text, int sel, int start, int end, htmlMangle.Walking.Wa
           + "    data-selectionend=\"" + end + "\"\n"
           + "    data-option=\"" + (option.ordinal()+1) + "\"\n"
           + "    data-motivation=\""+motivation+ "\"\n"
+          + "    data-frameicon=\""+frame.icon+ "\"\n"
+          + "    data-frametooltip=\""+frame.tooltip+ "\"\n"
           + (showExample ? "    data-example=\"true\"\n" : "")
           + (errorExplanation.isEmpty() ? "" : "    data-errorexplanation=\""+errorExplanation+"\"\n")
           + "    autocomplete=\"off\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" readonly hidden></textarea>";
