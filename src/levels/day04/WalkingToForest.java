@@ -20,15 +20,15 @@ public class WalkingToForest implements Function<Days.LevelName,String>{
       @[// Your legs and arms tired from yesterday,
          you ask him if @@it is far.]@
       """,
-      "`//` is a SINGLE LINE comment, so the other line is broken!","comment")
+      "`//` is a SINGLE LINE comment, so the other line is broken!","top level code")
     .error("""
       @[No, no. It would be hard to carry everything
       back if it was too @@far!]@
       """,
-      "English must go in comments","not code")
+      "English must go in comments","top level code")
     .question("""
       @[// Make an East@@.turn here!]@
-      """, Comment,"comment")
+      """, Comment,"top level code")
     .question("""
       // The two of you keep walking...
       Path:{ @[.traverse@@(): Path;]@ }

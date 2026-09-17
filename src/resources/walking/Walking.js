@@ -3,9 +3,6 @@
 const FrameIcons= {
  'top level code': '🏛️',
  'method body': '⚙️',
- 'top level, then method body': '🔀',
- 'comment': '💭',
- 'not code': '🔤',
 };
 
 const InitColorQuestions= (isFrozen)=>
@@ -164,7 +161,7 @@ const ColorQuestion= (q,isFrozen)=>{
    const icon= document.createElement('div');
    icon.className = 'frameIcon';
    icon.textContent = FrameIcons[frameText] || Utils.error('no icon for frame '+frameText);
-   icon.dataset.tooltip = frameText;
+   icon.dataset.tooltip = "this code is to be understood as '"+frameText+"'";
    pane.append(icon);
   }
   for (let i=0;i<originalText.length;i += 1){

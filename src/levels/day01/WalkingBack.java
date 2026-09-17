@@ -37,7 +37,7 @@ public class WalkingBack implements Function<Days.LevelName,String>{
     .question("""
       //Single line comments start with two
       @[//slash (/) and en@@d with the end of line]@
-      """,Comment,"comment")
+      """,Comment,"top level code")
     .question("""
       /*Multi line comments start with slash star
       and end with star slash*/@[Ea@@st]@
@@ -47,5 +47,5 @@ public class WalkingBack implements Function<Days.LevelName,String>{
       /*Any text inside comments is ok*/
       But outside @[@@]@ it is not!
       """,
-      "Plain English need to be inside comments","not code")
+      "Plain English need to be inside comments","top level code")
     .build(); } }

@@ -17,7 +17,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
       @[//Select all and only this lin@@e]@
 
       //Press the button 'comment'
-      """,Comment,true,"comment")
+      """,Comment,true,"top level code")
     .question("""
       @[/*
       This is the walking minigame
@@ -26,7 +26,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
       Indeed, this code is a multiline comment.
       Text useful for explanation but
       ignored in execution@@.
-      */]@""",Comment,"comment")
+      */]@""",Comment,"top level code")
     .question("""
       @[//This is a @@single line comment]@
       //Select all and only the line with
@@ -34,7 +34,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
       //The highlighted character is
       //the currently selected character.
       //Valid selections must include the highlighted character.
-      """,Comment,"comment")
+      """,Comment,"top level code")
     .question("""
       @[No@@rth]@
       //In this kind of puzzle, we select the
@@ -43,14 +43,14 @@ public class Walking1 implements Function<Days.LevelName,String>{
       //This time it is an object literal.
       """,ObjectLiteral,"method body")
     .error("@[+%/-@@-%--]@",
-      "Text +%/--%-- is not valid code, just gibberish","not code")
+      "Text +%/--%-- is not valid code, just gibberish","top level code")
     .error("""
       //Text +%/--%-- outside of comments
       //is an error. When there is an error,
       //it does not matter what you select.
       @[Just press @@error :-)]@
       """,
-      "the text `Just press error :-)` is English, Not code.\n English need to go in comments","not code")
+      "the text `Just press error :-)` is English, Not code.\n English need to go in comments","top level code")
     .question("""
       @[//@@Ok, if you answered all correct, the]@
       //next level button will appear after you
@@ -59,12 +59,12 @@ public class Walking1 implements Function<Days.LevelName,String>{
       //more questions and maybe also to redo
       //some of the past questions.
       //+%/--%--
-      """,Comment,"comment")
+      """,Comment,"top level code")
     .question("""
       @[//@@Why the question before was a]@
       //comment and not error?
       //because the creazy +%/--%-- text was in a comment.
-      """,Comment,"comment")
+      """,Comment,"top level code")
     .question("""
       //Ok, back to some questions.
       //This is a method call!
@@ -84,7 +84,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
       Do mistakes on purpose in
       order to experiment@@.]@
       """,
-      "this is plain English not in a comment","not code")
+      "this is plain English not in a comment","top level code")
     .question("""
         @[/*This is a multiline comment.
         This is the last question of this batch,
@@ -92,5 +92,5 @@ public class Walking1 implements Function<Days.LevelName,String>{
         If you have completed the level, you should
         see the next level button on the right@@!
         */]@
-        """, Comment,"comment")
+        """, Comment,"top level code")
     .build(); } }

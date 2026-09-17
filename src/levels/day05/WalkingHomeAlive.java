@@ -11,7 +11,7 @@ public class WalkingHomeAlive implements Function<Days.LevelName,String>{
     // selected, start, end, option
     .question("""
 @[// ++ Ok, lets go home @@finally]@
-""", Comment,"comment")
+""", Comment,"top level code")
     .question("""
 HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
@@ -22,8 +22,8 @@ Famished:HungerLevel{Starving}
 Starving:HungerLevel{Starving}
 
 //You said that at our home village we can fish.
-@[Hungry ++ @@++]@
-""", MethodCall,"top level, then method body")
+Check:{ #: HungerLevel -> @[Hungry ++ @@++]@; }
+""", MethodCall,"top level code")
     .error("""
 @[HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
@@ -34,10 +34,9 @@ Famished:HungerLevel{Starving}
 Starving:HungerLevel{Starving}
 
 //Should we fish?
-Famished ++@@++]@
+Check:{ #: HungerLevel -> Famished ++@@++; }]@
 """,
-      "`++++` without spaces is not `++` twice","top level, then method body")
-//hard case: syntactically this is ok, usually walking care about syntax only. Also we have top level and method body together
+      "`++++` without spaces is not `++` twice","top level code")
     .question("""
 HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
@@ -48,8 +47,8 @@ Famished:HungerLevel{Starving}
 Starving:HungerLevel{Starving}
 
 //Panic: You can fish if you want.
-@[Famished@@++]@ ++
-""", MethodCall,"top level, then method body")
+Check:{ #: HungerLevel -> @[Famished@@++]@ ++; }
+""", MethodCall,"top level code")
 
     .error("""
 HungerLevel:{++:HungerLevel}
@@ -62,9 +61,9 @@ Starving:HungerLevel{Starving}
 
 //But I'm a rabbit. Vegetarian,
 //like all Rabbits.
-@[Starving++@@++]@
+Check:{ #: HungerLevel -> @[Starving++@@++]@; }
 """,
-   "`++++` without spaces is not `++` twice","top level, then method body")
+   "`++++` without spaces is not `++` twice","top level code")
 
     .build();
     }

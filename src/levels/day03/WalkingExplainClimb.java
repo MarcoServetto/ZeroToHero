@@ -21,11 +21,11 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
       after the night's downpour,
       was enough to get me moving.@@.
       ]@""",
-      "English text must be in comments (//.. or /*..*/)","not code")
+      "English text must be in comments (//.. or /*..*/)","top level code")
     .question("""
         @[//Let me repeat: We need to @@CLIMB the hill nearby]@
         //Climbing is tricky, I hope you are ready!
-        ]@""",Comment,"comment")
+        ]@""",Comment,"top level code")
     .question("""
       /*As we have seen, operations move forward into results.
       For example */@[North@@.turn]@/*.turn becomes East.turn
@@ -37,7 +37,7 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
       /At any moment, grab onto the rock that represents
       /a small step @@forward.]@
       """,
-      "a comment needs `//`, not just `/`","comment")
+      "a comment needs `//`, not just `/`","top level code")
     .question("""
       //We are near there, just a few more steps toward
       @[No@@rth]@
@@ -45,16 +45,16 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
     .error("""
         @[/ * Getting there@@! * /]@
         """,
-      "Note the space in `/ *`. A multiline comment start with `/*`","comment")
+      "Note the space in `/ *`. A multiline comment start with `/*`","top level code")
     .question("""
       @[//@@/Still here? how many times did]@
       ///you stumble today?
       ///are you still sea sick?
-      """,Comment,"comment")
+      """,Comment,"top level code")
     .question("""
       // No worry, back to walking,
             @[// We are near @@there!]@
-      """, Comment,"comment")
+      """, Comment,"top level code")
     .question("""
       //Here it is the
       @[Hill@@:{}]@
