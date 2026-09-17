@@ -43,18 +43,14 @@ public class Walking1 implements Function<Days.LevelName,String>{
       //This time it is an object literal.
       """,ObjectLiteral)
     .error("@[+%/-@@-%--]@",
-      "the symbol run +%/--%-- is not a comment, a parameter, a method call, "
-      +"an object literal, a method declaration, a type declaration, or a type: "
-      +"the grammar has no rule for it")
+      "Text +%/--%-- is not valid code, just gibberish")
     .error("""
       //Text +%/--%-- outside of comments
       //is an error. When there is an error,
       //it does not matter what you select.
       @[Just press @@error :-)]@
       """,
-      "the line 'Just press error :-)' is plain English text, not preceded "
-      +"by // and not inside a /* */ block, so it is code the parser must "
-      +"reject")
+      "the text `Just press error :-)` is English, Not code.\n English need to go in comments")
     .question("""
       @[//@@Ok, if you answered all correct, the]@
       //next level button will appear after you
@@ -62,16 +58,12 @@ public class Walking1 implements Function<Days.LevelName,String>{
       //Otherwise, you will be asked to do
       //more questions and maybe also to redo
       //some of the past questions.
-      +%/--%--
+      //+%/--%--
       """,Comment)
     .question("""
       @[//@@Why the question before was a]@
       //comment and not error?
-      //because the text around the highlighted character
-      //was in a well formed comment.
-      //Error outside the smallest valid syntactical
-      //unit do not impact the answer
-      +%/--%--
+      //because the creazy +%/--%-- text was in a comment.
       """,Comment)
     .question("""
       //Ok, back to some questions.
@@ -94,9 +86,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
       Do mistakes on purpose in
       order to experiment@@.]@
       """,
-      "this is an English sentence with commas and a period, not preceded "
-      +"by // and not inside a /* */ block, so the parser sees it as code "
-      +"it cannot recognize")
+      "this is plain English not in a comment")
     .question("""
         @[/*This is a multiline comment.
         This is the last question of this batch,
