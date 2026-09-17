@@ -33,9 +33,7 @@ public class WalkingBack implements Function<Days.LevelName,String>{
     .question("North:{@[Ea@@st]@}",ObjectLiteral)
     .question("North:{.turn->@[Ea@@st]@}",ObjectLiteral)
     .error("@[.north{East@@}]@",
-      "'.north{East}' is neither a type declaration (its name starts with "
-      +"a dot) nor a method declaration (a method needs ': ReturnType ->' "
-      +"before its body, not a bare '{...}')")
+      "Top level code starts with Uppercase!")
     .question("""
       //Single line comments start with two
       @[//slash (/) and en@@d with the end of line]@
@@ -49,6 +47,5 @@ public class WalkingBack implements Function<Days.LevelName,String>{
       /*Any text inside comments is ok*/
       But outside @[@@]@ it is not!
       """,
-      "'But outside it is not!' follows the closed comment and is plain "
-      +"English text, not a comment, parameter, method call, or literal")
+      "Plain English need to be inside comments")
     .build(); } }
