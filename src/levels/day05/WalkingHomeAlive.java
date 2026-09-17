@@ -24,7 +24,7 @@ Starving:HungerLevel{Starving}
 //You said that at our home village we can fish.
 @[Hungry ++ @@++]@
 """, MethodCall)
-    .question("""
+    .error("""
 @[HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
 Comfortable:HungerLevel{Snacky}
@@ -35,7 +35,9 @@ Starving:HungerLevel{Starving}
 
 //Should we fish?
 Famished ++@@++]@
-""", Error)
+""",
+      "`++++` without spaces is not `++` twice")
+//hard case: syntactically this is ok, usually walking care about syntax only. Also we have top level and method body together
     .question("""
 HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
@@ -49,7 +51,7 @@ Starving:HungerLevel{Starving}
 @[Famished@@++]@ ++
 """, MethodCall)
 
-    .question("""
+    .error("""
 HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
 Comfortable:HungerLevel{Snacky}
@@ -61,7 +63,8 @@ Starving:HungerLevel{Starving}
 //But I'm a rabbit. Vegetarian,
 //like all Rabbits.
 @[Starving++@@++]@
-""",Error)
+""",
+   "`++++` without spaces is not `++` twice")
 
     .build();
     }

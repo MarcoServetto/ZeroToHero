@@ -10,11 +10,14 @@ public class Walking1 implements Function<Days.LevelName,String>{
     return new htmlMangle.Walking(name,33)
     // selected, start, end, option
     .question("""
-      //Press the first button to the right, then
-      //observe the screen. Some of this text will pulse.
-      @[//Select the pulsing text@@!]@
-      //A button will pulse. Press that button!
-      """,Comment)
+      // You need to do two actions:
+      //(1) Select the correct text
+      //(2) press the correct button
+
+      @[//Select all and only this lin@@e]@
+
+      //Press the button 'comment'
+      """,Comment,true)
     .question("""
       @[/*
       This is the walking minigame
@@ -39,13 +42,15 @@ public class Walking1 implements Function<Days.LevelName,String>{
       //around the highlighted/selected character.
       //This time it is an object literal.
       """,ObjectLiteral)
-    .question("@[+%/-@@-%--]@",Error)
-    .question("""
+    .error("@[+%/-@@-%--]@",
+      "Text +%/--%-- is not valid code, just gibberish")
+    .error("""
       //Text +%/--%-- outside of comments
       //is an error. When there is an error,
       //it does not matter what you select.
       @[Just press @@error :-)]@
-      """,Error)
+      """,
+      "the text `Just press error :-)` is English, Not code.\n English need to go in comments")
     .question("""
       @[//@@Ok, if you answered all correct, the]@
       //next level button will appear after you
@@ -53,16 +58,12 @@ public class Walking1 implements Function<Days.LevelName,String>{
       //Otherwise, you will be asked to do
       //more questions and maybe also to redo
       //some of the past questions.
-      +%/--%--
+      //+%/--%--
       """,Comment)
     .question("""
       @[//@@Why the question before was a]@
       //comment and not error?
-      //because the text around the highlighted character
-      //was in a well formed comment.
-      //Error outside the smallest valid syntactical
-      //unit do not impact the answer
-      +%/--%--
+      //because the creazy +%/--%-- text was in a comment.
       """,Comment)
     .question("""
       //Ok, back to some questions.
@@ -72,16 +73,18 @@ public class Walking1 implements Function<Days.LevelName,String>{
     .question("""
         @[North.@@turn]@
         """, MethodCall)
-    .question("""
+    .error("""
         @[South t@@urn]@
         //Note the missing dot!
-        """, Error)
-    .question("""
+        """,
+      "The method name is `.turn`, not `turn`")
+    .error("""
       @[Mistakes are not just welcome,
       Mistakes are necessary.
       Do mistakes on purpose in
       order to experiment@@.]@
-      """, Error)
+      """,
+      "this is plain English not in a comment")
     .question("""
         @[/*This is a multiline comment.
         This is the last question of this batch,

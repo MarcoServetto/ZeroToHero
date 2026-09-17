@@ -32,7 +32,8 @@ public class WalkingBack implements Function<Days.LevelName,String>{
     .question("@[No@@rth:{East}]@",TypeDeclaration)
     .question("North:{@[Ea@@st]@}",ObjectLiteral)
     .question("North:{.turn->@[Ea@@st]@}",ObjectLiteral)
-    .question("@[.north{East@@}]@",Error)
+    .error("@[.north{East@@}]@",
+      "Top level code starts with Uppercase!")
     .question("""
       //Single line comments start with two
       @[//slash (/) and en@@d with the end of line]@
@@ -42,8 +43,9 @@ public class WalkingBack implements Function<Days.LevelName,String>{
       and end with star slash*/@[Ea@@st]@
       //Code can be around them!
       """,ObjectLiteral)
-    .question("""
+    .error("""
       /*Any text inside comments is ok*/
       But outside @[@@]@ it is not!
-      """,Error)
+      """,
+      "Plain English need to be inside comments")
     .build(); } }

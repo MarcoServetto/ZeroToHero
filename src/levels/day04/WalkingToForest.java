@@ -16,14 +16,16 @@ public class WalkingToForest implements Function<Days.LevelName,String>{
       Bed:{ .getUp: North; }
       Out:{ #: Direction -> @[Bed.getUp@@.turn]@; }
       """, MethodCall)
-    .question("""
+    .error("""
       @[// Your legs and arms tired from yesterday,
          you ask him if @@it is far.]@
-      """, Error)
-    .question("""
+      """,
+      "`//` is a SINGLE LINE comment, so the other line is broken!")
+    .error("""
       @[No, no. It would be hard to carry everything
       back if it was too @@far!]@
-      """, Error)
+      """,
+      "English must go in comments")
     .question("""
       @[// Make an East@@.turn here!]@
       """, Comment)

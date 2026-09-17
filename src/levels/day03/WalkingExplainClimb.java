@@ -9,7 +9,7 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Walking(name,23)
     // selected, start, end, option
-    .question("""
+    .error("""
       @[Panic shook me awake, his voice urgent.
       "Wake up! We're going to climb the hill
       nearby to collect mushrooms. The rain last
@@ -20,7 +20,8 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
       fresh mushrooms, sprouting in the damp earth
       after the night's downpour,
       was enough to get me moving.@@.
-      ]@""",Error)
+      ]@""",
+      "English text must be in comments (//.. or /*..*/)")
     .question("""
         @[//Let me repeat: We need to @@CLIMB the hill nearby]@
         //Climbing is tricky, I hope you are ready!
@@ -30,19 +31,21 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
       For example `@[North@@.turn]@.turn` becomes `East.turn`
       that becomes `South`.
       """,MethodCall)
-    .question("""
+    .error("""
       @[/Climbing is all about recognizing those natural
       /transitions etched in the shapes of the rocks.
       /At any moment, grab onto the rock that represents
       /a small step @@forward.]@
-      """,Error)
+      """,
+      "a comment needs `//`, not just `/`")
     .question("""
       //We are near there, just a few more steps toward
       @[No@@rth]@
       """,ObjectLiteral)
-    .question("""
+    .error("""
         @[/ * Getting there@@! * /]@
-        """,Error)
+        """,
+      "Note the space in `/ *`. A multiline comment start with `/*`")
     .question("""
       @[//@@/Still here? how many times did]@
       ///you stumble today?

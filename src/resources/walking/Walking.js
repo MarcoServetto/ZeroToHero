@@ -199,10 +199,20 @@ const ColorQuestion= (q,isFrozen)=>{
   const r= currentSelectionRange();
   return r.start === startOk && r.end === endOk && allExplicitSelected(startOk,endOk);
  };
+ const isOverSelection= ()=>{
+  const r= currentSelectionRange();
+  return r.start <= startOk && r.end >= endOk && (r.start < startOk || r.end > endOk);
+ };
  const isCorrectAnswer= option=>{
   const isErrorType= requiredOption === 8;
   return option === requiredOption && (isErrorType || isCorrectSelection());
  };
+ const isDefaultSelection= ()=>{
+  const r= currentSelectionRange();
+  return !noRedChar() && r.start === redChar && r.end === redChar + 1;
+ };
+ const needsSelectionPrompt= ()=>
+  requiredOption !== 8 && isDefaultSelection() && (endOk - startOk) !== 1;
  const active= Log.tag('colorActive',flag=>{
   q.hidden = true;
   pane.hidden = !flag;
@@ -227,12 +237,13 @@ const ColorQuestion= (q,isFrozen)=>{
  q.addEventListener('keydown',e=>e.preventDefault());
  return {
   toSolution,toSingle,currentSelection,
-  isCorrectAnswer,isCorrectSelection,
+  isCorrectAnswer,isCorrectSelection,isOverSelection,needsSelectionPrompt,
   active,keepFocus,selectionEvent,
   extractStr,extractInt,
   addClass,removeClass,setPostSelect,setHintBlink,setOnTextPress,
   isBlinking:()=>blinking,
-  solved:false,requiredOption,inner:()=>q
+  solved:false,requiredOption,inner:()=>q,visible:()=>pane,
+  isExample:extractStr('example') === 'true',failCount:0
  };
 };
 
@@ -246,6 +257,60 @@ const Walking= (score) => {
   b.classList.add('hintCorrect');
  };
  const hintStop= q=>{ q.setHintBlink(on=>{}); hintClear(); };
+ const hintChar= Utils.getElementById('hintCharacter');
+ let panicToHideId= null;
+ const displayPanicMessage= (msg,duration) => {
+  clearTimeout(panicToHideId);
+  hintChar.querySelector('.speechBubble').textContent = msg;
+  hintChar.hidden = false;
+  panicToHideId= setTimeout(()=>{ hintChar.hidden = true; },duration);
+ };
+ const hidePanicMessage= () => {
+  clearTimeout(panicToHideId);
+  hintChar.hidden = true;
+ };
+ const gameArea= Utils.getElementById('gameArea');
+ const exampleBtn= Utils.getElementById('exampleBtn');
+ const exampleCursor= Utils.getElementById('exampleCursor');
+ const moveCursorTo= el=>{
+  const g= gameArea.getBoundingClientRect();
+  const r= el.getBoundingClientRect();
+  exampleCursor.style.left= (r.left + r.width / 2 - g.left) + 'px';
+  exampleCursor.style.top= (r.top + r.height / 2 - g.top) + 'px';
+ };
+ const refreshExampleButton= ()=>{
+  const q= questions[currentQuestionIndex];
+  exampleBtn.hidden= !(q.isExample && q.failCount > 3);
+ };
+ const exampleBtnAction= ()=>{
+  const q= questions[currentQuestionIndex];
+  const btn= optBtns[q.requiredOption-1];
+  const token= Buttons.freezeToken();
+  const cursorArriveWaitMs= 1800;
+  const pressHoldMs= 1000;
+  const showSelection= ()=>{
+   q.toSolution();
+   q.selectionEvent();
+   moveCursorTo(q.visible());
+   exampleCursor.hidden= false;
+   setTimeout(moveToButton,1200);
+  };
+  const moveToButton= ()=>{
+   moveCursorTo(btn);
+   setTimeout(mimePress,cursorArriveWaitMs);
+  };
+  const mimePress= ()=>{
+   exampleCursor.classList.add('pressing');
+   setTimeout(finish,pressHoldMs);
+  };
+  const finish= ()=>{
+   exampleCursor.classList.remove('pressing');
+   exampleCursor.hidden= true;
+   q.active(true);
+   token.unfreeze();
+  };
+  showSelection();
+ };
  const nextQuestion= () => {
   const completed= questions.every(q => q.solved);
   if (completed){ questions.forEach(q => q.solved = false); }
@@ -254,11 +319,13 @@ const Walking= (score) => {
   currentQuestionIndex = i;
   questions.forEach(q => q.active(false));
   questions[currentQuestionIndex].active(true);
+  hidePanicMessage();
   updateContent();
  };
  const updateContent= () => {
   requiredPointsElem.textContent = requiredPoints;
   resetAnimationSpeed();
+  refreshExampleButton();
  };
  const speedUp= ()=>{
   var x=score.justFailed()? 1 : score.streak()+1;
@@ -292,16 +359,25 @@ const Walking= (score) => {
   if (score.score() >= requiredPoints){ showNextLevelButton(); rightAfterPass += 1; }
   if (rightAfterPass > 5){ rightAfterPass = 3; setTimeout(Utils.flashGreen, 900); }
  };
- const handleIncorrectAnswer= (currentQuestion) => {
+ const failWaitMs= longW=>longW ? 10000 : 5000;
+ const overSelectionHint= 'remember, select the smallest syntactically self-contained unit';
+ const handleIncorrectAnswer= (currentQuestion,option) => {
   const longW= score.streak() > 1;
+  const overSelected= option === currentQuestion.requiredOption && currentQuestion.isOverSelection();
   score.doFailure();
   currentBonusElem.textContent = 0;
+  currentQuestion.failCount += 1;
   const opt= currentQuestion.requiredOption;
   const motivation= currentQuestion.extractStr('motivation');
 
   currentQuestion.toSolution();
   currentQuestion.selectionEvent();
   hintStart(currentQuestion,opt);
+  if (opt === 8){
+   displayPanicMessage(currentQuestion.extractStr('errorexplanation'),failWaitMs(longW));
+  } else if (overSelected && Math.random() < 1 / 3){
+   displayPanicMessage(overSelectionHint,failWaitMs(longW));
+  }
 
   let fall= null;
   currentQuestion.setOnTextPress(()=>{ if (fall){ fall.stop(); } });
@@ -315,7 +391,7 @@ const Walking= (score) => {
   });
  };
  const playFallAnimation= (longW,requiredOption,motivation,onDone)=>{//we should find an elegant way to still display the motivation
-  const waitT= longW ? 10000 : 5000;
+  const waitT= failWaitMs(longW);
   const freeze= Buttons.freezeFor(waitT+100);
   const timers= [];
   const flashers= [];
@@ -346,13 +422,18 @@ const Walking= (score) => {
  };
  const handleButtonClick = Log.tag('handleButtonClick', (option) => {
   const currentQuestion = questions[currentQuestionIndex];
+  if (currentQuestion.needsSelectionPrompt()){
+   displayPanicMessage('select text first\nthen press button',4000);
+   return;
+  }
   const nope= !currentQuestion.isCorrectAnswer(option);
-  if (nope){ handleIncorrectAnswer(currentQuestion); return; }
+  if (nope){ handleIncorrectAnswer(currentQuestion,option); return; }
+  currentQuestion.failCount = 0;
   Buttons.freezeFor(500);
   handleCorrectAnswer();
   nextQuestion();
  });
- const buttonActions = {};
+ const buttonActions = { exampleBtn:exampleBtnAction };
  for (const index in OptionExplanations){
   buttonActions['btn' + index]= ()=>handleButtonClick(Number(index));
  }
