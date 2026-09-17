@@ -32,16 +32,14 @@ public class Walking2 implements Function<Days.LevelName,String>{
     .question("@[So@@uth]@.turn\n//Remember, you need to select the smallest\n//syntactical unit around the highlighted character", ObjectLiteral)
     .question("@[Ea@@st]@.turn", ObjectLiteral)
     .error("@[North@@:]@",
-      "a type declaration needs a body after the colon, as in 'North:{}'; "
-      +"'North:' ends right after the colon with nothing following it")
+      "`:` must be followed by someting")
     .question("Direction:{.turn:@[Dir@@ection]@;}\n"
       +"//Direction here is in a 'role' that\n//is not object literal", Type)
     .question("North:Direction{@[.turn@@->East;]@}\n//The arrow (->) means 'method body is here'", MethodDeclaration)
     .question("North:@[Dire@@ction]@{.turn->East;}\n//If you are stuck, make a mistake and see the solution!", Type)
     .question("South:@[Dire@@ction]@{.turn->West;}\n//Learn by trial and error!", Type)
     .error("@[West:Direction{.t@@urn-->North;}]@",
-      "a method body is introduced by '->', not '-->'; the extra dash makes "
-      +"'-->' a token the grammar does not recognize")
+      "methods use '->', not '-->'")
     .question("West:Direction{@[.t@@urn->North]@}", MethodDeclaration)
     .question("West:Direction{.turnTwice->@[West.turn@@.turn]@}", MethodCall)
     .question("West:Direction{.turnTwice->@[West@@.turn]@.turn}", MethodCall)
