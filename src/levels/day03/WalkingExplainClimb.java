@@ -21,9 +21,7 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
       after the night's downpour,
       was enough to get me moving.@@.
       ]@""",
-      "this whole paragraph is English prose with quotes and punctuation, "
-      +"none of it preceded by // or wrapped in /* */, so the parser sees "
-      +"only unrecognized code")
+      "English text must be in comments (//.. or /*..*/)")
     .question("""
         @[//Let me repeat: We need to @@CLIMB the hill nearby]@
         //Climbing is tricky, I hope you are ready!
@@ -39,8 +37,7 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
       /At any moment, grab onto the rock that represents
       /a small step @@forward.]@
       """,
-      "each line starts with a single '/', not the '//' a line comment "
-      +"requires, so none of this text is a comment")
+      "a comment needs `//`, not just `/`")
     .question("""
       //We are near there, just a few more steps toward
       @[No@@rth]@
@@ -48,8 +45,7 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
     .error("""
         @[/ * Getting there@@! * /]@
         """,
-      "'/ *' and '* /' have a space between the two characters; the comment "
-      +"delimiters '/*' and '*/' must be adjacent, so this is not a comment")
+      "Note the space in `/ *`. A multiline comment start with `/*`")
     .question("""
       @[//@@/Still here? how many times did]@
       ///you stumble today?
