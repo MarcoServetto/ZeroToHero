@@ -11,7 +11,7 @@ public class WalkingHomeAlive implements Function<Days.LevelName,String>{
     // selected, start, end, option
     .question("""
 @[// ++ Ok, lets go home @@finally]@
-""", Comment)
+""", Comment,"")
     .question("""
 HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
@@ -23,7 +23,7 @@ Starving:HungerLevel{Starving}
 
 //You said that at our home village we can fish.
 @[Hungry ++ @@++]@
-""", MethodCall)
+""", MethodCall,"top level, then method body")
     .error("""
 @[HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
@@ -36,7 +36,7 @@ Starving:HungerLevel{Starving}
 //Should we fish?
 Famished ++@@++]@
 """,
-      "`++++` without spaces is not `++` twice")
+      "`++++` without spaces is not `++` twice","top level, then method body")
 //hard case: syntactically this is ok, usually walking care about syntax only. Also we have top level and method body together
     .question("""
 HungerLevel:{++:HungerLevel}
@@ -49,7 +49,7 @@ Starving:HungerLevel{Starving}
 
 //Panic: You can fish if you want.
 @[Famished@@++]@ ++
-""", MethodCall)
+""", MethodCall,"top level, then method body")
 
     .error("""
 HungerLevel:{++:HungerLevel}
@@ -64,7 +64,7 @@ Starving:HungerLevel{Starving}
 //like all Rabbits.
 @[Starving++@@++]@
 """,
-   "`++++` without spaces is not `++` twice")
+   "`++++` without spaces is not `++` twice","top level, then method body")
 
     .build();
     }

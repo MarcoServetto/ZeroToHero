@@ -23,7 +23,8 @@ const ColorQuestion= (q,isFrozen)=>{
  const startOk= MetaData.int(q,'selectionstart');
  const endOk= MetaData.int(q,'selectionend');
  const originalText= MetaData.str(q,'original');
- const pane= document.createElement('div');
+ const frameText= MetaData.str(q,'frame');
+ const pane= document.createElement('fieldset');
  q.value = originalText;
  q.after(pane);
  pane.className = 'colorQuestion';
@@ -151,6 +152,11 @@ const ColorQuestion= (q,isFrozen)=>{
  const build= ()=>{
   pane.textContent = '';
   cells.length = 0;
+  if (frameText){
+   const legend= document.createElement('legend');
+   legend.textContent = frameText;
+   pane.append(legend);
+  }
   for (let i=0;i<originalText.length;i += 1){
    const ch= originalText[i];
    if (ch === '\n'){

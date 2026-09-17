@@ -13,60 +13,60 @@ public class WalkingBoomerangParam implements Function<Days.LevelName,String>{
       @[Boomerang@@: {
         .throw(dir: Direction): Direction -> dir.reverse
         }]@
-      """,TypeDeclaration)
+      """,TypeDeclaration,"top level code")
     .question("""
       Boomerang: {
         @[.throw(dir: Direction): Direction @@-> dir.reverse]@
         }
-      """,MethodDeclaration)
+      """,MethodDeclaration,"top level code")
     .question("""
       Boomerang: {
         .throw(dir: Direction): Direction -> @[dir.r@@everse]@
         }
-      """,MethodCall)
+      """,MethodCall,"top level code")
     .question("""
       Boomerang: {
         .throw(dir: Direction): Direction -> @[d@@ir]@.reverse
         }
-      """,Parameter)
+      """,Parameter,"top level code")
     .question("""
       @[Boomerang: {
         .throw(dir: Direction): Direction -> dir.reverse
         @@}]@
-      """,TypeDeclaration)
+      """,TypeDeclaration,"top level code")
     .question("""
       Boomerang: {
         @[.throw(dir: Direction)@@: Direction -> dir.reverse]@
         }
-      """,MethodDeclaration)
+      """,MethodDeclaration,"top level code")
     .question("""
       Boomerang: {
         .throw(dir: Direction): Direction -> @[dir@@.reverse]@
         }
-      """,MethodCall)
+      """,MethodCall,"top level code")
     .question("""
       Boomerang: {
         .throw(dir: Direction): Direction -> @[@@dir]@.reverse
         }
-      """,Parameter)
+      """,Parameter,"top level code")
     .question("""
       @[Boom@@erang: {
         .throw(dir: Direction): Direction -> dir.reverse
         }]@
-      """,TypeDeclaration)
+      """,TypeDeclaration,"top level code")
     .question("""
       Boomerang: {
         .throw(dir: @[Dir@@ection]@): Direction -> dir.reverse
         }
-      """,Type)
+      """,Type,"top level code")
     .question("""
       Boomerang: {
         .throw(dir: Direction): @[Dir@@ection]@ -> dir.reverse
         }
-      """,Type)
+      """,Type,"top level code")
     .question("""
       Boomerang: {
         @[.throw(d@@ir: Direction): Direction -> dir.reverse]@
         }
-      """,MethodDeclaration)
+      """,MethodDeclaration,"top level code")
     .build(); } }
