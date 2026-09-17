@@ -9,7 +9,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Walking(name,33)
     // selected, start, end, option
-    .question("""
+    .questionTopLevel("""
       // You need to do two actions:
       //(1) Select the correct text
       //(2) press the correct button
@@ -17,8 +17,8 @@ public class Walking1 implements Function<Days.LevelName,String>{
       @[//Select all and only this lin@@e]@
 
       //Press the button 'comment'
-      """,Comment,true,"top level code")
-    .question("""
+      """,Comment,true)
+    .questionTopLevel("""
       @[/*
       This is the walking minigame
       Select all the code and press 'comment'.
@@ -26,32 +26,32 @@ public class Walking1 implements Function<Days.LevelName,String>{
       Indeed, this code is a multiline comment.
       Text useful for explanation but
       ignored in execution@@.
-      */]@""",Comment,"top level code")
-    .question("""
+      */]@""",Comment)
+    .questionTopLevel("""
       @[//This is a @@single line comment]@
       //Select all and only the line with
       //the highlighted character and press 'comment'.
       //The highlighted character is
       //the currently selected character.
       //Valid selections must include the highlighted character.
-      """,Comment,"top level code")
-    .question("""
+      """,Comment)
+    .questionMethodBody("""
       @[No@@rth]@
       //In this kind of puzzle, we select the
       //smallest self contained unit of code
       //around the highlighted/selected character.
       //This time it is an object literal.
-      """,ObjectLiteral,"method body")
-    .error("@[+%/-@@-%--]@",
-      "Text +%/--%-- is not valid code, just gibberish","top level code")
-    .error("""
+      """,ObjectLiteral)
+    .errorTopLevel("@[+%/-@@-%--]@",
+      "Text +%/--%-- is not valid code, just gibberish")
+    .errorTopLevel("""
       //Text +%/--%-- outside of comments
       //is an error. When there is an error,
       //it does not matter what you select.
       @[Just press @@error :-)]@
       """,
-      "the text `Just press error :-)` is English, Not code.\n English need to go in comments","top level code")
-    .question("""
+      "the text `Just press error :-)` is English, Not code.\n English need to go in comments")
+    .questionTopLevel("""
       @[//@@Ok, if you answered all correct, the]@
       //next level button will appear after you
       //answer this one.
@@ -59,38 +59,38 @@ public class Walking1 implements Function<Days.LevelName,String>{
       //more questions and maybe also to redo
       //some of the past questions.
       //+%/--%--
-      """,Comment,"top level code")
-    .question("""
+      """,Comment)
+    .questionTopLevel("""
       @[//@@Why the question before was a]@
       //comment and not error?
       //because the creazy +%/--%-- text was in a comment.
-      """,Comment,"top level code")
-    .question("""
+      """,Comment)
+    .questionMethodBody("""
       //Ok, back to some questions.
       //This is a method call!
       @[East@@.turn]@
-      """, MethodCall,"method body")
-    .question("""
+      """, MethodCall)
+    .questionMethodBody("""
         @[North.@@turn]@
-        """, MethodCall,"method body")
-    .error("""
+        """, MethodCall)
+    .errorMethodBody("""
         @[South t@@urn]@
         //Note the missing dot!
         """,
-      "The method name is `.turn`, not `turn`","method body")
-    .error("""
+      "The method name is `.turn`, not `turn`")
+    .errorTopLevel("""
       @[Mistakes are not just welcome,
       Mistakes are necessary.
       Do mistakes on purpose in
       order to experiment@@.]@
       """,
-      "this is plain English not in a comment","top level code")
-    .question("""
+      "this is plain English not in a comment")
+    .questionTopLevel("""
         @[/*This is a multiline comment.
         This is the last question of this batch,
         after, they will just repeat.
         If you have completed the level, you should
         see the next level button on the right@@!
         */]@
-        """, Comment,"top level code")
+        """, Comment)
     .build(); } }

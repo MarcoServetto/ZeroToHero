@@ -9,7 +9,7 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Walking(name,23)
     // selected, start, end, option
-    .error("""
+    .errorTopLevel("""
       @[Panic shook me awake, his voice urgent.
       "Wake up! We're going to climb the hill
       nearby to collect mushrooms. The rain last
@@ -21,66 +21,66 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
       after the night's downpour,
       was enough to get me moving.@@.
       ]@""",
-      "English text must be in comments (//.. or /*..*/)","top level code")
-    .question("""
+      "English text must be in comments (//.. or /*..*/)")
+    .questionTopLevel("""
         @[//Let me repeat: We need to @@CLIMB the hill nearby]@
         //Climbing is tricky, I hope you are ready!
-        ]@""",Comment,"top level code")
-    .question("""
+        ]@""",Comment)
+    .questionMethodBody("""
       /*As we have seen, operations move forward into results.
       For example */@[North@@.turn]@/*.turn becomes East.turn
       that becomes South.*/
-      """,MethodCall,"method body")
-    .error("""
+      """,MethodCall)
+    .errorTopLevel("""
       @[/Climbing is all about recognizing those natural
       /transitions etched in the shapes of the rocks.
       /At any moment, grab onto the rock that represents
       /a small step @@forward.]@
       """,
-      "a comment needs `//`, not just `/`","top level code")
-    .question("""
+      "a comment needs `//`, not just `/`")
+    .questionMethodBody("""
       //We are near there, just a few more steps toward
       @[No@@rth]@
-      """,ObjectLiteral,"method body")
-    .error("""
+      """,ObjectLiteral)
+    .errorTopLevel("""
         @[/ * Getting there@@! * /]@
         """,
-      "Note the space in `/ *`. A multiline comment start with `/*`","top level code")
-    .question("""
+      "Note the space in `/ *`. A multiline comment start with `/*`")
+    .questionTopLevel("""
       @[//@@/Still here? how many times did]@
       ///you stumble today?
       ///are you still sea sick?
-      """,Comment,"top level code")
-    .question("""
+      """,Comment)
+    .questionTopLevel("""
       // No worry, back to walking,
             @[// We are near @@there!]@
-      """, Comment,"top level code")
-    .question("""
+      """, Comment)
+    .questionTopLevel("""
       //Here it is the
       @[Hill@@:{}]@
-      """, TypeDeclaration,"top level code")
-    .question("""
+      """, TypeDeclaration)
+    .questionTopLevel("""
   Archer: {
     .heading: Direction -> heading;
     .aiming:  Direction -> aiming;
     .aimTo(d: Direction):Archer -> Archers#(heading, @[@@d]@);
     .headTo(d: Direction):Archer -> Archers#(d, aiming);
     }
-""", Parameter,"top level code")
-    .question("""
+""", Parameter)
+    .questionTopLevel("""
   Archer: {
     .heading: Direction -> heading;
     .aiming:  Direction -> aiming;
     .aimTo(d: Direction):Archer -> Archers#(heading, d);
     @[.headTo(@@d: Direction):Archer -> Archers#(d, aiming);]@
     }
-""", MethodDeclaration,"top level code")
-    .question("""
+""", MethodDeclaration)
+    .questionTopLevel("""
   Archer: {
     .heading: Direction -> heading;
     .aiming:  Direction -> aiming;
     .aimTo(d: Direction):Archer -> Archers#(heading, d);
     .headTo(d: @[D@@irection]@):Archer -> Archers#(d, aiming);
     }
-""", Type,"top level code")
+""", Type)
     .build(); } }

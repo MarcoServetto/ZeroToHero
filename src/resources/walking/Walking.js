@@ -1,10 +1,5 @@
 'use strict';
 
-const FrameIcons= {
- 'top level code': '🏛️',
- 'method body': '⚙️',
-};
-
 const InitColorQuestions= (isFrozen)=>
  _postColorInit(Deck.list('question').map(q=>ColorQuestion(q,isFrozen)));
 
@@ -28,7 +23,8 @@ const ColorQuestion= (q,isFrozen)=>{
  const startOk= MetaData.int(q,'selectionstart');
  const endOk= MetaData.int(q,'selectionend');
  const originalText= MetaData.str(q,'original');
- const frameText= MetaData.str(q,'frame');
+ const frameIcon= MetaData.str(q,'frameicon');
+ const frameTooltip= MetaData.str(q,'frametooltip');
  const pane= document.createElement('div');
  q.value = originalText;
  q.after(pane);
@@ -157,11 +153,11 @@ const ColorQuestion= (q,isFrozen)=>{
  const build= ()=>{
   pane.textContent = '';
   cells.length = 0;
-  if (frameText){
+  if (frameIcon){
    const icon= document.createElement('div');
    icon.className = 'frameIcon';
-   icon.textContent = FrameIcons[frameText] || Utils.error('no icon for frame '+frameText);
-   icon.dataset.tooltip = "this code is to be understood as '"+frameText+"'";
+   icon.textContent = frameIcon;
+   icon.dataset.tooltip = frameTooltip;
    pane.append(icon);
   }
   for (let i=0;i<originalText.length;i += 1){

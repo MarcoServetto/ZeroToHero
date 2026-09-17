@@ -9,63 +9,63 @@ public class WalkingToForest implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Walking(name, 21)
     // selected, start, end, option
-    .question("""
+    .questionTopLevel("""
       /* "I know a forest where we can collect wood to
       build the palisade," says Panic. He was already
       waiting for me at the door. */
       Bed:{ .getUp: North; }
       Out:{ #: Direction -> @[Bed.getUp@@.turn]@; }
-      """, MethodCall,"top level code")
-    .error("""
+      """, MethodCall)
+    .errorTopLevel("""
       @[// Your legs and arms tired from yesterday,
          you ask him if @@it is far.]@
       """,
-      "`//` is a SINGLE LINE comment, so the other line is broken!","top level code")
-    .error("""
+      "`//` is a SINGLE LINE comment, so the other line is broken!")
+    .errorTopLevel("""
       @[No, no. It would be hard to carry everything
       back if it was too @@far!]@
       """,
-      "English must go in comments","top level code")
-    .question("""
+      "English must go in comments")
+    .questionTopLevel("""
       @[// Make an East@@.turn here!]@
-      """, Comment,"top level code")
-    .question("""
+      """, Comment)
+    .questionTopLevel("""
       // The two of you keep walking...
       Path:{ @[.traverse@@(): Path;]@ }
       NarrowPath:Path{ .traverse -> VeryNarrowPath; }
       VeryNarrowPath:Path{ .traverse -> this; }
-      """, MethodDeclaration,"top level code")
-    .question("""
+      """, MethodDeclaration)
+    .questionTopLevel("""
       // And walking...
       Path:{ .traverse(): @[Pat@@h]@; }
       NarrowPath:Path{ .traverse -> VeryNarrowPath; }
       VeryNarrowPath:Path{ .traverse -> this; }
-      """, Type,"top level code")
-    .question("""
+      """, Type)
+    .questionTopLevel("""
       // Whoever made this path isn't the best...
       @[P@@ath:{ .traverse(): Path; }]@
       NarrowPath:Path{ .traverse -> VeryNarrowPath; }
       VeryNarrowPath:Path{ .traverse -> this; }
-      """, TypeDeclaration,"top level code")
-    .question("""
+      """, TypeDeclaration)
+    .questionTopLevel("""
       // Eventually, the path narrows...
       Path:{ .traverse(): Path; }
       NarrowPath:Path{ .traverse -> @[@@VeryNarrowPath]@; }
       VeryNarrowPath:Path{ .traverse -> this; }
-      """, ObjectLiteral,"top level code")
-    .question("""
+      """, ObjectLiteral)
+    .questionTopLevel("""
       // The forest is just ahead.
       Path:{ .traverse(): Path; }
       NarrowPath:Path{ .traverse -> VeryNarrowPath; }
       VeryNarrowPath:Path{ @[@@.traverse -> this;]@ }
-      """, MethodDeclaration,"top level code")
-    .question("""
+      """, MethodDeclaration)
+    .questionTopLevel("""
       // Let's go in!
       Path:{ .traverse(): Path; }
       NarrowPath:Path{ .traverse -> VeryNarrowPath; }
       VeryNarrowPath:Path{ .traverse -> ForestPath; }
       @[ForestPath@@:Path{ ForestPath }]@
-      """, TypeDeclaration,"top level code")
+      """, TypeDeclaration)
     .build();
     }
   }
