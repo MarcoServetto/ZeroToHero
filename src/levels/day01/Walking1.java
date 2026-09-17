@@ -17,7 +17,7 @@ public class Walking1 implements Function<Days.LevelName,String>{
       @[//Select all and only this lin@@e]@
 
       //Press the button 'comment'
-      """,Comment,true)
+      """,Comment)
     .questionTopLevel("""
       @[/*
       This is the walking minigame

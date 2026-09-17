@@ -18,20 +18,14 @@ public class Walking {
     qs.add(q);
   }
   public Walking questionTopLevel(String text, WalkingOption option){
-    return question(text,option,"",false,Frame.TopLevel);
-  }
-  public Walking questionTopLevel(String text, WalkingOption option, boolean showExample){
-    return question(text,option,"",showExample,Frame.TopLevel);
+    return question(text,option,"",Frame.TopLevel);
   }
   public Walking questionMethodBody(String text, WalkingOption option){
-    return question(text,option,"",false,Frame.MethodBody);
+    return question(text,option,"",Frame.MethodBody);
   }
-  public Walking questionMethodBody(String text, WalkingOption option, boolean showExample){
-    return question(text,option,"",showExample,Frame.MethodBody);
-  }
-  private Walking question(String text, WalkingOption option, String motivation, boolean showExample, Frame frame){
+  private Walking question(String text, WalkingOption option, String motivation, Frame frame){
     assert option != Option.Error:"error questions require an explanation: use error(text,explanation)";
-    commit(parse(text,option,motivation,showExample,"",frame));
+    commit(parse(text,option,motivation,"",frame));
     return this;
   }
   public Walking errorTopLevel(String text, String explanation){
@@ -41,10 +35,10 @@ public class Walking {
     return error(text,explanation,Frame.MethodBody);
   }
   private Walking error(String text, String explanation, Frame frame){
-    commit(parse(text,Option.Error,"",false,explanation,frame));
+    commit(parse(text,Option.Error,"",explanation,frame));
     return this;
   }
-  private WQuestion parse(String text, WalkingOption option, String motivation, boolean showExample, String explanation, Frame frame){
+  private WQuestion parse(String text, WalkingOption option, String motivation, String explanation, Frame frame){
     text = Escape.cleanUp(text);
     int start= text.indexOf("@[");
     assert start >= 0:text;
@@ -55,7 +49,7 @@ public class Walking {
     int end= text.indexOf("]@");
     assert end >= 0:text;
     text = text.replace("]@","");
-    return new WQuestion(Escape.escapeForHtmlAttribute(text), sel,start,end,option,motivation,showExample,
+    return new WQuestion(Escape.escapeForHtmlAttribute(text), sel,start,end,option,motivation,
         Escape.escapeForHtmlAttribute(explanation),frame);
   }
   public String build(){    
@@ -110,7 +104,7 @@ public class Walking {
     }
   }
 }
-record WQuestion(String text, int sel, int start, int end, htmlMangle.Walking.WalkingOption option, String motivation, boolean showExample, String errorExplanation, htmlMangle.Walking.Frame frame){
+record WQuestion(String text, int sel, int start, int end, htmlMangle.Walking.WalkingOption option, String motivation, String errorExplanation, htmlMangle.Walking.Frame frame){
   String body(int index) {
       var option=(java.lang.Enum<?>)this.option();
       return "<textarea class=\"overlayTextarea\"\n"
@@ -124,7 +118,6 @@ record WQuestion(String text, int sel, int start, int end, htmlMangle.Walking.Wa
           + "    data-motivation=\""+motivation+ "\"\n"
           + "    data-frameicon=\""+frame.icon+ "\"\n"
           + "    data-frametooltip=\""+frame.tooltip+ "\"\n"
-          + (showExample ? "    data-example=\"true\"\n" : "")
           + (errorExplanation.isEmpty() ? "" : "    data-errorexplanation=\""+errorExplanation+"\"\n")
           + "    autocomplete=\"off\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" readonly hidden></textarea>";
   }
