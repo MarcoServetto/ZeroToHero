@@ -1,5 +1,13 @@
 'use strict';
 
+const FrameIcons= {
+ 'top level code': '🏛️',
+ 'method body': '⚙️',
+ 'top level, then method body': '🔀',
+ 'comment': '💭',
+ 'not code': '🔤',
+};
+
 const InitColorQuestions= (isFrozen)=>
  _postColorInit(Deck.list('question').map(q=>ColorQuestion(q,isFrozen)));
 
@@ -153,11 +161,11 @@ const ColorQuestion= (q,isFrozen)=>{
   pane.textContent = '';
   cells.length = 0;
   if (frameText){
-   const header= document.createElement('div');
-   header.className = 'frameHeader';
-   header.textContent = frameText;
-   header.style.backgroundColor = pane.style.backgroundColor;
-   pane.append(header);
+   const icon= document.createElement('div');
+   icon.className = 'frameIcon';
+   icon.textContent = FrameIcons[frameText] || Utils.error('no icon for frame '+frameText);
+   icon.dataset.tooltip = frameText;
+   pane.append(icon);
   }
   for (let i=0;i<originalText.length;i += 1){
    const ch= originalText[i];

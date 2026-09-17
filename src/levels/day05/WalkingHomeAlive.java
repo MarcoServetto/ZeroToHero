@@ -11,7 +11,7 @@ public class WalkingHomeAlive implements Function<Days.LevelName,String>{
     // selected, start, end, option
     .question("""
 @[// ++ Ok, lets go home @@finally]@
-""", Comment,"")
+""", Comment,"comment")
     .question("""
 HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
