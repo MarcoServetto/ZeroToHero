@@ -112,3 +112,57 @@ Report in a PR with changes.
 Task:
 Look at the GUI in the standard library, see if some code reduction is possible.
 Report in a PR with changes.
+
+
+Task "agent session graceful shutdown on reboot":
+On the winCoordinator machine, four Claude Code agent sessions (win1, win2, win3, winCoordinator) run
+continuously, started by C:\data\AgentsCoordination\windowsVersion\autoScripts\agent-supervisor.ps1
+from a Task Scheduler logon trigger (task ClaudeAgentSupervisor). When the machine reboots or shuts
+down, these processes are killed without a chance to close cleanly, and their session files under
+%USERPROFILE%\.claude\sessions are left behind, still naming a pid that Windows later hands to an
+unrelated process.
+Investigate whether a Windows shutdown or restart can be intercepted early enough (a registered
+shutdown handler, a scheduled task bound to the shutdown event, a Claude Code session hook, or
+similar) to let each session close normally, or at least have its session file removed, before the
+machine actually goes down.
+If a real fix is not possible on this platform, say exactly why, and record the finding in
+`windowsVersion\gui_gym.txt`.
+Report in a PR to https://github.com/MarcoServetto/AgentsCoordination with changes.
+
+Task "startup cleanup after a crash or hard reboot":
+This machine has no startup step that cleans up leftovers of a previous ungraceful shutdown or crash.
+`windowsVersion\autoScripts\cleanup-watchdog.ps1` runs hourly and only handles disk space and stray
+webview processes; nothing runs once, right after logon, to reset state a hard reboot can leave behind
+(stale Claude Code session files under %USERPROFILE%\.claude\sessions are one example found on
+2026-09-18, but look for others: locked files, orphaned temp folders, partially written logs, stuck
+processes).
+Investigate what a Windows logon after a crash or hard reboot actually leaves behind on this machine,
+and add a startup cleanup step (for example inside `agent-supervisor.ps1` before it starts the four
+agents, or a small new script it calls) that clears it.
+Report in a PR to https://github.com/MarcoServetto/AgentsCoordination with changes.
+
+Task "scheduler_failed should trigger automatic recovery":
+`windowsVersion\autoScripts\agent-supervisor.ps1` runs a polling loop that fires the entries in
+`scheduledTasks.txt`. Any uncaught exception in that loop is caught once, sends a bare
+`scheduler_failed` message to the winCoordinator agent, and then the whole script exits; since the
+scheduling task only has a logon trigger, nothing in scheduledTasks.txt fires again until the next
+reboot. Right now the documented behaviour for winCoordinator on receiving this message is only to
+report it to the user and wait, which can leave scheduling broken for the rest of the day.
+Design a safe automatic recovery: winCoordinator (or agent-supervisor.ps1 itself) should be able to
+get the polling loop running again on its own without asking the user first, then report to the user
+what happened and what it did. Update CLAUDE.md/global_memory.txt instructions and the script as
+needed so this happens by default the next time the loop crashes.
+Report in a PR to https://github.com/MarcoServetto/AgentsCoordination with changes.
+
+Task "identify claude sessions without relying on pid reuse":
+`agent-supervisor.ps1`'s `send` function decides whether a session file under
+%USERPROFILE%\.claude\sessions is "live" purely by checking `Get-Process -Id <pid>` against the pid
+recorded in that file. Windows recycles pids, so a stale session file left over from before a reboot
+can collide with a freshly started session of the same name: on 2026-09-18 a leftover `win3` session
+file kept a pid that Windows reassigned after reboot to the unrelated `NisSrv` service, so `send`
+found two "live" sessions named `win3` and threw, which is what caused that day's `scheduler_failed`.
+Find a more reliable way to check that a session file's pid still refers to the same Claude Code
+process (for example comparing process start time to the session file's own timestamp, checking the
+process name/path, or another identifier available in the session file or process listing), and use
+it in `send` instead of a bare pid check.
+Report in a PR to https://github.com/MarcoServetto/AgentsCoordination with changes.
