@@ -2157,3 +2157,88 @@ Report:
 Bug hunt, no PR opened. Covered the entire Fearless-level GUI API (base/gui/types.fear), all of rt/gui/*.java (mouse dispatch/bubbling, key handling incl. focus-loss release synthesis, both layout managers, timers/shutdown, Skija text/button rendering, image scaling), every .fear file using the GUI across testGui1/testGui2/testGuiImg/testBasketball/testTicTacToe, and the existing headless regression suite. This area had already been through roughly 30 targeted GUI bug-hunt/cleanup rounds (see the three entries just above this one); every lead chased resolved to already-fixed, already-tested, or a deliberate design choice traceable via git log/blame. Independently re-verified Fearless's flat left-to-right operator parsing (no precedence) against Frontend's actual parser to rule out a suspected class of arithmetic-binding bugs. Two minor doc-only gaps noted but not turned into a PR (a missing throws-doc on Frame.locationX/Y, and three GUI handler-replacement behaviors documented only in Java comments, not the .fear declarations) since neither is a behavior bug. TestAllFrontendCoordinatorIntegration.java: Frontend 981/981; Coordinator+integration 303/304 (1 pre-existing unrelated abort). No PR, per the task's own "do not force a contrived finding" instruction.
 
 Log: C:\data\fearlessBranch3\overnight_logs\standardlibrary_gui_bug.log
+
+---
+
+Task "agent session graceful shutdown on reboot":
+On the winCoordinator machine, four Claude Code agent sessions (win1, win2, win3, winCoordinator) run
+continuously, started by C:\data\AgentsCoordination\windowsVersion\autoScripts\agent-supervisor.ps1
+from a Task Scheduler logon trigger (task ClaudeAgentSupervisor). When the machine reboots or shuts
+down, these processes are killed without a chance to close cleanly, and their session files under
+%USERPROFILE%\.claude\sessions are left behind, still naming a pid that Windows later hands to an
+unrelated process.
+Investigate whether a Windows shutdown or restart can be intercepted early enough (a registered
+shutdown handler, a scheduled task bound to the shutdown event, a Claude Code session hook, or
+similar) to let each session close normally, or at least have its session file removed, before the
+machine actually goes down.
+Report in a PR to https://github.com/MarcoServetto/AgentsCoordination with changes. Focus on the windows side, and leave a not in the linux side about getting symmetrical behaviour there.
+If a real fix is not possible on this platform, discuss why in the PR message.
+
+Report:
+Found the stale-pid collision is a reachable correctness bug, not just file hygiene: agent-supervisor.ps1's send() throws when a reused pid makes two session files match one agent name, which is exactly what turns into scheduler_failed and kills the whole scheduling loop. Evaluated every mechanism the task listed (Win32 console control handler, Microsoft.Win32.SystemEvents.SessionEnding, Group Policy shutdown scripts, a Task Scheduler shutdown-event trigger, a Claude Code session-end hook) against needing no new file, firing early enough, and being verifiable without touching a live agent; picked SystemEvents.SessionEnding. start_agent now clears an agent's own stale session file before every relaunch (covers crash/power-loss too, not just clean shutdown); a SessionEnding handler additionally clears all four agents' session files as soon as Windows signals logoff/shutdown. Did not attempt to make claude.exe itself exit cleanly (closed native binary, unverifiable without killing a live production agent) or add a new persistent script (Group Policy/Task Scheduler triggers), both discussed in the PR body. Verified the removal logic and the SessionEnding registration against scratch files only; never rebooted or touched a live agent process. Left a note on the linux side pointing at this fix's shape.
+
+PR: https://github.com/MarcoServetto/AgentsCoordination/pull/15
+Log: C:\data\fearlessBranch3\overnightLogs\2026-09-19-night\agent-session-graceful-shutdown.log
+
+---
+
+Task "startup cleanup after a crash or hard reboot":
+This machine has no startup step that cleans up leftovers of a previous ungraceful shutdown or crash.
+`windowsVersion\autoScripts\cleanup-watchdog.ps1` runs hourly and only handles disk space and stray
+webview processes; nothing runs once, right after logon, to reset state a hard reboot can leave behind
+(stale Claude Code session files under %USERPROFILE%\.claude\sessions are one example found on 2026-09-18, but look for others: locked files, orphaned temp folders, partially written logs, stuck processes).
+Investigate what a Windows logon after a crash or hard reboot actually leaves behind on this machine,
+and add a startup cleanup step (for example inside `agent-supervisor.ps1` before it starts the four
+agents, or a small new script it calls) that clears it.
+Report in a PR to https://github.com/MarcoServetto/AgentsCoordination with changes. Focus on the windows side, and leave a not in the linux side about getting symmetrical behaviour there.
+
+Report:
+Checked PR #15 first and did not duplicate its session-file cleanup. Confirmed via the System event log that this machine really does have periodic unclean shutdowns (Kernel-Power id 41 / EventLog id 6008, roughly every 1-4 weeks). Found a second, distinct stale-lock pattern PR #15 doesn't reach: <workDir>\.claude\scheduled_tasks.lock (project-local, not the global sessions dir) -- concretely, winCoordinator's lock recorded a pid that was no longer running. start_agent now also clears that lock before relaunching. Investigated and ruled out, with reasoning rather than a live test: Eclipse workspace .lock files (a real OS FileLock, self-releases on any process death, so never actually stale) and about 77MB of WER/crash-dump accumulation (real, but ordinary third-party noise unrelated to this machine's own crash cycle, better suited to cleanup-watchdog's existing hourly sweep than a new startup step). Left a note on the linux side.
+
+PR: https://github.com/MarcoServetto/AgentsCoordination/pull/16
+Log: C:\data\fearlessBranch3\overnightLogs\2026-09-19-night\startup-cleanup.log
+
+---
+
+Task "scheduler_failed should trigger automatic recovery":
+`windowsVersion\autoScripts\agent-supervisor.ps1` runs a polling loop that fires the entries in
+`scheduledTasks.txt`. Any uncaught exception in that loop is caught once, sends a bare
+`scheduler_failed` message to the winCoordinator agent, and then the whole script exits; since the
+scheduling task only has a logon trigger, nothing in scheduledTasks.txt fires again until the next
+reboot. Right now the documented behaviour for winCoordinator on receiving this message is only to
+report it to the user and wait, which can leave scheduling broken for the rest of the day.
+
+Update CLAUDE.md
+to instead instruct the coordinator to:
+- Assume the user is likely asleep or not currently active on those sessions.
+- Take action to see what needs fixing and to restart the agent-supervisor.ps1 with any 'temporary fixes' that may be needed; and only after report to the user.
+Report in a PR to https://github.com/MarcoServetto/AgentsCoordination with changes.
+This should easily be done symmetrically to Windows and Linux.
+
+Report:
+Pure CLAUDE.md instructions change, no script touched. Updated the "Machine-health review" section in both windowsVersion/home/.claude/CLAUDE.md (winCoordinator) and linuxVersion/home/.claude/CLAUDE.md (linuxCoordinator), symmetrically: a bare scheduler_failed message now instructs the coordinator to assume the user is asleep or away, investigate and apply whatever temporary fix gets scheduling running again, restart agent-supervisor itself, and report to the user only afterward -- replacing the previous report-and-wait wording. Deliberately left the exact restart mechanism (Start-ScheduledTask on Windows, re-invoking the script on Linux) out of the wording, matching the policy-level altitude of the rest of the file and trusting the coordinator's own platform knowledge. The existing run_daily_check_up monitor-only default is unchanged and now lives in its own paragraph, since scheduler_failed is a different kind of event with the opposite default.
+
+PR: https://github.com/MarcoServetto/AgentsCoordination/pull/17
+Log: C:\data\fearlessBranch3\overnightLogs\2026-09-19-night\scheduler-failed-recovery.log
+
+---
+
+Task "identify claude sessions without relying on pid reuse":
+`agent-supervisor.ps1`'s `send` function decides whether a session file under
+%USERPROFILE%\.claude\sessions is "live" purely by checking `Get-Process -Id <pid>` against the pid
+recorded in that file. Windows recycles pids, so a stale session file left over from before a reboot
+can collide with a freshly started session of the same name: on 2026-09-18 a leftover `win3` session
+file kept a pid that Windows reassigned after reboot to the unrelated `NisSrv` service, so `send`
+found two "live" sessions named `win3` and threw, which is what caused that day's `scheduler_failed`.
+Find a more reliable way to check that a session file's pid still refers to the same Claude Code
+process (for example comparing process start time to the session file's own timestamp, checking the
+process name/path, or another identifier available in the session file or process listing), and use
+it in `send` instead of a bare pid check.
+Report in a PR to https://github.com/MarcoServetto/AgentsCoordination with changes.
+Focus on the windows side, and leave a not in the linux side about getting symmetrical behaviour there.
+
+Report:
+Read PR #15's diff first: it narrows the window a stale session file can exist in (clears it at relaunch and on graceful shutdown) but never touches send()'s own pid check, and a real gap remains for a crash without relaunch or an ungraceful shutdown that skips the SessionEnding handler. send() now requires both a live pid and a matching process StartTime (already written to every session file as procStart, a Windows FILETIME, confirmed to already equal (Get-Process).StartTime.ToFileTimeUtc()) before counting a session live, instead of a bare pid check -- 4 lines inside the existing loop, no new function or file format change. Verified against the real live sessions (still finds exactly one correct match per agent) and reproduced the exact 2026-09-18 collision shape in a scratch copy: old check found 2 false matches for win3, new check finds exactly 1, the genuine one. Left a note on the linux side pointing at process start time (for example /proc/<pid>/stat) as the shape to mirror there instead of the current bare os.kill(pid, 0).
+
+PR: https://github.com/MarcoServetto/AgentsCoordination/pull/18
+Log: C:\data\fearlessBranch3\overnightLogs\2026-09-19-night\session-liveness-check.log
