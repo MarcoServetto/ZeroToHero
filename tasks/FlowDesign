@@ -150,11 +150,31 @@ Also returning exactly 1 element avoids any kind of 'sequence API' strictly requ
 
 filter can not change the elements, the element type, or add elements. Useful restrictions for optimisations; also avoids 'sequence API's.
 
+**The flow the lambda returns is appended in its lazy state; it is not fenced.**
+
+`f#e` returns a flow, and it is a flow like any other: its own stages run one element at a time, as the elements are pulled, and they are pulled by whatever sits downstream of the `flatMap`. The elements of an inner flow are elements of the whole flow, so trickling covers them too, and a decision point downstream can land between two of them, in the middle of an inner flow.
+
+Assuming `pss: List[List[Person]]` holding `a0 a1 a2`, then `b0 b1 b2`, then `c0 c1 c2`:
+
+```
+pss.flow
+  .flatMap{ps -> ps.flow.map{p -> p.name == "b2" ? {.then -> Error.msg `b2 is poison`; .else -> p}}}
+  .limit 5
+  .map{p -> p.name}
+  .list
+```
+
+returns `Lists#("a0", "a1", "a2", "b0", "b1")`. The count of `limit` is reached at `b1`, halfway through the second inner flow, so the inner `map` is never applied to `b2` and the error is never raised. The two `map` stages alternate one element at a time: the inner one produces `a0`, the outer one takes it, the inner one produces `a1`, and so on.
+
+The same chain with `.limit 6` throws the `Info` of that `Error.msg`, because the sixth element can only be produced by applying the inner `map` to `b2`.
+
+That pair is the whole point. Were the flow returned by the lambda fenced, run to its end when the lambda hands it over, `.limit 5` would throw as well, because the inner `map` would have reached `b2` before the first element of that group ever went downstream. Fencing an inner flow is observable, and the result trickling forces is the one that does not throw.
+
 `.flatMap` can be desugared onto `.actorMut`, with the inner flow drained into the actor's own sink:
 
-`.flatMap f -> this.actorMut[Void,R](Void, {down, _, e, m -> Block#(_FlowInto#(f#e, down), m.continue)})`
+`.flatMap f -> this.actorMut[Void,R](Void, {down, _, e, m -> _FlowInto#(f#e, down) ? {.then -> m.continue; .else -> m.stop}})`
 
-where `_FlowInto#(fl, sink)` runs `fl` and pushes each of its elements into `sink` as it arrives. `_FlowInto` is a helper rather than a `Flow` method: nothing outside this desugaring needs to hand a flow a sink.
+where `_FlowInto#(fl, sink)` pushes each element of `fl` into `sink` as `fl` produces it, and returns `False` when `sink` stopped it and `True` when `fl` ran out. The actor passes that answer on: without it `.limit 5` above would go on and open the third group after being stopped inside the second. `_FlowInto` is a helper rather than a `Flow` method: nothing outside this desugaring needs to hand a flow a sink.
 
 The sink has to be passed to `_FlowInto`, not captured by it. `actorMut` hands `down` as `mutH ActorSink[R]`, and a hygienic reference can not be stored in a literal, so
 
@@ -162,11 +182,11 @@ The sink has to be passed to `_FlowInto`, not captured by it. `actorMut` hands `
 
 is rejected: the type of parameter `down` is hygienic and thus it can not be captured in the object literal instance of `mut MF[R,Void]`. Passing it on as an argument is what hygiene allows, and it is also the shape that keeps `down` from outliving the actor call.
 
-`forEach` would be the wrong terminal even where it is allowed, because it is a fence: every stage of the inner flow would finish with every inner element before the first one reached downstream. In
-`l.flow.flatMap{e -> Flows#(1,2).map{x -> ErrIf#(x==2,x)}}.map{_ -> Boom#}`
-the fence reports the error of `ErrIf` and trickling reports the one of `Boom`.
+`forEach` would be the wrong terminal even where it is allowed, because it is the fence the section above rules out, and because it can not report a stop back. `.forEach` fences to protect a `mut MF` lambda that may write what the stages before it can read; `_FlowInto` pushes into the actor's own sink rather than into user code, so it has nothing to protect and no reason to materialise.
 
 What `_FlowInto` may push into the sink is bounded by that same hygiene; see `### scan, actor, actorMut, let`.
+
+Other approaches land on the same answer, by both routes. Java streams push and Python generators pull, and both trickle the inner elements and both stop in the middle of an inner sequence: the chain above returns its five elements and raises nothing, while asking for six raises. Java given the same expression with `.parallel()` added throws the error of `b2`, having run the second group without ever running the first. One expression, one input, two results, selected by a switch that is supposed to be invisible: that is what `Flow unobservable parallelism` exists to exclude, and it arrives through `flatMap`, which is also why `### limit` notes that `.flatMap` breaks the bound on the work a `limit` may cause.
 
 ### limit
 
