@@ -139,9 +139,9 @@ Those operations logically act element-wise. They take a lambda of type `read F[
 **Semantic reduction:**\
 map and filter can both be trivially implemented on top of flatMap.
 
-`.map f -> this.flatMap{e->Flow#(f#e)}`
+`.map f -> this.flatMap{e->Flows#(f#e)}`
 
-`.filter f-> this.flatMap{e->f#e?{.then-> Flow#e; .else->Flow#} }`
+`.filter f-> this.flatMap{e->f#e?{.then-> Flows#e; .else->Flows#} }`
 
 They exist as separate methods for readability and performance reasons.
 
@@ -150,7 +150,23 @@ Also returning exactly 1 element avoids any kind of 'sequence API' strictly requ
 
 filter can not change the elements, the element type, or add elements. Useful restrictions for optimisations; also avoids 'sequence API's.
 
-`.flatMap` can be desugared onto `.actorMut` as follows: ....//TODO
+`.flatMap` can be desugared onto `.actorMut`, with the inner flow drained into the actor's own sink:
+
+`.flatMap f -> this.actorMut[Void,R](Void, {down, _, e, m -> Block#(_FlowInto#(f#e, down), m.continue)})`
+
+where `_FlowInto#(fl, sink)` runs `fl` and pushes each of its elements into `sink` as it arrives. `_FlowInto` is a helper rather than a `Flow` method: nothing outside this desugaring needs to hand a flow a sink.
+
+The sink has to be passed to `_FlowInto`, not captured by it. `actorMut` hands `down` as `mutH ActorSink[R]`, and a hygienic reference can not be stored in a literal, so
+
+`{down, _, e, m -> Block#(f#e .forEach{x -> down#x}, m.continue)}`
+
+is rejected: the type of parameter `down` is hygienic and thus it can not be captured in the object literal instance of `mut MF[R,Void]`. Passing it on as an argument is what hygiene allows, and it is also the shape that keeps `down` from outliving the actor call.
+
+`forEach` would be the wrong terminal even where it is allowed, because it is a fence: every stage of the inner flow would finish with every inner element before the first one reached downstream. In
+`l.flow.flatMap{e -> Flows#(1,2).map{x -> ErrIf#(x==2,x)}}.map{_ -> Boom#}`
+the fence reports the error of `ErrIf` and trickling reports the one of `Boom`.
+
+What `_FlowInto` may push into the sink is bounded by that same hygiene; see `### scan, actor, actorMut, let`.
 
 ### limit
 
@@ -169,7 +185,21 @@ This is particularly important for Repr and Isopod, where speculative execution 
 
 Given that limit is known a priori, a nodes system where the only mutable 'shared' state between the actors is how much of limit is left or a simple binary STOP NOW could also be effective.
 
-Limit can be 
+`limit n` for `n > 0` can be desugared onto `.actorMut`, with the remaining budget as the actor state:
+
+`.limit n -> this.actorMut[mut Count[Nat], E](Count.nat n, {down, s, e, m -> Block#(down#e, s--, s.get == 0 ? {.then -> m.stop; .else -> m.continue})})`
+
+Emit, decrement, stop on the element that exhausts the budget; element `n` is never pulled, so no stage runs on it. What this desugaring covers is bounded by the hygiene of the sink; see `### scan, actor, actorMut, let`.
+
+`limit 0` throws. Returning the empty flow is the available answer and most other approaches take it, but that is the mistake of the iconic functional `zip`: an answer manufactured so that the call can proceed rather than admit that something upstream is wrong. Asking for no elements while writing out a whole chain of stages is a leftover, not a request. Since `n` is known before any element moves, refusing it costs nothing and lands before any user lambda has run.
+
+The error is deterministic, and it is raised where `.limit` is called rather than at the terminal. `n` is not a user lambda, so raising it there does not weaken Lazy, and nothing has run yet, so there is nothing to leave half done.
+
+It is deterministic because the reason the other flow errors are not does not apply. The identity check over Repr and Isopod has to be non deterministic to avoid exposing object identities, and the parallelism misuse error has to be, or which execution strategy the runtime picked would become observable. `limit 0` exposes neither: it is a function of an argument the caller wrote, so it always throws or never throws on structurally identical input. Decisively, a non deterministic error may legally be replaced by a no op, and the no op here is silently returning the empty flow, the one behaviour being refused.
+
+That is the rule behind the two categories: a flow error is non deterministic when making it deterministic would expose object identity or the execution strategy, and deterministic when it is a violation of the domain of the operation. `limit 0` joins the second group, with `.get` on a flow whose size is not 1, `.mapping` on a repeated key and `IsoPod.open` on an open pod, all catchable by `Try#`. A linter can not take this over, since `.limit x` may take `x` from outside.
+
+Two guards of this kind already exist and do not agree with each other. `.limit` already throws a deterministic error for an `n` above what the backend can count to. `Range.flow(step)` refuses a `0` step and a reversed range, so `5=~~=1` is not silently empty, but it refuses them with an assert, and asserts are non deterministic. Under the rule above both are violations of a domain and belong with `limit 0`.
 
 ### scan, actor, actorMut, let
 
@@ -178,6 +208,19 @@ However, long chains of stages may require compositions of both pipeline and dat
 Here we want to state all the reasonably possible parallel shapes, not the ones we think are the most performant.
 
 The first parameter of `actorMut` is the mutable state of the actor, handed in as `iso S`. Any object can play the role of mutable state, including an object whose ROG holds mutable capabilities; for example a `mut Var[Nat]`.
+
+//TODO: an actor can not pass on what it was handed. This is the open difficulty behind the three desugarings; nothing below is settled.
+
+`actorMut` hands the sink as `mutH ActorSink[R]`. Calling a `mut` method with an argument on a hygienic receiver requires that argument to be `iso`, so `down#x` typechecks only when `x` can be handed over as `iso`: an `imm` value, or one the actor built itself. An actor can never pass on the element it received, and never a `mut` value a user lambda returned. Four consequences:
+
+- `_FlowInto` has to push the inner flow's elements into the sink, so the `.flatMap` desugaring typechecks but moves the question into `_FlowInto` instead of answering it;
+- the `limit` desugaring holds for elements the actor can hand over, not for an arbitrary `E:*`;
+- the `map with context` desugaring has the same gap: `down#(g#(s.iso.close, e))` is rejected as soon as `R` is not `imm`, because the call to `g` has type `R` instead of a subtype of `iso R`;
+- no actor stage can sit in a `ParRepr` or a `ParPod` flow at all, which is where pipeline parallelism has the most to offer.
+
+The outward direction is solved and shows the shape an answer would take: `ToIso` offers `mut .iso: iso ToIso[R]`, and a method taking no arguments needs no promotion of an argument, so it can be called on the `mutH` state and hands an `iso` back out. Nothing plays that role for the way in.
+
+Making the element arrive as `iso E` would settle all four at once, and `ParRepr` and `ParPod` do promise that distinct source elements share no inner state. That promise is about the elements of the source though, not about what an arbitrary earlier stage passes on, so it is not yet clear it is enough. Until this is decided, the three desugarings hold for `imm` results only.
 
 `let` belongs to the fence group because the elements need duplication. The current implementation of `let` is more involved than needed, offering optional consumption.
 
