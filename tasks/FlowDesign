@@ -35,10 +35,9 @@ It must be locally created inside the `{..` part.
 Thus running that flow as a fork join is correct: even if element 3 of 7 of `rs` were to throw, we would not be able to observe non determinism since all the ROG(rs) is garbage collectable at the point the error is captured.
 
 
-**Identity Transparency:**
-
+**Identity Transparency:**\
 Without the mut methods of capability objects, we can not distinguish whether two references are the same object in memory/object identity or just structurally equivalent.\
-This needs to be enforced by careful API design in all the `_Magic!` set ups. This is needed for Determinism and caching: without this one could call something twice and discover re-computation vs access to cached result, in turn allowing to violate Determinism of an outer expression internally using caching (and testing for identity)
+This needs to be enforced by careful API design in all the `_Magic!` set ups. This is needed for Determinism and caching: without this one could call something twice and discover re-computation vs access to cached result, in turn allowing to violate Determinism of an outer expression internally using caching (and testing for identity).
 
 **Flow unobservable parallelism:**\
 It must not be observable if a potentially parallel flow actually runs in parallel or sequentially. This is (intentionally) slightly stronger than what is strictly needed to simply not violate determinism.
@@ -58,7 +57,7 @@ A flow expression is a source, then stages, then one terminal.
 **Lazy:** Until the terminal is triggered, no user provided lambdas in any of the flow methods should be run.
 Semantic should be defined consistently by multiple descriptions and validated by checking that those descriptions all provide the same consistent semantic.
 
-Semantic 1: the simple composition of all the stages and the terminal,
+Semantic 1: the simple composition of all the stages and the terminal.
 
 Semantic 2: by desugaring all flow operations into other more primitive ones until a few operations can be provided an un-optimised but trivially correct direct implementation.
 
@@ -86,9 +85,9 @@ Execution strategies are defined by the terminal operation looking at all the st
 **Short-circuit:** `first`, `get`, `getOpt`, `any`, `all`, `none`, `findFirst`, `findMap`. Can decide before the end, leaving later elements unreached.
 
 **Execution modes:**\
-Using the static type of the initial collection we can enable one or more execution mode. They are a crystallization of what we know and what we can assume; they are used to allow/block various execution strategies for the terminal, including parallelization and omission of intermediate materializations.
+Using the static type of the initial collection we can enable one or more execution modes. They are a crystallization of what we know and what we can assume; they are used to allow/block various execution strategies for the terminal, including parallelization and omission of intermediate materializations.
 
-Note that they are not about type of the elements in the middle of the stages. A stage of a flow in execution mode `Par` may create mutable objects, and another stage may mutate them: over an `imm List[imm Nat]`, `l.flow.map{i -> Persons#("Bob", i)}.map{p -> ...}` runs in parallel and every (mut) `Person` it builds is reachable from nowhere else, so later stages can mutate it safely.
+Note that they are not about the type of the elements in the middle of the stages. A stage of a flow in execution mode `Par` may create mutable objects, and another stage may mutate them: over an `imm List[imm Nat]`, `l.flow.map{i -> Persons#("Bob", i)}.map{p -> ...}` runs in parallel and every (mut) `Person` it builds is reachable from nowhere else, so later stages can mutate it safely.
 
 **`Par[T:imm,read]`:** can be enabled if source elements are `imm` or `read`.
 
@@ -123,7 +122,7 @@ Often, this is the favourite parallelization strategy.
 This is more what happens in actor systems, where
 `a.flow.map f1 .filter f2 .list`
 would be conceptually made by 3 actors/nodes.
-The first actor receives (chunks? individual?) elements from the flow and applies f1 to them, then sends them to the next actor mailbox. The next actor applies filter f2 and sends the successful elements to the last actor that builds the list. Crucially those 3 actors can run in parallel and keep local mutable data that can be freely updated. Each node/actor sees a sequential view of the world/task but they are working in parallel.
+The first actor receives (chunks? individual?) elements from the flow and applies f1 to them, then sends them to the next actor's mailbox. The next actor applies filter f2 and sends the successful elements to the last actor that builds the list. Crucially those 3 actors can run in parallel and keep local mutable data that can be freely updated. Each node/actor sees a sequential view of the world/task but they are working in parallel.
 
 This parallelization strategy is applicable in plenty of cases where the other strategy is not applicable, and it is more efficient when 'code locality' is crucial: the same actor does the same operation over and over, if the code to do that operation fits in cache, this may get faster than data parallelism, especially when the full operation (not broken into chunks) would not fit in cache.
 
@@ -131,11 +130,11 @@ This parallelization strategy is applicable in plenty of cases where the other s
 
 The kinds above say what an operation is. Each section below is the design space of one operation: what an implementation is free to do with it, and what is still open.
 
-### **Operations map, filter, flatMap**
+### Operations map, filter, flatMap
 
 //Note: I do not think we need brother operations .immMap,.immFilter and .immFlatMap taking an imm F instead of a read F; there is no other optimization that it would enable. Check.
 Those operations logically act element-wise. They take a lambda of type `read F[E,R]`, so the execution of such lambda cannot mutate anything captured by such lambda. The only possible mutable input could come from the element it is handed, which may be `mut`.\
-Assuming: `Boom#` throwing a deterministic error, `l:List[Nat]` containing `0` to `7`, `ErrIf#(b: Bool, x: Nat): Nat` raising a deterministic error when `b` holds and returning `x` otherwise, `f` and `g` of type `read F[Nat,Nat]`, `P` and `Q` of type `F[Nat,Bool]`, `by` the natural order on the elements, kem a key and element mapper, Ctxs#0 a context counting from 0.//TODO: reduce and simplify this somehow. Some of those can be moved to be local. Like.. can we just write Lists#(0,1,2,3,4,5,6,7) in the relevant examples?
+Assuming: `Boom#` throwing a deterministic error, `l:List[Nat]` containing `0` to `7`, `ErrIf#(b: Bool, x: Nat): Nat` raising a deterministic error when `b` holds and returning `x` otherwise, `f` and `g` of type `read F[Nat,Nat]`, `P` and `Q` of type `F[Nat,Bool]`, `by` the natural order on the elements, `kem` a key and element mapper, `Ctxs#0` a context counting from 0.//TODO: reduce and simplify this somehow. Some of those can be moved to be local. Like.. can we just write Lists#(0,1,2,3,4,5,6,7) in the relevant examples?
 
 **Semantic reduction:**\
 map and filter can both be trivially implemented on top of flatMap.
@@ -149,7 +148,7 @@ They exist as separate methods for readability and performance reasons.
 map goes 1-1, so it is known to preserve the size.
 Also returning exactly 1 element avoids any kind of 'sequence API' strictly required for any kind of flatMap implementation.
 
-filter can not change the elements, the element type, or add elements. Useful restrictions for optimisations; also avoids 'sequence API's
+filter can not change the elements, the element type, or add elements. Useful restrictions for optimisations; also avoids 'sequence API's.
 
 //TODO: we should now do all the other operators here, many of the explanations below could be moved up here (for example actorMut and map with context), and
 the examples can then stay below as examples of using many different stages together.
@@ -157,7 +156,7 @@ the examples can then stay below as examples of using many different stages toge
 **example with size**\
 `l.flow.map{x -> Boom#}.size`
 
-This code throws. In other flow/stream libraries this may return the size without executing the lambda since the size is known
+This code throws. In other flow/stream libraries this may return the size without executing the lambda since the size is known.
 
 **example with a short-circuit terminal**\
 `l.flow.map{x -> ErrIf#(x == 5, x)}.first`
@@ -171,7 +170,7 @@ In other flow/stream libraries a parallel execution may non deterministically pr
 This flow returns `True` if there is an index `i` such that:
 
 - `P#ei && {Q#ei}` returns `True` (that is, it does not loop and does not throw an exception)
-- forall `j<i`, `P#ej && {Q#ej}` returns false (that is, it does not loop and does not throw an exception)
+- forall `j<i`, `P#ej && {Q#ej}` returns `False` (that is, it does not loop and does not throw an exception)
 
 It returns `False` if `P#ej && {Q#ej}` returns `False` for every index `j`.
 
@@ -181,8 +180,7 @@ This example shows clearly what the initial "trickle the elements through the va
 
 **example with a fence**\
 ```
-l.flow.map f .fence.sort by .filter
-{::>3}.first
+l.flow.map f .fence.sort by .filter {::>3}.first
 ```
 If there is a smallest index `j` such that `f#ej` throws or does not terminate, the whole flow expression throws that same `Info` or does not terminate.\
 Otherwise, if any call of `by.cmp(...)` used in the sorting process throws or does not terminate, the whole flow expression throws that same `Info` or does not terminate.\
@@ -196,7 +194,7 @@ The exact details of what calls to `by.cmp(...)` are used in the sorting process
 
 Data parallel:
 
-The stage computing `map f` can be parallelised. The sorting needs to wait to start until all the `f#ej` are computed. Computation of the stage before and after the fence does not overlap.
+The stage computing `map f` can be parallelised. The sorting needs to wait to start until all the `f#ej` are computed. Computation of the stages before and after the fence does not overlap.
 
 After the fence the sorted sequence is finished and of known size, so the filter stage can be parallelised again. The terminal operation `.first` controls this parallelisation, by speculative execution of chunks of elements as ordered by `.sort`.
 
@@ -205,13 +203,12 @@ Speculative executions that have no more hope to impact the sequential result ca
 
 Nodes:
 ```
-l.flow.map f .fence.sort by .filter
-{::>3}.first
+l.flow.map f .fence.sort by .filter {::>3}.first
 ```
 The map actor can produce elements, the sort actor can use an algorithm like insertion sort to get the elements in place when receiving them one by one.
 Then we have to wait for the sorting to finish before starting to send messages downstream.
 Filter and First can be merged in a single
-FilterFirst actor, that sends a termination signal on the other actors when the first valid element is found.
+FilterFirst actor, that sends a termination signal to the other actors when the first valid element is found.
 
 There could be a temptation to instead merge sort and filter: "this would just let me sort faster" with fewer elements, but this would make for an observably different sorting semantic if `by` does not respect its conventional contract. Our formal properties need to hold on all code, not just on code that respects logical but unenforced contracts.
 This in turn may mean that we can not do 'sometimes use insertion sort' either.
@@ -240,7 +237,7 @@ In other flow/stream libraries a parallel execution may non deterministically pr
 ```
 l.flow
   .map f
-  .actorMut[mut Var[Nat], Nat](Vars#[Nat]0,{down, s, e, m ->
+  .actorMut[mut Var[Nat], Nat](Vars#[Nat]0, {down, s, e, m ->
     Block#(s.set(s.get + e), down#(s.get), m.continue)})
   .map g .list
 ```
@@ -288,7 +285,7 @@ The result of every `f#ej` is needed twice; thus this `.fence` is likely to mate
 
 **example with forEach**\
 `l.flow.map{_ -> v.get} .fence .forEach{x -> Block#(acc.add x, v.set(v.get + 1))}`\
-with `v` a fresh `mut Var[Nat]` holding `0`, and `acc` a fresh `mut EList[Nat]`
+with `v` a fresh `mut Var[Nat]` holding `0`, and `acc` a fresh `mut EList[Nat]`.
 
 If there is a smallest index `j` such that `v.get |> {x -> Block#(acc.add x, v.set(v.get + 1))}` throws or does not terminate, the whole flow expression throws that same `Info` or does not terminate.\
 Otherwise this flow returns `Void`, and afterwards `acc` holds eight times `0` and `v` holds `8`.
@@ -322,7 +319,7 @@ rs.flow(ParRepr)
     > 3}
   .size
 ```
-If any two Repr (or isopods in an equivalent example) are identity equivalent, a non deterministic exception is thrown.
+If any two `Repr`s (or Isopods in an equivalent example) are identity equivalent, a non deterministic exception is thrown.
 
 If there is a smallest index `j` such that `rj.mutate{c -> Block#(c++, c.get)}` throws or does not terminate, the whole flow expression throws that same `Info` or does not terminate. Thanks to strong exception safety we will never be able to observe how many elements in the flow/list have been mutated.\
 Otherwise this flow returns the number of indices `j` where `rj` holds more than `3` after being increased, and afterwards every `rj` in `rs` holds one more than `rj` held before the flow.
@@ -357,7 +354,7 @@ rs.flow(ParRepr)
 ```
 Overall parallelizing Reprs and Isopods is about
 - running an identity check
-- avoid unfenced (positive) speculative execution and run fenced (positive) speculative execution sequentially
+- avoiding unfenced (positive) speculative execution and running fenced (positive) speculative execution sequentially
 - behaving exactly as if a par flow produced a mut out of the first mapping: those muts are guaranteed to be isolated with respect to each other, thus they can not interact. Depending on the stages, data parallel or nodes could be more appropriate.
 
 
@@ -368,7 +365,7 @@ Overall parallelizing Reprs and Isopods is about
 //TODO: in the end of the document we need to
 list how all specific permutations of stages and terminals can be optimized instead of just 'combined'.
 That is, consider a code generator that at compile time when a flow is written all as a single expression from creation to terminal (the most common case)
-generate imperative code to optimize the behaviour as much as possible knowing how all the operations interact.
+generates imperative code to optimize the behaviour as much as possible knowing how all the operations interact.
 We should here report the 'optimizable cases' and show them by example of input and expected pseudocode output.
 
 
@@ -378,7 +375,7 @@ We should here report the 'optimizable cases' and show them by example of input 
 
 most operations should be implementable as .actorMut
 
-.fence should be implementable as .list.flow, but it would not have the type 'FencedFlow', how to solve this? The idea is that stuff that need a fence would be available only at the return type of .fence. One option could be to show the implementation for all the .fence.xxx operations instead of just .fence; Should FencedFlow have all the methods of flow too or just a .flow method to recover the 'flow' out of it?
+.fence should be implementable as .list.flow, but it would not have the type 'FencedFlow', how to solve this? The idea is that stuff that needs a fence would be available only at the return type of .fence. One option could be to show the implementation for all the .fence.xxx operations instead of just .fence; Should FencedFlow have all the methods of flow too or just a .flow method to recover the 'flow' out of it?
 Should we find some way to allow chaining fenced operations? writing .distinct.sort makes sense, alternatively a method .sortDistinct may ensure no one wonders if `.distinct.sort` or `.sort.distinct` is best.
 multiple `.max` could be concatenated
 `.max{..}.max{..}` and indeed it would work like concatenating 'filter'; a common programming pattern.
@@ -390,7 +387,7 @@ Misunderstanding:
 
 The pipeline gap: the terminal is not discussed enough as something that can run concurrently with an upstream serial stage.
 
-Nothing says that in a chain ending `.mapping(by, kem)`, `.set` or `.sum` the terminal's own per-element work can overlap the actor's later elements. We need to improve the text above
+Nothing says that in a chain ending `.mapping(by, kem)`, `.set` or `.sum` the terminal's own per-element work can overlap the actor's later elements. We need to improve the text above.
 
 //TODO: initial body of the operator ++
 ++
@@ -408,7 +405,7 @@ This may compute g in parallel: even if the combined elements of the two flows a
 
 `limit n` is the only stateful stage whose state is a counter, and the only stage that is also a decision point:
 Crucially `n` is given and it is not the result of a user lambda, so for example
-`es.map{..}.limit 5.list`
+`es.map{..}.limit 5 .list`
 will simply ignore any element after 5.
 After a `.fence` again the count is known.
 
@@ -421,9 +418,9 @@ Given that limit is known a priori, a nodes system where the only mutable 'share
 
 ### scan, actor, actorMut, let
 
-`scan` threads an accumulator, and `actor` and `actorMut` thread the actor state. In every case the call made for one element can observe what the call made for an earlier element left behind, so the calls form a sequence, and the only option is pipeline/nodes;
-However long chains of stages may require compositions of both pipeline and data parallel sections.
-Here we want to state all the reasonably possible parallel shapes not the ones we think are the most performant.
+`scan` threads an accumulator, and `actor` and `actorMut` thread the actor state. In every case the call made for one element can observe what the call made for an earlier element left behind, so the calls form a sequence, and the only option is pipeline/nodes.
+However, long chains of stages may require compositions of both pipeline and data parallel sections.
+Here we want to state all the reasonably possible parallel shapes, not the ones we think are the most performant.
 
 `let` belongs to the fence group because the elements need duplication. The current implementation of `let` is more involved than needed, offering optional consumption.
 
@@ -450,7 +447,7 @@ es.map.filter.size//slow
 ### forEach
 
 Actually forEach is the thing that triggered this whole document. A Java stream forEach prevents most parallelism:
-ForEach needs a mut lambda to make any sense, but that causes stuff like
+forEach needs a mut lambda to make any sense, but that causes stuff like
 ```
 v:Var[Nat]
 Lists#(0,..,64).flow
@@ -487,7 +484,7 @@ Lists#(0,..,64).flow
   .fence
   .forEach{..}
 ```
-`{..}` just so happens to only capture imms; thus producing code with optimizations that are much harder to get with dynamically build flows (passed around in construction)
+`{..}` just so happens to only capture imms; thus producing code with optimizations that are much harder to get with dynamically built flows (passed around in construction).
 If we insist on doing this optimization dynamically, we would need the imm versions and the non imm versions would set some flag when called, and that flag will be used to trigger the fence or not.
 
 This could be very useful for examples like
@@ -526,7 +523,7 @@ For a while I hoped to be able to have a property saying that how those lambdas 
 The runtime cannot know how expensive a lambda is, and element count alone is a poor proxy. What are Java streams and other approaches doing? When code generation is part of the backend, we could have some way to annotate a flow with code generation hints.
 ```
 es.flow
-  .hints["chunk size=10, speculative size= 25"]
+  .hints["chunk size=10, speculative size=25"]
   .map{..}.list
 ```
 Then we could have compile time errors on bad string syntax/hints unapplicable etc.
@@ -537,7 +534,7 @@ TODO: minor fixes that could go on separate PRs: **Set.seqFlow returns a paralle
 **AsImm can write what it captured:**\
 `AsImm[E:*, R]: { mut #(E): R; }` in `flow_utils.fear`.
 should be `AsImm[E:*, R]: { read #(E): R; }`
-This is currently used for `set` and `eSet`
+This is currently used for `set` and `eSet`.
 
 
 **let hands a duplicator where the flow would do:**\
