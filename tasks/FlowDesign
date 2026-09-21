@@ -46,7 +46,7 @@ Note that where a method contract is purposely under-specified, such as the tour
 
 
 **Flow abstraction:**\
-Observably, the flow must behave as if it trickled the elements through the various stages one at a time. As an exception, fence operations makes every stage complete its execution before it or any stage after it starts.
+Observably, the flow must behave as if it trickled the elements through the various stages one at a time. As an exception, every stage before a fence operation completes its execution before that fence operation, or any stage after it, starts.
 
 It must not be observable if a potentially parallel flow actually runs the stages one at a time or passes the elements one at a time through all the stages, if it does internal materializations or not etc.
 
@@ -374,8 +374,8 @@ We should here report the 'optimizable cases' and show them by example of input 
 
 most operations should be implementable as .actorMut
 
-Fence behaviour should be implementable as .list.flow; but we still need to make the full design for each fence operation, including a .list or .eList call and then flowing again at the end. 
-As a clear optimization, in most cases fencing is not needed when fence operations are concatenated. For example .distinct.sort makes sense, but we have .sortDistinct to ensure no one wonders if `.distinct.sort` or `.sort.distinct` is best.
+Fence behaviour should be implementable as .list.flow, but we still need to make the full design for each fence operation, including a .list or .eList call and then flowing again at the end.
+As a clear optimization, in most cases fencing is not needed when fence operations are concatenated. For example `.distinct.sort` makes sense, but we have `.sortDistinct` to ensure no one wonders if `.distinct.sort` or `.sort.distinct` is best.
 multiple `.max` could be concatenated
 `.max{..}.max{..}` and indeed it would work like concatenating 'filter'; a common programming pattern.
 `.max{..}.max{..}` is equal to `.max({..}.andThen{..})`.
@@ -422,7 +422,6 @@ Here we want to state all the reasonably possible parallel shapes, not the ones 
 
 `let` belongs to the fence group because the elements need duplication. The current implementation of `let` is more involved than needed, offering optional consumption.
 
-
 ### sort, distinct, sortDistinct, max, min
 
 These five cannot emit anything before consuming everything, which is why they are fences. Their output is a finished sequence of known size, so it is indistinguishable from a fresh source and splitting can start again after it: `map f .sort by .limit 10000 .filter g .list` is two parallel regions with one fence between.
@@ -458,7 +457,7 @@ Lists#(0,..,64).flow
   .map{..}//could capture v as before
   .forEach{..}
 ```
-This needs materialization, if v is captured as 'read'.
+This needs materialization if v is captured as 'read'.
 If we had 'immMap' taking an imm lambda, then
 ```
 Lists#(0,..,64).flow
@@ -481,7 +480,7 @@ This could be very useful for examples like
 `0~~10000000 .flow.map{..}.forEach{..}`
 allowing to not materialize large ranges.
 
-However, actual code generation is not needed for this specific case, just an extra code generation lambda flag:
+However, actual code generation is not needed for this specific case, just an extra code generation lambda flag.
 Let's flag 'surely imm lambdas' when they are created:
 If we minimally extend the backend to make some kind of flag on the objects representing lambdas that only capture imms and this flag can be seen at runtime in Java (not in fearless) we can use it to choose to trigger the fence or not, as if we had the .immMap and similar methods.
 
