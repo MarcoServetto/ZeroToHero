@@ -134,7 +134,6 @@ The kinds above say what an operation is. Each section below is the design space
 
 ### map, filter, flatMap
 
-//Note: I do not think we need brother operations .immMap,.immFilter and .immFlatMap taking an imm F instead of a read F; there is no other optimization that it would enable. Check.
 Those operations logically act element-wise. They take a lambda of type `read F[E,R]`, so the execution of such lambda cannot mutate anything captured by such lambda. The only possible mutable input could come from the element it is handed, which may be `mut`.
 
 **Semantic reduction:**\
@@ -151,20 +150,26 @@ Also returning exactly 1 element avoids any kind of 'sequence API' strictly requ
 
 filter can not change the elements, the element type, or add elements. Useful restrictions for optimisations; also avoids 'sequence API's.
 
+`.flatMap` can be desugared onto `.actorMut` as follows: ....//TODO
+
 ### limit
 
 `limit n` is the only stateful stage whose state is a counter, and the only stage that is also a decision point:
-Crucially `n` is given and it is not the result of a user lambda, so for example
+Crucially `n` is given and it is not the result of a user lambda; thus it is known before any stage starts, so for example in
 `es.map{..}.limit 5 .list`
-will simply ignore any element after 5.
+the terminal could simply pre allocate a Java arraylist of size exactly five
+and run the map only on the first 5 elements of es.
+
 After a fence again the count is known.
 
 On unknown size, map.filter, we know the upper limit, so
 on limit 50 we can run only 50 elements in parallel (possibly 5 tasks of 10) and then decide how many elements we still need out of that.
 .flatMap breaks that.
-This is particularly important for Repr and Isopod, where speculative execution can not be allowed, and should just be one option in the toolkit for the other situations, while speculative execution is allowed too.
+This is particularly important for Repr and Isopod, where speculative execution can not be allowed. In the other cases, avoiding un needed speculative execution should just be one option in the toolkit for the other situations, while speculative execution is allowed too.
 
 Given that limit is known a priori, a nodes system where the only mutable 'shared' state between the actors is how much of limit is left or a simple binary STOP NOW could also be effective.
+
+Limit can be 
 
 ### scan, actor, actorMut, let
 
@@ -488,8 +493,8 @@ The pipeline gap: the terminal is not discussed enough as something that can run
 
 Nothing says that in a chain ending `.mapping(by, kem)`, `.set` or `.sum` the terminal's own per-element work can overlap the actor's later elements. We need to improve the text above.
 
-Found bug to fix on the repos as a separate PR: **A race surfaced as a deterministic exception:**\
-Two tasks racing inside `IsoPod.consume` make one of them call `open` on an already open pod, so the flow sometimes returns a value and sometimes throws. Determinism covers the thrown `Info`, so this breaks it directly, with no capability anywhere.
+Found bug that should disappear when racing in gone anyway:\
+"Two tasks racing inside `IsoPod.consume` make one of them call `open` on an already open pod, so the flow sometimes returns a value and sometimes throws. Determinism covers the thrown `Info`, so this breaks it directly, with no capability anywhere." It should disappear as a side effect of fixing the overall design, since two threads should never be able to race on calling a mut method ever.
 
 .forEach needs to be always sequential no matter what, in any design we need it sequential.
 
@@ -524,3 +529,16 @@ Since the head of `flow.fear` makes `.seqFlow` the entry point for mut sources, 
 `let[DR:*,R:*](x: read F[mut MF[mut Flow[E]],DR], cont: mut FlowContinuation[DR,R])` gives the lambda a thunk producing a fresh flow; it should get the flow directly.
 
 **map(ctx, f)** seems to be slightly different in this document, in current fearless, in fearless70, in Legacy and Legacy+. I think the version in this document is the best, but we should think about advantages and disadvantages.
+
+
+Overall feedback notes:
+The agents working on this document and former iterations of it kept telling me specific things but in no case they noted that '.limit 0' is probably a bad idea, just because most other approaches also allow .limit 0.
+This suggests that the agents are using their common knowledge instead of their reasoning to find errors and logical fallacies in this document.
+Please focus on using reasoning instead.
+One may say "limit 0 has one, and it is the one callers expect."
+But no, this is exactly the same mistake of the iconic functional .zip.
+Most likely something has gone wrong and we are hiding the error to move on: Graceful degradation instead of offensive programming.
+This is particularly clear cut for limit, since the number is known before the flow start, we could just check that number before running a potentially unpredicted flow (unpredicted by the programmer, not unpredictable in sense of specification).
+Is there some other case like .limit 0 that we should be aware of?
+Should a .limit 0 be non deterministic error or deterministic error?
+Difficult questions most of the 'flow misuse' errors have been non deterministic, so putting this a deterministic would mean have two categorises of flow errors and motivate them. This is also not something a linter can catch since we could do .limit x where x comes from the outside.
