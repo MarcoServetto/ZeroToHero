@@ -357,22 +357,44 @@ The state is a `Var` of an imm `List[Nat]`, accumulating elements to release the
 Example for ActorMut: a list of mut heroes goes through various rooms in a dungeon. Each room has its state, monsters etc.
 We can run this with pipeline parallelism: the mut heroes can loot rooms, kill monsters and sometimes die. Then we can collect the
 list of heroes reaching the end, with each hero finding the rooms as the ones before have left them.
+
+The room is what a mutH is typically made of: a large mutable graph whose leaves are imm. The chests are a `mut EList[mut EList[Item]]`, the monsters and the graves are `ESet`s:
 ```
-Treasure: { read .value: Nat }
-Hero: { mut .take(t: iso Treasure): Void; read .purse: Nat; }
-Room: { mut .takeTreasure: iso Treasure; read .killsHeroesPoorerThan: Nat; }
+Room: {
+  mut .fight(strength: Nat): Nat;
+  mut .loot: List[Item];
+  mut .bury(grave: Opt[Grave]): Void;
+  read .buried(name: Str): Bool;
+  }
+Rooms: { #(chests: mut EList[mut EList[Item]], monsters: mut ESet[Monster]): mut Room -> Block#
+  .let[mut ESet[Str]] graves = {ESets#[Str,Str]{::}}
+  .return {{
+    .fight strength -> monsters.removeIf{m -> m.strength < strength}.size;
+    .loot -> chests.seqFlow.flatMap{c -> c.seqFlow}.fold({{}}, {acc, i -> acc +> i});
+    .bury grave -> grave.ifSome{g -> Block#(graves.add(g.name), chests.add(g.items.flow.eList), Void)};
+    .buried name -> graves.contains(name);
+    }}
+  }
+```
+Every parameter of every `Room` method is imm, and so is every result, and that is the whole design effort: such a method can be called on a mutH room, which is what the state of an actorMut lambda is. On a hygienic receiver a mut method takes only iso and imm arguments, and a mut or read result comes back mutH or readH, which can be called further but not stored or captured, so a method meant to hand something out answers it imm. Inside the methods nothing is restricted: the receiver is plainly mut, and the lambdas given to `removeIf`, `flatMap` and `ifSome` capture the collections freely. Consuming the leaves (`removeIf`, `seqFlow`), filling up (`add`) and reading them (`contains`, `size`) are all ordinary calls.
+
+The hero and the room meet through imm values:
+```
+Visit: { #(room: mutH Room, h: mut Hero): Void -> Block#(
+  h.wound(room.fight(h.strength)),
+  h.carry(room.loot),
+  room.bury(h.grave),
+  Void) }
+Survivor: { #(room: readH Room, h: mut Hero): mut Opt[mut Hero] ->
+  room.buried(h.name) ?[mut Opt[mut Hero]]{ .then -> {}; .else -> Opts#h } }
 
 heroes.flow
-  .actorMut[Room, mut Hero](room1, {down, s, h -> Block#(
-    h.take(s.takeTreasure),
-    down.pushOpt#(down, Survivor#(s.killsHeroesPoorerThan > (h.purse), h)),
-    Continue#)})
-  .actorMut[Room, mut Hero](room2, {down, s, h -> ..})
+  .actorMut[Room, mut Hero](room1, {down, s, h -> Block#(Visit#(s, h), down.pushOpt#(down, Survivor#(s, h)), Continue#)})
+  .actorMut[Room, mut Hero](room2, {down, s, h -> Block#(Visit#(s, h), down.pushOpt#(down, Survivor#(s, h)), Continue#)})
   .list
-Survivor: { #(dies: Bool, h: mut Hero): mut Opt[mut Hero] ->
-  dies.if[mut Opt[mut Hero]]{ .then -> {}; .else -> Opts#h } }
 ```
-The room is the mutH state, so `s.visit h` is not a shape that exists: a mut method of a hygienic receiver accepts only iso arguments, and the hero is mut. What the room can do is hand out iso pieces of itself, which the hero then takes; the hero and the room meet in the lambda, not inside the room.
+The strength of the hero goes into `fight`, what `loot` answers goes to the hero, and the grave a hero leaves when it dies, its name and everything it carried, goes back into the room for the heroes after it. `Room` can have no method taking the hero: the hero is mut, and a mut method called on a hygienic receiver takes only iso and imm arguments. `Visit` is not a method of the room, it takes the mutH room and the mut hero side by side, and nothing in it can store one into the other. `Survivor` only reads the room, so it takes it readH, and a mutH room is one.
+`Hero`, `Item`, `Monster` and `Grave` are in the standard library at `integrationTests/testingStandardLibrary/_test/test_dungeon.fear`, where `Visit` and `Survivor` also run on a mut room, which is a mutH one too.
 
 One `actorMut` stage per room, each holding that room as its `iso` state. A surviving hero is pushed to the next room's actor while the room it just left is already working on the next hero, which is the pipeline the text asks for, and each hero finds every room as the heroes before it left it.
 
