@@ -75,13 +75,13 @@ Execution strategies are defined by the terminal operation looking at all the st
 
 **Streaming stateful:** `limit`, `scan`, `actor`, `actorMut`, `map with context`, `distinct`. Needs the elements in order and emits as it goes.
 
-**Fence:** `sort`, `sortDistinct`, `max`, `min`, `let`. Consumes everything before emitting anything.
+**Fence:** `sort`, `sortDistinct`, `max`, `min`. Consumes everything before emitting anything.
 
 **Source combinator:** `++`. Joins two chains end to end rather than acting on elements.
 
 **Terminals** end the flow and return something that is not a flow.
 
-**Consuming:** `list`, `eList`, `set`, `eSet`, `mapping`, `forEach`, `fold`, `foldAcc`, `size`, `join`, `sum`, `last`. Every element passes the whole chain.
+**Consuming:** `list`, `eList`, `set`, `eSet`, `mapping`, `forEach`, `fold`, `foldAcc`, `size`, `join`, `sum`, `last`, `let`. Every element passes the whole chain.
 
 **Short-circuit:** `first`, `get`, `getOpt`, `any`, `all`, `none`, `findFirst`, `findMap`. Can decide before the end, leaving later elements unreached.
 
@@ -266,20 +266,28 @@ It reduces to `actor` rather than `actorMut` because `S:imm` makes the result `i
 #### let
 
 ```
-fl.let[Nat, mut List[Nat]]({g -> g.size}, {n, self -> self.map{e -> e + n}.list})
+es.flow.map{i -> Persons#(..)}
+  .let stuff = {listUpToNow -> ..}
+  .seqFlow
+  .map{..}
+  .list
 ```
 
-counts the elements, then adds that count to each of them.
+`let` is a terminal. It consumes the flow into a list, hands that list to `x`, and hands `cont` both the result of `x` and the same list. Reading the sugar from outside or from inside gives the same answer: the flow ends at the `let`, and the `.seqFlow` on the next line starts a new one.
 
-`let` is not a primitive either, and it is the odd one of the four: it is the only one that does not return a flow. Its type is `R`, the result of the continuation, so it is terminal shaped and the chain goes on inside `cont` rather than after the call. That is exactly why it may name a terminal in its own body, where a fence stage such as `sort` may not:
+`let` is not a primitive either. It is `.list` with a `Block` `let` wrapped around it, which is its whole body:
 
 ```
 .let(x, cont) -> Block#
   .let[mut List[E]] xs = {this.list}
-  .return {cont#(x#(xs.seqFlow), xs.seqFlow)}
+  .return {cont#(x#xs, xs)}
 ```
 
-The elements are needed twice, so the flow is materialised once as a `List` and flowed from it twice. This encoding makes the continuation sequential; an implementation would carry the mode of the source across instead.
+The elements are needed twice and a flow consumes once, so they are materialised here; running the stages a second time instead would run user lambdas twice. Showing the list rather than handing a flow on is what makes that visible.
+
+It also puts the choice of execution mode where it can be made. Both sides read the list back with `.seqFlow` or with `.flow(mode)`, so the second flow can be sequential, `Par`, `ParRepr` or anything else the elements admit, and the choice is written down. A `let` that handed a flow on would have to choose for the caller, and it can not choose correctly in general: `DR` outlives `x` and stays in scope for the whole continuation, so when `DR` can reach the elements every task in the remainder has a second path to every element instead of only to its own.
+
+//TODO: that hazard is not covered by the execution modes. A `ParRepr` witness says distinct elements share no inner state with each other, and says nothing about a `DR` pointing at all of them, so `self.flow(ParRepr)` after a `let` that kept the elements is unsound and nothing catches it. The type of `DR` looks like the criterion, `imm` or `iso` can not reach `mut` elements while `mut` or `read` can, but this is not decided.
 
 ### map with context
 
