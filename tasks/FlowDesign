@@ -221,16 +221,34 @@ TODO: `Range.flow(step)` refuses a `0` step and a reversed range, so `5=~~=1` is
 However, long chains of stages may require compositions of both pipeline and data parallel sections.
 Here we want to state all the reasonably possible parallel shapes, not the ones we think are the most performant.
 
-#### actorMut
+#### actor and actorMut
+Those two operations are conceptually the same operation, with a different type signature to cover more cases.
+Two parameters: an iso actor state and a lambda with three arguments: the current state, the current element and the downstream consumer.
+Compare this with `.flatMap`: flatmap return a list of elements, here we pass the elements to downstream to send them down. This can have better performance since it avoids creating a thing to contain those multiple elements, and it
+also enables more parallelism, since those elements can start the next stage immediatly after they are passed downstream instead of waiting for a whole group of elements to be computed.
 
-The first parameter of `actorMut` is the mutable state of the actor, handed in as `iso S`. Any object can play the role of mutable state, including an object whose ROG holds mutable capabilities; for example a `mut Var[Nat]`.
+So why two designs?
+Similar stream APIs are present in many other languages and libraries, and they do 'something' of you try to pass 'downstream' 'downstream'.
+In java with gatherers we get.... in other languages we get .../TODO: test many languages, test parallel vs sequential, write results.
+Those results are higly counter intuitives, the whole idea of passing 'downstream' 'downstream' is confusing and even if a consistent design could be found, it would make
+parallelization either unsafe or very limited.
+Another similarly damaging behaviour could be to pass the mutable actor state downstream.
+In other languages doing this....//TODO: test on other languages and report.
 
-`actorMut` hands the sink as `mutH ActorSink[R]`, so an actor can only push what it can hand over as `iso` or `imm`.
-This means that an actorMut over mut Isopod must do some extra work to open the iso internal data, pass it as iso and then rewrap it,
-or just flow down some imm value extracted from the Isopod.
-A flow over mut Repr may not even be able to do this rewrapping with the current API.
-For now we are accepting this limitation as an 'acceptable syntax overhead' in corner cases.
-Note that actorMut is primarely for actors with mutable state, not for actors processing mutable elements.
+If the values to send downstream can be mut, then the 'downstream' parameter could be passed to a mut downstream.
+To avoid this there are two options: one is very simple and is 'actor': just do not push mut stuff down.
+Since mut can be assigned to read also read is blocked and all that survives is imm. This simple restriction solves
+those problems and works in most cases.
+
+The other solution 'actorMut' is to use the harder to user but more expressive higienic types.
+This allows for mut objects to be sent downstream, but seales the actor state and the downstream handler as mutH.
+//TODO: old design have downstream with a method to send stuff downstream. This requires the object to be iso, that is more limiting
+//then what we need a new design could be as follows:
+DownStream#(downstreamId,element)//DownStream sealed in base and magic, #[E:*](mutH DowstreamId, E); crucially E:* can not be mutH only mut/imm/read
+//the magic implementation of DownStream# could just call a method on downstreamid but it does not need to be a fearless visible method; this pattern makes so that a 'mutH' method (currently not supported) is not needed.
+
+
+//TODO: make the example above more concrete and move it in the right place in this document
 A great example of why a flow of Repr could be great is genetic evolution:
 a list of large repr elements can be 
 -fitness evaluated in parallel wiht a map, fitness result stored in the mut repr object
@@ -238,22 +256,18 @@ a list of large repr elements can be
 -limited to a certain amount,
 -flatmap to mutate each survivor into many new options.
 - .list in a new generation.
-//TODO: make the example above more concrete and move it in the right place in this document
+Note how actors are not used in this example.
 
-Example of actorMut:
-```
-fl.actorMut[mut Count[Nat], mut List[Nat]](Count.nat 0, {down, s, e, m -> Block#(
-  s++,
-  down#(Lists#(s.get, e)),
-  m.continue)})
-```
 pairs every element with its position. The emitted `Lists#(s.get, e)` is `mut` and the actor built it, so it can go over as `iso`; that same actor could not push `e` itself on, for the reason just given.
 //TODO: this example is realy pointless. Replace with the one below:
-//A list of string where each string is an accademic paper.
-//There are many actorMut in a chan. The first one learn from the papers and push down a summary
+//Some flow language support a 'window'; where for example we can take a list of numbers and process them as windos:
+//Lists#(1,2,3,4,5,6,7,8).actorMut{...}.map{..}.list
+//here map will see [1,2,3]; [2,3,4];...[6,7,8].
+//as you can see the point of actor mut is that the state of the actor can be mut; in this case accumulating elements to release them last.
 
 `actorMut` is truly a primitive flow operation, can not be encoded on top of others.
 
+//TODO: the order of the explanations should be consistent with the order at the top.
 #### actor
 
 ```
