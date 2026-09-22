@@ -215,6 +215,8 @@ TODO: `Range.flow(step)` refuses a `0` step and a reversed range, so `5=~~=1` is
 However, long chains of stages may require compositions of both pipeline and data parallel sections.
 Here we want to state all the reasonably possible parallel shapes, not the ones we think are the most performant.
 
+#### actorMut
+
 The first parameter of `actorMut` is the mutable state of the actor, handed in as `iso S`. Any object can play the role of mutable state, including an object whose ROG holds mutable capabilities; for example a `mut Var[Nat]`.
 
 `actorMut` hands the sink as `mutH ActorSink[R]`, so an actor can only push what it can hand over as `iso` or `imm`.
@@ -223,7 +225,61 @@ or just flow down some imm value extracted from the Isopod.
 A flow over mut Repr may not even be able to do this rewrapping with the current API.
 For now we are accepting this limitation as an 'acceptable syntax overhead' in corner cases.
 
-`let` belongs to the fence group because the elements need duplication. The current implementation of `let` is more involved than needed, offering optional consumption.
+```
+fl.actorMut[mut Count[Nat], mut List[Nat]](Count.nat 0, {down, s, e, m -> Block#(
+  s++,
+  down#(Lists#(s.get, e)),
+  m.continue)})
+```
+
+pairs every element with its position. The emitted `Lists#(s.get, e)` is `mut` and the actor built it, so it can go over as `iso`; that same actor could not push `e` itself on, for the reason just given.
+
+`actorMut` is a primitive. Nothing else emits a `mut` element, and nothing else lets the call for one element observe what the call for an earlier element left behind.
+
+#### actor
+
+```
+fl.actor[mut Count[Nat], Nat](Count.nat 0, {down, s, e, m -> Block#(
+  s += e,
+  down#(s.get),
+  s.get > 10 ? {.then -> m.stop; .else -> m.continue})})
+```
+
+emits the running sum and stops as soon as it passes `10`.
+
+`actor` is the `imm` result twin of `actorMut`, and it is a second primitive rather than a use of the first. They differ on one axis, whether the result may be `mut`, and the rest follows from it: `ActorImpl` hands the sink as `mut ActorSink[R]` and the state as `S`, where `ActorImplMut` makes both hygienic. So `actorMut` can not build an `actor` call out of its own hygienic arguments, and `actor` can not return a flow of `mut` elements.
+
+#### scan
+
+```
+Flows#(1,2,3,4).scan(0, {acc, e -> acc + e}).list
+```
+
+returns `Lists#(1,3,6,10)`: the accumulator is threaded and exactly one element comes out per element in.
+
+`scan` is not a primitive, it is an `actor` whose state is a `Var`:
+
+`.scan(acc, f) -> this.actor[mut Var[imm S], S](Vars#[imm S](acc), {down, s, e, m -> Block#(s.set(f#(s.get, e)), down#(s.get), m.continue)})`
+
+It reduces to `actor` rather than `actorMut` because `S:imm` makes the result `imm`. What it gives up for the simpler signature is emitting anything other than one element per element, and stopping early.
+
+#### let
+
+```
+fl.let[Nat, mut List[Nat]]({g -> g.size}, {n, self -> self.map{e -> e + n}.list})
+```
+
+counts the elements, then adds that count to each of them.
+
+`let` is not a primitive either, and it is the odd one of the four: it is the only one that does not return a flow. Its type is `R`, the result of the continuation, so it is terminal shaped and the chain goes on inside `cont` rather than after the call. That is exactly why it may name a terminal in its own body, where a fence stage such as `sort` may not:
+
+```
+.let(x, cont) -> Block#
+  .let[mut List[E]] xs = {this.list}
+  .return {cont#(x#(xs.seqFlow), xs.seqFlow)}
+```
+
+The elements are needed twice, so the flow is materialised once as a `List` and flowed from it twice. This encoding makes the continuation sequential; an implementation would carry the mode of the source across instead.
 
 ### map with context
 
