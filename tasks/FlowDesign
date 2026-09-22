@@ -166,6 +166,12 @@ As you can see, here fencing an inner flow would throw the error, while tricklin
 
 //TODO: this is not what happens today. Sequential and parallel behaviour currently disagree. If this decision makes parallelism harder/slower we can change the design so that flatMap do fence.
 
+/*TODO: consider this Alternative design: flatmap lambda return a list not a flow
+(thus solving the hard questions of inner flow laziness at the root)
+Would this make it easier for us to parallelize/implement efficiently in the common cases? would it harm some realistic case in a significative manner?
+Why flatmap does not return a list/array in other approaches?
+The predictability/simplicity gain of the semantic is already quite large.*/
+
 The intuition would be that `.flatMap` desugars onto `.actorMut`, with the inner flow drained into the actor's own sink, but this would fence the inner flows in the act of sinking their elements one by one.
 
 
@@ -224,17 +230,29 @@ This means that an actorMut over mut Isopod must do some extra work to open the 
 or just flow down some imm value extracted from the Isopod.
 A flow over mut Repr may not even be able to do this rewrapping with the current API.
 For now we are accepting this limitation as an 'acceptable syntax overhead' in corner cases.
+Note that actorMut is primarely for actors with mutable state, not for actors processing mutable elements.
+A great example of why a flow of Repr could be great is genetic evolution:
+a list of large repr elements can be 
+-fitness evaluated in parallel wiht a map, fitness result stored in the mut repr object
+-sorted for fitess
+-limited to a certain amount,
+-flatmap to mutate each survivor into many new options.
+- .list in a new generation.
+//TODO: make the example above more concrete and move it in the right place in this document
 
+Example of actorMut:
 ```
 fl.actorMut[mut Count[Nat], mut List[Nat]](Count.nat 0, {down, s, e, m -> Block#(
   s++,
   down#(Lists#(s.get, e)),
   m.continue)})
 ```
-
 pairs every element with its position. The emitted `Lists#(s.get, e)` is `mut` and the actor built it, so it can go over as `iso`; that same actor could not push `e` itself on, for the reason just given.
+//TODO: this example is realy pointless. Replace with the one below:
+//A list of string where each string is an accademic paper.
+//There are many actorMut in a chan. The first one learn from the papers and push down a summary
 
-`actorMut` is a primitive. Nothing else emits a `mut` element, and nothing else lets the call for one element observe what the call for an earlier element left behind.
+`actorMut` is truly a primitive flow operation, can not be encoded on top of others.
 
 #### actor
 
