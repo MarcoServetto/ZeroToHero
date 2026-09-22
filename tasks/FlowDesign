@@ -209,7 +209,7 @@ Given that limit is known a priori, a nodes system where the only mutable 'share
   .else -> this.actorMut[mut Count[Nat], E](Count.nat n, {down, s, e -> Block#(
     down.push#(down, e),
     s--,
-    s.get == 0 ?[ActorRes] { .then -> ActorStop; .else -> ActorContinue })});
+    s.get == 0 ? { .then -> Break#; .else -> Continue# })});
   }
 ```
 Emit, decrement, stop on the element that exhausts the budget; element `n` is never pulled, so no stage runs on it.
@@ -239,47 +239,52 @@ Here we keep a sum of all the elements seen up to now and we return the current 
 
 `scan` is not a primitive, it is an `actor` whose state is a `Var`:
 
-`.scan(acc, f) -> this.actor[mut Var[imm S], S](Vars#[imm S](acc), {down, s, e -> Block#(s.set(f#(s.get, e)), down.push#(down,s.get), down.continue)})`
+`.scan(acc, f) -> this.actor[mut Var[imm S], S](Vars#[imm S](acc), {down, s, e -> Block#(s.set(f#(s.get, e)), down.push#(down,s.get), Continue#)})`
 
-The sink the lambda pushes to, and what the lambda answers:
+The sink the lambda pushes to:
 ```
 ActorSink[E:*]: {
   read .push: ActorSinkHelper -> ActorSinkHelper;
-  read .continue: ActorContinue -> ActorContinue;
-  read .stop: ActorStop -> ActorStop;
+  read .pushOpt: ActorSinkOptHelper -> ActorSinkOptHelper;
   mut #(E): Void;
   mut .pushError(Info): Void;
   }
 ActorSinkHelper: Sealed {
   imm #[E:*](down: mutH ActorSink[E], e: E): Void -> _Magic!;//calls down#(e) bypassing the type system
   }
-ActorRes: Sealed {}
-ActorContinue: Sealed, ActorRes {}
-ActorStop: Sealed, ActorRes {}
+ActorSinkOptHelper: Sealed {//pushes what the Opt holds, does nothing when it holds nothing
+  imm #[E:*](down: mutH ActorSink[E], e: mut Opt[E]): Void -> ..;
+  }
 ```
-`ActorContinue` and `ActorStop` are imm enumeration elements, not active entities.
+The lambda answers `Continue`, `Break` or `OuterReturn#e`, the values `Block.loop` answers with, where `OuterReturn#e` emits `e` and stops. One vocabulary for both, and being values they can be returned from a branch, which a push can not.
 
-`ActorSink.#` is a mut method, so on the mutH sink of `actorMut` it accepts only an `iso` element: every argument of a mut method called on a hygienic receiver is strengthened, mut to iso and read to imm. Declaring that `#` mutH would say exactly what we want and the language does not allow it, so `ActorSinkHelper` takes the sink as an argument of an imm method and reaches `down#e` with magic. `down#e` stays available directly wherever the sink is plain mut, as it is in `actor`.
+`ActorSink.#` is a mut method, so on the mutH sink of `actorMut` it accepts only an `iso` element: every argument of a mut method called on a hygienic receiver is strengthened, mut to iso and read to imm. Declaring that `#` mutH would say exactly what we want and the language does not allow it, so `ActorSinkHelper` takes the sink as an argument of an imm method and reaches `down#e` with magic. It is the one place where the actor family leaves the type system: `.pushOpt` is written on top of it, in Fearless. `down#e` stays available directly wherever the sink is plain mut, as it is in `actor`.
 
 That same strengthening is what stops the actor from keeping an alias of what it has just sent: the state is mutH, so storing a mut element in it would be a mut method taking a mut argument, which does not typecheck. It is also why the sink itself can not go downstream: it would have to be the element type of another sink, and a mutH value can not be stored anywhere to get there.
 
 **Writing an actorMut lambda:**\
-Inside an `actorMut` lambda, `down` and the state are hygienic, and a hygienic binding can not be captured by a lambda. Every branching method of `Bool` takes a lambda, so no branch of the lambda can mention `down` or the state: `b ? {.then -> down.stop; .else -> down.continue}` does not compile. Two ways around it, for the two things a branch usually does:
+Inside an `actorMut` lambda, `down` and the state are hygienic, and a hygienic binding can not be captured by a lambda. Since every branching method of `Bool` takes a lambda, and so do `Block.let`, `Block.var`, `Block.do` and `Flow.forEach`, none of them can mention `down` or the state: `b ? {.then -> down.push#(down, e); .else -> Void}` does not compile. What is left is enough, in three moves.
 
-To answer the decision, write the values: `b ? {.then -> ActorStop; .else -> ActorContinue}`.
+**A branch returns a value, it does not act.** The decision is one: `b ? {.then -> Break#; .else -> Continue#}`. An element to emit is one too: the branch answers an `Opt`, and `down.pushOpt#(down, that)` commits it where the sink is in scope. This is what `.pushOpt` is for.
 
-To push from inside a branch, do not push inside the branch. Let the branch return an object that pushes, and call that object afterwards with `down` as an argument, which is what `ActorSinkHelper` does with the sink:
+**A method call is what binds a name.** `Block.let` and `Block.var` are lambdas, so a name that has to live beside a hygienic one is a method parameter instead, and everything read out of the hygienic state is read at the call site, where it is in scope:
 ```
-HeroStep: { read #(down: mutH ActorSink[mut Hero], h: mut Hero): ActorRes }
-PushHero: HeroStep { down, h -> Block#(down.push#(down, h), ActorContinue) }
-DropHero: HeroStep { down, h -> ActorContinue }
+JoinFrom#(down, e, s.a, s.b, Vars#[Nat](0))
 ```
-Then `Step#(dies)#(down, h)`, with `Step#` the branch returning `PushHero` or `DropHero`.
+Inside `JoinFrom`, `down` is a hygienic parameter and everything else is ordinary.
 
-Everything a lambda would do with `down` is written this way instead: a loop becomes a recursion over such objects, carrying `down` as an argument. This is a real cost in how an `actorMut` lambda reads.
-In `actor` the sink and the state are ordinary mut values and lambdas may capture them, so `Block#.do{..}` and the ordinary branching methods work there.
+**A loop takes the hygienic value as an argument.** ``Block.loop(a, body)`` hands `a` to every iteration, so the body reaches it without capturing it:
+```
+Block#[Void].loop(down, {d -> Block#(
+  d.pushOpt#(d, JoinAt#(pre, a, b, i.get)),
+  i.set(i.get + 1),
+  i.get >= (a.size) ? { .then -> Break#; .else -> Continue# })})
+```
+The body captures `a`, `b`, `pre` and `i`, all ordinary values, and receives the sink.
 
-Every shape in this section is compiled, and none of them runs, in the standard library at `integrationTests/testingStandardLibrary/_test/flow_actor_shapes.fear`: `.actor` and `.actorMut` have no body yet.
+In `actor` none of this is needed: the sink and the state are ordinary mut values and lambdas may capture them.
+
+Every shape in this section is compiled in the standard library at `integrationTests/testingStandardLibrary/_test/flow_actor_shapes.fear`. The actor ones do not run there, `.actor` and `.actorMut` have no body yet; `Block.loop(a, body)` does, in `_test/test_block.fear`.
 
 `.scan` reduces to `.actor`; it offers a simpler signature but loses most of the actor flexibility.
 Scan is a common concept in other approaches; the main differences are...TODO
@@ -292,8 +297,8 @@ mut .actorMut[S:*,R:*](state: iso S, f: read ActorImplMut[S,E,R]): mut Flow[R];
 ```
 with
 ```
-ActorImpl[S:*,E:*,R]:      { read #(down: mut ActorSink[R],  state: S,      e: E): ActorRes }
-ActorImplMut[S:*,E:*,R:*]: { read #(down: mutH ActorSink[R], state: mutH S, e: E): ActorRes }
+ActorImpl[S:*,E:*,R]:      { read #(down: mut ActorSink[R],  state: S,      e: E): mut ControlFlow[R] }
+ActorImplMut[S:*,E:*,R:*]: { read #(down: mutH ActorSink[R], state: mutH S, e: E): mut ControlFlow[R] }
 ```
 
 Actor and actorMut are conceptually the same operation, with a different type signature to cover more cases.
@@ -326,7 +331,7 @@ Lists#(1,2,3,4,5,6,7,8).flow
   .actor[mut Var[List[Nat]], List[Nat]](Vars#[List[Nat]]({}), {down, s, e -> Block#
     .do{s.set(Trim#(s.get +> e, 3))}
     .do{s.get.size == 3 ? { .then -> down.push#(down, s.get); .else -> Void }}
-    .return{down.continue}
+    .return{Continue#}
     })
   .map{..}
   .list
@@ -347,10 +352,12 @@ Room: { mut .takeTreasure: iso Treasure; read .killsHeroesPoorerThan: Nat; }
 heroes.flow
   .actorMut[Room, mut Hero](room1, {down, s, h -> Block#(
     h.take(s.takeTreasure),
-    Step#(s.killsHeroesPoorerThan > (h.purse))#(down, h))})
+    down.pushOpt#(down, Survivor#(s.killsHeroesPoorerThan > (h.purse), h)),
+    Continue#)})
   .actorMut[Room, mut Hero](room2, {down, s, h -> ..})
   .list
-Step: { #(dies: Bool): HeroStep -> dies.if[HeroStep]{ .then -> DropHero; .else -> PushHero } }
+Survivor: { #(dies: Bool, h: mut Hero): mut Opt[mut Hero] ->
+  dies.if[mut Opt[mut Hero]]{ .then -> {}; .else -> Opts#h } }
 ```
 The room is the mutH state, so `s.visit h` is not a shape that exists: a mut method of a hygienic receiver accepts only iso arguments, and the hero is mut. What the room can do is hand out iso pieces of itself, which the hero then takes; the hero and the room meet in the lambda, not inside the room.
 
@@ -368,7 +375,7 @@ One `actorMut` stage per room, each holding that room as its `iso` state. A surv
 
 with `a` of type `iso ToIso[C]` and `g` of type `read F[iso C, E, R]`, behaves exactly like
 
-`l.flow.actorMut[ToIso[C], R](a, {down, s, e -> Block#(down.push#(down, g#(s.iso.close, e)), down.continue)}) .list`
+`l.flow.actorMut[ToIso[C], R](a, {down, s, e -> Block#(down.push#(down, g#(s.iso.close, e)), Continue#)}) .list`
 
 The sugar buys a simpler to use signature while not interacting with optimisation/parallelisation: `actorMut` hands the state as `mutH S` and asks for a downstream sink and a decision, while `map(ctx, g)` takes a lambda of two arguments returning one element.
 
@@ -582,7 +589,7 @@ In other flow/stream libraries a parallel execution may non deterministically pr
 l.flow
   .map f
   .actorMut[mut Var[Nat], Nat](Vars#[Nat]0, {down, s, e ->
-    Block#(s.set(s.get + e), down.push#(down, s.get), down.continue)})
+    Block#(s.set(s.get + e), down.push#(down, s.get), Continue#)})
   .map g .list
 ```
 
