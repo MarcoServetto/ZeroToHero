@@ -182,6 +182,7 @@ Why does flatMap not return a list/array in other approaches?
 The predictability/simplicity gain of the semantic is already quite large.*/
 
 The intuition would be that `.flatMap` desugars onto `.actorMut`, with the inner flow drained into the actor's own sink, but this would fence the inner flows in the act of sinking their elements one by one.
+It also does not typecheck: draining is `inner.forEach{x -> ..}`, a lambda capturing the sink, and the sink of `actorMut` is hygienic. Over `.actor`, whose sink is plain mut, that same shape does compile.
 
 
 ### limit
@@ -204,12 +205,12 @@ Given that limit is known a priori, a nodes system where the only mutable 'share
 `limit n` for `n > 0` can be desugared onto `.actorMut`, with the remaining budget as the actor state:
 ```
 .limit n -> n == 0 ? {
-  .then -> Error.msg "...";
-  .else -> this.actorMut[mut Count[Nat], E](Count.nat n, 
-    {down, s, e, m -> Block#(down#e, s--, s.get == 0 ? {
-      .then -> m.stop;
-      .else -> m.continue})
-  }})
+  .then -> Error.msg`.limit 0 asks a whole chain of stages for no elements`;
+  .else -> this.actorMut[mut Count[Nat], E](Count.nat n, {down, s, e -> Block#(
+    down.push#(down, e),
+    s--,
+    s.get == 0 ?[ActorRes] { .then -> ActorStop; .else -> ActorContinue })});
+  }
 ```
 Emit, decrement, stop on the element that exhausts the budget; element `n` is never pulled, so no stage runs on it.
 
@@ -238,29 +239,41 @@ Here we keep a sum of all the elements seen up to now and we return the current 
 
 `scan` is not a primitive, it is an `actor` whose state is a `Var`:
 
-//TODO: this is the old way: `.scan(acc, f) -> this.actor[mut Var[imm S], S](Vars#[imm S](acc), {down, s, e, m -> Block#(s.set(f#(s.get, e)), down#(s.get), m.continue)})`
-//PR on the standard library to make it work like this instead
 `.scan(acc, f) -> this.actor[mut Var[imm S], S](Vars#[imm S](acc), {down, s, e -> Block#(s.set(f#(s.get, e)), down.push#(down,s.get), down.continue)})`
 
-/*Note for the PR: the type of Down should be
-ActorSink[E:*]:{
-  read .push:ActorSinkHelper->ActorSinkHelper;
-  ..//similarly all the variants of .continue
-  read .continue:ActorContinue->ActorContinue;
-  read .stop:ActorStop->ActorStop;
-
-  mut #(E):Void;//abstract, will be implemented with magic
-}
-ActorSinkHelper:{
-  imm #[E:*](down:mutH SomeName[E],e:E):Void->Magic;//calls down#(e) bypassing the type system.
+The sink the lambda pushes to, and what the lambda answers:
+```
+ActorSink[E:*]: {
+  read .push: ActorSinkHelper -> ActorSinkHelper;
+  read .continue: ActorContinue -> ActorContinue;
+  read .stop: ActorStop -> ActorStop;
+  mut #(E): Void;
+  mut .pushError(Info): Void;
   }
-//Note how in this set up ActorContinue is just an 'imm enumeration element' not an active entity.
+ActorSinkHelper: Sealed {
+  imm #[E:*](down: mutH ActorSink[E], e: E): Void -> _Magic!;//calls down#(e) bypassing the type system
+  }
+ActorRes: Sealed {}
+ActorContinue: Sealed, ActorRes {}
+ActorStop: Sealed, ActorRes {}
+```
+`ActorContinue` and `ActorStop` are imm enumeration elements, not active entities.
 
-Check if this set up does allow passing mut objects downstream with down.push# while preventing passing downstream downstream.
-The core intuition is that declaring that # method mutH would have been sound but it is prevented by the language.
-One may think that "the actor may keep an alias to what it has just sent."
-But the actor state is mutH, so it should not be able to save any mut in its ROG.
-*/
+`ActorSink.#` is a mut method, so on the mutH sink of `actorMut` it accepts only an `iso` element: every argument of a mut method called on a hygienic receiver is strengthened, mut to iso and read to imm. Declaring that `#` mutH would say exactly what we want and the language does not allow it, so `ActorSinkHelper` takes the sink as an argument of an imm method and reaches `down#e` with magic. `down#e` stays available directly wherever the sink is plain mut, as it is in `actor`.
+
+That same strengthening is what stops the actor from keeping an alias of what it has just sent: the state is mutH, so storing a mut element in it would be a mut method taking a mut argument, which does not typecheck. It is also why the sink itself can not go downstream: it would have to be the element type of another sink, and a mutH value can not be stored anywhere to get there.
+
+**Writing an actorMut lambda:**\
+A hygienic parameter can not be captured by a lambda, and every branching method of `Bool` takes one. So inside an `actorMut` lambda a branch can not mention the sink or the state: `b ? {.then -> down.stop; ..}` does not compile. A branch answers with `ActorContinue` or `ActorStop` written out, and a branch that has to push picks an imm step first and hands it the sink as an argument, the same move `ActorSinkHelper` makes:
+```
+HeroStep: { read #(down: mutH ActorSink[mut Hero], h: mut Hero): ActorRes }
+PushHero: HeroStep { down, h -> Block#(down.push#(down, h), ActorContinue) }
+DropHero: HeroStep { down, h -> ActorContinue }
+```
+This is a real limit on what an `actorMut` lambda can say, and it is why `.flatMap` has no `actorMut` shape at all.
+In `actor` the sink and the state are ordinary mut values and lambdas may capture them, so `Block#.do{..}` and the ordinary branching methods work there.
+
+Every shape in this section is compiled, and none of them runs, in the standard library at `integrationTests/testingStandardLibrary/_test/flow_actor_shapes.fear`: `.actor` and `.actorMut` have no body yet.
 
 `.scan` reduces to `.actor`; it offers a simpler signature but loses most of the actor flexibility.
 Scan is a common concept in other approaches; the main differences are...TODO
@@ -268,18 +281,18 @@ Scan is a common concept in other approaches; the main differences are...TODO
 
 The signatures of .actor and .actorMut are as follows:
 ```
-mut .actor[S,R:*](state: iso S, f: read ActorImpl[S,E,R]): mut Flow[imm R];
+mut .actor[S:*,R](state: iso S, f: read ActorImpl[S,E,R]): mut Flow[imm R];
 mut .actorMut[S:*,R:*](state: iso S, f: read ActorImplMut[S,E,R]): mut Flow[R];
 ```
 with
 ```
-ActorImpl[S,E:*,R]: { read #(mut ActorSink[R], mut S, E): ActorRes }
-ActorImplMut[S,E:*,R:*]: { read #(mutH ActorSink[R], mutH S, E): ActorRes }
+ActorImpl[S:*,E:*,R]:      { read #(down: mut ActorSink[R],  state: S,      e: E): ActorRes }
+ActorImplMut[S:*,E:*,R:*]: { read #(down: mutH ActorSink[R], state: mutH S, e: E): ActorRes }
 ```
 
 Actor and actorMut are conceptually the same operation, with a different type signature to cover more cases.
-Two parameters: an iso actor state and a lambda with three arguments: the current state, the current element and the downstream consumer.
-Compare this with `.flatMap`: flatMap returns a list of elements, here we pass the elements to downstream to send them down.
+Two parameters: an iso actor state and a lambda with three arguments: the downstream consumer, the current state and the current element.
+Compare this with `.flatMap`: the flatMap lambda returns a flow of elements, here we pass the elements to downstream to send them down.
 This can have better performance since it avoids creating a thing to contain those multiple elements, and it
 also enables more parallelism, since those elements can start the next stage immediately after they are passed downstream instead
 of waiting for a whole group of elements to be computed.
@@ -302,29 +315,38 @@ This allows for mut objects to be sent downstream, but seals the actor state and
 
 Example for Actor:
 Some flow languages support a 'window', where for example we can take a list of numbers and process them as a window:
-//Lists#(1,2,3,4,5,6,7,8).actorMut{...}.map{..}.list
-//here map will see [1,2,3]; [2,3,4];...[6,7,8].
-//as you can see the point of actorMut is that the state of the actor can be mut; in this case accumulating elements to release them later.
-//TODO: implement this with a state that is a var of immListNat and make the example more concrete. Window motivates actor NOT actorMut
-
+```
 Lists#(1,2,3,4,5,6,7,8).flow
-  .actor..
-
+  .actor[mut Var[List[Nat]], List[Nat]](Vars#[List[Nat]]({}), {down, s, e -> Block#
+    .do{s.set(Trim#(s.get +> e, 3))}
+    .do{s.get.size == 3 ? { .then -> down.push#(down, s.get); .else -> Void }}
+    .return{down.continue}
+    })
+  .map{..}
+  .list
+Trim: { #(w: List[Nat], width: Nat): List[Nat] -> w.size > width ? { .then -> w.subList(1); .else -> w } }
+```
+Here map sees `[1,2,3]`; `[2,3,4]`; ...`[6,7,8]`.
+The state is a `Var` of an imm `List[Nat]`, accumulating elements to release them later, and the window itself is imm, so this motivates actor, not actorMut.
 
 
 Example for ActorMut: a list of mut heroes goes through various rooms in a dungeon. Each room has its state, monsters etc.
 We can run this with pipeline parallelism: the mut heroes can loot rooms, kill monsters and sometimes die. Then we can collect the
 list of heroes reaching the end, with each hero finding the rooms as the ones before have left them.
-//TODO: make this example more concrete with some more example code.
 ```
+Treasure: { read .value: Nat }
+Hero: { mut .take(t: iso Treasure): Void; read .purse: Nat; }
+Room: { mut .takeTreasure: iso Treasure; read .killsHeroesPoorerThan: Nat; }
+
 heroes.flow
-  .actorMut()//room1
-  .actorMut()//room2
+  .actorMut[Room, mut Hero](room1, {down, s, h -> Block#(
+    h.take(s.takeTreasure),
+    Step#(s.killsHeroesPoorerThan > (h.purse))#(down, h))})
+  .actorMut[Room, mut Hero](room2, {down, s, h -> ..})
   .list
+Step: { #(dies: Bool): HeroStep -> dies.if[HeroStep]{ .then -> DropHero; .else -> PushHero } }
 ```
-Where internally the rooms can implement
-`Visit:{ #(r: mutH Room, h: mut Hero): Void }`
-and internally it could consume ELists of imm items and monsters from the room and add items to an EList of items of the hero.
+The room is the mutH state, so `s.visit h` is not a shape that exists: a mut method of a hygienic receiver accepts only iso arguments, and the hero is mut. What the room can do is hand out iso pieces of itself, which the hero then takes; the hero and the room meet in the lambda, not inside the room.
 
 One `actorMut` stage per room, each holding that room as its `iso` state. A surviving hero is pushed to the next room's actor while the room it just left is already working on the next hero, which is the pipeline the text asks for, and each hero finds every room as the heroes before it left it.
 
@@ -340,9 +362,9 @@ One `actorMut` stage per room, each holding that room as its `iso` state. A surv
 
 with `a` of type `iso ToIso[C]` and `g` of type `read F[iso C, E, R]`, behaves exactly like
 
-`l.flow.actorMut[ToIso[C], R](a, {down, s, e, m -> Block#(down#(g#(s.iso.close, e)), m.continue)}) .list`
+`l.flow.actorMut[ToIso[C], R](a, {down, s, e -> Block#(down.push#(down, g#(s.iso.close, e)), down.continue)}) .list`
 
-The sugar buys a simpler to use signature while not interacting with optimisation/parallelisation: `actorMut` hands the state as `mutH S` and asks for a downstream sink and a stop matcher, while `map(ctx, g)` takes a lambda of two arguments returning one element.
+The sugar buys a simpler to use signature while not interacting with optimisation/parallelisation: `actorMut` hands the state as `mutH S` and asks for a downstream sink and a decision, while `map(ctx, g)` takes a lambda of two arguments returning one element.
 
 This relies on the `ToIso` type allowing encapsulation to be kept while a new version of the same conceptual data is produced. If `ToIso` is implemented by internally storing an `IsoPod`, moving the `iso` from one context to the next is easy, so a context can carry state forward.
 
@@ -553,12 +575,12 @@ In other flow/stream libraries a parallel execution may non deterministically pr
 ```
 l.flow
   .map f
-  .actorMut[mut Var[Nat], Nat](Vars#[Nat]0, {down, s, e, m ->
-    Block#(s.set(s.get + e), down#(s.get), m.continue)})
+  .actorMut[mut Var[Nat], Nat](Vars#[Nat]0, {down, s, e ->
+    Block#(s.set(s.get + e), down.push#(down, s.get), down.continue)})
   .map g .list
 ```
 
-Let `h` be the actor lambda, `s` the state built by `Vars#[Nat]0`, `m` the matcher, `down` the sink that applies `g` to each value handed to it, and `sj` the sum of `f#e0` up to `f#ej`. If there is a smallest index `j` such that `h#(down, s, f#ej, m)` throws or does not terminate, the whole flow expression throws that same `Info` or does not terminate.\
+Let `h` be the actor lambda, `s` the state built by `Vars#[Nat]0`, `down` the sink that applies `g` to each value handed to it, and `sj` the sum of `f#e0` up to `f#ej`. If there is a smallest index `j` such that `h#(down, s, f#ej)` throws or does not terminate, the whole flow expression throws that same `Info` or does not terminate.\
 Otherwise this flow returns the list of `g#s0` to `g#s7`.
 
 The stage computing `map f` can be parallelised, and so can the stage computing `map g`. The actor cannot be, because the call for one element observes what the call for an earlier element left in the state. If there were multiple actor stages, they could perform pipeline parallelism between them.
