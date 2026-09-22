@@ -247,9 +247,74 @@ What it gives up for the simpler signature is emitting anything other than one e
 
 //TODO: Downstream#(down,s.get) seems to suggests that muth and readH methods should indeed be alowed, but that reuqires a language extension
 
+//INFO answering the TODO above. Every claim about Fearless typing in the //INFO blocks of this section
+//was checked by typechecking probes run against the current frontend, with the `typeOk` harness of
+//`Frontend/FearlessFrontend/test`; the measurements of other languages were run as described where they appear.
+
+`.actor` needs no extension: its sink is `mut ActorSink[R]`, so `down.continue` is an ordinary `mut` call on a `mut` receiver and the `scan` line above typechecks as written.
+
+`.actorMut` does need one: its sink is `mutH ActorSink[R]`, and there `down.continue` does not typecheck.
+- A method can not be declared with a `mutH` or `readH` receiver. `A:{ mutH .foo: Void -> {} }` is refused by the parser: "Capabilities iso, readH and mutH are not allowed on method declarations. Use one of read, mut, imm." A `mutH` parameter is instead accepted: `B:{ .g(a: mutH A): Void -> {} }` typechecks.
+- What is left is the "Allow mutH receiver" promotion, which accepts a `mutH` receiver for a method declared `mut`, at the price of strengthening every argument to `iso` and weakening the result to hygienic. So `B:{ .g[R:*](d: mutH Sink[R]): R -> d.continue }` is refused with `Method call "mut Sink[_].continue" has type "readH R" instead of a subtype of "R"`.
+- It does typecheck when `R` is imm, since `readH` of an imm type is that imm type. An actor whose result is imm is `.actor`. So merging the matcher into the sink works exactly where `actorMut` is not needed.
+
+The same promotion is what stops `down#e` in `actorMut`: with `d: mutH Sink[R]` and `x: R`, `d#x` is refused with `Parameter "x" has type "R" instead of a subtype of "iso R"`, and a flow element can never be `iso`, since `E:*` means imm or mut or read. Pushing works only for an imm element or for a freshly built literal that promotes to `iso`, so as the types stand `actorMut` can push nothing that `actor` could not push.
+
 //TODO: we need to revert the signatures of actor/actorMut to mostly follow what is done in legacy fearless (see that repo in the fearless project).
 The signatures of .actor and .actorMut are....
+
+//INFO answering the line above. Legacy, `assets/base/flows/operators/statefulOperators.fear`:
+```
+ActorImpl[S:*,E:*,R:*]:    { read #(downstream: mut _ActorSink[imm R], state: S, e: E): ActorRes }
+ActorImplMut[S:*,E:*,R:*]: { read #(downstream: mutH _ActorSink[R], state: mutH S, e: E): ActorRes }
+ActorRes: Sealed{
+  .match[R:*](m: mut ActorResMatch[R]): R -> m.continue,
+  .continue: ActorRes -> {.match(m) -> m.continue},
+  .stop: ActorRes -> {.match(m) -> m.stop},
+  }
+ActorResMatch[R:*]: { mut .continue: R, mut .stop: R, }
+_ActorSinks: {#[T:*](sink: mut _Sink[T]): mut _ActorSink[T] -> mut _ActorSink[T:*]: {
+  mut #(x: T): Void -> sink#x,
+  mut .pushError(info: Info): Void -> sink.pushError(info),
+  }}
+```
+and `assets/base/flows/flows.fear`:
+```
+mut .actor[S:*,R:*](state: iso S, f: read ActorImpl[S,E,R]): mut Flow[imm R],
+mut .actorMut[S:*,R:*](state: iso S, f: read ActorImplMut[S,E,R]): mut Flow[R],
+mut .scan[S:imm](acc: imm S, f: read F[S,E,S]): mut Flow[imm S] -> this.actor[mut Var[imm S], imm S](Vars#[imm S]acc, {downstream, acc', e -> Block#(
+  acc' := (f#(acc'.get, e)),
+  downstream#(acc'.get),
+  ActorRes.continue
+  )}),
+```
+Current, `base/datatypes/collections/flows/flow_utils.fear` and `flow.fear`:
+```
+ActorImpl[S:*,E:*,R]:      { read #(downstream: mut ActorSink[R], state: S, e: E, m: mut ActorMatch[R]): R }
+ActorImplMut[S:*,E:*,R:*]: { read #(downstream: mutH ActorSink[R], state: mutH S, e: E, m: mut ActorMatch[R]): R }
+ActorMatch[R:*]: { mut .continue: R; mut .stop: R; }
+mut .actor[S:*,R](state: iso S, f: read ActorImpl[S,E,R]): mut Flow[imm R]->_Magic!;
+mut .actorMut[S:*,R:*](state: iso S, f: read ActorImplMut[S,E,R]): mut Flow[R]->_Magic!;
+```
+Every difference between the two:
+- the lambda result. Legacy returns `ActorRes`, an imm sealed value built with no reference to the sink; current returns `R` and takes the extra `m` parameter to build that `R`.
+- where the imm restriction of `.actor` is written. Legacy puts it in the sink type, `mut _ActorSink[imm R]` with `R:*`; current puts it in the bound, `R` with no bound.
+- nothing else. Both seal `actorMut`'s sink as `mutH` and its state as `mutH`.
+
+fearless70 and Legacy+ both carry the current four parameter form verbatim; the three parameter form appears only in the legacy repo. Legacy's own `actorMut` tests are `@Disabled` there (`compiler/test/src/tour/Ex17FlowsTest.java`, `flowActorMutRet` and `flowActorMutRetWorks`), so the hygienic half of that signature is not covered by a green test in either repo.
+
+Also in `statefulOperators.fear`, next to `ActorImplMut`, an alternative that is commented out and that bears directly on the dungeon example below:
+```
+// Alternatively, we could use an isopod and check if the isopod still has content before/after running
+// the actor. Of course, the actor could send the isopod downstream, which would enable parallelism to be observed
+// by virtue of it crashing. This could happen anyway in parallel so I think it'd be fine.
+//ActorImplMut[S:*,E:*,R:*]: { read #(downstream: mut _Sink[R], state: mut IsoPod[S], e: E): ActorRes }
+```
+With that shape the state is an ordinary `mut`, so the restrictions listed further below do not apply at all, and the sealing becomes a dynamic check instead of a static one.
+
 //TODO: we can save the third parameter simply by making downstream having methods to also return the expected values for actor results.
+
+//INFO answering the TODO above. Legacy does save it, and not with methods on the downstream: `ActorRes` is an imm value with no reference to the sink at all. That shape still typechecks under the current frontend: with `ImplL[E:*,R:*]:{ read #(down: mutH Sink[R], st: mutH St, e: E): Res }` and `Res` copied from legacy, the body `{down, st, e -> Block#(st.add e, down#(st.get), Res.continue)}` is accepted. Doing it with methods on the downstream instead runs into the `mutH` wall above: it works when the lambda result is imm and fails otherwise.
 
 Actor and actorMut are conceptually the same operation, with a different type signature to cover more cases.
 Two parameters: an iso actor state and a lambda with three arguments: the current state, the current element and the downstream consumer.
@@ -263,8 +328,55 @@ Similar stream APIs are present in many other languages and libraries, and they 
 In java with gatherers we get.... in other languages we get .../TODO: test many languages, test parallel vs sequential, write results.
 Those results are higly counter intuitives, the whole idea of passing 'downstream' 'downstream' is confusing and even if a consistent design could be found, it would make
 parallelization either unsafe or very limited.
+
+//INFO answering the TODO above, measured on JDK 26.0.2 stream gatherers, sequential and parallel.
+//Java is the only language available here whose stream API hands a downstream handle to user code, so it
+//is the only one that can be asked this question literally; the state question below has a wider answer.
+
+Keeping the `downstream` of `Gatherer.Integrator.integrate(state, element, downstream)` and using it after the terminal has returned, over the source `1,2,3,4`:
+```
+terminal returned [1, 2, 3, 4]
+isRejecting after the terminal returned: false
+late push(999) accepted: true
+the list the terminal returned is now [1, 2, 3, 4, 999]
+```
+Identical sequentially and in parallel. The handle stays live after the stream is over, reports that it wants more, and writes into the collection the terminal already returned to its caller. Written in Fearless terms, a `Try` around such a flow would return a value and then have that value change under it.
+
+Pushing the `downstream` itself downstream as an element and calling `push` on it from a later `map`, over the source `1,2`:
+```
+sequential: [elem 1, elem smuggled, push from a later stage accepted=true, elem 2, elem smuggled, push from a later stage accepted=true]
+parallel:   [elem 1, push from a later stage accepted=true, elem 2, push from a later stage accepted=true]
+```
+Sequentially the smuggled element re-enters above the `map` that pushed it, goes through that `map` again, and lands before the element that carried the handle. In parallel the smuggled elements are gone: `push` still answers `true` and nothing arrives. Same code, six elements against four, and no error either way.
+
 Another similarly damaging behaviour could be to pass the mutable actor state downstream.
 In other languages doing this....//TODO: test on other languages and report.
+
+//INFO answering the TODO above.
+A window gatherer whose state is an `ArrayList` holding the last three elements, pushing that state itself downstream, over `1` to `8`:
+```
+windows as collected: [[6, 7, 8], [6, 7, 8], [6, 7, 8], [6, 7, 8], [6, 7, 8], [6, 7, 8]]
+distinct window objects: 1 out of 6
+the same chain, sizes read while trickling: [3, 3, 3, 3, 3, 3]
+```
+One object, six times. Read while trickling, every window is right; collected, they are all the last one. Pushing `List.copyOf(state)` instead gives `[[1, 2, 3], [2, 3, 4], [3, 4, 5], [4, 5, 6], [5, 6, 7], [6, 7, 8]]`, six objects.
+
+The same window gatherer on a parallel stream, given a combiner so the stream is allowed to split:
+```
+windows as collected: []
+```
+Nothing at all: every partition starts from a fresh empty state and none of them reaches three elements. Six windows sequentially against zero in parallel, silently.
+
+Two measurements around that one:
+- a stateful gatherer built with `ofSequential`, that is with no combiner, runs its integrator on one thread even on a parallel stream and gives the right running count up to `64`. The same gatherer given a combiner runs on eight threads and gives `1, 2, 1, 2, ...`, since each partition restarts the count. Supplying a combiner is the only difference between the two and it is not reported anywhere.
+- letting the state objects escape from the initializer, over sixteen elements on a parallel stream, yields sixteen state objects, one per element. How far the state is split is not bounded by anything the actor can see.
+
+Python 3.13 `itertools.groupby` is the same hazard in a language with no downstream handle at all: the operator hands out its own live position as the group iterator.
+```
+read while trickling: [(1, [1, 1]), (2, [2, 2, 2]), (3, [3])]
+read after the walk:  [(1, []), (2, []), (3, [])]
+```
+Keeping the handle and reading it once the operator has moved on gives empty groups rather than an error.
 
 If the values to send downstream can be mut, then the 'downstream' parameter could be passed to a mut downstream.
 To avoid this there are two options: one is very simple and is 'actor': just do not push mut stuff down.
@@ -278,16 +390,65 @@ This allows for mut objects to be sent downstream, but seales the actor state an
 DownStream#(downstreamId,element)//DownStream sealed in base and magic, #[E:*](mutH DowstreamId, E); crucially E:* can not be mutH only mut/imm/read
 //the magic implementation of DownStream# could just call a method on downstreamid but it does not need to be a fearless visible method; this pattern makes so that a 'mutH' method (currently not supported) is not needed.
 
+//INFO on the design above: it is not only a way around declaring a `mutH` method, it is the only way a
+//`mut` element ever reaches downstream. Probed:
+- `d#x` with `d: mutH Sink[R]` and `x: R` is refused, `x` would have to be `iso R`, and a flow element can not be `iso`.
+- `Push:{ #[E:*](d: mutH Sink[E], x: E): Void }` called as `Push#(d, x)` with that same `d` and `x` is accepted, and so is the `mut` case, `d: mutH Sink[mut M]` with `x: mut M`. A parameter declared `mutH` takes a `mutH` argument with no promotion, so nothing is strengthened.
+- the same shape gives back the fourth parameter: `Cont:{ #[R:*](d: mutH Sink[R]): R }` called as `Cont#d` has type `R`, where `d.continue` has type `readH R`.
+
+The price is worth writing down next to the gain: `#[E:*](mutH DowstreamId, E)` does not ask the element to be `iso`, so the actor may keep an alias to what it has just sent. That is exactly what the dungeon example wants, one hero handed over and forgotten, and exactly what the Java window measurement above gets wrong, one list pushed over and over while it keeps changing. The `iso` of the method form is what makes the second impossible; dropping it makes both expressible.
+
+//INFO on what the hygienic state can touch. It is sealed harder than it looks: nothing written in
+//Fearless can bring a `mutH` state and a `mut` element together in one call.
+- `st.visit e` with `st: mutH Room` and `e: mut Hero` is refused, `e` would have to be `iso Hero`.
+- `e.explore st`, the other way round, is refused too: passing a `mutH` argument strengthens the receiver, so `e` would have to be `iso Hero`.
+- a free function declared to take both, `Visit:{ #(r: mutH Room, h: mut Hero): Void }`, is accepted at the call site, `Visit#(st, e)` typechecks. Its body can not do anything with the pair: `r.visit h` inside it hits the same wall. Only `_Magic!` can implement it.
+- what the state does accept is an `iso` or an imm: `Keep:{ #(r: mutH Room, h: iso Hero): Void -> r.visit h }` typechecks, body included, and the state may then keep the hero.
+- a copy taken out of the state can not be pushed: `d#(st.copy)` is refused, since `mut W.copy` on a `mutH` receiver has type `mutH W`. A free function, `Copy:{ #(w: read W): iso W }` called as `d#(Copy#st)`, is accepted.
+- at most one hygienic argument per call, when promotions are doing the work: `this.h(d, s)` with `.h(d: mut Sink[Void], s: mut St)` and both arguments `mutH` is refused, "no single promotion fits all arguments". Declaring both parameters `mutH` lifts that.
+- a `mutH` parameter can not be captured: `{d#{}}` inside a method taking `d: mutH Sink[Void]` is refused, and so is `b ? {.then -> d#{}; .else -> {}}`, since `?` builds a `mut ThenElse` literal that would capture `d`. This is why an `actorMut` body ends up as a sequence of calls to top level helpers rather than as inline conditionals, which is what the only `actorMut` check written so far already has to do with its `SendUnless#`, `Add#` and `Choose#` helpers (fearless70 and Legacy+, `integrationTests/testingStandardLibrary/_test/test_flow_parallel.fear`).
+
 Example for Actor:
 Some flow language support a 'window'; where for example we can take a list of numbers and process them as windos:
 //Lists#(1,2,3,4,5,6,7,8).actorMut{...}.map{..}.list
 //here map will see [1,2,3]; [2,3,4];...[6,7,8].
 //as you can see the point of actor mut is that the state of the actor can be mut; in this case accumulating elements to release them last.
 
+//INFO the body for the window sketch above, with the conditionals lifted into top level helpers since a
+//`mutH` parameter can not be captured by a lambda:
+```
+Lists#(1,2,3,4,5,6,7,8).flow
+  .actorMut[mut EList[Nat], mut List[Nat]](ELists#[Nat], {down, s, e, m -> Block#
+    .do {Slide#(s, e, 3)}
+    .do {SendFull#(down, Window#s, s.size == 3)}
+    .return {m.continue}})
+  .map{w -> w.seqFlow.sum 0}
+  .list
+
+Slide:    { #(s: mut EList[Nat], e: Nat, n: Nat): Void -> ...append e, then drop the head while the size is above n }
+Window:   { #(s: read EList[Nat]): iso List[Nat] -> ...a fresh list holding the same elements }
+SendFull: { #(down: mut ActorSink[mut List[Nat]], w: iso List[Nat], full: Bool): Void -> ...send w when full }
+```
+`Slide#`, `Window#` and `SendFull#` each take exactly one hygienic argument, which is what the promotions allow. `Window#` is the copy the open question is about, and the types leave no choice: what is handed to the sink must be `iso`, and nothing reachable from a `mutH` state is. The copy stops being forced only under `DownStream#`, which would let the actor hand over the retained state itself, which is the aliased window Java produces above.
+Note also that every element here is a freshly built list, so an `imm List[Nat]` element would do just as well and `actor` would be enough: the window is a weak motivation for `actorMut`.
+
 Example for ActorMut: a list of mut heros go through various rooms in a dungeons. Each room has it is state, monsters etc.
 We can run this in a pipeline parallelims, the mut heros can loot rooms, kill monsters and sometimes die. Then we can collect the
 list of heros reaching the end, with each hero finding the rooms as the one before have left them
 //TODO: make this example more concrete with some more example code.
+
+//INFO the dungeon example, concretely, and what blocks it:
+```
+Dungeon.rooms.flow                      //the rooms in order, one actorMut stage each
+  .fold({heroes.seqFlow}, {fl, room -> fl.actorMut[mut Room, mut Hero](room.fresh, {down, st, h, m -> Block#
+    .do {Visit#(st, h)}                 //the room loots, fights, and may kill h
+    .do {SendUnless#(down, h, h.dead)}  //a dead hero does not reach the next room
+    .return {m.continue}})})
+  .list
+```
+One `actorMut` stage per room, each holding that room as its `iso` state. A surviving hero is pushed to the next room's actor while the room it just left is already working on the next hero, which is the pipeline the text asks for, and each hero finds every room as the heroes before it left it.
+It does not typecheck as the types stand, for the reasons measured above: `SendUnless#` can only exist as the proposed `DownStream#` primitive, since `down#h` would demand `iso Hero`; and `Visit#(st, h)` is accepted at the call site but can not be implemented in Fearless at all.
+That second one is the real design question this example raises. A `mutH` state that could be shown a `mut` element could also retain it, and then the state and the downstream would both hold the same hero, which is what the hygiene is there to stop. So either the dungeon is outside what `actorMut` is meant to express, or the state has to be sealed dynamically rather than statically, which is what the commented out `mut IsoPod[S]` alternative recovered above does.
 
 `.actor` and `.actorMut` are truly a primitive flow operation, can not be encoded on top of others.
 
