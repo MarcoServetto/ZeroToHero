@@ -49,7 +49,6 @@ Note that where a method contract is purposely under-specified, such as the tour
 Observably, the flow must behave as if it trickled the elements through the various stages one at a time.
 As an exception, a fence operation emits nothing downstream until every stage before it has finished with every element, and a fence operation whose lambda can mutate what it captured (today only .forEach) does not run that lambda until then either. A fence operation may still work as elements arrive - a sort may place each one as it is received - provided nothing escapes before the stages before it have settled, a thrown Info included.
 
-
 It must not be observable if a potentially parallel flow actually runs the stages one at a time or passes the elements one at a time through all the stages, if it does internal materializations or not etc.
 
 
@@ -150,10 +149,10 @@ Also returning exactly 1 element avoids any kind of 'sequence API' strictly requ
 
 filter can not change the elements, the element type, or add elements. Useful restrictions for optimisations; also avoids 'sequence API's.
 
+
+The least obvious aspects of`.flatMap` is that its lambda do produce a flow, and this interacts with fences/trickle down/lazy.
 **The flow the lambda returns is appended in its lazy state; it is not fenced.**
-
-Its stages run one element at a time as the elements are pulled, and they are pulled by whatever sits downstream of the `flatMap`. Inner elements are elements of the whole flow, so trickling covers them, and a decision point downstream can land between two of them.
-
+Consider the following example:
 ```
 Lists#(Lists#("aa","bbb"), Lists#("c","poison","dd"), Lists#("e")).flow
   .flatMap{ss -> ss.flow.map{s -> s == "poison" ? {.then -> Error.msg`poison`; .else -> s}}}
@@ -161,20 +160,14 @@ Lists#(Lists#("aa","bbb"), Lists#("c","poison","dd"), Lists#("e")).flow
   .map{s -> s.size}
   .list
 ```
+This returns `Lists#(2, 3, 1)`. The count of `limit` is reached at `"c"`, one element into the second inner flow, so the inner `map` is never applied to `"poison"` and nothing is raised. The same chain with `.limit 4` throws, since the fourth element can only come from applying the inner `map` to `"poison"`.
 
-returns `Lists#(2, 3, 1)`. The count of `limit` is reached at `"c"`, one element into the second inner flow, so the inner `map` is never applied to `"poison"` and nothing is raised. The same chain with `.limit 4` throws, since the fourth element can only come from applying the inner `map` to `"poison"`.
+As you can see, here fencing an inner flow would throw the error, while trickling does not throw.
 
-That pair is the whole point. Were the inner flow fenced, run to its end when the lambda hands it over, `.limit 3` would throw as well, because the inner `map` would have reached `"poison"` before `"c"` ever went downstream. Fencing an inner flow is observable, and trickling picks the answer that does not throw.
+//TODO: this is not what happens today. Sequential and parallel behaviour currently disagree. If this decision makes parallelism harder/slower we can change the design so that flatMap do fence.
 
-//TODO: this is not what happens today. `.flow` over an imm `List` is parallel, and that chain raises: the engine runs the second group before it has finished the first. `Flows#(..)` in place of `Lists#(..).flow` is sequential and returns `Lists#(2, 3, 1)`. One expression, one input, two results, chosen by something `Flow unobservable parallelism` says must not be observable.
+The intuition would be that `.flatMap` desugars onto `.actorMut`, with the inner flow drained into the actor's own sink, but this would fence the inner flows in the act of sinking their elements one by one.
 
-`.flatMap` desugars onto `.actorMut`, with the inner flow drained into the actor's own sink:
-
-`.flatMap f -> this.actorMut[Void,R](Void, {down, _, e, m -> _FlowInto#(f#e, down) ? {.then -> m.continue; .else -> m.stop}})`
-
-`_FlowInto#(fl, sink)` pushes each element of `fl` into `sink` as `fl` produces it, and answers `False` when `sink` stopped it. The actor has to pass that answer on, or `.limit 3` above would open the third group after being stopped in the second. `_FlowInto` is a helper, not a `Flow` method.
-
-No operation already in the API can take its place, which is what makes `flatMap` primitive. `forEach` fences, can not report a stop back, and its `mut MF` lambda would have to capture the sink, which `actorMut` hands as `mutH`. `fold` takes its accumulator as an argument rather than as a capture, but builds it from an `iso` thunk, so it can not be handed a sink that already exists. Nothing else consumes a flow one element at a time.
 
 ### limit
 
@@ -194,20 +187,27 @@ This is particularly important for Repr and Isopod, where speculative execution 
 Given that limit is known a priori, a nodes system where the only mutable 'shared' state between the actors is how much of limit is left or a simple binary STOP NOW could also be effective.
 
 `limit n` for `n > 0` can be desugared onto `.actorMut`, with the remaining budget as the actor state:
-
-`.limit n -> this.actorMut[mut Count[Nat], E](Count.nat n, {down, s, e, m -> Block#(down#e, s--, s.get == 0 ? {.then -> m.stop; .else -> m.continue})})`
-
+```
+.limit n -> n == 0 ? {
+  .then -> Error.msg "...";
+  .else -> this.actorMut[mut Count[Nat], E](Count.nat n, 
+    {down, s, e, m -> Block#(down#e, s--, s.get == 0 ? {
+      .then -> m.stop;
+      .else -> m.continue})
+  }})
+```
 Emit, decrement, stop on the element that exhausts the budget; element `n` is never pulled, so no stage runs on it.
 
-`limit 0` throws. Returning the empty flow is the available answer and most other approaches take it, but that is the mistake of the iconic functional `zip`: an answer manufactured so that the call can proceed rather than admit that something upstream is wrong. Asking for no elements while writing out a whole chain of stages is a leftover, not a request. Since `n` is known before any element moves, refusing it costs nothing and lands before any user lambda has run.
+`limit 0` throws. Returning the empty flow is what most other approaches do, but that is the mistake of the iconic functional `zip`: an answer manufactured so that the call can proceed rather than admit that something upstream is wrong. Asking for no elements while writing out a whole chain of stages signals a logic mistake. Since `n` is known before any element moves, a user wanting to allow x=0 to cause the empty flow can just use an `.if` around the flow call.
 
 The error is deterministic, and it is raised where `.limit` is called rather than at the terminal. `n` is not a user lambda, so raising it there does not weaken Lazy, and nothing has run yet, so there is nothing to leave half done.
 
-It is deterministic because the reason the other flow errors are not does not apply. The identity check over Repr and Isopod has to be non deterministic to avoid exposing object identities, and the parallelism misuse error has to be, or which execution strategy the runtime picked would become observable. `limit 0` exposes neither: it is a function of an argument the caller wrote, so it always throws or never throws on structurally identical input. Decisively, a non deterministic error may legally be replaced by a no op, and the no op here is silently returning the empty flow, the one behaviour being refused.
+Deterministic error is appropriate here:
+-The identity check over Repr and Isopod has to be non deterministic to avoid exposing object identities, this does not apply here.
+- limit already throw det errors for numbers too big.
+A linter can not take this over, since `.limit x` may take `x` from outside.
 
-That is the rule behind the two categories: a flow error is non deterministic when making it deterministic would expose object identity or the execution strategy, and deterministic when it is a violation of the domain of the operation. `limit 0` joins the second group, with `.get` on a flow whose size is not 1, `.mapping` on a repeated key and `IsoPod.open` on an open pod, all catchable by `Try#`. A linter can not take this over, since `.limit x` may take `x` from outside.
-
-Two guards of this kind already exist and do not agree with each other. `.limit` already throws a deterministic error for an `n` above what the backend can count to. `Range.flow(step)` refuses a `0` step and a reversed range, so `5=~~=1` is not silently empty, but it refuses them with an assert, and asserts are non deterministic. Under the rule above both are violations of a domain and belong with `limit 0`.
+TODO: `Range.flow(step)` refuses a `0` step and a reversed range, so `5=~~=1` is not silently empty, but it should throw deterministic, does it ot it throws non det?
 
 ### scan, actor, actorMut, let
 
@@ -217,7 +217,11 @@ Here we want to state all the reasonably possible parallel shapes, not the ones 
 
 The first parameter of `actorMut` is the mutable state of the actor, handed in as `iso S`. Any object can play the role of mutable state, including an object whose ROG holds mutable capabilities; for example a `mut Var[Nat]`.
 
-//TODO: `actorMut` hands the sink as `mutH ActorSink[R]`, so an actor can only push what it can hand over as `iso`, never the element it received. That blocks an actor stage in a `ParRepr` or a `ParPod` flow, which is where pipeline parallelism has the most to offer. Decide whether the element should arrive as `iso E`.
+`actorMut` hands the sink as `mutH ActorSink[R]`, so an actor can only push what it can hand over as `iso` or `imm`.
+This means that an actorMut over mut Isopod must do some extra work to open the iso internal data, pass it as iso and then rewrap it,
+or just flow down some imm value extracted from the Isopod.
+A flow over mut Repr may not even be able to do this rewrapping with the current API.
+For now we are accepting this limitation as an 'acceptable syntax overhead' in corner cases.
 
 `let` belongs to the fence group because the elements need duplication. The current implementation of `let` is more involved than needed, offering optional consumption.
 
@@ -582,3 +586,6 @@ This is particularly clear cut for limit, since the number is known before the f
 Is there some other case like .limit 0 that we should be aware of?
 Should a .limit 0 be non deterministic error or deterministic error?
 Difficult questions most of the 'flow misuse' errors have been non deterministic, so putting this a deterministic would mean have two categorises of flow errors and motivate them. This is also not something a linter can catch since we could do .limit x where x comes from the outside.
+
+Misunderstanding:
+One time you stated that "Decisively, a non deterministic error may legally be replaced by a no op". This is false. Consider the case of the identity checks, we would get broken behaviour without the mandatory non det error there.
