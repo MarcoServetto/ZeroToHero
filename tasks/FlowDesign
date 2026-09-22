@@ -182,7 +182,7 @@ Why does flatMap not return a list/array in other approaches?
 The predictability/simplicity gain of the semantic is already quite large.*/
 
 The intuition would be that `.flatMap` desugars onto `.actorMut`, with the inner flow drained into the actor's own sink, but this would fence the inner flows in the act of sinking their elements one by one.
-It also does not typecheck: draining is `inner.forEach{x -> ..}`, a lambda capturing the sink, and the sink of `actorMut` is hygienic. Over `.actor`, whose sink is plain mut, that same shape does compile.
+Over `.actorMut` the lazy drain is not even writable: it is `inner.forEach{x -> ..}`, a lambda capturing the hygienic sink. What is writable there is `inner.list` walked by recursion, carrying the sink as an argument, and that materialisation is the fence. Over `.actor`, whose sink is plain mut, `inner.forEach{x -> down#x}` compiles.
 
 
 ### limit
@@ -264,13 +264,19 @@ ActorStop: Sealed, ActorRes {}
 That same strengthening is what stops the actor from keeping an alias of what it has just sent: the state is mutH, so storing a mut element in it would be a mut method taking a mut argument, which does not typecheck. It is also why the sink itself can not go downstream: it would have to be the element type of another sink, and a mutH value can not be stored anywhere to get there.
 
 **Writing an actorMut lambda:**\
-A hygienic parameter can not be captured by a lambda, and every branching method of `Bool` takes one. So inside an `actorMut` lambda a branch can not mention the sink or the state: `b ? {.then -> down.stop; ..}` does not compile. A branch answers with `ActorContinue` or `ActorStop` written out, and a branch that has to push picks an imm step first and hands it the sink as an argument, the same move `ActorSinkHelper` makes:
+Inside an `actorMut` lambda, `down` and the state are hygienic, and a hygienic binding can not be captured by a lambda. Every branching method of `Bool` takes a lambda, so no branch of the lambda can mention `down` or the state: `b ? {.then -> down.stop; .else -> down.continue}` does not compile. Two ways around it, for the two things a branch usually does:
+
+To answer the decision, write the values: `b ? {.then -> ActorStop; .else -> ActorContinue}`.
+
+To push from inside a branch, do not push inside the branch. Let the branch return an object that pushes, and call that object afterwards with `down` as an argument, which is what `ActorSinkHelper` does with the sink:
 ```
 HeroStep: { read #(down: mutH ActorSink[mut Hero], h: mut Hero): ActorRes }
 PushHero: HeroStep { down, h -> Block#(down.push#(down, h), ActorContinue) }
 DropHero: HeroStep { down, h -> ActorContinue }
 ```
-This is a real limit on what an `actorMut` lambda can say, and it is why `.flatMap` has no `actorMut` shape at all.
+Then `Step#(dies)#(down, h)`, with `Step#` the branch returning `PushHero` or `DropHero`.
+
+Everything a lambda would do with `down` is written this way instead: a loop becomes a recursion over such objects, carrying `down` as an argument. This is a real cost in how an `actorMut` lambda reads.
 In `actor` the sink and the state are ordinary mut values and lambdas may capture them, so `Block#.do{..}` and the ordinary branching methods work there.
 
 Every shape in this section is compiled, and none of them runs, in the standard library at `integrationTests/testingStandardLibrary/_test/flow_actor_shapes.fear`: `.actor` and `.actorMut` have no body yet.
