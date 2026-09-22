@@ -243,63 +243,9 @@ Here we keep a sum of all the elements seen up to now and we return the current 
 
 `.scan(acc, f) -> this.actor[mut Var[imm S], S](Vars#[imm S](acc), {down, s, e -> Block#(s.set(f#(s.get, e)), down.push#(down,s.get), Continue#)})`
 
-The sink the lambda pushes to:
-```
-ActorSink[E:*]: Sealed {
-  read .push: ActorSinkHelper -> ActorSinkHelper;
-  read .pushOpt: ActorSinkOptHelper -> ActorSinkOptHelper;
-  mut #(E): Void;
-  mut .pushError(Info): Void;
-  }
-ActorSinkHelper: Sealed {
-  imm #[E:*](down: mutH ActorSink[E], e: E): Void -> _Magic!;//calls down#(e) bypassing the type system
-  }
-ActorSinkOptHelper: Sealed {//pushes what the Opt holds, does nothing when it holds nothing
-  imm #[E:*](down: mutH ActorSink[E], e: mut Opt[E]): Void -> e.isSome
-    .if[_PushOptStep[E]]{ .then -> {d, o -> d.push#(d, o!)}; .else -> {_, _ -> Void} }
-    #(down, e);
-  }
-_PushOptStep[E:*]: { read #(down: mutH ActorSink[E], e: mut Opt[E]): Void }
-```
-The lambda answers `Continue#` or `Break#`, the values `Block.loop` answers with, and being values they can be returned from a branch, which a push can not. Its answer type is `mut ContinueBreak[Void]`, where `ContinueBreak` is the `ControlFlow` without the return case:
-```
-ContinueBreak[R:*]: ControlFlow[R] {}
-Continue: {#[R:*]: mut ContinueBreak[R]->{::.continue}}
-Break: {#[R:*]: mut ContinueBreak[R]->{::.break}}
-OuterReturn: {#[R:*](r: R): mut ControlFlow[R]->{::.return r} }
-```
-so `OuterReturn#e` does not typecheck as an actor answer. In a loop, `OuterReturn#v` skips the rest of the enclosing block and makes `v` its result; the same move for a stage would skip the later stages and decide the result of the terminal, whose type the stage does not know.
-
-The type with fewer cases is the subtype: every continue or break is a valid answer where a return is also allowed, not the reverse. Type arguments are invariant, so `ContinueBreak` carries the `R` to be a `ControlFlow[R]` for every `R`; the actor picks `Void`, which makes its answer a valid `Block#[Void].loop` answer too.
-
-`ActorSink.#` is a mut method, so on the mutH sink of `actorMut` it accepts only an `iso` element: every argument of a mut method called on a hygienic receiver is strengthened, mut to iso and read to imm. Declaring that `#` mutH would say exactly what we want and the language does not allow it, so `ActorSinkHelper` takes the sink as an argument of an imm method and reaches `down#e` with magic. It is the one place where the actor family leaves the type system: `.pushOpt` is written on top of it, in Fearless. `down#e` stays available directly wherever the sink is plain mut, as it is in `actor`.
-
-That same strengthening is what stops the actor from keeping an alias of what it has just sent: the state is mutH, so storing a mut element in it would be a mut method taking a mut argument, which does not typecheck. It is also why the sink itself can not go downstream: it would have to be the element type of another sink, and a mutH value can not be stored anywhere to get there.
-`ActorSink` is sealed because `ActorSinkHelper` makes exactly that call on whatever sink it is given: a state whose type implemented `ActorSink` could take every element through `s.push#(s, e)`, keep it, and mutate it later, through a mut method with no arguments, while the next stage works on it.
-
-**Writing an actorMut lambda:**\
-Inside an `actorMut` lambda, `down` and the state are hygienic, and a hygienic binding can not be captured by a lambda. Since every branching method of `Bool` takes a lambda, and so do `Block.let`, `Block.var`, `Block.do` and `Flow.forEach`, none of them can mention `down` or the state: `b ? {.then -> down.push#(down, e); .else -> Void}` does not compile. What is left is enough, in three moves.
-
-**A branch returns a value, it does not act.** The decision is one: `b ? {.then -> Break#; .else -> Continue#}`. An element to emit is one too: the branch answers an `Opt`, and `down.pushOpt#(down, that)` commits it where the sink is in scope. This is what `.pushOpt` is for.
-
-**A method call is what binds a name.** `Block.let` and `Block.var` are lambdas, so a name that has to live beside a hygienic one is a method parameter instead, and everything read out of the hygienic state is read at the call site, where it is in scope:
-```
-JoinFrom#(down, e, s.a, s.b, Vars#[Nat](0))
-```
-Inside `JoinFrom`, `down` is a hygienic parameter and everything else is ordinary.
-
-**A loop takes the hygienic value as an argument.** ``Block.loop(a, body)`` hands `a` to every iteration, so the body reaches it without capturing it:
-```
-Block#[Void].loop(down, {d -> Block#(
-  d.pushOpt#(d, JoinAt#(pre, a, b, i.get)),
-  i.set(i.get + 1),
-  i.get >= (a.size) ? { .then -> Break#; .else -> Continue# })})
-```
-The body captures `a`, `b`, `pre` and `i`, all ordinary values, and receives the sink.
-
-In `actor` none of this is needed: the sink and the state are ordinary mut values and lambdas may capture them.
-
-Every shape in this section is compiled in the standard library at `integrationTests/testingStandardLibrary/_test/flow_actor_shapes.fear`. The actor ones do not run there, `.actor` and `.actorMut` have no body yet; `Block.loop(a, body)` does, in `_test/test_block.fear`. The two things that must not compile, an actor lambda answering `OuterReturn` and a user type implementing `ActorSink`, are checked in Coordinator's `integrationTests/RunIntegration.java`.
+`.actor`/`.actorMut` lambda return `Continue#` or `Break#`, the same values `Block.loop` uses.
+We use subtyping to ensure `OuterReturn#e` does not typecheck as an actor answer.
+In a loop, `OuterReturn#v` skips the rest of the enclosing block and makes `v` its result.
 
 `.scan` reduces to `.actor`; it offers a simpler signature but loses most of the actor flexibility.
 Scan is a common concept in other approaches; the main differences are...TODO
@@ -330,7 +276,6 @@ Those results are highly counter intuitive; the whole idea of passing 'downstrea
 
 Another similarly damaging behaviour could be to pass the mutable actor state downstream.
 
-
 If the values to send downstream can be mut, then the 'downstream' parameter could be passed to a mut downstream.
 To avoid this there are two options: one is very simple and is 'actor': just do not push mut stuff down.
 Since mut can be assigned to read, read is blocked too and all that survives is imm. This simple restriction solves those problems and works in most cases.
@@ -343,14 +288,15 @@ Example for Actor:
 Some flow languages support a 'window', where for example we can take a list of numbers and process them as a window:
 ```
 Lists#(1,2,3,4,5,6,7,8).flow
-  .actor[mut Var[List[Nat]], List[Nat]](Vars#[List[Nat]]({}), {down, s, e -> Block#
-    .do{s.set(Trim#(s.get +> e, 3))}
-    .do{s.get.size == 3 ? { .then -> down.push#(down, s.get); .else -> Void }}
-    .return{Continue#}
+  .actor[mut Var[List[Nat]], List[Nat]](Vars#[List[Nat]]{}, {down, s, e -> Block#(
+    s.set(Trim#(s.get +> e, 3)),
+    s.get.size == 3 .thenDo{ down.push#(down, s.get)},
+    Continue#)
     })
   .map{..}
   .list
-Trim: { #(w: List[Nat], width: Nat): List[Nat] -> w.size > width ? { .then -> w.subList(1); .else -> w } }
+Trim: { #(w: List[Nat], width: Nat): List[Nat] ->
+  w.size > width ? { .then -> w.subList(1); .else -> w } }
 ```
 Here map sees `[1,2,3]`; `[2,3,4]`; ...`[6,7,8]`.
 The state is a `Var` of an imm `List[Nat]`, accumulating elements to release them later, and the window itself is imm, so this motivates actor, not actorMut.
@@ -360,46 +306,45 @@ Example for ActorMut: a list of mut heroes goes through various rooms in a dunge
 We can run this with pipeline parallelism: the mut heroes can loot rooms, kill monsters and sometimes die. Then we can collect the
 list of heroes reaching the end, with each hero finding the rooms as the ones before have left them.
 
-The room is what a mutH is typically made of: a large mutable graph whose leaves are imm. The chests are a `mut EList[mut EList[Item]]`, the monsters and the graves are `ESet`s:
+The room is what a mutH is typically made of: a large mutable graph whose leaves are imm.
+The chests are a `mut EList[mut EList[Item]]`, the monsters and the graves are `ESet`s:
 ```
 Room: {
   mut .fight(strength: Nat): Nat;
-  mut .loot: List[Item];
+  mut .loot(strength: Nat): List[Item];
   mut .bury(grave: Opt[Grave]): Void;
   read .buried(name: Str): Bool;
   }
-Rooms: { #(chests: mut EList[mut EList[Item]], monsters: mut ESet[Monster]): mut Room -> Block#
-  .let[mut ESet[Str]] graves = {ESets#[Str,Str]{::}}
-  .return {{
-    .fight strength -> monsters.removeIf{m -> m.strength < strength}.size;
-    .loot -> chests.seqFlow.flatMap{c -> c.seqFlow}.fold({{}}, {acc, i -> acc +> i});
-    .bury grave -> grave.ifSome{g -> Block#(graves.add(g.name), chests.add(g.items.flow.eList), Void)};
-    .buried name -> graves.contains(name);
-    }}
-  }
 ```
-Every parameter of every `Room` method is imm, and so is every result, and that is the whole design effort: such a method can be called on a mutH room, which is what the state of an actorMut lambda is. On a hygienic receiver a mut method takes only iso and imm arguments, and a mut or read result comes back mutH or readH, which can be called further but not stored or captured, so a method meant to hand something out answers it imm. Inside the methods nothing is restricted: the receiver is plainly mut, and the lambdas given to `removeIf`, `flatMap` and `ifSome` capture the collections freely. Consuming the leaves (`removeIf`, `seqFlow`), filling up (`add`) and reading them (`contains`, `size`) are all ordinary calls.
+Every parameter of every `Room` method is imm, and so is every result.
+Those methods can be called on a mutH room, which is what the state of an actorMut lambda is.
+We can call a mut method on a hygienic receiver but only pass iso and imm arguments,
+and a mut or read result comes back mutH or readH,
+which can be called further but not stored or captured.
+Inside the methods nothing is restricted: the receiver is plainly mut, and the lambdas given to
+`removeIf`, `flatMap` and `ifSome` capture the collections freely.
+Consuming the leaves (`removeIf`, `seqFlow`), filling up (`add`) and reading them (`contains`, `size`)
+are all ordinary calls.
 
 The hero and the room meet through imm values:
 ```
 Visit: { #(room: mutH Room, h: mut Hero): Void -> Block#(
   h.wound(room.fight(h.strength)),
-  h.carry(room.loot),
-  room.bury(h.grave),
-  Void) }
+  h.carry(room.loot(h.carryCapacity),//zero if dead already
+  room.bury(h.grave),//empty Opt is still alive
+  ) }
 Survivor: { #(room: readH Room, h: mut Hero): mut Opt[mut Hero] ->
-  room.buried(h.name) ?[mut Opt[mut Hero]]{ .then -> {}; .else -> Opts#h } }
+  room.buried(h.name) ?{ .then -> {}; .else -> Opts#h } }
 
 heroes.flow
   .actorMut[Room, mut Hero](room1, {down, s, h -> Block#(Visit#(s, h), down.pushOpt#(down, Survivor#(s, h)), Continue#)})
   .actorMut[Room, mut Hero](room2, {down, s, h -> Block#(Visit#(s, h), down.pushOpt#(down, Survivor#(s, h)), Continue#)})
   .list
 ```
-The strength of the hero goes into `fight`, what `loot` answers goes to the hero, and the grave a hero leaves when it dies, its name and everything it carried, goes back into the room for the heroes after it. `Room` can have no method taking the hero: the hero is mut, and a mut method called on a hygienic receiver takes only iso and imm arguments. `Visit` is not a method of the room, it takes the mutH room and the mut hero side by side, and nothing in it can store one into the other. `Survivor` only reads the room, so it takes it readH, and a mutH room is one.
-`Hero`, `Item`, `Monster` and `Grave` are in the standard library at `integrationTests/testingStandardLibrary/_test/test_dungeon.fear`, where `Visit` and `Survivor` also run on a mut room, which is a mutH one too.
-
-One `actorMut` stage per room, each holding that room as its `iso` state. A surviving hero is pushed to the next room's actor while the room it just left is already working on the next hero, which is the pipeline the text asks for, and each hero finds every room as the heroes before it left it.
-
+`Room` can have no method taking the hero: the hero is mut.
+`Visit` is not a method of the room, it takes the mutH room and the mut hero side by side
+ and nothing in it can store one into the other.
+`Survivor` only reads the room, so it takes it readH, and a mutH room is one.
 
 `.actor` and `.actorMut` are truly primitive flow operations; they can not be encoded on top of others.
 
