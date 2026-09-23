@@ -188,6 +188,28 @@ Lists#(Lists#("aa","bbb"), Lists#("c","poison","dd"), Lists#("e")).flow
 ```
 This returns `Lists#(2, 3, 1)`. The count of `limit` is reached at `"c"`, one element into the second inner flow, so the inner `map` is never applied to `"poison"` and nothing is raised. The same chain with `.limit 4` throws, since the fourth element can only come from applying the inner `map` to `"poison"`.
 
+-----
+**Alternative: the lambda returns a list, so each inner expansion is fenced.**\
+`mut .flatMap[R:imm,read](f: read F[E, read List[R]]): mut Flow[R]`
+
+The lambda builds its whole expansion before any element of it moves on. The example above becomes
+```
+Lists#(Lists#("aa","bbb"), Lists#("c","poison","dd"), Lists#("e")).flow
+  .flatMap{ss -> ss.flow.map{s -> s == "poison" ? {.then -> Error.msg`poison`; .else -> s}}.list}
+  .limit 3
+  .map{s -> s.size}
+  .list
+```
+and throws: to give `limit` its third element, `"c"`, the lambda builds the whole list of the second element, so the inner `map` meets `"poison"`. The same chain with `.limit 2` returns `Lists#(2, 3)`, since the second element is never pulled.
+
+When the lambda returns, its elements are final: no inner flow is left to run later and mutate them, so `read` results are as safe as `imm` ones, and the bound `R:imm,read` lets one method cover both, as in `Par[T:imm,read]`, with no need for a `.flatMapRead`. `mut` results stay unsafe, since the same `mut` object can be in the list twice, or inside two of its elements (see **Duplicated `mut` elements**).
+
+`.flatMap` also becomes expressible with the actors, since the fence that stops the desugaring below is now the semantics itself: over `.actor` for `imm` results,
+`.flatMap f -> this.actor[mut Var[Nat], R](Vars#[Nat](0), {down, _, e -> Block#(f#e .flow .forEach{x -> down#x}, Continue#)})`,
+with a state it does not use, and over `.actorMut` for `read` results, pushing the elements of the list with the `Block.loop` variant that hands the hygienic sink to every iteration.
+
+-----
+
 As you can see, here fencing an inner flow would throw the error, while trickling does not throw.
 
 //TODO: this is not what happens today. Sequential and parallel behaviour currently disagree. If this decision makes parallelism harder/slower we can change the design so that flatMap does fence.
@@ -206,12 +228,7 @@ numbers.flow.map{n -> Persons#n}
   .list
 ```
 Trickling gives, for each `Person`, the age after one `grow` and then the age after two. If the last `map` runs on the first element after the inner `map` has grown `p` again, both read the age after two.
-So a lazy inner flow is safe only with `imm` results, like `.actor`, and only if it runs in its own mode: `Flows#(p, p).map{x -> Block#(x.grow, x.age)}` has `imm` results but mutates `p` twice, so its elements must go in order on one task.
-If the lambda returns a list, its computation is over when it returns: nothing mutates the elements afterwards, `read` results become safe as well, and no inner flow is left to run later.
-One method then covers `imm` and `read` with a bound, as `Par[T:imm,read]` does, with no need for a `.flatMapRead`:
-`mut .flatMap[R:imm,read](f: read F[E, read List[R]]): mut Flow[R]`.
-`mut` results stay unsafe, since the same `mut` object can be in the list twice, or inside two of its elements (see **Duplicated `mut` elements**).
-The price is the example above: building the list applies the inner `map` to `"poison"`, so the chain throws.
+So a lazy inner flow is safe only with `imm` results, like `.actor`, and only if it runs in its own mode: `Flows#(p, p).map{x -> Block#(x.grow, x.age)}` has `imm` results but mutates `p` twice, so its elements must go in order on one task. Neither condition applies to the fenced alternative above.
 
 The intuition would be that `.flatMap` desugars onto `.actorMut`, with the inner flow drained into the actor's own sink,
 but this would fence the inner flows in the act of sinking their elements one by one.
