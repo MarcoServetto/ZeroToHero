@@ -96,7 +96,14 @@ Note that they are not about the type of the elements in the middle of the stage
 
 **`ParPod[T]`:** can be enabled if source elements are `mut IsoPod[T]`, with the same guarantee through `IsoPods#`. Note that this does not ensure that those `IsoPod` objects have different identity.
 
-For a `mut` source, `.seqFlow` is the sequential entry point and `.flow(mode)` the parallel one. A `read` or `imm` source, such as a `Set`, offers only `.flow`: whether that flow runs in parallel or sequentially is not observable, so a sequential entry point there would only be a hint (see **Chunk sizes**).
+**`onlyImmCapture` flag:**\
+The backend marks each lambda object that captures only `imm` values; the flag is visible to the runtime (in Java), not in Fearless.
+`ParRepr` and `ParPod` need it on every lambda of the flow except those of `forEach` and `let`, which run once every stage has finished; without it the flow raises a non deterministic error (see below).
+The identity check only compares the elements with each other, while a `read` lambda can capture any `mut` binding as `read`: the source list itself, or a local or parameter `p: mut Repr[T]` that is also one of the elements. Such a lambda can read that `Repr` while the task of its element mutates it, and the parallel execution becomes observable.
+No `imm` value can reach a `mut Repr` or `mut IsoPod`, so with the flag each task reaches no `Repr` or `IsoPod` but its own element.
+//TODO: minimally extend the backend to put this flag on the objects representing lambdas.
+
+`.seqFlow` exists only on sources whose elements may be `mut`, such as `List` and `EList`, to flow them as `mut` without a mode. Where the elements are always `read` or `imm`, as in `Set` and `ESet`, `.flow` is the only entry point: running in parallel or sequentially is not observable there, so a preference for sequential execution is only a hint (see **Chunk sizes**).
 
 Calling a `.flow` with a set of calls suggesting that parallelism is possible, while passing parameters or calling methods that would prevent any parallelism, is most likely a user mistake. When the type system can not check this statically, a non deterministic dynamic error is raised. A linter could try to catch more cases statically, but could never do the full job since Flows under construction are first class entities that can freely navigate in the source.
 
@@ -228,6 +235,7 @@ Deterministic error is appropriate here:
 A linter can not take this over, since `.limit x` may take `x` from outside.
 
 `Range.flow(step)` follows the same rule. A step that is not positive (`0`, a negative `Int`, a `Float` that is not greater than `0.0`) never takes the flow from the start of the range to its end, so it is refused with a deterministic error where `.flow(step)` is called, before any element moves. A reversed range, such as `5=~~=1`, is refused in the same way where the range is built.
+A positive `Float` step can still stop moving the flow partway: once the values are large enough, adding the step gives the same `Float` back. Where that happens depends only on the start, the end and the step, so this is a deterministic error too, raised when the flow reaches that element; a `.limit` that stops the flow earlier never meets it.
 
 ### scan, actor, actorMut
 
@@ -394,6 +402,7 @@ the flows were originally parallelizable so the combined flow is parallelizable.
 Since flows are lazy, the identity checks for Repr and Isopod is delayed until after the sum, that can thus
 check that if both sides were in mode Repr/IsoPod, the union of all those is disjoint.
 //TODO: Does this hold for all kinds of parallel flows? We need to investigate.
+//The `onlyImmCapture` flag covers captures, not elements: next to a `ParRepr` or `ParPod` side, a side flowing from a `read` source, such as `rs.flow`, holds `read` aliases of the same `Repr`s as its elements.
 //Can we recover parallelization starting from composition of originally non parallel flows? We need to investigate.
 //Should we recover such parallelization if possible or should we propagate the sequentiality, considering it a user preference? We need to investigate.
 
@@ -462,10 +471,6 @@ to be parallelism sensitive.
 Note how there are plenty of situations where a fence does NOT need materialization;
 it is just a semantic guarantee that can be optimized away.
 
-
-//TODO: minimally extend the backend to put some kind of flag on the objects representing
-//lambdas that only capture imms, and this flag can be seen at runtime in Java (not in fearless),
-
 Consider
 ```
 Lists#(0,..,64).flow
@@ -473,7 +478,7 @@ Lists#(0,..,64).flow
   .forEach{..}
 ```
 This needs materialization if v is captured as 'read'.
-By looking to the backend generated onlyImmCapture flag,we can use it to choose whether to
+By looking at the `onlyImmCapture` flag (see **Execution modes**), we can use it to choose whether to
 trigger the fence, without the need of adding `.immMap` or other method actually taking `imm F` instead of `read F`.
 With the flag, we can make certain that there is nothing forEach can mutate that 
 .map can see changing, thus no need to enforce the fence.
@@ -516,9 +521,7 @@ These decide before the end, so every element past the decision is positive spec
 (or simply skipped in sequential mode).
 
 Positive speculation is not safe for Repr/IsoPods, since we could observe changes after successful results.
-An interesting solution for speculative Repr/IsoPod comes from ESet and EList.
-Since they do consume the content on `myESet.flow`, the elements never delivered are held by
-nothing afterwards and there is nobody left to read them.
+Draining an `EList` into the flow does not help: it drops only the reference of the list, and a local or parameter such as `p: mut Repr[T]` may still hold an element that was never delivered.
 
 TODO: add what operations are derived, how are they derived etc.
 TODO: most terminals are still missing, like .list. Add a section for each of those.
@@ -696,8 +699,9 @@ rs.flow(ParRepr)
 ```
 Overall parallelizing `Repr`s and `IsoPod`s is about
 - running an identity check
+- checking the `onlyImmCapture` flag on the lambdas of the flow
 - avoiding unfenced (positive) speculative execution and running fenced (positive) speculative execution sequentially
-- behaving exactly as if a par flow produced a mut out of the first mapping: those muts are guaranteed to be isolated with respect to each other, thus they can not interact. Depending on the stages, data parallel or nodes could be more appropriate.
+- behaving exactly as if a par flow produced a mut out of the first mapping: those muts are guaranteed to be isolated with respect to each other and to what the lambdas captured, thus they can not interact. Depending on the stages, data parallel or nodes could be more appropriate.
 
 
 //TODO: discuss more interesting sequences of operators.
