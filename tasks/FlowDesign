@@ -90,6 +90,14 @@ Using the static type of the initial collection we can enable one or more execut
 
 Note that they are not about the type of the elements in the middle of the stages. A stage of a flow in execution mode `Par` may create mutable objects, and another stage may mutate them: over an `imm List[imm Nat]`, `l.flow.map{i -> Persons#("Bob", i)}.map{p -> ...}` runs in parallel and every (mut) `Person` it builds is reachable from nowhere else, so later stages can mutate it safely.
 
+**Duplicated `mut` elements:**\
+`flatMap` can emit one `mut` object as two elements, and so can `actorMut`, by pushing its element twice:
+```
+numbers.flow.map{n -> Persons#n}.flatMap{p -> Flows#(p, p)}.filter{..}.list
+```
+Each `Person` now appears twice, so two tasks could run `filter` on the same `Person` at the same time: the lambda of `filter` is a `read F`, which can not mutate what it captured but can mutate its `mut` parameter. Two elements can also share a `Person` without being it, like two pairs holding the same `Person`, so no identity check can find this.
+So the note above stops holding after a `flatMap` or an `actorMut`: the elements they produce from the same input may share `mut` objects, and can not be handed to different tasks. Any strategy that hands the elements after them to different tasks, like splitting again after a fence or running the stages after an `actorMut` in parallel, has to respect this.
+
 **`Par[T:imm,read]`:** can be enabled if source elements are `imm` or `read`.
 
 **`ParRepr[T]`:** can be enabled if source elements are `mut Repr[T]`. `Reprs#` takes an `iso T`, so two distinct `Repr`s share no inner state. Note that this does not ensure that those `Repr` objects have different identity.
@@ -399,8 +407,8 @@ This may compute g in parallel: even if the combined elements of the two flows a
 the flows were originally parallelizable so the combined flow is parallelizable.
 Since flows are lazy, the identity checks for Repr and Isopod is delayed until after the sum, that can thus
 check that if both sides were in mode Repr/IsoPod, the union of all those is disjoint.
+The **example with `++`, over two ParPod flows** shows this step by step.
 //TODO: Does this hold for all kinds of parallel flows? We need to investigate.
-//The `onlyImmCapture` flag covers captures, not elements: next to a `ParRepr` or `ParPod` side, a side flowing from a `read` source, such as `rs.flow`, holds `read` aliases of the same `Repr`s as its elements.
 //Can we recover parallelization starting from composition of originally non parallel flows? We need to investigate.
 //Should we recover such parallelization if possible or should we propagate the sequentiality, considering it a user preference? We need to investigate.
 
@@ -699,7 +707,25 @@ Overall parallelizing `Repr`s and `IsoPod`s is about
 - running an identity check
 - checking the `onlyImmCapture` flag on the lambdas of the flow
 - avoiding unfenced (positive) speculative execution and running fenced (positive) speculative execution sequentially
-- behaving exactly as if a par flow produced a mut out of the first mapping: those muts are guaranteed to be isolated with respect to each other and to what the lambdas captured, thus they can not interact. Depending on the stages, data parallel or nodes could be more appropriate.
+- behaving exactly as if a par flow produced a mut out of the first mapping: those muts are guaranteed to be isolated with respect to each other and to what the lambdas captured, thus they can not interact, until a `flatMap` or an `actorMut` duplicates them (see **Duplicated `mut` elements**). Depending on the stages, data parallel or nodes could be more appropriate.
+
+**example with `++`, over two ParPod flows**\
+```
+ps1.flow(ParPod).map{p -> p.mutate{..}}
+  ++ (ps2.flow(ParPod).map{p -> p.mutate{..}})
+  .list
+```
+with `ps1` and `ps2` of type `mut List[mut IsoPod[T]]`.
+
+Building the two sides and summing them runs nothing: `.flow(ParPod)`, `.map` and `++` only describe the flow, and no pod is looked at yet.
+The first thing `.list` does, before running any lambda, is the identity check on the union of the pods of `ps1` and `ps2`: a pod found twice, in the same list or once in each, raises a non deterministic error, and so does a lambda without the `onlyImmCapture` flag.
+
+Otherwise, if there is a smallest index `j`, counting the pods of `ps1` first and then those of `ps2`, such that the `map` of its side throws or does not terminate on the `j`-th pod, the whole flow expression throws that same `Info` or does not terminate.
+Otherwise this flow returns the list of the results, in that order.
+
+Once the union is disjoint the two lists work as one source of distinct pods: both maps can run in parallel, on any pod, at the same time.
+
+The check can only see the pods themselves. If the second side were `boxes.flow.map{b -> b.pod.look{..}}`, over a `mut List[mut Box]` whose boxes hold pods of `ps1`, its `map` would read those pods while the first `map` mutates them, and the check would not see it: the pods are inside the `read Box` elements. So only sides in mode `ParPod`, or sides over `imm` elements, which can not reach a `mut` pod, can be summed with a `ParPod` side and still run in parallel.
 
 
 //TODO: discuss more interesting sequences of operators.
