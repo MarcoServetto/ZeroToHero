@@ -81,9 +81,9 @@ Execution strategies are defined by the terminal operation looking at all the st
 
 **Terminals** end the flow and return something that is not a flow.
 
-**Consuming:** `list`, `eList`, `set`, `eSet`, `mapping`, `forEach`, `fold`, `foldAcc`, `size`, `join`, `sum`, `last`, `let`. Every element passes the whole chain.
+**Consuming:** `list`, `eList`, `set`, `eSet`, `mapping`, `forEach`, `fold`, `foldAcc`, `size`, `get`, `getOpt`, `join`, `sum`, `last`, `let`. Every element passes the whole chain.
 
-**Short-circuit:** `first`, `get`, `getOpt`, `any`, `all`, `none`, `findFirst`, `findMap`. Can decide before the end, leaving later elements unreached.
+**Short-circuit:** `first`, `any`, `all`, `none`, `findFirst`, `findMap`. Can decide before the end, leaving later elements unreached.
 
 **Execution modes:**\
 Using the static type of the initial collection we can enable one or more execution modes. They are a crystallization of what we know and what we can assume; they are used to allow/block various execution strategies for the terminal, including parallelization and omission of intermediate materializations.
@@ -95,6 +95,8 @@ Note that they are not about the type of the elements in the middle of the stage
 **`ParRepr[T]`:** can be enabled if source elements are `mut Repr[T]`. `Reprs#` takes an `iso T`, so two distinct `Repr`s share no inner state. Note that this does not ensure that those `Repr` objects have different identity.
 
 **`ParPod[T]`:** can be enabled if source elements are `mut IsoPod[T]`, with the same guarantee through `IsoPods#`. Note that this does not ensure that those `IsoPod` objects have different identity.
+
+For a `mut` source, `.seqFlow` is the sequential entry point and `.flow(mode)` the parallel one. A `read` or `imm` source, such as a `Set`, offers only `.flow`: whether that flow runs in parallel or sequentially is not observable, so a sequential entry point there would only be a hint (see **Chunk sizes**).
 
 Calling a `.flow` with a set of calls suggesting that parallelism is possible, while passing parameters or calling methods that would prevent any parallelism, is most likely a user mistake. When the type system can not check this statically, a non deterministic dynamic error is raised. A linter could try to catch more cases statically, but could never do the full job since Flows under construction are first class entities that can freely navigate in the source.
 
@@ -225,7 +227,7 @@ Deterministic error is appropriate here:
 - limit already throws deterministic errors for numbers too big.
 A linter can not take this over, since `.limit x` may take `x` from outside.
 
-TODO: `Range.flow(step)` refuses a `0` step and a reversed range, so `5=~~=1` is not silently empty, but it should throw deterministic; does it, or does it throw non det?
+`Range.flow(step)` follows the same rule. A step that is not positive (`0`, a negative `Int`, a `Float` that is not greater than `0.0`) never takes the flow from the start of the range to its end, so it is refused with a deterministic error where `.flow(step)` is called, before any element moves. A reversed range, such as `5=~~=1`, is refused in the same way where the range is built.
 
 ### scan, actor, actorMut
 
@@ -395,7 +397,7 @@ check that if both sides were in mode Repr/IsoPod, the union of all those is dis
 //Can we recover parallelization starting from composition of originally non parallel flows? We need to investigate.
 //Should we recover such parallelization if possible or should we propagate the sequentiality, considering it a user preference? We need to investigate.
 
-### size
+### size, get, getOpt
 
 Size is just a sugar of `.list.size`.
 We chose to align the behaviour with `.list.size` even if in some cases we could be faster, because
@@ -405,6 +407,23 @@ On many other systems we wuld have
 es.map.size//fast
 es.map.filter.size//slow
 ```
+
+`get` and `getOpt` are sugar over `.list` in the same way:
+```
+.get -> this.list |> {xs -> xs.size == 1 ? {
+  .then -> xs.getFirst;
+  .else -> Error.msg(`Flow.get: the flow has `+(xs.size)+` elements, but .get needs exactly one`)}};
+.getOpt -> this.list |> {xs -> xs.size <= 1 ? {
+  .then -> xs.first;
+  .else -> Error.msg(`Flow.getOpt: the flow has `+(xs.size)+` elements, but .getOpt needs at most one`)}};
+```
+The size is checked once every element has passed the whole chain, so
+```
+Lists#(1,2,3).flow.map{x -> x == 3 ? {.then -> Error.msg`three`; .else -> x}}.get
+```
+raises `three`, not the error about the size.
+Deciding at the second element would make them short-circuit terminals, and every element computed past the second would be positive speculation, which is not safe over `ParRepr` and `ParPod`.
+As consuming terminals they are parallelised exactly like `.list`.
 
 ### mapping
 
@@ -491,12 +510,10 @@ the user can simply call `.flow` or `.seqFlow` on the produced list.
 //TODO: investigate ways to preserve this semantic while optimizing let execution.
 
 
-### first, get, getOpt, any, all, none, findFirst, findMap
+### first, any, all, none, findFirst, findMap
 
 These decide before the end, so every element past the decision is positive speculation
 (or simply skipped in sequential mode).
-//TODO: is get/getOpt speculative? I think not, it should be equivalent to get to list check the size == 1 etc...
-//If there is an error computing element 3, that error should be what leaks.
 
 Positive speculation is not safe for Repr/IsoPods, since we could observe changes after successful results.
 An interesting solution for speculative Repr/IsoPod comes from ESet and EList.
@@ -738,13 +755,7 @@ es.flow //examples, of course it does not make sense to use those together
 ```
 Then we could have unchecked exceptions on inapplicable hints etc.
 
-TODO: minor fixes that could go on separate PRs: **Set.seqFlow returns a parallel flow:**\
-`set.fear:211` reads `.seqFlow: mut Flow[E] -> this.list.flow;`, the same body as `.flow` on line 207.
-`this.list.seqFlow` does not typecheck, `.list` is `List[imm E]` and `List.seqFlow` is `mut`, and `Flows` has no sequential twin of `fromImmList`.
-Since the head of `flow.fear` makes `.seqFlow` the entry point for mut sources, the open question is whether `Set.seqFlow` should exist at all.
-
-**let hands a duplicator where the flow would do:**\
-`let[DR:*,R:*](x: read F[mut MF[mut Flow[E]],DR], cont: mut FlowContinuation[DR,R])` gives the lambda a thunk producing a fresh flow; it should get the flow directly.
+TODO: minor fixes that could go on separate PRs:
 
 **map(ctx, f)** seems to be slightly different in this document, in current fearless, in fearless70, in Legacy and Legacy+. I think the version in this document is the best, but we should think about advantages and disadvantages.
 
