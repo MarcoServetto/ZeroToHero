@@ -530,10 +530,19 @@ raises rather than keeping one value and dropping the other.
 
 In other flow/stream libraries the same chain may keep either value without a word.
 
-Data parallel://TODO: make it consistent with the other parallel discussions
-The stage computing `map f` can be parallelised. The terminal cannot be, because the entries are ordered by index and the `Info` raised for a repeated key is the one at the earliest index.
+**Parallelisation options:**
+
+Data parallel:
+
+`put` has two halves. Applying `kem.key` and `kem.elem` to `x` depends only on `x`, so it is elementwise and joins `map f` in one parallel region: each task turns its chunk into key and element pairs.
+Placing the keys can not be split: it is where a repeated key is found, and the calls it makes to `by` must be the same in every mode, so they are the calls of placing the keys one at a time, in index order, into a single map. Building one map per chunk and merging them would call `by` on different pairs, which is observable when `by` throws or does not terminate.
+The placement then runs sequentially, taking the pairs in index order as the tasks complete them. An `Info` raised by `f`, `kem.key` or `kem.elem` at index `j` is held until the placement reaches `j`: if the placement finds a repeated key at an earlier index, that one is raised instead, and the held `Info` is negative speculation that never surfaces.
+
 Nodes:
-It can work as a two actor system, two workers in parallel to do the map and to insert elements into the map we are building. Messages will naturally come in order without extra issues. `Yield#` as usual will be needed to terminate looping speculative execution after an error is raised.
+
+It can work as a two actor system: one worker computes `map f`, `kem.key` and `kem.elem`, and one places the pairs into the map being built. Messages naturally come in order without extra issues.
+The two overlap in time: the placing worker places element `j` while the first computes element `j+1`. The same holds when a serial stage, such as an actor, comes before `.mapping`: the terminal's own per-element work overlaps the later elements of that stage.
+`Yield#` as usual will be needed to terminate looping speculative execution after an error is raised.
 
 ### forEach
 
@@ -816,7 +825,7 @@ Misunderstanding:
 
 The pipeline gap: the terminal is not discussed enough as something that can run concurrently with an upstream serial stage.
 
-Nothing says that in a chain ending `.mapping(by, kem)`, `.set` or `.sum` the terminal's own per-element work can overlap the actor's later elements. We need to improve the text above.
+Nothing says that in a chain ending `.set` or `.sum` (see **mapping** for how it goes there) the terminal's own per-element work can overlap the actor's later elements. We need to improve the text above.
 
 Found bug that should disappear when racing is gone anyway:\
 "Two tasks racing inside `IsoPod.consume` make one of them call `open` on an already open pod, so the flow sometimes returns a value and sometimes throws. Determinism covers the thrown `Info`, so this breaks it directly, with no capability anywhere." It should disappear as a side effect of fixing the overall design, since two threads should never be able to race on calling a mut method ever.
