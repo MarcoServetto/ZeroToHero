@@ -787,26 +787,6 @@ Overall parallelizing `Repr`s and `IsoPod`s is about
 - avoiding unfenced (positive) speculative execution and running fenced (positive) speculative execution sequentially
 - behaving exactly as if a par flow produced a mut out of the first mapping: those muts are guaranteed to be isolated with respect to each other and to what the lambdas captured, thus they can not interact, until a `flatMapMut` or an `actorMut` duplicates them (see **Duplicated `mut` elements**). Depending on the stages, data parallel or nodes could be more appropriate.
 
-**example with `++`, over pods**\
-```
-ps1.flow(ParPod).map{p -> p.mutate{..}}
-  ++ (ps2.flow(ParPod).map{p -> p.mutate{..}}.list)
-  .list
-```
-with `ps1` and `ps2` of type `mut List[mut IsoPod[T]]`.
-
-The argument of `++` is an ordinary expression, evaluated when `++` is called: the flow over `ps2` runs to its `.list`, starting with the identity check on the pods of `ps2`, while the flow over `ps1` is only described and none of its pods is looked at yet.
-Then the final `.list` runs the flow over `ps1`: the identity check on the pods of `ps1` and the `onlyImmCapture` flag on its lambdas come first, and a pod found twice raises a non deterministic error.
-If there is a smallest index `j` such that the `map` over `ps1` throws or does not terminate on the `j`-th pod, the whole flow expression throws that same `Info` or does not terminate. Otherwise it returns the results over `ps1`, followed by the results over `ps2`.
-
-The two flows never run at the same time, so a pod in both lists is not an error: the `map` over `ps2` mutates it first, then the `map` over `ps1`. For the same reason the argument could also read pods of `ps1`, for example through `read Box` elements holding them: those reads happen before any pod of `ps1` is mutated.
-
-To handle the pods of both lists as one parallel source, concatenate the lists before flowing them:
-```
-(ps1 ++ ps2).flow(ParPod).map{p -> p.mutate{..}}.list
-```
-The identity check of `.list` then covers the union: a pod found twice, in the same list or once in each, raises a non deterministic error, and once it passes the `map` can run on all the pods in parallel.
-
 
 //TODO: discuss more interesting sequences of operators.
 
