@@ -451,14 +451,44 @@ and splitting can start again after it:
 is two parallel regions with one fence in between.
 Crucially if a fence operation is at the beginning or directly after another fence, some optimisations are possible.
 
+`max` and `min` emit every element tied for the maximum (minimum), in flow order: `Lists#(3,1,3).flow.max{::}.list` is `Lists#(3,3)`.
+`sort` is stable: elements that `by` ranks together keep their flow order.
+All four take an `OrderBy`, not an `OrderHashBy`, so they never call `.hash`.
+
 **Sugaring:**\
-min can be encoded on max://TODO: show implementation
+min is exactly max under the reversed order:
+```
+Rev: { #[T,K](by: OrderBy[T,K]): OrderBy[T] ->
+  {t0, t1, m -> by#t0 <=> (by#t1, {.lt -> m.gt; .eq -> m.eq; .gt -> m.lt})} }
 
-max can be loosely implemented on sort //TODO: show
-but the concrete optimised implementation is allowed to use a different sequence of calls to .cmp and .hash, thus if some of those can fail, this sugar would not be fully semantically accurate
-(while the min/max sugaring will be).
+.min by -> this.max(Rev#by)
+```
+`Rev` swaps the outcome, not the arguments: `by#t0 <=> (by#t1, m')` computes the key of `t0` first, as `by` itself does, so every call `by` receives is the same call, in the same order, in both.
+Ties stay ties, so the same elements come out in the same order, and if a call of `by` throws or does not terminate, it is the same call.
 
-sortDistinct can be encoded on ... //TODO: choose .distinct.sort or sort.distinct. What is better and why?
+max can be loosely implemented on sort: a stable sort under `Rev#by` puts the maximal elements first, in flow order, and an actor emits the leading run of elements tied with the first one:
+```
+.max by -> this.sort(Rev#by)
+  .actorMut[mut Var[Opt[K]], E](Vars#[Opt[K]]{}, {down, s, e -> by#e |> {o -> s.get.match{
+    .empty  -> Block#(s.set(Opts#(o.close)), down.push#(down, e), Continue#);
+    .some k -> o == k ? {.then -> Block#(down.push#(down, e), Continue#); .else -> Break#}
+    }}})
+```
+The state holds only the key of the first element, which is `imm`, so the elements themselves may be `mut`.
+The result is the same when `by` completes normally, but the concrete optimised implementation is allowed to use a different sequence of calls to `by`: a direct max needs about `n` comparisons where the sort needs about `n log n`, and the actor calls `by#e` again on the leading run. Thus, if some of those calls can fail, this sugar would not be fully semantically accurate (while the min/max sugaring is).
+
+sortDistinct is `.sort by` followed by collapsing each run of tied elements into its first element:
+```
+.sortDistinct by -> this.sort by
+  .actorMut[mut Var[Opt[K]], E](Vars#[Opt[K]]{}, {down, s, e -> by#e |> {o -> Block#(
+    s.get.match{.empty -> True; .some k -> o != k}
+      .thenDo{Block#(s.set(Opts#(o.close)), down.push#(down, e))},
+    Continue#)}})
+```
+The other candidates, `.distinct.sort` and `.sort.distinct`, do not typecheck: `.distinct` needs an `OrderHashBy`, and sortDistinct only has an `OrderBy`.
+Sorting first is what makes the hash unnecessary: after a stable sort the elements `by` ranks together are adjacent, so each element is compared only with the last one kept, and the state is a single key rather than a set of all kept keys.
+Since the sort is stable, the element kept for each class is the one with the smallest index, the same one `.distinct` keeps: `Lists#(3,1,3,2,1).flow.sortDistinct{::}.list` is `Lists#(1,2,3)`.
+This sugar sorts the duplicates too; a direct implementation can drop an element as soon as it compares equal to one already placed, for example while inserting into an ordered tree. That changes which calls to `by` are made, which is left under-specified as for `.sort`, provided the same choice is made in every mode.
 
 Reasonable expectations on how .cmp and .hash are called:
 //TODO: list options. For example, is it reasonable to promise .hash is called no more than once for each element?
