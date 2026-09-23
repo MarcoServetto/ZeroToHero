@@ -349,25 +349,37 @@ heroes.flow
 
 ### map with context
 
-`map(ctx, g)` is sugar over `actorMut`; that is, the code
-
-`l.flow.map(a, g) .list`
+`map(ctx, g)` is sugar over `actorMut`; that is, it could be defined as follows:
 
 with `a` of type `iso ToIso[C]` and `g` of type `read F[iso C, E, R]`, behaves exactly like
-
-`l.flow.actorMut[ToIso[C], R](a, {down, s, e -> Block#(down.push#(down, g#(s.iso.close, e)), Continue#)}) .list`
-
-The sugar buys a simpler to use signature while not interacting with optimisation/parallelisation: `actorMut` hands the state as `mutH S` and asks for a downstream sink and a decision, while `map(ctx, g)` takes a lambda of two arguments returning one element.
+```
+mut .map(...)->
+  this.actorMut[ToIso[C], R](a, {down, s, e ->
+    Block#(down.push#(down, g#(s.iso.close, e)), Continue#)})
+```
+The sugar buys a simpler to use signature while not interacting with 
+optimisation/parallelisation: `actorMut` hands the state as `mutH S` and asks for a 
+downstream sink and a decision, while `map(ctx, g)` takes a lambda of two arguments
+returning one element.
 
 This relies on the `ToIso` type allowing encapsulation to be kept while a new version of the same conceptual data is produced. If `ToIso` is implemented by internally storing an `IsoPod`, moving the `iso` from one context to the next is easy, so a context can carry state forward.
+The expression `s.iso.close` is very predictable: the only input is the `iso s`. 
+Thus it is possible to run `s.iso.close` many times (sequentially, but it is likely very fast) 
+and to parallelize map with context in a data parallel way, each using a `s.iso.close` result and just calling
+`g#(_,e)` in parallel.
+Some attention needs to be used to preserve the same error flow that the desugaring shown above would induce.
+
 
 ### sort, distinct, sortDistinct, max, min
 
-These five cannot emit anything before consuming everything, which is why they are fences. Their output is a finished sequence of known size, so it is indistinguishable from a fresh source and splitting can start again after it: `map f .sort by .limit 10000 .filter g .list` is two parallel regions with one fence in between.
+These five cannot emit anything before consuming everything, which is why they are fences.
+Their output is a finished sequence of known size, so it is indistinguishable from a fresh source
+and splitting can start again after it:
+`map f .sort by .limit 10000 .filter g .list`
+is two parallel regions with one fence in between.
+Crucially if a fence operation is at the beginnin or directly after another fence, some optimizations are possible.
 
 ### ++
-
-//TODO: initial body of the operator ++
 
 Since the two sides are independent, the computation of the two halves can proceed in parallel. A simple implementation will then materialize both sides and compose them into another flow. Can this new flow then continue in parallel? This is an interesting (implementation design) decision. Note that it is not about the type/mutability of the elements in the materialized sequence.
 
@@ -375,23 +387,41 @@ For example if we have an `l : imm List[imm Nat]`
 
 `l.flow.map{i->Persons#("Bob",i)} ++ (l.flow.map{i->Persons#("Bob",i+10)}) .map g .list`
 
-This may compute g in parallel: even if the combined elements of the two flows are mut, the flows were originally parallelizable. Does this hold for all kinds of parallel flows? We need to investigate. Can we recover parallelization starting from composition of originally non parallel flows? We need to investigate. Should we recover such parallelization if possible or should we propagate the sequentiality, considering it a user preference? We need to investigate.
+This may compute g in parallel: even if the combined elements of the two flows are mut,
+the flows were originally parallelizable so the combined flow is parallelizable.
+Since flows are lazy, the identity checks for Repr and Isopod is delayed until after the sum, that can thus
+check that if both sides were in mode Repr/IsoPod, the union of all those is disjoint.
+//TODO: Does this hold for all kinds of parallel flows? We need to investigate.
+//Can we recover parallelization starting from composition of originally non parallel flows? We need to investigate.
+//Should we recover such parallelization if possible or should we propagate the sequentiality, considering it a user preference? We need to investigate.
 
 ### size
 
-discuss why we chose to align the behaviour with .list.size even if in some cases we could be faster.
-The possible optimizations are really brittle:
+Size is just a sugar of `.list.size`.
+We chose to align the behaviour with `.list.size` even if in some cases we could be faster, because
+the possible optimizations are really brittle;
+On many other systems we wuld have
+```
 es.map.size//fast
 es.map.filter.size//slow
+```
 
 ### mapping
 
 `l.flow.map f .mapping(by, kem)`
 
-Let `put` be what the terminal does with one element: `put#(x)` applies `kem.key` and `kem.elem` to `x`, uses `by` to place the key among the keys already present, and throws when the key is already present. Which calls `put` makes is left under-specified, as under `.sort`. If there is a smallest index `j` such that `put#(f#ej)` throws or does not terminate, the whole flow expression throws that same `Info` or does not terminate.\
+Let `put` be what the terminal does with one element: `put#(x)` applies `kem.key` and `kem.elem`
+to `x`, uses `by` to place the key among the keys already present, and throws when the key is
+already present. Which calls `put` makes is left under-specified, as under `.sort`.
+If there is a smallest index `j` such that `put#(f#ej)` throws or does not terminate,
+the whole flow expression throws that same `Info` or does not terminate.
+
 Otherwise this flow returns the map holding one entry per element, in index order.
 
-Two elements carrying the same key make `put` throw at the later of the two indices, so the flow raises rather than keeping one value and dropping the other. In other flow/stream libraries the same chain may keep either value without a word.
+Two elements carrying the same key make `put` throw at the later of the two indices, so the flow
+raises rather than keeping one value and dropping the other.
+
+In other flow/stream libraries the same chain may keep either value without a word.
 
 Data parallel://TODO: make it consistent with the other parallel discussions
 The stage computing `map f` can be parallelized. The terminal cannot be, because the entries are ordered by index and the `Info` raised for a repeated key is the one at the earliest index.
@@ -410,7 +440,12 @@ Lists#(0,..,64).flow
 ```
 to be parallelism sensitive.
 
-Note how there are plenty of situations where a fence does NOT need materialization; it is just a semantic guarantee that can be optimized away.
+Note how there are plenty of situations where a fence does NOT need materialization;
+it is just a semantic guarantee that can be optimized away.
+
+
+//TODO: minimally extend the backend to put some kind of flag on the objects representing
+//lambdas that only capture imms, and this flag can be seen at runtime in Java (not in fearless),
 
 Consider
 ```
@@ -419,33 +454,20 @@ Lists#(0,..,64).flow
   .forEach{..}
 ```
 This needs materialization if v is captured as 'read'.
-If we had 'immMap' taking an imm lambda, then
-```
-Lists#(0,..,64).flow
-  .immMap{..}
-  .forEach{..}
-```
-We are now certain that there is nothing forEach can mutate that .immMap can see changing, thus no need to enforce the fence.
-This is true even if some operations in `.immMap{..}` throw errors: any change .forEach may do is in the garbage when that error is captured.
-
-This is an example where the code generator can see that in
-
-```
-Lists#(0,..,64).flow
-  .map{..}
-  .forEach{..}
-```
-`{..}` just so happens to only capture imms.
+By looking to the backend generated onlyImmCapture flag,we can use it to choose whether to
+trigger the fence, without the need of adding `.immMap` or other method actually taking `imm F` instead of `read F`.
+With the flag, we can make certain that there is nothing forEach can mutate that 
+.map can see changing, thus no need to enforce the fence.
+This is true even if some operations in `.map{..}` throw errors:
+any change .forEach may do is in the garbage when that error is captured.
 
 This could be very useful for examples like
 `0~~10000000 .flow.map{..}.forEach{..}`
 allowing us to not materialize large ranges.
 
-However, actual code generation is not needed for this specific case, just an extra code generation lambda flag.
-Let's flag 'surely imm lambdas' when they are created:
-If we minimally extend the backend to put some kind of flag on the objects representing lambdas that only capture imms, and this flag can be seen at runtime in Java (not in fearless), we can use it to choose whether to trigger the fence, as if we had the .immMap and similar methods.
-
 ### let
+Let is the most unusual operation. It can be used as follows, helping to declare local variables in the
+middle of a flow.
 
 ```
 es.flow.map{i -> Persons#(..)}
@@ -455,32 +477,36 @@ es.flow.map{i -> Persons#(..)}
   .list
 ```
 
-`let` is a terminal. It consumes the flow into a list, hands that list to `x`, and hands `cont` both the result of `x` and the same list. Reading the sugar from outside or from inside gives the same answer: the flow ends at the `let`, and the `.seqFlow` on the next line starts a new one.
+`let` is a terminal. It consumes the flow into a list, hands that list to `x`, and hands
+`cont` both the result of `x` and the same list.
 
-`let` is not a primitive. It is `.list` with a `Block` `let` wrapped around it, which is its whole body:
+`let` is not a primitive, it can be implement like this:
 
 ```
-.let(x, cont) -> Block#
-  .let[mut List[E]] xs = {this.list}
-  .return {cont#(x#xs, xs)}
+.let(x, cont) -> this.list |>{xs->cont#(x#xs, xs)};
 ```
+The elements are needed twice and a flow consumes once, so they are materialised here;
+Showing the list rather than handing a flow on is what makes that visible and allows for parallelims:
+the user can simply call `.flow` or `.seqFlow` on the produced list.
+//TODO: investigate ways to preserve this semantic while optimizing let execution.
 
-The elements are needed twice and a flow consumes once, so they are materialised here; running the stages a second time instead would run user lambdas twice. Showing the list rather than handing a flow on is what makes that visible.
-
-It also puts the choice of execution mode where it can be made. Both sides read the list back with `.seqFlow` or with `.flow(mode)`, so the second flow can be sequential, `Par`, `ParRepr` or anything else the elements admit, and the choice is written down. A `let` that handed a flow on would have to choose for the caller, and it can not choose correctly in general: `DR` outlives `x` and stays in scope for the whole continuation, so when `DR` can reach the elements every task in the remainder has a second path to every element instead of only to its own.
-
-//TODO: that hazard is not covered by the execution modes. A `ParRepr` witness says distinct elements share no inner state with each other, and says nothing about a `DR` pointing at all of them, so `self.flow(ParRepr)` after a `let` that kept the elements is unsound and nothing catches it. The type of `DR` looks like the criterion, `imm` or `iso` can not reach `mut` elements while `mut` or `read` can, but this is not decided.
 
 ### first, get, getOpt, any, all, none, findFirst, findMap
 
-These decide before the end, so every element past the decision is positive speculation (or simply skipped in sequential mode).
+These decide before the end, so every element past the decision is positive speculation
+(or simply skipped in sequential mode).
+//TODO: is get/getOpt speculative? I think not, it should be equivalent to get to list check the size == 1 etc...
+//If there is an error computing element 3, that error should be what leaks.
 
-When the stages only build what they return, nothing that ran past the decision is held by anything once the terminal returns, so the speculation is invisible and can be as wide as the machine allows.
+Positive speculation is not safe for Repr/IsoPods, since we could observe changes after successful results.
+An interesting solution for speculative Repr/IsoPod comes from ESet and EList.
+Since they do consume the content on `myESet.flow`, the elements never delivered are held by
+nothing afterwards and there is nobody left to read them.
 
-An interesting solution for speculative Repr/IsoPod comes from ESet and EList. Since they do consume the content on
-`myESet.flow`, the elements never delivered are held by nothing afterwards and there is nobody left to read them. Check if this can work.
+TODO: add what operations are derived, how are they derived etc.
+TODO: most terminals are still missing, like .list. Add a section for each of those.
 
-## Examples
+## Examples of combining operations together.
 
 Assuming: `Boom#` throwing a deterministic error, `l:List[Nat]` containing `0` to `7`, `ErrIf#(b: Bool, x: Nat): Nat` raising a deterministic error when `b` holds and returning `x` otherwise, `f` and `g` of type `read F[Nat,Nat]`, `P` and `Q` of type `F[Nat,Bool]`, `by` the natural order on the elements, `kem` a key and element mapper, `Ctxs#0` a context counting from 0.//TODO: reduce and simplify this somehow. Some of those can be moved to be local. Like.. can we just write Lists#(0,1,2,3,4,5,6,7) in the relevant examples?
 
