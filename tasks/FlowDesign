@@ -164,9 +164,9 @@ Those operations logically act element-wise. They take a lambda of type `read F[
 **Semantic reduction:**\
 map and filter can both be trivially implemented on top of flatMap.
 
-`.map f -> this.flatMap{e->Flows#(f#e)}`
+`.map f -> this.flatMapMut{e->Flows#(f#e)}`
 
-`.filter f -> this.flatMap{e->f#e?{.then-> Flows#e; .else->Flows#} }`
+`.filter f -> this.flatMapMut{e->f#e?{.then-> Flows#e; .else->Flows#} }`
 
 They exist as separate methods for readability and performance reasons.
 
@@ -176,64 +176,86 @@ Also returning exactly 1 element avoids the 'sequence API' that any kind of flat
 filter can not change the elements, the element type, or add elements. Useful restrictions for optimisations; it also avoids 'sequence API's.
 
 
-The least obvious aspect of `.flatMap` is that its lambda produces a flow, and this interacts with fences/trickle down/lazy.
-**The flow the lambda returns is appended in its lazy state; it is not fenced.**
-Consider the following example:
-```
-Lists#(Lists#("aa","bbb"), Lists#("c","poison","dd"), Lists#("e")).flow
-  .flatMap{ss -> ss.flow.map{s -> s == "poison" ? {.then -> Error.msg`poison`; .else -> s}}}
-  .limit 3
-  .map{s -> s.size}
-  .list
-```
-This returns `Lists#(2, 3, 1)`. The count of `limit` is reached at `"c"`, one element into the second inner flow, so the inner `map` is never applied to `"poison"` and nothing is raised. The same chain with `.limit 4` throws, since the fourth element can only come from applying the inner `map` to `"poison"`.
-
------
-**Alternative: the lambda returns a list, so each inner expansion is fenced.**\
+The least obvious aspect of `.flatMap` in many alternative approaches is that its lambda produces a flow, and this interacts with fences/trickle down/lazy.
+The lambda of our `.flatMap` returns a list, so each inner expansion is fenced.
+In concrete we have two flat map signatures.
 `mut .flatMap[R:imm,read](f: read F[E, read List[R]]): mut Flow[R]`
 
-The lambda builds its whole expansion before any element of it moves on. The example above becomes
+`mut .flatMapMut[R:*](f: read F[E, read List[R]]): mut Flow[R]`
+
+The first one can trivially be sugared on the second one
 ```
-Lists#(Lists#("aa","bbb"), Lists#("c","poison","dd"), Lists#("e")).flow
-  .flatMap{ss -> ss.flow.map{s -> s == "poison" ? {.then -> Error.msg`poison`; .else -> s}}.list}
+mut .flatMap[R:imm,read](f: read F[E, read List[R]]): mut Flow[R]
+  ->this.flatMapMut f;
+```
+But the restricted signature of the first one allows for more parallelism.
+
+The lambda builds its whole expansion before any element of it moves on. 
+Consider the following example:
+```
+Lists#(Lists#("aa","bbb"), Lists#("c","poison","dd"), Lists#("e"))
+  .flow
+  .flatMap{ss -> ss.flow
+    .map{s -> s == "poison" ? {.then -> Error.msg`poison`; .else -> s}}.list}
   .limit 3
   .map{s -> s.size}
   .list
 ```
-and throws: to give `limit` its third element, `"c"`, the lambda builds the whole list of the second element, so the inner `map` meets `"poison"`. The same chain with `.limit 2` returns `Lists#(2, 3)`, since the second element is never pulled.
+This example clearly throws. We generate lists and that requires to execute all the nested flows to generate those lists.
+The same chain with `.limit 2` returns `Lists#(2, 3)`, since the second element is never pulled.
 
-When the lambda returns, its elements are final: no inner flow is left to run later and mutate them, so `read` results are as safe as `imm` ones, and the bound `R:imm,read` lets one method cover both, as in `Par[T:imm,read]`, with no need for a `.flatMapRead`. `mut` results stay unsafe, since the same `mut` object can be in the list twice, or inside two of its elements (see **Duplicated `mut` elements**).
-
-`.flatMap` also becomes expressible with the actors, since the fence that stops the desugaring below is now the semantics itself: over `.actor` for `imm` results,
-`.flatMap f -> this.actor[mut Var[Nat], R](Vars#[Nat](0), {down, _, e -> Block#(f#e .flow .forEach{x -> down#x}, Continue#)})`,
-with a state it does not use, and over `.actorMut` for `read` results, pushing the elements of the list with the `Block.loop` variant that hands the hygienic sink to every iteration.
-
------
-
-As you can see, here fencing an inner flow would throw the error, while trickling does not throw.
-
-//TODO: this is not what happens today. Sequential and parallel behaviour currently disagree. If this decision makes parallelism harder/slower we can change the design so that flatMap does fence.
-
-/*TODO: consider this alternative design: the flatMap lambda returns a list, not a flow
-(thus solving the hard questions of inner flow laziness at the root)
-Would this make it easier for us to parallelize/implement efficiently in the common cases? Would it harm some realistic case in a significant manner?
-Why does flatMap not return a list/array in other approaches?
-The predictability/simplicity gain of the semantic is already quite large.*/
-
-The laziness of the inner flow is also a hazard for parallelism: the stages of an inner flow run when its elements are pulled, possibly while the stages after `.flatMap` still work on its earlier elements.
+In most other approaches flatmap communicate with the outer flow with flows, not lists, and thus they can write 
 ```
-numbers.flow.map{n -> Persons#n}
-  .flatMap{p -> Flows#(p, p).map[read Person]{x -> Block#(x.grow, x)}}
-  .map{q -> q.age}
+Lists#(Lists#("aa","bbb"), Lists#("c","poison","dd"), Lists#("e"))
+  .flow
+  .flatMap{ss -> ss.flow
+    .map{s -> s == "poison" ? {.then -> Error.msg`poison`; .else -> s}}}
+  .limit 3
+  .map{s -> s.size}
   .list
 ```
-Trickling gives, for each `Person`, the age after one `grow` and then the age after two. If the last `map` runs on the first element after the inner `map` has grown `p` again, both read the age after two.
-So a lazy inner flow is safe only with `imm` results, like `.actor`, and only if it runs in its own mode: `Flows#(p, p).map{x -> Block#(x.grow, x.age)}` has `imm` results but mutates `p` twice, so its elements must go in order on one task. Neither condition applies to the fenced alternative above.
+And that example do succeeds: the `.limit 3` blocks the execution of the inner map stage before the poison is reached.
 
-The intuition would be that `.flatMap` desugars onto `.actorMut`, with the inner flow drained into the actor's own sink,
-but this would fence the inner flows in the act of sinking their elements one by one.
-Over `.actorMut` `inner.forEach{x -> ..}` whold not even be directly writtable, but even using the `Block.loop` variant allowing to wite the hygenic in,
-we would still have to turn the flow into an list, triggering the fence. Over `.actor`, whose sink is plain mut, `inner.forEach{x -> down#x}` compiles, and .forEach do fence.
+In our approach, any inner flow in the lambda is normal code that can be run in parallel when possible, with the same set of rules of any other code.
+
+**Intermediate mut objects.**
+Consider this code
+```
+numbers.flow
+  .map{n->Persons#n}
+  .filter{..}.list
+```
+With `Persons#` creating `mut Person` objects.
+We can actually apply the most traditional map-reduce forkjoin automatic parallelisation to such code.
+```
+numbers.flow
+  .map{n->Persons#n}
+  .flatMapMut{p->Lists#(p,p)}
+  .filter{..}.list
+```
+Crucially, this variant can not be allowed.
+We would be duplicating the p object in two different parallel tasks.
+This is why we offer the two method signatures:
+```
+numbers.flow
+  .map{n->Persons#n}
+  .flatMap{p->..}//anything that compiles here can be read/imm but not mut
+  .filter{..}.list
+```
+FlatMapMut has to stop fork-join parallelisation at that stage.
+FlatMap can keep the parallelisation going forward.
+
+`.flatMapMut` is expressible with the actors
+
+```
+.flatMapMut f -> this.actorMut[Void, R](Void, {down, _, e -> Block#
+  .let list={f#e}
+  .loop(down,{d->...d.down#(..)... Continue#)})
+  .done;
+```//TODO: complete this example
+
+
+//TODO: change the current standard library to include (only) those two flat maps
 
 
 ### limit
@@ -418,31 +440,42 @@ and to parallelize map with context in a data parallel way, each using a `s.iso.
 Some attention needs to be used to preserve the same error flow that the desugaring shown above would induce.
 
 
-### sort, distinct, sortDistinct, max, min
+### sort, sortDistinct, max, min
 
-These five cannot emit anything before consuming everything, which is why they are fences.
+These four cannot emit anything before consuming everything, which is why they are fences.
 Their output is a finished sequence of known size, so it is indistinguishable from a fresh source
 and splitting can start again after it:
 `map f .sort by .limit 10000 .filter g .list`
 is two parallel regions with one fence in between.
-Crucially if a fence operation is at the beginnin or directly after another fence, some optimizations are possible.
+Crucially if a fence operation is at the beginning or directly after another fence, some optimisations are possible.
+
+sugaring:
+min can be encoded on max://TODO: show implementation
+
+sortDistinct can be encoded on ... //TODO: chose .distinct.sort or sort.distinct. What is better and why?
+
+max can be loosely implemented on Sort //TODO: show
+but the concrete optimised implementation is allowed to use a different sequence of calls to .cmp and .hash, thus if some of those can fail, this sugar would not be fully semantically accurate.
+(while the min/max sugaring will be)
+
+Reasonable expectations on how .cmp and .hash is called:
+//TODO: list options. For example, is it reasonable to promise .hash is called no more then one time for each element?
+
+### distinct
+...//TODO. Include sugaring on actors.
 
 ### ++
 
-Since the two sides are independent, the computation of the two halves can proceed in parallel. A simple implementation will then materialize both sides and compose them into another flow. Can this new flow then continue in parallel? This is an interesting (implementation design) decision. Note that it is not about the type/mutability of the elements in the materialized sequence.
+`mut ++ (b: read List[E]): mut Flow[read/imm E]`
+With parallelisation in mind this is a useful operator for both the par mode and to start parallelisation after the fact:
+-we have a flow that may or may not be parallel, going from some type A into Flow[E].
+Then we add all the elements for the list b. This list makes the flow a flow of read or imm elements after this; thus even if the receiver was not a parallel flow, it is now.
+Then the execution can continue in data parallel or in pipeline with all the elements from both the receiver flow and the list `b`.
+This makes it possible to start parallel execution after some sequential stage, like
+`persons.flow.map{p->p.computeDNA}++{}.map{..}.list`
+This is arguably not the most readable code, but by pushing the empty list in, we get type safe knowledge that the second map can be data-parallel.
 
-For example if we have an `l : imm List[imm Nat]`
 
-`l.flow.map{i->Persons#("Bob",i)} ++ (l.flow.map{i->Persons#("Bob",i+10)}) .map g .list`
-
-This may compute g in parallel: even if the combined elements of the two flows are mut,
-the flows were originally parallelizable so the combined flow is parallelizable.
-Since flows are lazy, the identity checks for Repr and Isopod is delayed until after the sum, that can thus
-check that if both sides were in mode Repr/IsoPod, the union of all those is disjoint.
-The **example with `++`, over two ParPod flows** shows this step by step.
-//TODO: Does this hold for all kinds of parallel flows? We need to investigate.
-//Can we recover parallelization starting from composition of originally non parallel flows? We need to investigate.
-//Should we recover such parallelization if possible or should we propagate the sequentiality, considering it a user preference? We need to investigate.
 
 ### size, get, getOpt
 
@@ -834,3 +867,9 @@ Difficult questions: most of the 'flow misuse' errors have been non deterministi
 
 Misunderstanding:
 One time you stated that "Decisively, a non deterministic error may legally be replaced by a no op". This is false. Consider the case of the identity checks, we would get broken behaviour without the mandatory non det error there.
+
+
+Suggestion: "The alternative is to let the literal capture them and give the literal the hygienic modifier.:
+Not sound. The current set up is that hygienic are powerful but hard to use. Only used in a few places. Better then not being there. Like reflection in Java a few lines with Java reflection can make a whole program that do not otherwise use reflection do a lot more, like having dynamically loaded plug ins.
+Similarly, Fearless programs with a few occurrences of hygienics can do more, with most of the code not mentioning. That is the goal: find ways to limit their scope while gaining the benefits.
+
