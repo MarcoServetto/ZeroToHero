@@ -609,7 +609,26 @@ These decide before the end, so every element past the decision is positive spec
 Positive speculation is not safe for Reprs and IsoPods, since we could observe changes after successful results.
 Draining an `EList` into the flow does not help: it drops only the reference of the list, and a local or parameter such as `p: mut Repr[T]` may still hold an element that was never delivered.
 
-TODO: add what operations are derived, how are they derived etc.
+**Semantic reduction:**\
+None of these is primitive; they all reduce to `.limit 1`:
+```
+.first       -> this.limit 1 .getOpt
+.findFirst f -> this.filter f .first
+.findMap f   -> this.mapFilter f .first
+.any f       -> this.filter f .first .isSome
+.none f      -> this.any f .not
+.all f       -> this.none{e -> f#e .not}
+```
+with `.mapFilter f` being `this.map f .filter{o -> o.isSome}.map{o -> o!}`.
+`.limit 1` breaks right after pushing the first element that reaches it, so the element after it is never pulled, and `.getOpt` can not fail on the size since at most one element reaches it.
+On an empty flow the actor of `.limit 1` never runs, so `.first` is the empty `Opt`, `.any` is `False` and `.all` is `True`.
+Composing `f` with `.not` changes no call and no order, so `.all` and `.none` raise the same `Info` at the same element as `.any` does (see **example with filter, under a short-circuit terminal**).
+
+`.findFirst` returns `mut Opt[E]`, as `.first` does: the element may be `mut`.
+
+Thus `limit` is the only decision point of the whole API, and positive speculation is only ever about the stages before a `.limit`.
+After a `.filter` the upper bound `limit 1` gives is a single element, so running more than one element at a time before a short-circuit terminal is always positive speculation: allowed in `Par`, not allowed in `ParRepr` and `ParPod` (see **example with filter, over ParRepr**).
+
 TODO: most terminals are still missing, like .list. Add a section for each of those.
 
 ## Examples of combining operations
