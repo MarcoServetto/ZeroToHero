@@ -198,6 +198,21 @@ Would this make it easier for us to parallelize/implement efficiently in the com
 Why does flatMap not return a list/array in other approaches?
 The predictability/simplicity gain of the semantic is already quite large.*/
 
+The laziness of the inner flow is also a hazard for parallelism: the stages of an inner flow run when its elements are pulled, possibly while the stages after `.flatMap` still work on its earlier elements.
+```
+numbers.flow.map{n -> Persons#n}
+  .flatMap{p -> Flows#(p, p).map[read Person]{x -> Block#(x.grow, x)}}
+  .map{q -> q.age}
+  .list
+```
+Trickling gives, for each `Person`, the age after one `grow` and then the age after two. If the last `map` runs on the first element after the inner `map` has grown `p` again, both read the age after two.
+So a lazy inner flow is safe only with `imm` results, like `.actor`, and only if it runs in its own mode: `Flows#(p, p).map{x -> Block#(x.grow, x.age)}` has `imm` results but mutates `p` twice, so its elements must go in order on one task.
+If the lambda returns a list, its computation is over when it returns: nothing mutates the elements afterwards, `read` results become safe as well, and no inner flow is left to run later.
+One method then covers `imm` and `read` with a bound, as `Par[T:imm,read]` does, with no need for a `.flatMapRead`:
+`mut .flatMap[R:imm,read](f: read F[E, read List[R]]): mut Flow[R]`.
+`mut` results stay unsafe, since the same `mut` object can be in the list twice, or inside two of its elements (see **Duplicated `mut` elements**).
+The price is the example above: building the list applies the inner `map` to `"poison"`, so the chain throws.
+
 The intuition would be that `.flatMap` desugars onto `.actorMut`, with the inner flow drained into the actor's own sink,
 but this would fence the inner flows in the act of sinking their elements one by one.
 Over `.actorMut` `inner.forEach{x -> ..}` whold not even be directly writtable, but even using the `Block.loop` variant allowing to wite the hygenic in,
