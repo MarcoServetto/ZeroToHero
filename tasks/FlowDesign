@@ -77,7 +77,7 @@ Execution strategies are defined by the terminal operation looking at all the st
 
 **Fence:** `sort`, `sortDistinct`, `max`, `min`. Consumes everything before emitting anything.
 
-**Source combinator:** `++`. Appends the elements of a list to those of the flow, rather than acting on elements.
+**Source combinator:** `++`. A fence that then appends the elements of a list to those of the flow, rather than acting on elements.
 
 **Terminals** end the flow and return something that is not a flow.
 
@@ -246,19 +246,11 @@ numbers.flow
 `.flatMapMut` has to stop fork-join parallelisation at that stage: the elements it produces from the same input may share `mut` objects (see **Duplicated `mut` elements**).
 `.flatMap` can keep the parallelisation going forward.
 
-`.flatMapMut` is expressible with the actors:
+`.flatMapMut` is expressible with the actors, using the `forEach` that hands a hygienic value to every call (see **forEach**):
 
 ```
-.flatMapMut f -> this.actorMut[Void, R](Void, {down, _, e -> Block#(Drain#[R](down, f#e), Continue#)});
-
-Drain: { #[E:*](down: mutH ActorSink[E], xs: mut List[E]): Void ->
-  DrainFrom#[E](down, xs, Vars#[Nat](0)) }
-DrainFrom: { #[E:*](down: mutH ActorSink[E], xs: mut List[E], i: mut Var[Nat]): Void ->
-  Block#[Void].loop(down, {d -> Block#(
-    d.pushOpt#(d, xs.opt(i.get)),
-    i.set(i.get + 1),
-    i.get >= (xs.size) ? { .then -> Break#; .else -> Continue# })})
-    .done }
+.flatMapMut f -> this.actorMut[Void, R](Void, {down, _, e ->
+  Block#(f#e .seqFlow.forEach(down, {d, x -> d.push#(d, x)}), Continue#)});
 ```
 
 
@@ -475,13 +467,18 @@ Reasonable expectations on how .cmp and .hash are called:
 
 `mut ++ (b: read List[E]): mut Flow[read/imm E]`
 
+`++` is a fence: every element of the receiver goes through the stages before the `++` before any element goes past it, and the elements of `b` follow those of the receiver.
 With parallelisation in mind this is a useful operator both in the par mode and to start parallelisation after the fact.
-Take a flow that may or may not be parallel, going from some source into `Flow[E]`, and append all the elements of the list `b`.
-After the `++` every element is `read` or `imm`, so no stage after it can mutate anything that existed before the flow: even if the receiver was not a parallel flow, it is now, and the stages after the `++` can run in data parallel on all the elements, the ones of the receiver and the ones of `b`.
-They can also overlap with the stages before the `++`, in pipeline, unless those stages mutate existing objects (a sequential, `ParRepr` or `ParPod` source) and the elements are `read`: an element after the `++` could then reach an object those stages are still mutating for a later element, so the stages after the `++` start once the stages before it have finished, and the `++` works as a fence.
+After the `++` every element is `read` or `imm`, and the stages before it have finished, so nothing the stages after it can reach is still changing: even if the receiver was not a parallel flow, the stages after the `++` can run in data parallel on all the elements, the ones of the receiver and the ones of `b`.
 This makes it possible to start parallel execution after some sequential stage, like
 `persons.seqFlow.map{p->p.computeDNA}++{}.map{..}.list`
 This is arguably not the most readable code, but by pushing the empty list in, we get type safe knowledge that the second map can be data-parallel.
+
+It is the fence, not the types alone, that makes this sound. Two persons of `persons` can share one `mut Address`, and in
+```
+persons.seqFlow.map{p -> Block#(p.moveTo(p.name), p)} ++ {} .map{q -> q.address.street}.list
+```
+trickling without the fence would read the street of the first person before the second person moves, while a parallel run could read it after. With the fence, both streets are read after every move, in every mode.
 
 
 
@@ -567,6 +564,13 @@ any change .forEach may do is in the garbage when that error is captured.
 This could be very useful for examples like
 `0~~10000000 .flow.map{..}.forEach{..}`
 allowing us to not materialize large ranges.
+
+`forEach` also has a version that hands a hygienic value to every call, as `Block.loop(a, body)` does:
+```
+mut .forEach[A](a: mutH A, f: mut ForEachBody[A,E]): Void;
+ForEachBody[A,E:*]: { mut #(a: mutH A, e: E): Void }
+```
+With it an `actorMut` lambda can push every element of a list on its sink, as the desugaring of `.flatMapMut` does.
 
 ### let
 Let is the most unusual operation. It can be used as follows, helping to declare local variables in the
