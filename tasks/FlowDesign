@@ -760,12 +760,21 @@ l.flow
 Let `h` be the actor lambda, `s` the state built by `Vars#[Nat]0`, `down` the sink that applies `g` to each value handed to it, and `sj` the sum of `f#e0` up to `f#ej`. If there is a smallest index `j` such that `h#(down, s, f#ej)` throws or does not terminate, the whole flow expression throws that same `Info` or does not terminate.\
 Otherwise this flow returns the list of `g#s0` to `g#s7`.
 
-The stages computing `map f` and `map g` can be parallelised. The actor cannot, because the call for one element observes what the call for an earlier element left in the state. Multiple actor stages could run pipeline parallel with each other.
+**Parallelisation options:**
 
-The three regions still overlap in time: the actor takes what `map f` has finished (in source order), and `map g` takes what the actor has emitted. No fence is needed, since the actor emits one element at a time.
+The actor can not be split: the call for one element observes what the call for an earlier element left in the state.
 
+Data parallel:
+
+`map f` and `map g` run in chunks, with the actor running sequentially between the two parallel regions. The regions still overlap in time: no fence is needed, since the actor emits one element at a time, and each chunk of its output goes to a `map g` task as soon as it is full.
 One cost remains: the actor needs the elements in index order, so the results of `map f` are put back in order before the actor sees them; parallelising only chunks of limited size bounds the reordering buffer.
-//TODO: again the text above would need to be reorganized to have a data parallel and a node section. Given this is actorMut, probably the node section would have advantages.
+
+Nodes:
+
+This is the natural shape for an actor: a `map f` node, the actor node and a `map g` node that also builds the list. The actor node owns `s` as local mutable data and receives the elements in source order, so there is no reordering buffer. Several actor stages in a row each become a node, running pipeline parallel with each other.
+The cost is that `map f` and `map g` get one node each. The two shapes compose: a `map` node can be replaced by a data parallel region feeding the actor node in order, which is the data parallel version above.
+
+In both shapes, an `Info` raised at index `j` is raised only if nothing raises at an earlier index; the work on later indices is negative speculation, and the state `s` it touched is unreachable once the flow has thrown.
 
 **example with let**\
 ```
