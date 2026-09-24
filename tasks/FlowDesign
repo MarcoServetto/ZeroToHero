@@ -713,8 +713,16 @@ Lists#(1, 1, 2).flow.map f
 If there is a smallest index `i` such that `f#ei |> {e -> ...}` throws or does not terminate, the whole flow expression throws that same `Info` or does not terminate. The body of that pipe `|>` places `e` among the values already kept and, when `e` is kept, applies `{::>3}` to `e`; the body makes calls like `by.hash(e)` and `by.cmp(e, f#ej)` with `j < i`, and which of them it makes is left under-specified, as under `.sort`.\
 Otherwise this flow returns, in index order, those of the kept values greater than `3`, where the kept values are `f#1` and `f#2` when `by` ranks `f#1` and `f#2` apart, and `f#1` alone when `by` ranks them together.
 
-//TODO: turn this text into two versions one for fork-join and one for nodes.
-The `map f` before it can be parallelised; `distinct` checks whether the elements completing the `map` stage have been seen already, and must receive them in source order. The `filter` stage can also be parallelised. `distinct` takes what `map f` has finished, and `filter` takes what `distinct` has kept, as it arrives, without waiting for the `map` or `distinct` stage to complete.
+**Parallelisation options:**
+
+Data parallel:
+
+`map f` runs in chunks, and so can computing the key and hash of each result, which depend only on that element. Placing the keys can not be split: it is where a repeated key is found, so it runs sequentially, taking the results in source order as the tasks complete them. The kept elements are handed on in chunks to `filter` tasks as soon as they are kept, without waiting for the `map` or `distinct` stage to complete, and `.list` joins the chunks in order.
+An `Info` raised at index `i`, by `f`, by `by` or by the filter, is raised only if nothing raises at an earlier index; otherwise it is negative speculation that never surfaces.
+
+Nodes:
+
+A `map f` node, a `distinct` node and a `filter` node, the last also building the list. Each node receives the elements in source order, so the `distinct` node needs no reordering: it keeps the kept keys as local mutable data, a hash set shared with no one, and passes each kept element on at once. The `map f` node can also compute the keys, leaving the `distinct` node only the placing.
 
 **example with limit**\
 `l.flow.map f .limit 3 .map g .list`
