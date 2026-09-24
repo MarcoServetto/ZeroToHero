@@ -807,8 +807,89 @@ rs.flow(ParRepr)
 Overall, parallelising `Repr`s and `IsoPod`s is about
 - running an identity check
 - checking the `onlyImmCapture` flag on the lambdas of the flow
-- avoiding unfenced (positive) speculative execution and running fenced (positive) speculative execution sequentially
+- avoiding unfenced (positive) speculative execution and running fenced (positive) speculative execution sequentially, unless the fence is a `++` (see **example with `++` as a speculation barrier, over ParRepr**)
 - behaving exactly as if a par flow produced a mut out of the first mapping: those muts are isolated from each other and from what the lambdas captured, so they can not interact until a `flatMapMut` or an `actorMut` duplicates them (see **Duplicated `mut` elements**). Depending on the stages, data parallel or nodes could be more appropriate.
+
+**example with sort and limit: one merge tree for every mode**\
+`l.flow.map f .sort by .limit 3 .list`\
+with `by` an `OrderBy[Nat]`.
+
+If there is a smallest index `j` such that `f#ej` throws or does not terminate, the whole flow expression throws that same `Info` or does not terminate.\
+Otherwise, if any call of `by.cmp(...)` used in the sorting process throws or does not terminate, the whole flow expression throws that same `Info` or does not terminate.\
+Otherwise, let `v0,...,v7` be the `f#ej` in `by` order, ties ordered by smallest index: this flow returns `Lists#(v0, v1, v2)`.
+
+The calls of the sorting process are under-specified, but must be the same in every mode. Inserting each element as it arrives suits nodes, merging sorted chunks suits data parallel, and sorting the whole list suits a sequential run; the three make different calls, so picking one per mode would make the mode observable whenever a call of `by` throws or does not terminate.
+
+One choice serves every mode: a stable merge sort over a tree fixed by the indices alone. Blocks `(0,1)`, `(2,3)`, `(4,5)`, `(6,7)` are merged, then `(0..1,2..3)` and `(4..5,6..7)`, then `(0..3,4..7)`; when the size is not a power of two, the blocks left over when the fence closes are merged from the right. The tree depends on the size alone, not on chunk sizes or on the number of cores.
+The merges have a fixed sequential order: each runs as soon as both its blocks are complete, as in a binary counter, so when element `7` arrives the merges `(6,7)`, `(4..5,6..7)` and `(0..3,4..7)` run in this order.
+- Sequential and nodes: the sort node follows this order, placing each element as it arrives, as **Flow abstraction** allows a fence to do.
+- Data parallel: a merge depends only on its two blocks, so a task can run any merge whose blocks are complete, on any core. An `Info` from a call of `by` is held until every `f#ej` and every call before it in the sequential order have completed.
+- Every merge compares an element of its left block with one of its right block, so the first argument of every `.cmp` precedes the second in flow order (see **sort, sortDistinct, max, min**).
+
+With `.limit 3` after the sort, a merge stops once it has emitted three elements: the rest of the merged block can not reach the first three. Its calls are a prefix of those of the full merge, at most three per merge, with one merge fewer than the elements, and no block holds more than three elements. For a `by` respecting its contract the result is unchanged; for any other `by` the truncated tree is simply the chosen algorithm. The limit is known before any element moves, so the choice is the same in every mode.
+
+The same tree serves `max` and `min`: a merge compares the first elements of its two blocks and keeps the leading run of the winner, or both runs in order on a tie: one call per merge, seven over `l`. For `sortDistinct`, a merge drops the element of the right block of each pair ranked together.
+
+**example with elementwise work after a fence**\
+`l.flow.map f .sort by .map g .list`\
+with `by` an `OrderBy[Nat]`.
+
+If there is a smallest index `j` such that `f#ej` throws or does not terminate, the whole flow expression throws that same `Info` or does not terminate.\
+Otherwise, if any call of `by.cmp(...)` used in the sorting process throws or does not terminate, the whole flow expression throws that same `Info` or does not terminate.\
+Otherwise, let `v0,...,v7` be the `f#ej` in `by` order, ties ordered by smallest index. If there is a smallest position `k` such that `g#vk` throws or does not terminate, the whole flow expression throws that same `Info` or does not terminate. Otherwise this flow returns the list of `g#v0` to `g#v7`.
+
+The fence puts every call of `g` after every call of `by`, but the elements are `imm`: `g` can not change what `by` reads, and `g#vk` depends only on `vk`, not on its position.
+So `g` can run on each `f#ej` in the same task as `f`, as soon as it is computed, in parallel with the sort rather than after it; the sort carries each result next to its element.
+Only the errors of `g` wait for the fence: the position of `f#ej` is known only when the sort completes, so an `Info` from `g` is held until then, and raised only if no call of `f`, of `by` or of `g` at an earlier position fails. A call of `g` that does not terminate is terminated through `Yield#` when one of those fails.
+
+This needs the elements reaching the fence to be `read` or `imm`. In
+`numbers.flow.map{n -> Persons#n}.sort{p -> p.age}.map{p -> Block#(p.birthday, p)}.list`
+the `map` after the fence mutates what `by` reads, and running it early would change the order.
+
+The same holds before a short-circuit terminal, as in **example with a fence**: the filter can run on every element while the sort proceeds, as positive speculation allowed in `Par`. Unlike merging sort and filter to sort fewer elements, this leaves the calls of `by` unchanged.
+
+**example with two max**\
+`l.flow.map f .max by1 .max by2 .list`\
+with `by1` and `by2` of type `OrderBy[Nat]`.
+
+The first `max` keeps the elements tied for the maximum under `by1`, in flow order; the second keeps, among those, the ones tied for the maximum under `by2`. When every call of `by1` and `by2` completes normally, this is one `max` under the order that compares with `by1` and breaks ties with `by2`.
+That single pass is not a legal replacement: it calls `by2` on two elements as soon as `by1` ties them, and a later element may beat both under `by1`. Such elements never reach the second `max`, so a call of `by2` on them that throws or does not terminate changes the result.
+Compare `.filter p .filter q`, which is exactly `.filter{e -> p#e && {q#e}}`: `&&` calls `q` only on the elements `p` accepts, known at once. Whether an element passes the first `max` is known only when the flow ends.
+
+What is legal:
+- The first `max` materialises only its current leading run, not the whole flow, and the second `max` runs on that run alone once the flow ends. With the tree of **example with sort and limit: one merge tree for every mode**, the first `max` runs data parallel too.
+- The single pass as positive speculation, allowed in `Par`: `by2` runs on the current leading run as the elements arrive, and its failures are held until the first `max` completes and confirms the run; calls on elements that left the run are discarded, or terminated through `Yield#`.
+
+**example with `++` as a speculation barrier, over ParRepr**
+```
+rs.flow(ParRepr)
+  .map{r -> Block#(r.mutate{i -> i.evaluate}, r)}
+  ++ {}
+  .any{r -> r.look{i -> i.fitness > 90}}
+```
+with `rs` a `mut List[mut Repr[Individual]]` and `Individual` as in the genetic evolution example (see **Execution modes**).
+
+If any two `Repr`s are the same object, a non deterministic exception is thrown.
+If there is a smallest index `j` such that `rj.mutate{i -> i.evaluate}` throws or does not terminate, the whole flow expression throws that same `Info` or does not terminate.\
+Otherwise every `Repr` in `rs` is evaluated, and the flow behaves as `.any` over them (see **example with filter, under a short-circuit terminal**).
+
+Without the `++ {}`, the `any` could decide before the `map` reaches every element, so running the `map` in parallel is positive speculation over mutations, and the flow raises the non deterministic error of **example with filter, over ParRepr**.
+With it, the `map` runs on every element in every mode: a data parallel region with no positive speculation.
+Unlike `.sort`, `++` also turns every element `read`: after it no stage can mutate a `Repr`, the fence ensures that nothing else is still mutating them, and the lambdas carry the `onlyImmCapture` flag, so they reach nothing else mutable. Running the `any` past its decision is then unobservable, and it can speculate as in `Par`.
+After `.sort{..}` instead, the elements are still `mut Repr`s and the stages after the fence can not speculate.
+
+**example with repeated elements: memoisation by identity**\
+`orders.flow.map{o -> o.product}.map{p -> Price#p}.list`\
+with `orders` an `imm List[imm Order]` where many orders share one `imm Product` object, and `Price#p` an expensive computation returning a `Nat`.
+
+The elements reaching the second `map` repeat: many are the same object. `Price#p` has no `mut` input, so by Determinism a call on an element seen before returns a structurally identical result, or throws a structurally identical `Info`. The result is `imm`, so by Identity Transparency reusing the earlier result is unobservable: the second `map` can keep an `IdentityHashMap` from element to result, per task or shared between tasks.
+A cached result may skip a non deterministic error, like a stack overflow, that a recomputation would meet; non deterministic errors carry no such guarantee.
+
+Both conditions are needed:
+- no `mut` input: the element is `read` or `imm`. After a `flatMapMut`, one `mut` element may appear twice and be mutated by a stage between the two calls.
+- an `imm` result: in `.map{p -> Persons#(p.name)}` the cache would hand one `mut Person` to two elements, creating the duplicated `mut` elements of **Duplicated `mut` elements** where the sequential run creates two distinct objects.
+
+The lookups pay off only when elements repeat, so this is a choice for a hint like those under **Chunk sizes**.
 
 
 //TODO: discuss more interesting sequences of operators.
