@@ -113,12 +113,24 @@ No `imm` value can reach a `mut Repr` or `mut IsoPod`, so with the flag each tas
 Calling `.flow` with calls suggesting that parallelism is possible, while passing parameters or calling methods that prevent any parallelism, is most likely a user mistake. When the type system can not check this statically, a non deterministic dynamic error is raised. A linter could catch more cases statically, but never all of them, since flows under construction are first class values that can travel freely through the code.
 
 A good example of why a flow of Repr could be great is genetic evolution:
-a list of large Repr elements can be //TODO: make this example more concrete.
-- fitness evaluated in parallel with a map, fitness result stored in the mut Repr object
-- sorted by fitness
-- limited to a certain number of survivors
-- flatMapped from each survivor into the `imm` genomes of many new options, then mapped into new Repr objects, so that the parallelisation keeps going (see **map, filter, flatMap**)
-- collected with `.list` into a new generation.
+```
+Genome: { .offspring(n: Nat): List[Genome] }
+Individual: { read .genome: Genome; read .fitness: Nat; mut .evaluate: Void }
+
+Evolve: { #(pop: mut List[mut Repr[Individual]], survivors: Nat): mut List[mut Repr[Individual]] ->
+  pop.flow(ParRepr)
+    .map{r -> Block#(r.mutate{i -> i.evaluate}, r)}
+    .sort(Rev#{r -> r.look{i -> i.fitness}})
+    .limit survivors
+    .flatMap{r -> r.look{i -> i.genome.offspring 10}}
+    .map{g -> Reprs#(Individuals#g, {_ -> True})}
+    .list }
+```
+- The first `map` evaluates the fitness of each large individual in parallel, each task mutating only its own `Repr`, and stores the result in it. No lambda captures anything, so all carry the `onlyImmCapture` flag.
+- `sort` is a fence: it waits for every fitness, and `Rev` (see **sort, sortDistinct, max, min**) puts the fittest first. Its `by` only reads the stored fitness, which matters since `by` computes a key on every comparison.
+- `limit survivors` comes after the fence, so the count is known and nothing is speculative. The terminal controls the sorting process, so `sort` then `limit` may run as a top `survivors` selection.
+- `flatMap` turns each survivor into the `imm` genomes of its offspring; with `read`/`imm` elements the parallelisation keeps going, where `flatMapMut` would stop it (see **map, filter, flatMap**).
+- The last `map` builds fresh `Repr`s in parallel (`Individuals#g` takes only an `imm` genome, so its result can be `iso`), and `.list` collects the new generation.
 Note how actors are not used in this example.
 
 **Speculative execution:**\
