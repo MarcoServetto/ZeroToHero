@@ -36,7 +36,7 @@ Everything the manager does for a project is a request, and every request is one
 A message is a file left in the `messages` folder of the manager folder: a start of the program, and every request from Eclipse. Folders added from the window (the Add folder menu, or folders and files dropped on the window) are the same request as a message holding their path.
 
 A message is one of:
-- nothing: show the window;
+- empty: show the window;
 - a path: as the program argument above;
 - a request: a verb, then a folder, then for some verbs a third line:
   - `select`: register the folder if new, show the window, select the project;
@@ -50,7 +50,7 @@ A message is one of:
   - `link`: for a code project, set its link with a data project to the third line: the name of the data project, then `none`, `read` or `write`, then the type names the code uses for it, separated by spaces;
   - `clear`: empty the Output of the project.
 
-Only `select` registers a new folder. Every other verb naming a folder that is not registered is refused with a message naming the verb and the folder. A verb that is not one of these, a kind that is not one of the four, and a malformed link are refused with a message naming them. A request whose result would make `projects.info` invalid is refused with the error of `projects.info`, and changes nothing.
+A message whose folder is blank is refused with a message naming the verb. Only `select` registers a new folder. Every other verb naming a folder that is not registered is refused with a message naming the verb and the folder. A verb that is not one of these, a kind that is not one of the four, and a malformed link are refused with a message naming them. A request whose result would make `projects.info` invalid is refused with the error of `projects.info`, and changes nothing.
 
 The window's buttons, menus and tiles make exactly these requests: the main button makes the request its text names (`compile` for Compile and Check, `run` for Run and Run selected, `terminate` for Terminate), the kind buttons make `kind`, a click on a tile or on a running job makes `select`, the main check boxes and All and None make `mains`, the link rows make `link`, Clear output makes `clear`, Clear cache makes `clean` and Forget project makes `forget`.
 
@@ -104,7 +104,7 @@ Each project is in one of these states, shown as a badge on its tile:
 
 A code project is out of date exactly when compiling it would compile some package: when the compiled cache of a package does not list exactly the current files of that package, or is older than one of them. Files outside every package (a readme, the marker) never make a project out of date.
 
-The mains of a code project are known when it is not out of date: the concrete mains of the highest rank.
+The mains of a code project are known when it is not out of date: the concrete mains of the highest rank. When reading them finds a package that compiling would compile, the project is out of date; when reading them fails, the project is also invalid, with that error. A project whose files change while it is checked is checked again.
 
 The manager notices changes made on disk by other programs: every three seconds it checks the selected project, and in turn one other project, whether or not the window is shown, and updates states, badges, buttons and the Eclipse files, including moving a project in and out of invalid. A project with a running job is checked when the job ends. Selecting a project checks it.
 
@@ -119,7 +119,7 @@ A project does at most one job at a time: compiling, or running its mains. A req
 Everything a job prints goes to the Output area of the project.
 
 - Compile (code projects): the compiler runs in its own JVM; its output goes to the Output. `--- compiling <folder> ---` starts it, `--- compile done ---` or `--- compile failed with <code> ---` ends it. A code project with broken links is not compiled: the Output shows why.
-- Run (code projects): when the project is out of date, the main button compiles; a `run` request compiles and then runs. The mains run are: the only main, when there is one; else the main named by the `run` request; else the selected mains, in the order of the mains. A named main that is not a main of the project is refused, listing the mains; a project with no main, or none selected, says so. Each main runs in its own JVM, one after the other, framed by `--- running <main> ---` and `--- <main> exited with <code> after <N>s ---`. While a main runs, its unit test log is published as a JUnit report every two seconds and when it ends.
+- Run (code projects): when the project is out of date, the main button compiles; a `run` request compiles and then runs. The mains run are: the only main, when there is one; else the main named by the `run` request; else the selected mains, in the order of the mains. A named main that is not a main of the project is refused, listing the mains; a project with no main, or none selected, says so. Each main runs in its own JVM, one after the other, framed by `--- running <main> ---` and `--- <main> exited with <code> after <N>s ---`. While a main runs, its unit test log is published as a JUnit report every two seconds and when it ends. The report holds the complete records of the log: its lines up to the last newline, without a test case whose closing line is not written yet.
 - Terminate ends the job: `--- terminating <job> ---`, then the JVM of the running main or of the compile ends, and no further main of that run starts.
 - Check (idle and data projects): reports why the project is invalid, or `--- ok: no problem found ---`.
 
@@ -141,7 +141,7 @@ Everything a job prints goes to the Output area of the project.
 
 ## File associations
 
-On Windows and Linux, at every start, the owner makes itself the program opening `.fearless` files, with the Fearless icon, following `FileAssociations.reconcile` of Commons. An extension held by a program outside the Fearless family, or pinned by the user, is an error. Forget association removes what the manager registered, then ends the manager. macOS has no associations.
+On Windows and Linux, at every start, the owner makes its launcher the program opening `.fearless` files, with the Fearless icon, following `FileAssociations.reconcile` of Commons. A launcher whose name is outside the Fearless family is an error. An extension held by a program outside the Fearless family, or pinned by the user, is an error. Forget association removes what the manager registered, then ends the manager. macOS has no associations.
 
 ## Eclipse
 
@@ -149,13 +149,13 @@ Connect Eclipse asks for the Eclipse executable, checks that its folder is an Ec
 
 The manager keeps its `eclipse` folder up to date whether an Eclipse is connected or not. A file the plugin reads whole is replaced at once, never rewritten in place.
 - `state.info`: an Info object mapping the name of every registered project to an object with its `folder`, its `kind`, the main `running` (empty when none), the number of `runs` started, the `lastRun` main and its `exit` code, its `mains` (every known main with the file declaring it) and its `problem`: the `file`, `line` and `message` of the error of the last compile, when that compile failed at a position in a source file; empty otherwise, and empty until the first compile since the manager started ends.
-- per project, in a folder named like the project: `console.txt` (exactly what the Output of the project shows) and, once a run of a project of that name wrote one, `report.xml` (the JUnit report of that run);
+- per project, in a folder named like the project: `console.txt` (exactly what the Output of the project shows; it grows at its end, or is emptied, and the plugin shows it up to its last newline) and, once a run of a project of that name wrote one, `report.xml` (the JUnit report of that run);
 - `console.txt`: every message of the manager that is not a line in the Output of a project, such as a folder refused.
 Starting the manager empties every `console.txt`.
 
 A request from Eclipse is a message in the `messages` folder of the manager folder.
 
-The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and never writes into a project folder; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. It shows the problem in the Problems view, the report in the JUnit view, the Output in the Console view, and every run as a process with a Terminate button. Build, Clean, Run, Terminate, the kind switches of the Fearless menu of a project, New Project, Show in manager and Forget project are messages to the manager. Content assist is described below.
+The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and never writes into a project folder; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. It shows the problem in the Problems view, on its file at its line, or on the project while that file does not exist, the report in the JUnit view, the Output in the Console view, and every run as a process with a Terminate button. Build, Clean, Run, Terminate, the kind switches of the Fearless menu of a project, New Project, Show in manager and Forget project are messages to the manager. Content assist is described below.
 A missing or malformed file of the manager is an error shown in Eclipse, and the plugin stops following the manager until Eclipse starts again.
 
 ## Content assist
@@ -175,7 +175,7 @@ The text is read with the tokens of the compiler. The expression before the curs
 - a literal is the type it declares, or the type written before it, or else the type expected by the call it is an argument of, or the result type of the method it is the whole body of; the generics of that type still open are bound by the types of the bodies of its methods;
 - a call is the result type of the method of that name and number of arguments of the type of its receiver, with the generics of the method bound by the explicit type arguments, then by each argument meeting the type of its parameter, left to right, then by the type expected of the call.
 
-A type declared in the edited file that the last compile does not know has the methods of its supertypes.
+A type declared in the edited file that the last compile does not know has, for each name and number of parameters, the method of the first of its supertypes, in the order written, that has one.
 
 ## Open questions
 
