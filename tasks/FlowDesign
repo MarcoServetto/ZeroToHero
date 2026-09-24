@@ -474,7 +474,23 @@ Reasonable expectations on how .cmp and .hash are called:
 //TODO: list options. For example, is it reasonable to promise .hash is called no more than once for each element?
 
 ### distinct
-...//TODO. Include sugaring on actors.
+
+`mut .distinct[K](by: OrderHashBy[imm E,K]): mut Flow[E]`
+
+`distinct` keeps, for each class of elements `by` ranks together, the one with the smallest index, in flow order: `Lists#(3,1,3,2,1).flow.distinct{::}.list` is `Lists#(3,1,2)`.
+It is not a fence: each element is emitted as soon as it is found new.
+
+**Sugaring:**\
+distinct is an actor whose state holds the keys kept so far:
+```
+.distinct by -> this.actorMut[mut Var[List[K]], E](Vars#[List[K]]{}, {down, s, e -> by#e |> {o -> Block#(
+    s.get.flow.none{k -> o == k}
+      .thenDo{Block#(s.set(s.get +> (o.close)), down.push#(down, e))},
+    Continue#)}})
+```
+As for max, the state holds only `imm` keys, so the elements themselves may be `mut`.
+This sugar compares each element with every kept key and never calls `.hash`; a direct implementation keeps the keys in a hash set, calling `.hash` on each element and `.cmp` only on keys with the same hash. The hash is what `OrderHashBy` adds over the `OrderBy` of sortDistinct.
+The result is the same when `by` completes normally; which calls to `by` are made is left under-specified as for `.sort`, provided the same choice is made in every mode.
 
 ### ++
 
