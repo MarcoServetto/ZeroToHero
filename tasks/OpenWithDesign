@@ -76,8 +76,9 @@ The compile runs in the child JVM (`ChildMain`); everything below runs in the ma
 1. Read the claims of the project from its `<pkg>.mains`.
 2. **Checking the icon.** Each icon must be a PNG file (autoloading also accepts jpg, gif and bmp; they are refused here), square, with a side from 64 to 1024 pixels; 256 or more is recommended. Below 64, the large icon views of the desktop enlarge it visibly. A failure is reported as the compile failing, worded like a Frontend error and naming the main, the icon type and the image file:
    `The icon "hello.IconsBar" in "base.Shortcut[hello.IconsBar,\"bar\"]" of main "hello.Bar" is 300x200 pixels (from "_hello/icons/bar.png"): an icon must be a square PNG image with a side from 64 to 1024 pixels.`
+   The portable Fearless ignores icons, so it does not run this check: a project with such an icon compiles there and fails only in the manager.
 3. Choose the missing extensions (see **Autoselected extensions**).
-4. Materialise every icon in `.fearless_out/icons/`: the PNG copied out (it may be inside a zip, and the desktop needs a plain file), and on Windows the `.ico` made from it by the PNG to ICO converter in Controllers (the one asked by Task 3 of LongHorizonTasks; no such code exists today). Two claims with the same icon type share the files.
+4. Materialise every icon in `.fearless_out/icons/`: the PNG copied out (it may be inside a zip, and the desktop needs a plain file), and on Windows the `.ico` made from it by `fileAssociations.Ico` in Commons. Two claims with the same icon type share the files.
 5. Write `.fearless_out/mains.info`, in the manager's Info format:
    ```
    {
@@ -123,10 +124,12 @@ The shortcut file is a visible file of the project: it follows the project file 
 
 The checks of `reconcile` change nothing when they fail, so the previous associations stay in place. A failing `reconcile` after a compile makes that compile fail, and the in memory map goes back to the previous `mains.info` of that project (the manager keeps it until reconcile succeeded). To name the failing extension, the main claiming it and the program holding it, `reconcile` reports which extension failed which check instead of one text; the messages are those of `Violation.association*`, completed with the main.
 
-What `reconcile` refuses, and what it means here:
-- An extension claimed by a program outside the Fearless family (`notOurs`): refused. So `OpenWith[I,"txt"]` fails on every machine where another program already opens `.txt`. This unit keeps that rule.
-- An extension held by another Fearless identity (an older manager, the portable Fearless): taken over, as for `.fearless` today.
-- An extension with a Windows UserChoice (`userLocked`): refused, even when the UserChoice names this manager.
+The manager settles conflicts among the Fearless apps it manages; with the OS and every other program it needs a clear yes or no. An extension is either fully controlled by the manager or the compile fails loudly:
+- An extension claimed by a program outside the Fearless family (`notOurs`): refused. So `OpenWith[I,"txt"]` fails on every machine where another program already opens `.txt`. There is no mode that merely adds the manager to the programs offered for an extension.
+- An extension with a Windows UserChoice (`userLocked`): refused, even when the UserChoice names this manager, exactly as for `.fearless`: an association the user pinned is one the manager could not take away later.
+- An extension held by another Fearless identity (an older manager, the portable Fearless): taken over, as for `.fearless`.
+
+The portable Fearless reconciles `.fearless` under its own identity at every start, removing the manager's associations. That is accepted: at its next start the manager takes back every extension it manages.
 
 ## Opening a file
 
@@ -141,6 +144,8 @@ A file with the `.fearless` extension, or with an extension nobody claims, keeps
 ## Delivering the file
 
 `System.inputCursor` is designed as a linked list that grows when new input files arrive. Its `rt` implementation (`_InputCursor`) returns a fixed demo node today, and connecting it to real files is a separate unit of work. So in this unit the opened file does not reach the program: `OpenWith` and `Shortcut` behave the same on a double click, and differ only in the shortcut file. Feeding the file of a second double click to a main already running is also a later unit.
+
+Receiving a file does not need its extension, but creating one does. A main with `OpenWith[I]` gets an extension such as `ffile042` chosen by the manager, and that choice varies between machines and compile orders; to save a document the user can later double click, the program must name it `<something>.ffile042`. So a later unit adds a way for a main to learn the extensions it claims, for example a `System` method.
 
 ## The manager window
 
@@ -160,11 +165,3 @@ It becomes the autoloaded type `base.IconsConflict` once `base` has autoloaded a
 - Frontend: each well formedness error, with `Err` holes, and the accepted forms (both string delimiters, several claims, a claim inherited from a supertype that also implements `Main`).
 - Coordinator: the `<pkg>.mains` lines for mains with and without claims, extending `RunIntegration`'s check of `col.mains`.
 - Controllers: the name inversion (both directions, with the refused names), the autoselection (hash start, collision, wrap around, all taken, kept across compiles), the in memory map with conflicts, the open message dispatch, and the `reconcile` input built from a map (as `AssociationTest` does for `.fearless`).
-
-## Open questions
-
-- The rule refusing extensions held by other programs makes `OpenWith` on common extensions fail on most machines. A variant that only adds the manager to `OpenWithProgids`, without taking the default program, would let them work.
-- The UserChoice refusal also covers a UserChoice naming this manager, which Windows writes when the user ticks "always use this app"; from then on every reconcile fails, `.fearless` included. Accepting a UserChoice that names the manager's own ProgId would fix it.
-- Every start of the portable Fearless reconciles `.fearless` under its own identity and so deletes every association of the manager until the manager starts again.
-- An `OpenWith[I]` without extension claims an extension the program can not know, so the program can not save files that open with it. It becomes useful with a `System` method giving a main its claimed extensions.
-- The portable Fearless compiles a project whose icon the manager would refuse.
