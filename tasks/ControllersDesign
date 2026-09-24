@@ -1,0 +1,151 @@
+# Controllers design
+
+
+Controllers holds the Fearless manager: a desktop program that keeps a set of project folders, compiles them, runs their mains, and connects them to the desktop and to Eclipse.
+Next to it, and independent from it, Controllers also holds:
+- `fearlessPluginProject`: the Eclipse plugin showing the projects of a manager inside Eclipse, with the content assist of `suggest`.
+- `agentTools`: a library driving the real pointer and keyboard, for GUI tests of any program.
+- `benchmarks`: speed measures of Fearless programs against the runtime.
+
+This document describes what the manager does: what the user and the other programs can observe. It does not describe how.
+
+The manager behaves the same on every system: it does not adapt to the conventions of the system it runs on, and when the system does not offer what the manager needs, the manager stops with an error saying so.
+Everything the manager is asked to do either happens or is refused with a message naming what was refused and why; nothing is silently skipped.
+
+## Program, manager folder, owner
+
+A manager is one program folder, `fearlessManaged<version>` (`fearlessManaged<version>.app` on macOS), for example `fearlessManaged0_001`.
+Its manager folder is `fearless<version>`, next to the program folder, on every system. The manager folder holds everything the manager remembers; deleting it makes the manager start from nothing. A manager folder that can not be created is a fatal error naming it.
+
+Starting the program leaves one message (see **Messages**) in the manager folder. Of all the running copies of one manager, exactly one is the owner: it shows the window, and applies the messages, its own and those left by any later start. A start that finds an owner already running leaves its message and ends at once. So starting the program again is what brings back the window of a running manager.
+
+The program takes no argument, or one argument:
+- no argument: show the window;
+- a folder: select that folder (see **Registering a folder**);
+- a file: select the folder it is in (as the portable Fearless runs the folder of a file it is started on).
+A path naming nothing, a path the system can not represent, and the manager folder or anything inside it are refused with a message naming the argument; nothing is registered.
+
+The owner runs until Quit, or until a fatal error. A fatal error is shown in a dialog listing the mains that are running; closing the dialog ends the manager and every main it runs. The problems of one project (bad file names, a bad icon, a failing compile) are never fatal: they are shown on that project.
+
+Closing the window hides it. The manager keeps an icon in the system tray (on Linux, a StatusNotifierItem); clicking it shows the window. A system with no tray, or a tray removing the icon, is fatal: the icon is the only way back to a hidden window. Quit ends the manager and every main it runs.
+
+## Messages
+
+Every request to the owner is a message: a start of the program, a folder added from the window (the Add folder menu, or folders dropped on the window), and every request from Eclipse. The owner applies the messages one at a time, in the order they were left.
+
+A message is one of:
+- nothing: show the window;
+- a path: as the program argument above;
+- a verb, then a folder, then for some verbs a third line:
+  - `select`: register the folder if new, show the window, select the project;
+  - `run`: select the project and run it (see **Jobs**); the third line, when present, is the one main to run;
+  - `compile`: select the project and compile it if it needs compiling (check it, for a project that is not code);
+  - `terminate`: select the project and end the main it runs, if any;
+  - `clean`: select the project and delete its compiled cache;
+  - `kind`: set the kind of the project to the third line (`idle`, `code`, `data:readOnly`, `data:readWrite`);
+  - `forget`: forget the project.
+
+Only `select` registers a new folder. Every other verb naming a folder that is not registered is refused with a message naming the verb and the folder.
+
+## Registered projects
+
+The manager folder holds `projects.info`, in the Info format: an object mapping each project name to its metadata:
+```
+{
+  "hello_world": {
+    "path": "C:/data/01_hello_world",
+    "kind": "code",
+    "mains": ["hello.Hello1", "hello.Hello3"],
+    "reads": {"pub": ["Pub"]},
+    "edits": {"notes": ["Notes", "Diary"]}
+  }
+}
+```
+- `path`: the absolute path of the project folder. Two projects never share a folder, and a project folder is never inside another one.
+- `kind`: `idle`, `code`, `data:readOnly` or `data:readWrite`. Missing means `idle`.
+- `mains`: the mains the user selected to run, for a code project with several mains.
+- `reads` and `edits`: for a code project, the data projects it reads and those it writes, each with the type names the code uses for it. A project in `reads` is `data:readOnly` or `data:readWrite`; a project in `edits` is `data:readWrite`. The window puts a data project the code may write in both, with the same type names.
+
+A code project whose links name a missing project, or a project of the wrong kind, or an invalid project, is invalid, and the message says which link and why.
+
+The whole file can be edited by hand from the window (Edit project metadata); an edit is accepted only if the whole text is valid, and an error points at the offending text in the Frontend style.
+
+The manager also remembers, per project, when it was last compiled and last run; this is not metadata and is not in `projects.info`.
+
+## Registering a folder
+
+The name of a project is the name of its marker: the only file with the `.fearless` extension at the top of its folder, `<name>.fearless`. A project name follows the rules of a single file name segment of a Fearless project (lowercase letters, digits and `_`, not starting with a digit, not a reserved name such as `con`).
+
+Selecting a folder that is not registered registers it:
+1. A folder inside a registered one, or holding one, is refused, naming both. A folder whose absolute path holds a character outside the Fearless character set is refused, naming the character: `projects.info` could not record it.
+2. The name is the name of its marker, when it has exactly one, the name is valid, and no other project uses it. Otherwise the name is the folder name turned into a valid name: lowercased, every run of other characters turned into `_`, a leading `p` when it starts with a digit, then the first of `name`, `name2`, `name3`... not used by another project. The marker is renamed (or created) to match, and a name different from the marker the folder had is reported.
+3. The compiled cache (`.fearless_out`) of the folder is deleted: the manager only trusts caches it made itself.
+4. An empty folder is filled with a hello world program, and becomes a code project. Any other folder starts idle.
+
+Forgetting a project removes it from `projects.info` and ends the job it runs; nothing in the project folder changes.
+
+## Project states
+
+Each project is in one of these states, shown as a badge on its tile:
+- invalid (code or data): its file names are not valid Fearless file names (for code, also its package structure), its marker is missing or not the only one, its links are broken, or its icon is broken;
+- idle;
+- data read only; data read write;
+- code, not compiled: no compiled cache;
+- code, out of date: a compiled cache that does not match the sources (see below);
+- code, compiled;
+- code, running.
+
+A code project is out of date exactly when compiling it would compile some package: when the compiled cache of a package does not list exactly the current files of that package, or is older than one of them. Files outside every package (a readme, the marker) never make a project out of date.
+
+The manager notices changes made on disk by other programs: while the window is shown, every few seconds it checks the project shown, and in turn every other project, and updates states, badges and buttons, including moving a project in and out of invalid.
+
+The icon of a project is the only PNG file in the folder `.config/icon` of the project, or, with no such folder, an icon generated from the project name. More than one PNG, or a PNG that can not be read, makes the project invalid.
+
+Kinds change only by user request: from idle to any kind, from any kind back to idle. Changing kind keeps `mains`, `reads` and `edits`: they have no effect while the project is not code, and come back if it becomes code again.
+
+## Jobs
+
+A project does at most one job at a time: reading its mains, compiling, running its mains. A request for a job while another one runs, and a request to delete the compiled cache or to change the kind while a job runs, is refused with a line in the Output of the project naming the running job.
+
+Everything a job prints goes to the Output area of the project.
+
+- Compile (code projects): the compiler runs in its own JVM; its output goes to the Output. `--- compiling <folder> ---` starts it, `--- compile done ---` or `--- compile failed with <code> ---` ends it. After it, the mains of the project are known: the concrete mains of the highest rank.
+- Run (code projects): when the cache needs compiling, the main button compiles; a `run` message compiles and then runs. The mains run are: the only main, when there is one; else the main named by the `run` message; else the selected mains, in the order of the mains list. A named main that is not a main of the project is refused, listing the mains; a project with no main says so. Each main runs in its own JVM, one after the other, framed by `--- running <main> ---` and `--- <main> exited with <code> after <N>s ---`. While a main runs, its unit test log is published as a JUnit report every two seconds and when it ends.
+- Terminate ends the JVM of the running main, or of the compile.
+- Check (idle and data projects): reports why the project is invalid, or `--- ok: no problem found ---`.
+
+## The window
+
+- Left: a tile for every registered project, with its icon, name and state badge, ordered by name, last modification, last compile or last run.
+- Right, when a tile is selected: the panel of that project:
+  - the main button: Compile, Run, Run selected, Terminate, or Check;
+  - the kind buttons;
+  - for a code project, its mains; with several mains, each can be selected, or All, or None;
+  - Links: for a code project, a row for every data project (read, write, the type names); for a data project, a row for every code project;
+  - Information: folder, name, kind, sizes, times, packages, selected mains, links;
+  - Logs: the log files the mains wrote in `.out/logs`, to view, copy or delete;
+  - Output.
+- Menus: Manager (Edit project metadata, Show raw project state, Connect Eclipse, Forget association, Quit manager), Project (Add folder, Clear cache, Browse files, View documentation, View base documentation, Error report, Forget project), Running (every running main; choosing one selects its project).
+- Folders dropped on the window are selected, as by Add folder.
+
+## File associations
+
+On Windows and Linux, at every start, the owner makes itself the program opening `.fearless` files, with the Fearless icon, following `FileAssociations.reconcile` of Commons (an extension held by a program outside the Fearless family, or pinned by the user, is an error, not something the manager works around). Forget association removes what the manager registered, then ends the manager. macOS has no associations.
+
+## Eclipse
+
+Connect Eclipse asks for the Eclipse executable, checks that its folder is an Eclipse install, and puts the plugin in its `dropins/fearless` folder together with `manager.txt`, which names the messages folder of the manager, its `eclipse` folder, and the documentation of the standard library.
+
+The manager keeps its `eclipse` folder up to date whether an Eclipse is connected or not:
+- `projects.txt`: every registered project, as its name, a space, its folder;
+- per project, in a folder named like the project: `state.txt` (kind, whether it needs compiling, the job running, the main running, the number of runs started, the last main run and its exit code, every known main with the file declaring it), `console.txt` (exactly what the Output of the project shows), `problems.txt` (the file, line and message of the error of the last compile, empty when it succeeded) and `report.xml` (the JUnit report of the last run);
+- `console.txt`: the notes of the manager, such as a folder refused.
+
+The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and never writes into a project folder. It shows the problem in the Problems view, the report in the JUnit view, the Output in the Console view, and every run as a process with a Terminate button. Build, Clean, Run, Terminate, the kind switches, New Project, Show in manager and Forget project are messages to the manager. Content assist proposes the methods of the expression before the cursor and the types of a package, from the compiled information of the last compile, with their documentation.
+
+## Open questions
+
+1. A folder whose path holds a character outside the Fearless character set (a user name in a home folder, for example) is refused. Should Info instead gain an escape for such characters, so that those folders can be projects?
+2. Stale selected mains (a main renamed after being selected) stay in `mains` and are not run. Should the next compile drop them from `projects.info`?
+3. `projects.info` allows a data project in `edits` and not in `reads`, or in both with different type names; the window never writes either. Should `edits` imply `reads`, with a data project in at most one of the two?
+4. The messages of the manager live in Coordinator (`Report`, `Violation`), so every manager change touching a message is a pair of pull requests. Should Controllers keep its own two message files, with `UserError` open to them?
