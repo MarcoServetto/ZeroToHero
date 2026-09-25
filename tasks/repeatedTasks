@@ -1,130 +1,365 @@
-Repeated overnight task chains.
-
-A chain covers one repository (StandardLibrary has two chains, on different folders) and runs its phases in the listed order.
-The first block is the protocol every chain follows; each following block is one chain.
-To run chains, add to LongHorizonTasks.txt a task such as:
-
-Task "repeated Frontend and Commons":
-Run the chains "Frontend" and "Commons" of ZeroToHero/tasks/repeatedTasks.
-
-Optionally restrict the phases: Run the chain "Coordinator" of ZeroToHero/tasks/repeatedTasks, phases consistency and reduction only.
-Two machines never run chains on the same repository on the same night.
+Repeated overnight tasks.
+Each block is a whole task, to copy into LongHorizonTasks.txt.
+Every task works on one repository, on the branch overnight-<Repository> of the marcoautomation2 fork, and amends the open PR from that branch; two tasks on the same repository in the same night share that PR.
+ZeroToHero/tasks/refused/<task name> holds the kinds of fix the reviewer refused, each with the reason; the tasks only read it.
 ------------------
-Protocol
-
-Roles
-- Coordinator: the overnight agent itself. Sub agents can not start sub agents, so the coordinator runs the rounds directly and never hands a whole chain to one sub agent. It judges, counts and verifies; it does not edit code.
-- Finder: a fresh sub agent that reads the units it is given and returns candidates, each with file:line evidence. It edits nothing. Finders are asked to over report: judging is the job of the coordinator.
-- Sweeper: a fresh sub agent that applies one admitted entry to the whole scope of the chain and runs the tests.
-Every sub agent writes a log of its actions and conclusions in the overnight log folder, and replies to the coordinator in a few lines.
-
-Ledger
-Each chain keeps a ledger, ZeroToHero/tasks/ledgers/<chain name>. It is the only memory between rounds and between nights: the coordinator rewrites it after every round, so a compaction or a crash loses nothing. Sections:
-- Units: the scope split into units of 300 to 1500 lines (a package, a folder, a large file); for each phase, the date a finder last read the unit.
-- Settled: one entry per accepted rule: the rule written as "A is written B" (for correctness: the bug class), its justification, a detector (a grep regex, or a precise description when no regex fits), the PR that applied it.
-- Rejected: candidates refused by the reviewer or by the coordinator, each with the reason.
-- Queued: admitted entries not yet swept.
-- Questions: candidates the coordinator could not decide. They go in the PR description and stay here until the reviewer answers.
-- Bugs: correctness findings, with the name of their failing test and the state of that test.
-
-Start of a chain
-1. Read the ledger from ZeroToHero main; if the ZeroToHero PR of an earlier night changing it is still open, read it from the branch of that PR.
-2. Bring in the decisions of the reviewer: for every PR the ledger lists, read state, comments, reviews and the merged diff (gh pr view <n> --repo <parent> --json state,mergedAt,comments,reviews). An entry whose change was merged is settled. An entry whose change was dropped, reverted or objected to is rejected, with the words of the reviewer as the reason. Answered questions become settled or rejected.
-3. Without a ledger: split the scope into units; record as settled the Coding rules of the global CLAUDE.md that apply to the repository; read the PRs of marcoautomation2 on this repository of the last 30 days and record the kinds of change of the merged ones as settled and of the closed ones as rejected, with the closing comment as the reason.
-4. Work on the branch overnight-<yyyy-mm-dd> of the repository, created from upstream main by the first chain touching the repository tonight and shared by every later one.
-5. Baseline: run the tests of the chain and record the failing ones. At the end of the chain exactly those fail, plus the new tests of the correctness phase.
-6. If an overnight PR of an earlier night on this repository is still open, list its files: the chain does not touch them and the report says so.
-7. Before each round, apply the usage rule of the overnight tasks.
-
-Phase loop, the same for every phase
-A. Regression: run the detectors of the settled entries of the phase. A hit is new code breaking a settled rule; it is swept at once, without a finder round.
-B. Coverage rounds: each finder gets about 3000 lines of units, those read longest ago in this phase, together with the recipe of the phase and the Settled, Rejected and Questions sections of all ledgers. Rounds go on until every unit has been read in this phase tonight.
-C. Fixpoint round: one fresh finder gets the whole scope and the whole ledger and looks only for kinds of bad not already in the ledger.
-After each round the coordinator judges the candidates, queues the admitted ones and runs one sweeper per admitted entry.
-The phase ends when a fixpoint round admits nothing, or when two consecutive rounds admit only entries with fewer than 3 occurrences in total, or after 6 rounds, or when the budget is reached.
-
-Judging, the main job of the coordinator
-Most candidates are thrown away. A candidate is admitted only when all of these hold:
-1. It is a kind, not a spot: it is a rule with a detector. The coordinator counts the occurrences on both sides by running the detector itself; the counts of the finder are never used.
-2. It is justified by one of: a rule of the global CLAUDE.md; the form used in Frontend, the reference style for every Java repository; a majority in scope of at least 3 to 1; a demonstrated defect.
-3. It contradicts nothing settled or rejected in any ledger under tasks/ledgers: a rule settled for one repository holds for all of them. The coordinator writes down the inverse of the candidate ("B is written A") and checks that the inverse is not settled. A candidate whose inverse is settled is overcooking, and is dropped.
-4. It is not churn: the coordinator runs git blame on a sample of the lines the sweep would change. A line written by an overnight commit in the last 60 days is changed only by a rule that is neither the rule of that commit nor its inverse nor a variation of it.
-5. It is not taste: whitespace and layout, member order, a choice between synonymous names, a near even split (below 3 to 1) are not admitted unless a rule of the global CLAUDE.md decides them. Comments are never edited. The coordinator puts such a candidate in Questions if the reviewer would care about it, and otherwise drops it.
-6. It is worth a minute of review: it removes a difference a reader notices, or it removes code. Renaming for the sake of renaming is not admitted.
-In doubt, Questions, not admission. A night that admits nothing is a good result and is reported as such.
-
-Sweeping
-A sweeper gets one admitted entry, its detector and the scope. It fixes every occurrence in scope, not only those the finder saw. The coordinator reruns the detector: the count must be zero, or exactly the exceptions the entry lists. One commit per entry, with the message "<phase>: <rule>". After each sweep the sweeper runs the fast tests of the chain; a sweep that makes them fail is reverted, and its entry goes to Questions with the failure.
-
-Budget
-Per chain per night: at most 6 entries per phase and at most about 600 changed lines, not counting tests and Commons.jar. Admitted entries over the budget go to Queued and are the first sweeps of the next night.
-
-End of a chain
-- Run the full tests of the chain and compare with the baseline.
-- Push the branch; open the PR on the upstream repository, or update it when an earlier chain of tonight opened it. One PR per repository per night.
-- The PR description lists, per phase: each entry with its rule, justification and number of occurrences; each bug with its test; Queued; Questions for the reviewer; how many candidates were rejected, and the three most tempting rejected ones with the reason.
-- The updated ledger goes into the ZeroToHero PR of the morning, together with DoneTasks.
-- The report in DoneTasks says for each phase whether it reached the fixpoint or stopped at the budget.
-
-Phase recipes
-correctness: a kind of bad is a bug class, a mistake that can recur: a check on direct supertypes that misses the inherited ones; a deduplication by a key coarser than the identity; a file case checked while the folder case is not; a position computed from one string and applied to another. Admission needs a concrete input and the wrong result it produces; the coordinator runs the reproducer. For each admitted class, the sweep reads every site of the same shape looking for siblings. Each bug gets one failing test, in the style of the tests of the repository; bugs are not fixed. A bug reachable only by bypassing earlier checks is reported without a test. A test already failing in the repository is not a new bug.
-consistency: a kind of bad is two ways to write the same thing. Behavior and error message text do not change.
-reduction: a kind of bad is a shape longer than needed: dead code (zero uses in all seven repositories, package private and private members included), a wrapper with a single caller, duplicated logic, a hand rolled version of a Commons utility. Behavior and error message text do not change. A reduction that does not shrink the deployed code in lines is not admitted. A reduction needing a change in another repository is reported, not done.
-text: a kind of bad is a factual error (a claim, a name, a signature or an example that does not match the code, checked against the code or by compiling), a typo, or an error message breaking the wording rules of the global CLAUDE.md (a vague reference instead of the verbatim name, no list of what is accepted, characters outside the allowed set). Rewording text that is correct and clear is not admitted.
-live: run the built application as a user would (gui_gym.txt and the gui_<app>_gym.txt files), following the list of the chain. A kind of bad is a reproducible wrong behavior. A small fix is made with a test; a larger one is reported with the steps to reproduce it.
-------------------
-Chain "Commons"
-Repository: Commons. Scope: Commons/src.
-Phases: correctness, consistency, reduction.
+Task "CommonsSimplification":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for code simplification in the repository Commons, folder Commons/src.
 Kept even when unused: the Streams utilities; the left and right variants of Pop and Push; Bug.todo(), Bug.todo(String), Bug.err(), Bug.err(String); Push.of(List<List<T>>).
-Tests: TestAllFrontendCoordinator.java after each sweep, TestAllController.java at the end.
-Regenerate Commons.jar (out/modular/mods/Commons.jar over Commons/Commons.jar) and commit it at the end of every phase that changed code.
+Before the first round:
+- read ZeroToHero/tasks/refused/CommonsSimplification, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-Commons on FearlessLang/Commons: the kinds of simplification they applied;
+- if no PR from marcoautomation2:overnight-Commons is open, reset that branch to upstream main;
+- run TestAllFrontendCoordinator.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the code of Commons/src and identify one specific kind of code that can be simplified. Simplification usually makes the code smaller: dead code (no use in any of the seven repositories), a wrapper with a single caller, duplicated logic, a longer shape where a shorter one says the same. This is not about finding one occurrence, but about an abstract kind of code that can be simplified the same way wherever it appears. Do not edit anything. Output: a clear description of the kind and of the simplification, with some occurrences as examples." Give it the refused kinds and the kinds already applied (in the PRs and tonight): it must propose none of them, nor their inverse.
+2. Decide if the kind is worth fixing. Count its occurrences yourself. Refuse it when it is a refused or already applied kind, a variation of one, or its inverse; when it changes behavior or the text of an error message; when it does not make the code smaller; when it touches the kept methods; when it is a matter of taste (layout, member order, synonymous names; comments are never edited); when it is too rare to be worth a minute of review.
+   If you refuse it, start a new inner agent asking for a different kind, telling it what you refused and why. After 5 refused kinds in a row, stop.
+3. Start an inner agent with the task: "Read all the code of Commons/src and apply <the kind> to every occurrence, and nothing else. Run TestAllFrontendCoordinator.java: exactly the tests failing before fail. Copy out/modular/mods/Commons.jar over Commons/Commons.jar. Commit with a message naming the kind and push to marcoautomation2:overnight-Commons."
+4. Read the diff: drop every change that is not an occurrence of the kind; grep that no occurrence is left. Open the PR on FearlessLang/Commons from marcoautomation2:overnight-Commons if none is open; add the kind and its number of occurrences to its description.
+This ends a round; start the next one.
+Stop also when the open PR changes more than about 800 lines.
+At the end run TestAllController.java.
+Report: the kinds applied, the kinds refused with the reason, why the task stopped.
 ------------------
-Chain "Frontend"
-Repository: Frontend. Scope: FearlessFrontend/src.
-Phases: correctness, consistency, reduction, paper.
-The error messages of Frontend are the model for every other repository; their text changes in no phase.
-paper: compare typeSystem with the type system of the paper in C:\data\fearlessPaper\Fearless_TOPLAS (only on the machine holding that checkout). A kind of bad is a rule that differs between the two. Where the code is wrong it is a correctness bug, with a failing test; where the paper is wrong it goes in the PR description with the section and the rule. The paper is not edited.
-Tests: TestAllFrontend.java after each sweep, TestAllFrontendCoordinator.java at the end.
+Task "CommonsConsistency":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for inconsistencies in the repository Commons, folder Commons/src.
+Kept even when unused: the Streams utilities; the left and right variants of Pop and Push; Bug.todo(), Bug.todo(String), Bug.err(), Bug.err(String); Push.of(List<List<T>>).
+Before the first round:
+- read ZeroToHero/tasks/refused/CommonsConsistency, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-Commons on FearlessLang/Commons: the directions of consistency they applied;
+- if no PR from marcoautomation2:overnight-Commons is open, reset that branch to upstream main;
+- run TestAllFrontendCoordinator.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the code of Commons/src and identify one specific way it is not consistent: the same thing written in two different ways. This is not about finding one occurrence, but about the two ways, wherever they appear. Do not edit anything. Output: the two ways, how many occurrences each has, which one the code should converge to and why, with some occurrences as examples." Give it the refused kinds and the directions already applied (in the PRs and tonight): it must propose none of them, nor their inverse.
+2. Decide if the direction is worth applying. Count both ways yourself. Accept it only when the target is required by the Coding rules of the global CLAUDE.md, or is how Frontend writes the same thing, or is a clear majority (at least 3 to 1) in Commons, and never when Frontend writes it the other way. Refuse it when it is a refused or already applied direction, a variation of one, or its inverse; when it changes behavior or the text of an error message; when it is a matter of taste (layout, whitespace, member order, synonymous names; comments are never edited); when the two ways do not mean the same thing (assert, Objects.requireNonNull and Require.nonNull have different roles); when it is too rare to be worth a minute of review.
+   If you refuse it, start a new inner agent asking for a different inconsistency, telling it what you refused and why. After 5 refused in a row, stop.
+3. Start an inner agent with the task: "Read all the code of Commons/src and rewrite every occurrence of <the minority way> as <the target way>, and nothing else. Run TestAllFrontendCoordinator.java: exactly the tests failing before fail. Copy out/modular/mods/Commons.jar over Commons/Commons.jar. Commit with a message naming the direction and push to marcoautomation2:overnight-Commons."
+4. Read the diff: drop every change that is not an occurrence; grep that no occurrence is left. Open the PR on FearlessLang/Commons from marcoautomation2:overnight-Commons if none is open; add the direction and its number of occurrences to its description.
+This ends a round; start the next one.
+Stop also when the open PR changes more than about 800 lines.
+At the end run TestAllController.java.
+Report: the directions applied, those refused with the reason, why the task stopped.
 ------------------
-Chain "Coordinator"
-Repository: Coordinator. Scope: src and Build/src (LocalResources.java excluded).
-Phases: correctness, consistency, reduction, text.
-text: the messages a user of Fearless can see (compile, build, run, the portable launcher); Frontend messages are the model.
-Tests: TestAllFrontendCoordinator.java after each sweep. At the end TestAllController.java (Controllers depends on Coordinator and checks some of its texts), and TestAllFrontendCoordinatorIntegration.java when the night changed the backend, the code generation or the build.
+Task "CommonsBugs":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for bugs in the repository Commons, folder Commons/src. Bugs are shown by a failing test and not fixed.
+Before the first round:
+- read ZeroToHero/tasks/refused/CommonsBugs, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-Commons on FearlessLang/Commons: the kinds of bug already reported;
+- if no PR from marcoautomation2:overnight-Commons is open, reset that branch to upstream main;
+- run TestAllFrontendCoordinator.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the code of Commons/src and identify one kind of bug: a mistake that can happen in several places, such as a check that covers a file but not a folder, a position computed on one string and used on another, a deduplication by a key coarser than the identity, an operating system case handled differently from the others. Think about the logic of the code; do not rush to run things. Do not edit anything. Output: the kind, and at least one occurrence with a concrete input and the wrong result it produces." Give it the refused kinds and those already reported: it must propose none of them.
+2. Decide if the kind is a real bug worth reporting: check the reproducer yourself, by reading the code or by running it. Refuse it when the wrong result can not happen through the public API; when it is a design choice rather than a mistake; when it is a refused or already reported kind.
+   If you refuse it, start a new inner agent asking for a different kind of bug, telling it what you refused and why. After 5 refused in a row, stop.
+3. Start an inner agent with the task: "Read all the code of Commons/src and find every occurrence of <the kind of bug>. For each occurrence that produces a wrong result, add a failing test showing it, in the style of the existing tests of Commons. Do not fix the bugs. Run TestAllFrontendCoordinator.java: the tests failing before fail, plus the new ones. Commit and push to marcoautomation2:overnight-Commons."
+4. Read the new tests: each one fails for the stated reason. Open the PR on FearlessLang/Commons from marcoautomation2:overnight-Commons if none is open; add the kind and the new tests to its description.
+This ends a round; start the next one.
+Report: the kinds of bug found with their tests, the kinds refused with the reason, why the task stopped.
 ------------------
-Chain "Controllers"
-Repository: Controllers. Scope: src, agentTools excluded.
-Phases: correctness, consistency, reduction, text, live.
-ZeroToHero/tasks/ControllersDesign is the specification: code doing something else is a correctness finding; a place where the document is silent goes to Questions.
-text: the messages and notes the manager and the plugin show.
-live: build with DeployManagedFearless.java and use the manager: register a project, compile it, run a main, run its tests, edit a file while it compiles, forget the project, restart the manager; on the machine with Eclipse, connect Eclipse and repeat from there. A kind of bad is a behavior differing from ControllersDesign.
-Tests: TestAllController.java.
+Task "FrontendSimplification":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for code simplification in the repository Frontend, folder FearlessFrontend/src.
+Before the first round:
+- read ZeroToHero/tasks/refused/FrontendSimplification, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-Frontend on FearlessLang/Frontend: the kinds of simplification they applied;
+- if no PR from marcoautomation2:overnight-Frontend is open, reset that branch to upstream main;
+- run TestAllFrontend.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the code of FearlessFrontend/src and identify one specific kind of code that can be simplified. Simplification usually makes the code smaller: dead code (no use in any of the seven repositories), a wrapper with a single caller, duplicated logic, a hand written version of a Commons utility, a longer shape where a shorter one says the same. This is not about finding one occurrence, but about an abstract kind of code that can be simplified the same way wherever it appears. Do not edit anything. Output: a clear description of the kind and of the simplification, with some occurrences as examples." Give it the refused kinds and the kinds already applied (in the PRs and tonight): it must propose none of them, nor their inverse.
+2. Decide if the kind is worth fixing. Count its occurrences yourself. Refuse it when it is a refused or already applied kind, a variation of one, or its inverse; when it changes behavior or the text of an error message; when it does not make the code smaller; when it is a matter of taste (layout, member order, synonymous names; comments are never edited); when it is too rare to be worth a minute of review.
+   If you refuse it, start a new inner agent asking for a different kind, telling it what you refused and why. After 5 refused kinds in a row, stop.
+3. Start an inner agent with the task: "Read all the code of FearlessFrontend/src and apply <the kind> to every occurrence, and nothing else. Run TestAllFrontend.java: exactly the tests failing before fail. Commit with a message naming the kind and push to marcoautomation2:overnight-Frontend."
+4. Read the diff: drop every change that is not an occurrence of the kind; grep that no occurrence is left. Open the PR on FearlessLang/Frontend from marcoautomation2:overnight-Frontend if none is open; add the kind and its number of occurrences to its description.
+This ends a round; start the next one.
+Stop also when the open PR changes more than about 800 lines.
+At the end run TestAllFrontendCoordinator.java.
+Report: the kinds applied, the kinds refused with the reason, why the task stopped.
 ------------------
-Chain "StandardLibrary GUI"
-Repository: StandardLibrary. Scope: base/gui, rt/gui, and the GUI integration projects (testGui2, testGuiImg, testTicTacToe, testBasketball).
-Phases: correctness, consistency, reduction, live.
-consistency: every builder offers the same family of methods in the same order and with the same names (.save, .style, the setters and their primed variants).
-live: build with DeployPortableFearless.java and run the GUI integration projects: resize, move off screen, use keys and every mouse button, close.
-Tests: TestAllFrontendCoordinatorIntegration.java after each sweep.
+Task "FrontendConsistency":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for inconsistencies in the repository Frontend, folder FearlessFrontend/src.
+Before the first round:
+- read ZeroToHero/tasks/refused/FrontendConsistency, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-Frontend on FearlessLang/Frontend: the directions of consistency they applied;
+- if no PR from marcoautomation2:overnight-Frontend is open, reset that branch to upstream main;
+- run TestAllFrontend.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the code of FearlessFrontend/src and identify one specific way it is not consistent: the same thing written in two different ways. This is not about finding one occurrence, but about the two ways, wherever they appear. Do not edit anything. Output: the two ways, how many occurrences each has, which one the code should converge to and why, with some occurrences as examples." Give it the refused kinds and the directions already applied (in the PRs and tonight): it must propose none of them, nor their inverse.
+2. Decide if the direction is worth applying. Count both ways yourself. Accept it only when the target is required by the Coding rules of the global CLAUDE.md or is a clear majority (at least 3 to 1) in Frontend. Refuse it when it is a refused or already applied direction, a variation of one, or its inverse; when it changes behavior or the text of an error message; when it is a matter of taste (layout, whitespace, member order, synonymous names; comments are never edited); when the two ways do not mean the same thing; when it is too rare to be worth a minute of review.
+   If you refuse it, start a new inner agent asking for a different inconsistency, telling it what you refused and why. After 5 refused in a row, stop.
+3. Start an inner agent with the task: "Read all the code of FearlessFrontend/src and rewrite every occurrence of <the minority way> as <the target way>, and nothing else. Run TestAllFrontend.java: exactly the tests failing before fail. Commit with a message naming the direction and push to marcoautomation2:overnight-Frontend."
+4. Read the diff: drop every change that is not an occurrence; grep that no occurrence is left. Open the PR on FearlessLang/Frontend from marcoautomation2:overnight-Frontend if none is open; add the direction and its number of occurrences to its description.
+This ends a round; start the next one.
+Stop also when the open PR changes more than about 800 lines.
+At the end run TestAllFrontendCoordinator.java.
+Report: the directions applied, those refused with the reason, why the task stopped.
 ------------------
-Chain "StandardLibrary base"
-Repository: StandardLibrary. Scope: base and rt, without the GUI and without the flows (base/datatypes/collections/flows, rt/Flows*: ZeroToHero/tasks/FlowDesign drives them).
-Phases: correctness, consistency, reduction, text.
-correctness: an rt override replaces the Fearless body of a method, so a bug in that body is invisible to the tests: compare the two. Numeric types at their edges (zero, the maximum, negative, overflow and underflow, wrapping).
-consistency: the same operation has the same name and argument order on every collection and numeric type; every .get has its .tryGet, with .get defined through .tryGet; string literals are delimited by "" unless they contain a double quote.
-text: the doc comments, as rendered in base.txt: what they say matches what the code does.
-Tests: TestAllFrontendCoordinatorIntegration.java after each sweep; new tests go in integrationTests/testingStandardLibrary.
+Task "FrontendBugs":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for bugs in the repository Frontend, folder FearlessFrontend/src. Bugs are shown by a failing test and not fixed.
+The type system of the paper in C:\data\fearlessPaper\Fearless_TOPLAS and FearlessFrontend/src/typeSystem describe the same language; where that checkout exists, a rule differing between the two is a candidate bug.
+Before the first round:
+- read ZeroToHero/tasks/refused/FrontendBugs, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-Frontend on FearlessLang/Frontend: the kinds of bug already reported;
+- if no PR from marcoautomation2:overnight-Frontend is open, reset that branch to upstream main;
+- run TestAllFrontend.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the code of FearlessFrontend/src and identify one kind of bug: a mistake that can happen in several places, such as a check on the direct supertypes that misses the inherited ones, a span computed from a qualified name with the length of the simple name, a deduplication by a key coarser than the identity, a name collector that skips one kind of binder. Think about the logic of the code; do not rush to run things. Do not edit anything. Output: the kind, and at least one occurrence with a concrete Fearless program and the wrong result it produces (a wrong error, a missing error, a crash)." Give it the refused kinds and those already reported: it must propose none of them.
+2. Decide if the kind is a real bug worth reporting: compile the program yourself and check the result. Refuse it when the result is the one the language intends (check with the paper where it applies); when it is a refused or already reported kind.
+   If you refuse it, start a new inner agent asking for a different kind of bug, telling it what you refused and why. After 5 refused in a row, stop.
+3. Start an inner agent with the task: "Read all the code of FearlessFrontend/src and find every occurrence of <the kind of bug>. For each occurrence that produces a wrong result, add a failing test showing it, in the style of the existing tests of Frontend. Do not fix the bugs. Run TestAllFrontend.java: the tests failing before fail, plus the new ones. Commit and push to marcoautomation2:overnight-Frontend."
+4. Read the new tests: each one fails for the stated reason. Open the PR on FearlessLang/Frontend from marcoautomation2:overnight-Frontend if none is open; add the kind and the new tests to its description; where the paper is the one that is wrong, write the section and the rule there instead of adding a test.
+This ends a round; start the next one.
+Report: the kinds of bug found with their tests, the kinds refused with the reason, why the task stopped.
 ------------------
-Chain "FearlessTour"
-Repository: FearlessTour. Scope: every chapter.
-Phases: text, examples.
-text: typos; claims about base that base.txt contradicts (types, methods, signatures, supertypes); a concept used before the chapter introducing it. Inside the Java doc comments of the chapters *|/ stands for a star followed by a slash and stays written that way.
-examples: a kind of bad is code shown in the guide that the tests do not compile. Each such example becomes a test, inside the text when that is simple, otherwise at the bottom of the chapter as other chapters already do.
-Tests: src/markDownTests, run with org.junit.platform.console.ConsoleLauncher on a classpath made of the jars listed in externalJars/readme.txt, the Commons, Frontend and Coordinator jars, and the jars of Coordinator/testJars.
+Task "CoordinatorSimplification":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for code simplification in the repository Coordinator, folders src and Build/src.
+Before the first round:
+- read ZeroToHero/tasks/refused/CoordinatorSimplification, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-Coordinator on FearlessLang/Coordinator: the kinds of simplification they applied;
+- if no PR from marcoautomation2:overnight-Coordinator is open, reset that branch to upstream main;
+- run TestAllFrontendCoordinator.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the code of Coordinator (src and Build/src) and identify one specific kind of code that can be simplified. Simplification usually makes the code smaller: dead code (no use in any of the seven repositories), a wrapper with a single caller, duplicated logic, a hand written version of a Commons utility, a longer shape where a shorter one says the same. This is not about finding one occurrence, but about an abstract kind of code that can be simplified the same way wherever it appears. Do not edit anything. Output: a clear description of the kind and of the simplification, with some occurrences as examples." Give it the refused kinds and the kinds already applied (in the PRs and tonight): it must propose none of them, nor their inverse.
+2. Decide if the kind is worth fixing. Count its occurrences yourself. Refuse it when it is a refused or already applied kind, a variation of one, or its inverse; when it changes behavior or the text of an error message; when it does not make the code smaller; when it is a matter of taste (layout, member order, synonymous names; comments are never edited); when it is too rare to be worth a minute of review.
+   If you refuse it, start a new inner agent asking for a different kind, telling it what you refused and why. After 5 refused kinds in a row, stop.
+3. Start an inner agent with the task: "Read all the code of Coordinator (src and Build/src) and apply <the kind> to every occurrence, and nothing else. Run TestAllFrontendCoordinator.java: exactly the tests failing before fail. Commit with a message naming the kind and push to marcoautomation2:overnight-Coordinator."
+4. Read the diff: drop every change that is not an occurrence of the kind; grep that no occurrence is left. Open the PR on FearlessLang/Coordinator from marcoautomation2:overnight-Coordinator if none is open; add the kind and its number of occurrences to its description.
+This ends a round; start the next one.
+Stop also when the open PR changes more than about 800 lines.
+At the end run TestAllController.java, and TestAllFrontendCoordinatorIntegration.java if the night changed the backend, the code generation or the build.
+Report: the kinds applied, the kinds refused with the reason, why the task stopped.
 ------------------
-Chain "ZeroToHero puzzles"
-Repository: ZeroToHero. Scope: the levels of the minigames, src/levels, and the level editors in src/htmlMangle.
-Phases: text.
-text: puzzles are not compiled, so they drift from the language: a kind of bad is a puzzle whose code or model answer is wrong for the current language, checked by running the code of the puzzle through the Frontend parser and type system with a short program in the scratchpad, never committed; and typos in the text of the levels.
-Tests: generate the html of the game and open the changed levels in a browser.
+Task "CoordinatorConsistency":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for inconsistencies in the repository Coordinator, folders src and Build/src.
+Before the first round:
+- read ZeroToHero/tasks/refused/CoordinatorConsistency, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-Coordinator on FearlessLang/Coordinator: the directions of consistency they applied;
+- if no PR from marcoautomation2:overnight-Coordinator is open, reset that branch to upstream main;
+- run TestAllFrontendCoordinator.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the code of Coordinator (src and Build/src) and identify one specific way it is not consistent: the same thing written in two different ways. This is not about finding one occurrence, but about the two ways, wherever they appear. Do not edit anything. Output: the two ways, how many occurrences each has, which one the code should converge to and why, with some occurrences as examples." Give it the refused kinds and the directions already applied (in the PRs and tonight): it must propose none of them, nor their inverse.
+2. Decide if the direction is worth applying. Count both ways yourself. Accept it only when the target is required by the Coding rules of the global CLAUDE.md, or is how Frontend writes the same thing, or is a clear majority (at least 3 to 1) in Coordinator, and never when Frontend writes it the other way. Refuse it when it is a refused or already applied direction, a variation of one, or its inverse; when it changes behavior or the text of an error message; when it is a matter of taste (layout, whitespace, member order, synonymous names; comments are never edited); when the two ways do not mean the same thing; when it is too rare to be worth a minute of review.
+   If you refuse it, start a new inner agent asking for a different inconsistency, telling it what you refused and why. After 5 refused in a row, stop.
+3. Start an inner agent with the task: "Read all the code of Coordinator (src and Build/src) and rewrite every occurrence of <the minority way> as <the target way>, and nothing else. Run TestAllFrontendCoordinator.java: exactly the tests failing before fail. Commit with a message naming the direction and push to marcoautomation2:overnight-Coordinator."
+4. Read the diff: drop every change that is not an occurrence; grep that no occurrence is left. Open the PR on FearlessLang/Coordinator from marcoautomation2:overnight-Coordinator if none is open; add the direction and its number of occurrences to its description.
+This ends a round; start the next one.
+Stop also when the open PR changes more than about 800 lines.
+At the end run TestAllController.java.
+Report: the directions applied, those refused with the reason, why the task stopped.
+------------------
+Task "CoordinatorBugs":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for bugs in the repository Coordinator, folders src and Build/src. Bugs are shown by a failing test and not fixed.
+Before the first round:
+- read ZeroToHero/tasks/refused/CoordinatorBugs, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-Coordinator on FearlessLang/Coordinator: the kinds of bug already reported;
+- if no PR from marcoautomation2:overnight-Coordinator is open, reset that branch to upstream main;
+- run TestAllFrontendCoordinator.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the code of Coordinator (src and Build/src) and identify one kind of bug: a mistake that can happen in several places, such as a check on a file that misses the folder of the same name, a name accepted by a pattern and then refused by javac, an empty or malformed input silently dropped, a cache not invalidated by one kind of change. Think about the logic of the code; do not rush to run things. Do not edit anything. Output: the kind, and at least one occurrence with a concrete Fearless project and the wrong result it produces." Give it the refused kinds and those already reported: it must propose none of them.
+2. Decide if the kind is a real bug worth reporting: build the project yourself and check the result. Refuse it when the result can not happen through a real project; when it is a design choice rather than a mistake; when it is a refused or already reported kind.
+   If you refuse it, start a new inner agent asking for a different kind of bug, telling it what you refused and why. After 5 refused in a row, stop.
+3. Start an inner agent with the task: "Read all the code of Coordinator (src and Build/src) and find every occurrence of <the kind of bug>. For each occurrence that produces a wrong result, add a failing test showing it, in the style of the existing tests of Coordinator. Do not fix the bugs. Run TestAllFrontendCoordinator.java: the tests failing before fail, plus the new ones. Commit and push to marcoautomation2:overnight-Coordinator."
+4. Read the new tests: each one fails for the stated reason. Open the PR on FearlessLang/Coordinator from marcoautomation2:overnight-Coordinator if none is open; add the kind and the new tests to its description.
+This ends a round; start the next one.
+Report: the kinds of bug found with their tests, the kinds refused with the reason, why the task stopped.
+------------------
+Task "CoordinatorErrorMessages":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are improving the error messages a Fearless user can see from the repository Coordinator (compile, build, run, the portable launcher). The error messages of Frontend are the model; the wording rules are in the global CLAUDE.md, section "Names, messages, tests".
+Before the first round:
+- read ZeroToHero/tasks/refused/CoordinatorErrorMessages, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-Coordinator on FearlessLang/Coordinator: the kinds of message fix they applied;
+- if no PR from marcoautomation2:overnight-Coordinator is open, reset that branch to upstream main;
+- run TestAllFrontendCoordinator.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read the error messages of Coordinator and of Frontend and identify one kind of defect in the messages of Coordinator, such as: a vague reference ("the file", "this type") where the name could be written verbatim; a refusal that does not say what is accepted; a message naming an internal step the user knows nothing about; characters outside the allowed set of the global CLAUDE.md; two messages saying the same thing in different shapes. This is not about one message, but about a kind of defect. Do not edit anything. Output: the kind, how many messages have it, some messages as they are and as they would become." Give it the refused kinds and the kinds already applied: it must propose none of them, nor their inverse.
+2. Decide if the kind is worth fixing. Refuse it when the messages are already clear and precise and the change is only a different wording; when it is a refused or already applied kind, a variation of one, or its inverse.
+   If you refuse it, start a new inner agent asking for a different kind, telling it what you refused and why. After 5 refused in a row, stop.
+3. Start an inner agent with the task: "Fix every message of Coordinator with <the kind of defect>, and nothing else, updating the expected texts of the tests. Where the right wording is unclear, write <HELP ME WITH WORDING> next to the message in the PR description instead of guessing. Run TestAllFrontendCoordinator.java: exactly the tests failing before fail. Commit with a message naming the kind and push to marcoautomation2:overnight-Coordinator."
+4. Read the diff: drop every change that is not an occurrence of the kind. Open the PR on FearlessLang/Coordinator from marcoautomation2:overnight-Coordinator if none is open; add the kind and the messages before and after to its description.
+This ends a round; start the next one.
+At the end run TestAllController.java (it checks some texts of Coordinator).
+Report: the kinds fixed, the kinds refused with the reason, why the task stopped.
+------------------
+Task "ControllersSimplification":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for code simplification in the repository Controllers, folder src without src/agentTools.
+Before the first round:
+- read ZeroToHero/tasks/refused/ControllersSimplification, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-Controllers on FearlessLang/Controllers: the kinds of simplification they applied;
+- if no PR from marcoautomation2:overnight-Controllers is open, reset that branch to upstream main;
+- run TestAllController.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the code of Controllers/src (not src/agentTools) and identify one specific kind of code that can be simplified. Simplification usually makes the code smaller: dead code (no use in any of the seven repositories), a wrapper with a single caller, duplicated logic, a hand written version of a Commons utility, a longer shape where a shorter one says the same, graceful degradation that should be an immediate failure. This is not about finding one occurrence, but about an abstract kind of code that can be simplified the same way wherever it appears. Do not edit anything. Output: a clear description of the kind and of the simplification, with some occurrences as examples." Give it the refused kinds and the kinds already applied (in the PRs and tonight): it must propose none of them, nor their inverse.
+2. Decide if the kind is worth fixing. Count its occurrences yourself. Refuse it when it is a refused or already applied kind, a variation of one, or its inverse; when it changes what ZeroToHero/tasks/ControllersDesign says the manager does; when it does not make the code smaller; when it is a matter of taste (layout, member order, synonymous names; comments are never edited); when it is too rare to be worth a minute of review.
+   If you refuse it, start a new inner agent asking for a different kind, telling it what you refused and why. After 5 refused kinds in a row, stop.
+3. Start an inner agent with the task: "Read all the code of Controllers/src (not src/agentTools) and apply <the kind> to every occurrence, and nothing else. Run TestAllController.java: exactly the tests failing before fail. Commit with a message naming the kind and push to marcoautomation2:overnight-Controllers."
+4. Read the diff: drop every change that is not an occurrence of the kind; grep that no occurrence is left. Open the PR on FearlessLang/Controllers from marcoautomation2:overnight-Controllers if none is open; add the kind and its number of occurrences to its description.
+This ends a round; start the next one.
+Stop also when the open PR changes more than about 800 lines.
+Report: the kinds applied, the kinds refused with the reason, why the task stopped.
+------------------
+Task "ControllersConsistency":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for inconsistencies in the repository Controllers, folder src without src/agentTools.
+Before the first round:
+- read ZeroToHero/tasks/refused/ControllersConsistency, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-Controllers on FearlessLang/Controllers: the directions of consistency they applied;
+- if no PR from marcoautomation2:overnight-Controllers is open, reset that branch to upstream main;
+- run TestAllController.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the code of Controllers/src (not src/agentTools) and identify one specific way it is not consistent: the same thing written in two different ways. This is not about finding one occurrence, but about the two ways, wherever they appear. Do not edit anything. Output: the two ways, how many occurrences each has, which one the code should converge to and why, with some occurrences as examples." Give it the refused kinds and the directions already applied (in the PRs and tonight): it must propose none of them, nor their inverse.
+2. Decide if the direction is worth applying. Count both ways yourself. Accept it only when the target is required by the Coding rules of the global CLAUDE.md, or is how Frontend writes the same thing, or is a clear majority (at least 3 to 1) in Controllers, and never when Frontend writes it the other way. Refuse it when it is a refused or already applied direction, a variation of one, or its inverse; when it changes what ZeroToHero/tasks/ControllersDesign says the manager does; when it is a matter of taste (layout, whitespace, member order, synonymous names; comments are never edited); when the two ways do not mean the same thing; when it is too rare to be worth a minute of review.
+   If you refuse it, start a new inner agent asking for a different inconsistency, telling it what you refused and why. After 5 refused in a row, stop.
+3. Start an inner agent with the task: "Read all the code of Controllers/src (not src/agentTools) and rewrite every occurrence of <the minority way> as <the target way>, and nothing else. Run TestAllController.java: exactly the tests failing before fail. Commit with a message naming the direction and push to marcoautomation2:overnight-Controllers."
+4. Read the diff: drop every change that is not an occurrence; grep that no occurrence is left. Open the PR on FearlessLang/Controllers from marcoautomation2:overnight-Controllers if none is open; add the direction and its number of occurrences to its description.
+This ends a round; start the next one.
+Stop also when the open PR changes more than about 800 lines.
+Report: the directions applied, those refused with the reason, why the task stopped.
+------------------
+Task "ControllersBugs":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for bugs in the repository Controllers, folder src without src/agentTools. Bugs are shown by a failing test and not fixed. ZeroToHero/tasks/ControllersDesign says what the manager does: code doing something else is a bug.
+Before the first round:
+- read ZeroToHero/tasks/refused/ControllersBugs, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-Controllers on FearlessLang/Controllers: the kinds of bug already reported;
+- if no PR from marcoautomation2:overnight-Controllers is open, reset that branch to upstream main;
+- run TestAllController.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read ZeroToHero/tasks/ControllersDesign and all the code of Controllers/src (not src/agentTools) and identify one kind of bug: a mistake that can happen in several places, such as state read on one thread and written on another, a request handled differently while a job is running, a file read that silently accepts a partial or malformed content, an association or registration not undone when a project is forgotten. Think about the logic of the code; do not rush to run things. Do not edit anything. Output: the kind, and at least one occurrence with a concrete sequence of actions and the wrong result it produces." Give it the refused kinds and those already reported: it must propose none of them.
+2. Decide if the kind is a real bug worth reporting: check the sequence yourself, by reading the code or with a headless test. Refuse it when ControllersDesign asks for that result; when the sequence can not happen; when it is a refused or already reported kind.
+   If you refuse it, start a new inner agent asking for a different kind of bug, telling it what you refused and why. After 5 refused in a row, stop.
+3. Start an inner agent with the task: "Read all the code of Controllers/src (not src/agentTools) and find every occurrence of <the kind of bug>. For each occurrence that produces a wrong result, add a failing test showing it, in the style of the existing tests of Controllers (headless, no real desktop). Do not fix the bugs. Run TestAllController.java: the tests failing before fail, plus the new ones. Commit and push to marcoautomation2:overnight-Controllers."
+4. Read the new tests: each one fails for the stated reason. Open the PR on FearlessLang/Controllers from marcoautomation2:overnight-Controllers if none is open; add the kind and the new tests to its description.
+This ends a round; start the next one.
+Report: the kinds of bug found with their tests, the kinds refused with the reason, why the task stopped.
+------------------
+Task "StandardLibraryGuiSimplification":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for code simplification in the GUI of the repository StandardLibrary: folders base/gui and rt/gui.
+Before the first round:
+- read ZeroToHero/tasks/refused/StandardLibraryGuiSimplification, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-StandardLibrary on FearlessLang/StandardLibrary: the kinds of simplification they applied;
+- if no PR from marcoautomation2:overnight-StandardLibrary is open, reset that branch to upstream main;
+- run TestAllFrontendCoordinatorIntegration.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the code of StandardLibrary base/gui and rt/gui and identify one specific kind of code that can be simplified. Simplification usually makes the code smaller: dead code, duplicated logic, a Java forwarder where a Fearless default body does the same, a longer shape where a shorter one says the same. This is not about finding one occurrence, but about an abstract kind of code that can be simplified the same way wherever it appears. Do not edit anything. Output: a clear description of the kind and of the simplification, with some occurrences as examples." Give it the refused kinds and the kinds already applied (in the PRs and tonight): it must propose none of them, nor their inverse.
+2. Decide if the kind is worth fixing. Count its occurrences yourself. Refuse it when it is a refused or already applied kind, a variation of one, or its inverse; when it changes what a window shows or how it reacts; when it does not make the code smaller; when it is a matter of taste (layout, member order, synonymous names; comments are never edited); when it is too rare to be worth a minute of review.
+   If you refuse it, start a new inner agent asking for a different kind, telling it what you refused and why. After 5 refused kinds in a row, stop.
+3. Start an inner agent with the task: "Read all the code of StandardLibrary base/gui and rt/gui and apply <the kind> to every occurrence, and nothing else. Run TestAllFrontendCoordinatorIntegration.java: exactly the tests failing before fail. Commit with a message naming the kind and push to marcoautomation2:overnight-StandardLibrary."
+4. Read the diff: drop every change that is not an occurrence of the kind; grep that no occurrence is left. Open the PR on FearlessLang/StandardLibrary from marcoautomation2:overnight-StandardLibrary if none is open; add the kind and its number of occurrences to its description.
+This ends a round; start the next one.
+Stop also when the open PR changes more than about 800 lines.
+Report: the kinds applied, the kinds refused with the reason, why the task stopped.
+------------------
+Task "StandardLibraryGuiConsistency":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for inconsistencies in the GUI of the repository StandardLibrary: folders base/gui and rt/gui.
+Before the first round:
+- read ZeroToHero/tasks/refused/StandardLibraryGuiConsistency, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-StandardLibrary on FearlessLang/StandardLibrary: the directions of consistency they applied;
+- if no PR from marcoautomation2:overnight-StandardLibrary is open, reset that branch to upstream main;
+- run TestAllFrontendCoordinatorIntegration.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the code of StandardLibrary base/gui and rt/gui and identify one specific way it is not consistent: the same thing written in two different ways, or a family of builders or widgets where some members offer a method, a name or an argument order the others do not. This is not about finding one occurrence, but about the two ways, wherever they appear. Do not edit anything. Output: the two ways, how many occurrences each has, which one the code should converge to and why, with some occurrences as examples." Give it the refused kinds and the directions already applied (in the PRs and tonight): it must propose none of them, nor their inverse.
+2. Decide if the direction is worth applying. Count both ways yourself. Accept it only when the target is required by the Coding rules of the global CLAUDE.md, or is a clear majority (at least 3 to 1) in the GUI, and, for the Java of rt/gui, never when Frontend writes it the other way. Refuse it when it is a refused or already applied direction, a variation of one, or its inverse; when it is a matter of taste (layout, whitespace, member order, synonymous names; comments are never edited); when the two ways do not mean the same thing; when it is too rare to be worth a minute of review.
+   If you refuse it, start a new inner agent asking for a different inconsistency, telling it what you refused and why. After 5 refused in a row, stop.
+3. Start an inner agent with the task: "Read all the code of StandardLibrary base/gui and rt/gui and rewrite every occurrence of <the minority way> as <the target way>, and nothing else; update the callers in StandardLibrary, FearlessTour and ZeroToHero. Run TestAllFrontendCoordinatorIntegration.java: exactly the tests failing before fail. Commit with a message naming the direction and push to marcoautomation2:overnight-StandardLibrary."
+4. Read the diff: drop every change that is not an occurrence; grep that no occurrence is left. Open the PR on FearlessLang/StandardLibrary from marcoautomation2:overnight-StandardLibrary if none is open; add the direction and its number of occurrences to its description.
+This ends a round; start the next one.
+Stop also when the open PR changes more than about 800 lines.
+Report: the directions applied, those refused with the reason, why the task stopped.
+------------------
+Task "StandardLibraryGuiBugs":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for bugs in the GUI of the repository StandardLibrary: folders base/gui and rt/gui. A bug is fixed only when the fix is small; either way it gets a test.
+Before the first round:
+- read ZeroToHero/tasks/refused/StandardLibraryGuiBugs, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-StandardLibrary on FearlessLang/StandardLibrary: the kinds of bug already reported;
+- if no PR from marcoautomation2:overnight-StandardLibrary is open, reset that branch to upstream main;
+- run TestAllFrontendCoordinatorIntegration.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the code of StandardLibrary base/gui and rt/gui and identify one kind of bug: a mistake that can happen in several places, such as window geometry changed without checking the screen bounds, state captured on one mouse button and used on another, a layout that loses children when its slot is too small, an event reaching a widget already removed. Hand trace concrete geometry and event sequences; do not rush to run things. Do not edit anything. Output: the kind, and at least one occurrence with a concrete program or sequence of user actions and the wrong result it produces." Give it the refused kinds and those already reported: it must propose none of them.
+2. Decide if the kind is a real bug worth reporting: check it yourself, by hand tracing or by running the program with DeployPortableFearless.java. Refuse it when the sequence can not happen; when it is a design choice rather than a mistake; when it is a refused or already reported kind.
+   If you refuse it, start a new inner agent asking for a different kind of bug, telling it what you refused and why. After 5 refused in a row, stop.
+3. Start an inner agent with the task: "Read all the code of StandardLibrary base/gui and rt/gui and find every occurrence of <the kind of bug>. For each occurrence add a test showing it in the GUI integration tests; fix it when the fix is small, otherwise leave the test failing. Run TestAllFrontendCoordinatorIntegration.java: the tests failing before fail, plus the new unfixed ones. Commit and push to marcoautomation2:overnight-StandardLibrary."
+4. Read the diff and the new tests. Open the PR on FearlessLang/StandardLibrary from marcoautomation2:overnight-StandardLibrary if none is open; add the kind, the tests and the fixes to its description.
+This ends a round; start the next one.
+Report: the kinds of bug found with their tests and fixes, the kinds refused with the reason, why the task stopped.
+------------------
+Task "StandardLibraryBaseConsistency":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for inconsistencies in the API of the repository StandardLibrary: folders base and rt, without the GUI (base/gui, rt/gui) and without the flows (base/datatypes/collections/flows and rt/Flows*, driven by ZeroToHero/tasks/FlowDesign).
+Before the first round:
+- read ZeroToHero/tasks/refused/StandardLibraryBaseConsistency, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-StandardLibrary on FearlessLang/StandardLibrary: the directions of consistency they applied;
+- if no PR from marcoautomation2:overnight-StandardLibrary is open, reset that branch to upstream main;
+- run TestAllFrontendCoordinatorIntegration.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read the API of base (base.txt, produced by compiling base, and the .fear sources) and identify one specific way it is not consistent: the same operation with different names or argument orders on different collection or numeric types, a .get without its .tryGet (the .get is defined through the .tryGet), a doc comment convention followed by most types and not by others, string literals delimited by `` without containing a double quote. This is not about one occurrence, but about the two ways, wherever they appear. Do not edit anything. Output: the two ways, how many occurrences each has, which one base should converge to and why, with some occurrences as examples." Give it the refused kinds and the directions already applied (in the PRs and tonight): it must propose none of them, nor their inverse.
+2. Decide if the direction is worth applying. Count both ways yourself. Accept it only when the target is a clear majority (at least 3 to 1) in base or a rule stated in this task. Refuse it when it is a refused or already applied direction, a variation of one, or its inverse; when it is a matter of taste; when the two ways do not mean the same thing; when it is too rare to be worth a minute of review.
+   If you refuse it, start a new inner agent asking for a different inconsistency, telling it what you refused and why. After 5 refused in a row, stop.
+3. Start an inner agent with the task: "Rewrite every occurrence of <the minority way> in StandardLibrary base and rt as <the target way>, and nothing else; update the callers in StandardLibrary, FearlessTour and ZeroToHero. Run TestAllFrontendCoordinatorIntegration.java: exactly the tests failing before fail. Commit with a message naming the direction and push to marcoautomation2:overnight-StandardLibrary."
+4. Read the diff: drop every change that is not an occurrence; grep that no occurrence is left. Open the PR on FearlessLang/StandardLibrary from marcoautomation2:overnight-StandardLibrary if none is open; add the direction and its number of occurrences to its description. Changes to callers in FearlessTour and ZeroToHero go in PRs from their own overnight branches, linked from it.
+This ends a round; start the next one.
+Stop also when the open PR changes more than about 800 lines.
+Report: the directions applied, those refused with the reason, why the task stopped.
+------------------
+Task "StandardLibraryBaseBugs":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for bugs in the repository StandardLibrary: folders base and rt, without the GUI (base/gui, rt/gui) and without the flows (base/datatypes/collections/flows and rt/Flows*, driven by ZeroToHero/tasks/FlowDesign). Bugs are shown by a failing test and not fixed.
+Before the first round:
+- read ZeroToHero/tasks/refused/StandardLibraryBaseBugs, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-StandardLibrary on FearlessLang/StandardLibrary: the kinds of bug already reported;
+- if no PR from marcoautomation2:overnight-StandardLibrary is open, reset that branch to upstream main;
+- run TestAllFrontendCoordinatorIntegration.java and note the failing tests.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the code of StandardLibrary base and rt (not the GUI, not the flows) and identify one kind of bug: a mistake that can happen in several places, such as a numeric operation wrong at zero, at the maximum, on negative values or on overflow; an inverted guard; a doc comment promising what the code does not do; a Fearless body that is wrong but never runs because an rt method overrides it. Think about the logic of the code; do not rush to run things. Do not edit anything. Output: the kind, and at least one occurrence with a concrete Fearless expression and the wrong result it produces." Give it the refused kinds and those already reported: it must propose none of them.
+2. Decide if the kind is a real bug worth reporting: run the expression yourself. Refuse it when the result is what the doc comment promises; when it is a refused or already reported kind.
+   If you refuse it, start a new inner agent asking for a different kind of bug, telling it what you refused and why. After 5 refused in a row, stop.
+3. Start an inner agent with the task: "Read all the code of StandardLibrary base and rt (not the GUI, not the flows) and find every occurrence of <the kind of bug>. For each occurrence that produces a wrong result, add a failing check in integrationTests/testingStandardLibrary, in the style of the checks there. Do not fix the bugs. Run TestAllFrontendCoordinatorIntegration.java: the tests failing before fail, plus the new ones. Commit and push to marcoautomation2:overnight-StandardLibrary."
+4. Read the new checks: each one fails for the stated reason. Open the PR on FearlessLang/StandardLibrary from marcoautomation2:overnight-StandardLibrary if none is open; add the kind and the new checks to its description.
+This ends a round; start the next one.
+Report: the kinds of bug found with their checks, the kinds refused with the reason, why the task stopped.
+------------------
+Task "FearlessTourExplanations":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for mistakes in the explanations of the repository FearlessTour: the chapters in src/chaptersOfZeroToHero. Inside their Java doc comments *|/ stands for a star followed by a slash and stays written that way.
+Before the first round:
+- read ZeroToHero/tasks/refused/FearlessTourExplanations, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-FearlessTour on MarcoServetto/FearlessTour: the kinds of mistake already fixed;
+- if no PR from marcoautomation2:overnight-FearlessTour is open, reset that branch to upstream main;
+- run the tests of FearlessTour and note the failing ones. There is no script: run org.junit.platform.console.ConsoleLauncher on src/markDownTests, with a classpath made of the jars listed in externalJars/readme.txt, the Commons, Frontend and Coordinator jars, and the jars of Coordinator/testJars.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read the whole of FearlessTour and the API of base (base.txt, produced by compiling base) and identify one kind of mistake in the explanations, such as: methods or types that do not exist in base or have another signature; claims about supertypes that base contradicts; a concept used before the chapter introducing it; code shown in the text and not compiled by the tests; reduction steps that do not follow from the rules; a recurring kind of typo. This is not about one sentence, but about a kind of mistake, wherever it appears. Do not edit anything. Output: the kind, how many places have it, some places as they are and as they would become." Give it the refused kinds and those already fixed: it must propose none of them, nor their inverse.
+2. Decide if the kind is worth fixing. Check against base or by compiling that the text is really wrong. Refuse it when the text is correct and clear and the change is only a different wording; when it is a refused or already fixed kind, a variation of one, or its inverse.
+   If you refuse it, start a new inner agent asking for a different kind, telling it what you refused and why. After 5 refused in a row, stop.
+3. Start an inner agent with the task: "Read the whole of FearlessTour and fix every place with <the kind of mistake>, and nothing else. Code shown in the text becomes a test when it is not compiled yet: inside the text when that is simple, otherwise at the bottom of the chapter as other chapters do. Run the tests of FearlessTour: exactly the tests failing before fail. Commit with a message naming the kind and push to marcoautomation2:overnight-FearlessTour."
+4. Read the diff: drop every change that is not an occurrence of the kind. Open the PR on MarcoServetto/FearlessTour from marcoautomation2:overnight-FearlessTour if none is open; add the kind and its number of places to its description.
+This ends a round; start the next one.
+Stop also when the open PR changes more than about 800 lines.
+Report: the kinds fixed, the kinds refused with the reason, why the task stopped.
+------------------
+Task "ZeroToHeroPuzzles":
+You are the outer agent; the sub agents you start are the inner agents. Every inner agent writes a log of its actions and conclusions and replies to you in a few lines.
+We are searching for mistakes in the levels of the minigames of the repository ZeroToHero: src/levels, written with the level editors in src/htmlMangle. Puzzles are not compiled, so they drift from the language.
+Before the first round:
+- read ZeroToHero/tasks/refused/ZeroToHeroPuzzles, if it exists;
+- read the descriptions of the PRs of the last 30 days from marcoautomation2:overnight-ZeroToHero on MarcoServetto/ZeroToHero: the kinds of mistake already fixed;
+- if no PR from marcoautomation2:overnight-ZeroToHero is open, reset that branch to upstream main.
+The work goes in rounds. Each round:
+1. Start an inner agent with the task: "Read all the levels in ZeroToHero/src/levels and identify one kind of mistake, such as: puzzle code using syntax or methods the language does not have any more; a model answer that is wrong for the current language (check it with the Frontend parser and type system, through a short program in the scratchpad that is never committed); a puzzle whose answer depends on whether the text is a method body or top level without saying which; a recurring kind of typo in the text of the levels. This is not about one puzzle, but about a kind of mistake, wherever it appears. Do not edit anything. Output: the kind, how many puzzles have it, some puzzles as they are and as they would become." Give it the refused kinds and those already fixed: it must propose none of them, nor their inverse.
+2. Decide if the kind is worth fixing. Check yourself, with Frontend, that the puzzles are really wrong. Refuse it when the puzzle is correct and the change is only a different wording; when it changes the difficulty or the teaching order of a level; when it is a refused or already fixed kind, a variation of one, or its inverse.
+   If you refuse it, start a new inner agent asking for a different kind, telling it what you refused and why. After 5 refused in a row, stop.
+3. Start an inner agent with the task: "Read all the levels in ZeroToHero/src/levels and fix every puzzle with <the kind of mistake>, and nothing else. Generate the html of the game and open the changed levels in a browser to check them. Commit with a message naming the kind and push to marcoautomation2:overnight-ZeroToHero."
+4. Read the diff: drop every change that is not an occurrence of the kind. Open the PR on MarcoServetto/ZeroToHero from marcoautomation2:overnight-ZeroToHero if none is open; add the kind and its number of puzzles to its description.
+This ends a round; start the next one.
+Report: the kinds fixed, the kinds refused with the reason, why the task stopped.
