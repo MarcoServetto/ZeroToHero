@@ -909,7 +909,7 @@ for(Nat v: Sort#(ps, by, 1)){ return Opts#v; }
 return Opt#;
 ```
 With `k` of `1`, each merge makes at most one call of `by`: the sort is a search for the minimum.
-The filter now runs on every element, as positive speculation. `{::>3}` over a `Nat` can not throw or fail to terminate, so running it inside the loop of `f` is not observable; a filter that can would need its exceptions held until the sort has fixed the flow order.
+The filter now runs on every element, as positive speculation. `{::>3}` over a `Nat` can not throw or fail to terminate, so running it inside the loop of `f` is not observable; with a filter that can, this merge is not legal (see **sort then filter** in **Extra interesting combinations of operators**).
 
 **example with distinct, on a repeated element**\
 ```
@@ -1532,6 +1532,200 @@ return fork(Range c: Chunks#(orders.size)){
 ```
 A call of `Price` that throws puts nothing in the cache, so the exception is thrown at the smallest index where the sequential strategy without the cache throws it.
 
+
+## Extra interesting combinations of operators
+
+Each entry below is a combination of operators with a rewrite that is legal, or that looks legal and is not.
+A rewrite is legal when the whole flow expression returns the same for every lambda, including those that throw or do not terminate, and makes only calls that the under-specified choices allow, the same choices in every strategy.
+The rewrites of **Canonical form** (see **example with limit**) are not repeated here.
+
+**scan then limit**\
+`l.flow.scan(0, h).limit 3 .list`\
+with `h` of type `read F[Nat,Nat,Nat]`.
+
+Let `s0` be `h#(0, e0)` and `sj` be `h#(s(j-1), ej)`. If there is a smallest index `j` among `0`, `1` and `2` such that computing `sj` throws or does not terminate, the whole flow expression returns what that call returns. Otherwise it returns `Lists#(s0, s1, s2)`.
+
+Legal: `.scan(acc, h) .limit n` is `.limit n .scan(acc, h)`, so the limit moves on to the source. `scan` pushes exactly one element for each element it pulls and never returns `Break#`: it goes 1-1 as `map` does, and the element at index `3` is never pulled in either order. The same holds for map with context, and for any `actor` or `actorMut` whose inlined lambda pushes exactly once and returns `Continue#` on every path. An actor that may push no element or two, as the window of **Example for actor**, can not be crossed.
+
+Sequential strategy:
+```
+Nat s= 0;
+EList[Nat] res= EList#;
+for(Nat e: l.take(3)){
+  s= h#(s, e);
+  res.add(s);
+  }
+return res.list;
+```
+Pipeline parallelism:
+```
+Nat s= 0;
+return node(l.take(3)){e, out -> s= h#(s, e); out.send(s); }.list;
+```
+
+**scan then last**\
+`l.flow.scan(0, h).last`
+
+If `l` is empty, the whole flow expression returns `Opt#`. Otherwise, with `sj` as above, if there is a smallest index `j` such that computing `sj` throws or does not terminate, it returns what that call returns; otherwise it returns `Opts#s7`.
+
+Legal: the calls of `h` are those of a fold, in the same order; only the last accumulator is kept, and nothing is materialised.
+```
+Nat s= 0;
+for(Nat e: l){ s= h#(s, e); }
+if(l.isEmpty){ return Opt#; }
+return Opts#s;
+```
+`.scan(acc, h).last` gives no parallelism beyond that of a fold: the calls of `h` form a sequence (see **actor, actorMut, scan**).
+
+**max then limit, sort then last**\
+`l.flow.map f .max by .limit 2 .list` and `l.flow.map f .sort by .last`\
+with `by` an `OrderBy[Nat]`.
+
+For `.max by .limit 2`: if there is a smallest index `j` such that `f#ej` throws or does not terminate, the whole flow expression returns what `f#ej` returns. Otherwise, if some calls of `by` made by the max tree throw or do not terminate, it returns what the one the tree makes before the others returns. Otherwise it returns the first two, in flow order, of the elements tied for the maximum.
+
+Legal: a merge of the max tree compares only the front elements of its two blocks, so capping every block at `2` elements changes no call; it only stops carrying long runs of ties.
+```
+List[Nat] maxMerge(List[Nat] a, List[Nat] b, OrderBy[Nat] by, Nat k){
+  Ord o= by.cmp(a.get(0), b.get(0));
+  if(o.isGt){ return a; }
+  if(o.isLt){ return b; }
+  return (a ++ b).take(k);
+  }
+```
+```
+EList[Nat] vs= EList#;
+for(Nat e: l){ vs.add(f#e); }
+return Max#(vs, by, 2);
+```
+where `Max#(vs, by, k)` is the tree of `Max#` with this merge.
+
+`.sort by .last` is the greatest element under `by`, the one with the greatest index among ties, since the sort is stable. A merge tree keeping only the last element of each block makes one call per merge:
+```
+List[Nat] lastMerge(List[Nat] a, List[Nat] b, OrderBy[Nat] by){
+  if(by.cmp(a.get(0), b.get(0)).isGt){ return a; }
+  return b;
+  }
+```
+Legal as a choice of sorting algorithm, as the truncated merges of **example with sort and limit**: it makes different calls than `Sort#`, and for a `by` not respecting its contract it may return a different element, so every strategy must make this choice. The data parallel version is `MergeTree#` with this merge.
+
+**distinct then first**\
+`l.flow.map f .distinct by .first`\
+with `by` an `OrderHashBy[Nat]`.
+
+If `l` is empty, the whole flow expression returns `Opt#`. Otherwise, if `f#e0` throws or does not terminate, it returns what `f#e0` returns. Otherwise the distinct stage keeps `f#e0`, since no value was kept before it, and `.first` stops the flow: it returns `Opts#(f#e0)`.
+
+Legal: which calls of `by` the distinct stage makes is under-specified. The first element is kept whatever `by` answers, and its hash is needed only to find it again for the elements after it, which `.first` never pulls: the choice of making no call on it serves every strategy. `f` runs only on `e0`, since `.first` breaks right after it.
+```
+for(Nat e: l){ return Opts#(f#e); }
+return Opt#;
+```
+With `.limit 2` in place of `.first`, the second element has to be compared with the first, so `by` is called.
+
+**sort then filter**\
+`l.flow.map f .sort by .filter p .list`\
+with `by` an `OrderBy[Nat]` and `p` a `read F[Nat,Bool]`.
+
+If there is a smallest index `j` such that `f#ej` throws or does not terminate, the whole flow expression returns what `f#ej` returns. Otherwise, if some calls of `by` made by the sorting process throw or do not terminate, it returns what the one the sorting process makes before the others returns. Otherwise let `v0,...,v7` be the `f#ej` in `by` order, ties ordered by smallest index: if there is a smallest `k` such that `p#vk` throws or does not terminate, it returns what `p#vk` returns; otherwise it returns, in that order, the `vk` for which `p#vk` completes successfully with `True`.
+```
+EList[Nat] vs= EList#;
+for(Nat e: l){ vs.add(f#e); }
+EList[Nat] res= EList#;
+for(Nat v: Sort#(vs, by, vs.size)){
+  if(!p#v){ continue; }
+  res.add(v);
+  }
+return res.list;
+```
+Looks legal, is not in general: `.filter p .sort by` sorts fewer elements, and the calls of `by` are under-specified, but the calls of `p` move:
+- they run before the calls of `by`, so an exception of `p` would come before one of `by`: this alone could be fixed by holding it;
+- the flow order after the sort decides which exception of `p` propagates, so an element whose `p` call throws would still have to be sorted;
+- a call of `p` that does not terminate stops the sequential strategy at the smallest index, while the result is decided by the smallest `k` in `by` order: if `p` does not terminate on `f#e0` and throws on an element sorted before `f#e0`, the sequential strategy of the rewrite never returns, while the whole flow expression throws. A parallel strategy could run the calls of `p` as tasks and wait only for those it needs, but the sequential strategy can not, and the choice of which elements are sorted must be the same in every strategy.
+
+So the rewrite is legal only when `p` can neither throw nor fail to terminate, which the backend knows only from inlined code such as `{::>3}` over a `Nat`:
+```
+EList[Nat] vs= EList#;
+for(Nat e: l){
+  Nat v= f#e;
+  if(v > 3){ vs.add(v); }
+  }
+return Sort#(vs, by, vs.size);
+```
+For any other `p`, running `p` early without changing the calls of `by` is still possible, as in **example with elementwise work after a fence**.
+
+**flatMap then flatMap**\
+`l.flow.flatMap f .flatMap g .limit 3 .list`\
+with `f` and `g` of type `read F[Nat, read List[Nat]]`.
+
+The whole flow expression pulls the elements of `l` in flow order; for each element `e`, it computes `f#e` and, for each element `a` of it in order, `g#a`, emitting its elements. It stops right after the call of `g` whose list holds the third element emitted: the first call that throws or does not terminate before that decides what it returns; otherwise it returns the first three elements emitted.
+```
+EList[Nat] res= EList#;
+for(Nat e: l){
+  for(Nat a: f#e){
+    for(Nat x: g#a){
+      res.add(x);
+      if(res.size == 3){ return res.list; }
+      }
+    }
+  }
+return res.list;
+```
+Looks legal, is not: `.flatMap f .flatMap g` looks associative, as `.flatMap{x -> f#x .flow.flatMap g .list}`, but the lambda of `.flatMap` builds its whole list before emitting any element of it (see **Fenced expansions**). The candidate calls `g` on every element of `f#e0`, even after the third element is emitted.
+With `f#0` returning `Lists#(1, 2)`, `g#1` returning `Lists#(10, 11, 12)` and `g#2` throwing, the whole flow expression returns `Lists#(10, 11, 12)`, and the candidate throws.
+With a consuming terminal and no decision point after the two stages, the calls and their order are the same, and the rewrite is legal.
+
+**a stage whose result the terminal does not read**\
+`l.flow.map f .sort by .sort by .list`, `l.flow.map f .sort by .size`, `l.flow.map f .last`\
+with `by` an `OrderBy[Nat]`.
+
+In each, a stage runs although, for well behaved lambdas, the result would be the same without it: the second sort receives a list already sorted by `by`, `.size` does not depend on the order, and `.last` reads only the last result of `f`.
+None of those stages can be dropped: its calls may throw or not terminate, and `by` is user code that nothing forces to be consistent between the two sorts (see **Warning** in **example with distinct, on a repeated element**). This is the reasoning of **example with size**.
+```
+EList[Nat] vs= EList#;
+for(Nat e: l){ vs.add(f#e); }
+return Sort#(Sort#(vs, by, vs.size), by, vs.size);
+```
+```
+EList[Nat] vs= EList#;
+for(Nat e: l){ vs.add(f#e); }
+return Sort#(vs, by, vs.size).size;
+```
+```
+Opt[Nat] res= Opt#;
+for(Nat e: l){ res= Opts#(f#e); }
+return res;
+```
+What is legal is a cheaper choice of algorithm: a sort that first compares the adjacent pairs of its input makes only `7` calls on an already sorted input, and every strategy can make those calls. The same holds for `.distinct by .distinct by` and `.max by .max by`.
+
+**a fence before a short-circuit terminal**\
+`ps.seqFlow.map{p -> Block#(p.birthday, p)} ++ {} .first`\
+with `ps` a `mut List[mut Person]`.
+
+If `ps` is empty, the whole flow expression returns `Opt#`. Otherwise, if there is a smallest index `j` such that `pj.birthday` throws or does not terminate, it returns what that call returns. Otherwise every person in `ps` is one year older, and it returns `Opts#p0`, as `read`.
+
+Looks like a limit that can move towards the source, and is not: `.first` is `.limit 1 .getOpt`, but `++` is a fence, and every element goes through the stages before it before `++` emits any element. A limit never moves before a fence, and the `++ {}` written to start a data parallel region also runs the stages before it on every element.
+```
+for(mut Person p: ps){ p.birthday; }
+for(mut Person p: ps){ return Opts#p; }
+return Opt#;
+```
+The `map` returns its own element, so the list the fence materialises is `ps` itself.
+
+**recomputing instead of storing**\
+`l.flow.map f .filter p .list`\
+with `p` a `read F[Nat,Bool]`.
+
+The whole flow expression returns what the sequential strategy returns: `f` and then `p` on each element, in flow order.
+
+Legal but not a rewrite to perform: `.map f .filter p` returns the same as `.filter{x -> p#(f#x)}.map f`. On an element that passes, the candidate calls `f` twice with the same `imm` input: by Determinism the second call returns a structurally equivalent result, and it can not throw or fail to terminate since the first completed successfully. With `mut` elements, as under `seqFlow`, `f` may mutate its element, and the second call is observable.
+This costs a call and gains nothing here, but the same reasoning lets a backend recompute a result instead of storing it, as the slots of **example with elementwise work after a fence** do:
+```
+EList[Nat] res= EList#;
+for(Nat e: l){
+  if(!p#(f#e)){ continue; }
+  res.add(f#e);
+  }
+return res.list;
+```
 
 //TODO: discuss more interesting sequences of operators.
 
