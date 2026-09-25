@@ -2427,3 +2427,38 @@ Log: C:\data\fearlessBranch3\overnightLog\controllers.txt
 Second round (Opus throughout): Controllers#45 (headless controller.Manager owns projects, jobs and requests on one core thread; Swing only renders its state; 19 headless ManagerTest tests), #46 (Eclipse plugin cleanup: one eclipse/state.info in Info format replaces projects.txt/state.txt/problems.txt, manager.info replaces manager.txt, malformed files stop the plugin visibly; plugin 1115 to 951 lines), #47 (content assist follows Frontend's tokens and grammar, errors on broken compiled files, nothing proposed in comments/strings; 849 to 730 lines). An independent review found and fixed 9 bugs across the stack (the worst two: a broken icon forced a recompile on every run; a restart briefly emptied the project list Eclipse mirrors), then 8 remaining graceful-degradation spots were made fail fast (mains read failures, silent association skip, blank folder lines, partial console and JUnit reads, problem marker placement, a findFirst in content assist, relative start paths). All stacked PRs are drafts; review each one's own commits. TestAllController 215/215 on the top branch.
 Further open questions: should all manager messages live in one place (new ones are strings in Controllers, older ones in Coordinator)? notes are modal dialogs; should a burst of refusals stack them? plugin Bundle-Version needs a bump on every plugin.xml/manifest change; add a qualifier from the Fearless version? should run on a non-code project be refused naming its kind? content assist ignores map directives in rank files.
 Logs: C:\data\fearlessBranch3\overnightLog\controllers2.txt to controllers6.txt
+
+---
+
+Task:
+We want to design a new API for running a lambda on a new thread with different stack space;
+need to also allow for optionally running on the same thread if enough stack space is present; or if we have called that recursively not too many times on the same thread.
+example deeply recursive algorithm can use it on every rec step and need to be fast enough.
+
+In Java it is semi common to make a new thread start it and wait for it just to get an injection of useful stack space, for example to run a deep recursive deserialization.
+Fearless lambda based mindset should make this easy:
+
+RunRecursion#{..}
+should run the lambda in a new Thread with 'large' heap.
+We may want more options to tune this, but we need to examine very clearly what happens on real vms, it is not the case that passing a specific stack parameter gives you exactly that stack amount. What is that we can 'trust' or semi trust it would work?
+
+`RunRecursion:{#[R:**](mut MF[R]):R->Magic!}`
+is the general idea. If a run recursion is called in another run recursion (stack trace can be inspected, but there may be better ways, like checking thread local stuff) we may just run the lambda. Some parameter or some tuning could help, we could have families and layers.
+For example
+Parsing:RunRecursion{.dept->7}//thus overriding some default constants
+Sorting:RunRecursion{.dept->34}
+and now if Parsing calls Sorting, different family new thread.
+But if Parsing calls Parsing we just grow a counter until we get to 7 nested calls then we go new thread.
+(the counter will just use a try finally to go down around the lambda execution)
+
+Does this design make sense?
+What are other people doing around this kind of design?
+What other overridable constants we may want?
+Implement it and open a PR, add some tests using this set up and see if it make sense in some practical cases.
+
+Report:
+Implemented base.RunRecursion: StandardLibrary#126 (API, native _RunRecursion, integration project runRecursion; the description holds the design discussion, JVM measurements and prior art) and Coordinator#184 (7 tests; needs StandardLibrary#126). Design: RunRecursion:{ #[R:**](f: mut MF[R]): R; .depth: Nat -> 1_000; .stackSize: Nat -> 64MB }; each implementing type is a family; same family nests on the current thread until .depth, any other call starts a new thread; the caller waits uninterruptibly and whatever the thread throws is rethrown unchanged. No "enough stack left" check: the JVM cannot report remaining stack, the depth counter stands in for it. Mutually recursive methods must share one family.
+JVM findings (JDK 26): requested stack sizes are respected, depth proportional from about 64KB to a few hundred MB; requests of 4GB or more wrap around (4GB gives the 1MB default); calls per MB depend on JIT state (23k interpreted, 62k compiled); a thread that used about 1GB of stack took about 230s to exit and stalled the next thread start about 210s; virtual threads give no extra stack. Cost: thread start 0.2-0.4ms, same thread step about 0.4us; 1M steps with RunRecursion on every step 1.1s against 0.7s plain recursion with -Xss256m.
+Tests: TestAllFrontendCoordinatorIntegration, Frontend 1045/1045, Coordinator 314 pass, 3 fail, 1 not run; the same 3 fail on main (two flow tests whose projects are not in StandardLibrary main, virtualizationMapMentionsAPackageThatDoesNotExist listing "pkb").
+Open questions: (1) infinite recursion now spawns threads until resources run out instead of a quick stack overflow; add a limit such as .maxThreads? (2) errors after a thread switch show only the new thread's frames; should the rethrow add the caller's? (3) are 64MB and depth 1000 the right defaults, or depth 10000?
+Log: C:\data\overnightLogs\2026-09-25\runRecursion.log (test outputs testRun1.txt, testRun2.txt, testRunMain.txt in the same folder)
