@@ -1727,6 +1727,84 @@ for(Nat e: l){
 return res.list;
 ```
 
+### Ordering errors
+
+Some sequences of operators have a faster shape that a backend could use for lambdas that complete successfully and comparators that respect their contract, but not for all lambdas: the rewrite is not legal, so the backend runs the sequence as written.
+Most of these sequences are written by mistake, and the user could write the faster shape directly. For those, the backend reports an ordering error naming the faster shape, and the hint `.hintAsWritten`, placed between the two operators, suppresses the error and keeps the sequence as written, for the rare case where the corner case is the point.
+<HELP ME WITH WORDING> Example message: ``The flow expression sorts with `.sort by` and then drops elements with `.filter p`: the sort also orders the elements the filter drops. Write `.filter p .sort by`; the two differ only when `p` throws or does not terminate. To keep this order, write `.sort by .hintAsWritten .filter p`.``
+An ordering error needs the whole flow expression, so it is reported only when the flow expression is written in place from source to terminal.
+//TODO: decide whether an ordering error is a compile time error only, or also an exception when a flow built piece by piece reaches its terminal.
+
+**sort then filter**\
+`.sort by .filter p` is faster as `.filter p .sort by`: the sort orders only the elements the filter keeps. The two differ only when a call of `p` throws or does not terminate (see **sort then filter** above).
+Ordering error, unless `p` is inlined code that can neither throw nor fail to terminate: then the rewrite is legal and the backend performs it.
+The same holds for `.sortDistinct by .filter p`, and for `.sort by .findFirst p`, which is faster as `.filter p .sort by .first`.
+As written:
+```
+EList[Nat] vs= EList#;
+for(Nat e: l){ vs.add(f#e); }
+EList[Nat] res= EList#;
+for(Nat v: Sort#(vs, by, vs.size)){
+  if(!p#v){ continue; }
+  res.add(v);
+  }
+return res.list;
+```
+Suggested, `.filter p .sort by`:
+```
+EList[Nat] vs= EList#;
+for(Nat e: l){
+  Nat v= f#e;
+  if(p#v){ vs.add(v); }
+  }
+return Sort#(vs, by, vs.size);
+```
+
+**sort then sort**\
+`.sort by1 .sort by2` is faster as `.sort(by2.andThen by1)`: the second sort is stable, so the result is ordered by `by2`, with ties ordered by `by1`. One sort makes about `n log n` calls of `by2` and calls `by1` only on the pairs `by2` ties, where two sorts make about `n log n` calls of each.
+Ordering error: the calls of `by1` differ, and a `by1` or `by2` not respecting its contract gives a different order.
+As written:
+```
+return Sort#(Sort#(vs, by1, vs.size), by2, vs.size);
+```
+Suggested:
+```
+return Sort#(vs, by2.andThen by1, vs.size);
+```
+
+**an order nothing reads**\
+`.sort by` directly before `.size`, `.any p`, `.all p` or `.none p`: the result does not depend on the order, so the sort only makes calls of `by`. Removing it is faster, and changes the result only when a call of `by` throws or does not terminate, or when calls of `p` throw or do not terminate on several elements and the order decides which one the result comes from.
+Ordering error, suggesting to remove the stage.
+As written, for `.sort by .size`:
+```
+EList[Nat] vs= EList#;
+for(Nat e: l){ vs.add(f#e); }
+return Sort#(vs, by, vs.size).size;
+```
+Suggested, `.size` alone:
+```
+Nat n= 0;
+for(Nat e: l){
+  Nat x= f#e;
+  n= n + 1;
+  }
+return n;
+```
+
+**a stage repeated**\
+`.sort by .sort by`, `.distinct by .distinct by`, `.sortDistinct by .sortDistinct by`, `.max by .max by`, and `.max by .sort by`: the second stage receives what, for a `by` respecting its contract, it returns unchanged (see **a stage whose result the terminal does not read**).
+Ordering error, suggesting to remove the second stage.
+
+**a map before size**\
+`.map f .size` in mode `Par`: over `imm` and `read` elements the calls of `f` can only throw or not terminate, since a `read F` can not mutate what it captured and the elements can not be mutated either.
+Ordering error, suggesting to remove the map.
+Without a mode, as under `seqFlow`, `f` may mutate its `mut` element, as in `persons.seqFlow.map{p -> Block#(p.birthday, p)}.size`, and the map is not a mistake: no error.
+
+**Not ordering errors:**
+- `.max by1 .max by2` is not slower than `.max(by1.andThen by2)`. Both make one call of `by1` per merge of the max tree. The single max calls `by2` on every pair `by1` ties during the merges, including pairs that a greater element beats later; the two max call `by2` only while merging the final leading run, one call per merge. The two max make at most as many calls, and cost only the materialisation of the leading run of `by1` (see **example with two max**). The shape the user wrote is the good one.
+- `.filter p .filter q` with an expensive `p` and a cheap `q` is not an ordering error, although `.filter q .filter p` is faster: `p` is often a guard that `q` relies on, as in `.filter{x -> x != 0}.filter{x -> 12 / x > 2}`, and swapping them changes the result for lambdas that respect every contract.
+- `.distinct by .filter p` and `.filter p .distinct by` return different elements even for well behaved lambdas: when `p` rejects the first element of a class and accepts a later one, only `.filter p .distinct by` keeps the later one. Different results are not an ordering error.
+
 //TODO: discuss more interesting sequences of operators.
 
 //TODO: at the end of the document we need to
