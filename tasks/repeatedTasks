@@ -1,0 +1,130 @@
+Repeated overnight task chains.
+
+A chain covers one repository (StandardLibrary has two chains, on different folders) and runs its phases in the listed order.
+The first block is the protocol every chain follows; each following block is one chain.
+To run chains, add to LongHorizonTasks.txt a task such as:
+
+Task "repeated Frontend and Commons":
+Run the chains "Frontend" and "Commons" of ZeroToHero/tasks/repeatedTasks.
+
+Optionally restrict the phases: Run the chain "Coordinator" of ZeroToHero/tasks/repeatedTasks, phases consistency and reduction only.
+Two machines never run chains on the same repository on the same night.
+------------------
+Protocol
+
+Roles
+- Coordinator: the overnight agent itself. Sub agents can not start sub agents, so the coordinator runs the rounds directly and never hands a whole chain to one sub agent. It judges, counts and verifies; it does not edit code.
+- Finder: a fresh sub agent that reads the units it is given and returns candidates, each with file:line evidence. It edits nothing. Finders are asked to over report: judging is the job of the coordinator.
+- Sweeper: a fresh sub agent that applies one admitted entry to the whole scope of the chain and runs the tests.
+Every sub agent writes a log of its actions and conclusions in the overnight log folder, and replies to the coordinator in a few lines.
+
+Ledger
+Each chain keeps a ledger, ZeroToHero/tasks/ledgers/<chain name>. It is the only memory between rounds and between nights: the coordinator rewrites it after every round, so a compaction or a crash loses nothing. Sections:
+- Units: the scope split into units of 300 to 1500 lines (a package, a folder, a large file); for each phase, the date a finder last read the unit.
+- Settled: one entry per accepted rule: the rule written as "A is written B" (for correctness: the bug class), its justification, a detector (a grep regex, or a precise description when no regex fits), the PR that applied it.
+- Rejected: candidates refused by the reviewer or by the coordinator, each with the reason.
+- Queued: admitted entries not yet swept.
+- Questions: candidates the coordinator could not decide. They go in the PR description and stay here until the reviewer answers.
+- Bugs: correctness findings, with the name of their failing test and the state of that test.
+
+Start of a chain
+1. Read the ledger from ZeroToHero main; if the ZeroToHero PR of an earlier night changing it is still open, read it from the branch of that PR.
+2. Bring in the decisions of the reviewer: for every PR the ledger lists, read state, comments, reviews and the merged diff (gh pr view <n> --repo <parent> --json state,mergedAt,comments,reviews). An entry whose change was merged is settled. An entry whose change was dropped, reverted or objected to is rejected, with the words of the reviewer as the reason. Answered questions become settled or rejected.
+3. Without a ledger: split the scope into units; record as settled the Coding rules of the global CLAUDE.md that apply to the repository; read the PRs of marcoautomation2 on this repository of the last 30 days and record the kinds of change of the merged ones as settled and of the closed ones as rejected, with the closing comment as the reason.
+4. Work on the branch overnight-<yyyy-mm-dd> of the repository, created from upstream main by the first chain touching the repository tonight and shared by every later one.
+5. Baseline: run the tests of the chain and record the failing ones. At the end of the chain exactly those fail, plus the new tests of the correctness phase.
+6. If an overnight PR of an earlier night on this repository is still open, list its files: the chain does not touch them and the report says so.
+7. Before each round, apply the usage rule of the overnight tasks.
+
+Phase loop, the same for every phase
+A. Regression: run the detectors of the settled entries of the phase. A hit is new code breaking a settled rule; it is swept at once, without a finder round.
+B. Coverage rounds: each finder gets about 3000 lines of units, those read longest ago in this phase, together with the recipe of the phase and the Settled, Rejected and Questions sections of all ledgers. Rounds go on until every unit has been read in this phase tonight.
+C. Fixpoint round: one fresh finder gets the whole scope and the whole ledger and looks only for kinds of bad not already in the ledger.
+After each round the coordinator judges the candidates, queues the admitted ones and runs one sweeper per admitted entry.
+The phase ends when a fixpoint round admits nothing, or when two consecutive rounds admit only entries with fewer than 3 occurrences in total, or after 6 rounds, or when the budget is reached.
+
+Judging, the main job of the coordinator
+Most candidates are thrown away. A candidate is admitted only when all of these hold:
+1. It is a kind, not a spot: it is a rule with a detector. The coordinator counts the occurrences on both sides by running the detector itself; the counts of the finder are never used.
+2. It is justified by one of: a rule of the global CLAUDE.md; the form used in Frontend, the reference style for every Java repository; a majority in scope of at least 3 to 1; a demonstrated defect.
+3. It contradicts nothing settled or rejected in any ledger under tasks/ledgers: a rule settled for one repository holds for all of them. The coordinator writes down the inverse of the candidate ("B is written A") and checks that the inverse is not settled. A candidate whose inverse is settled is overcooking, and is dropped.
+4. It is not churn: the coordinator runs git blame on a sample of the lines the sweep would change. A line written by an overnight commit in the last 60 days is changed only by a rule that is neither the rule of that commit nor its inverse nor a variation of it.
+5. It is not taste: whitespace and layout, member order, a choice between synonymous names, a near even split (below 3 to 1) are not admitted unless a rule of the global CLAUDE.md decides them. Comments are never edited. The coordinator puts such a candidate in Questions if the reviewer would care about it, and otherwise drops it.
+6. It is worth a minute of review: it removes a difference a reader notices, or it removes code. Renaming for the sake of renaming is not admitted.
+In doubt, Questions, not admission. A night that admits nothing is a good result and is reported as such.
+
+Sweeping
+A sweeper gets one admitted entry, its detector and the scope. It fixes every occurrence in scope, not only those the finder saw. The coordinator reruns the detector: the count must be zero, or exactly the exceptions the entry lists. One commit per entry, with the message "<phase>: <rule>". After each sweep the sweeper runs the fast tests of the chain; a sweep that makes them fail is reverted, and its entry goes to Questions with the failure.
+
+Budget
+Per chain per night: at most 6 entries per phase and at most about 600 changed lines, not counting tests and Commons.jar. Admitted entries over the budget go to Queued and are the first sweeps of the next night.
+
+End of a chain
+- Run the full tests of the chain and compare with the baseline.
+- Push the branch; open the PR on the upstream repository, or update it when an earlier chain of tonight opened it. One PR per repository per night.
+- The PR description lists, per phase: each entry with its rule, justification and number of occurrences; each bug with its test; Queued; Questions for the reviewer; how many candidates were rejected, and the three most tempting rejected ones with the reason.
+- The updated ledger goes into the ZeroToHero PR of the morning, together with DoneTasks.
+- The report in DoneTasks says for each phase whether it reached the fixpoint or stopped at the budget.
+
+Phase recipes
+correctness: a kind of bad is a bug class, a mistake that can recur: a check on direct supertypes that misses the inherited ones; a deduplication by a key coarser than the identity; a file case checked while the folder case is not; a position computed from one string and applied to another. Admission needs a concrete input and the wrong result it produces; the coordinator runs the reproducer. For each admitted class, the sweep reads every site of the same shape looking for siblings. Each bug gets one failing test, in the style of the tests of the repository; bugs are not fixed. A bug reachable only by bypassing earlier checks is reported without a test. A test already failing in the repository is not a new bug.
+consistency: a kind of bad is two ways to write the same thing. Behavior and error message text do not change.
+reduction: a kind of bad is a shape longer than needed: dead code (zero uses in all seven repositories, package private and private members included), a wrapper with a single caller, duplicated logic, a hand rolled version of a Commons utility. Behavior and error message text do not change. A reduction that does not shrink the deployed code in lines is not admitted. A reduction needing a change in another repository is reported, not done.
+text: a kind of bad is a factual error (a claim, a name, a signature or an example that does not match the code, checked against the code or by compiling), a typo, or an error message breaking the wording rules of the global CLAUDE.md (a vague reference instead of the verbatim name, no list of what is accepted, characters outside the allowed set). Rewording text that is correct and clear is not admitted.
+live: run the built application as a user would (gui_gym.txt and the gui_<app>_gym.txt files), following the list of the chain. A kind of bad is a reproducible wrong behavior. A small fix is made with a test; a larger one is reported with the steps to reproduce it.
+------------------
+Chain "Commons"
+Repository: Commons. Scope: Commons/src.
+Phases: correctness, consistency, reduction.
+Kept even when unused: the Streams utilities; the left and right variants of Pop and Push; Bug.todo(), Bug.todo(String), Bug.err(), Bug.err(String); Push.of(List<List<T>>).
+Tests: TestAllFrontendCoordinator.java after each sweep, TestAllController.java at the end.
+Regenerate Commons.jar (out/modular/mods/Commons.jar over Commons/Commons.jar) and commit it at the end of every phase that changed code.
+------------------
+Chain "Frontend"
+Repository: Frontend. Scope: FearlessFrontend/src.
+Phases: correctness, consistency, reduction, paper.
+The error messages of Frontend are the model for every other repository; their text changes in no phase.
+paper: compare typeSystem with the type system of the paper in C:\data\fearlessPaper\Fearless_TOPLAS (only on the machine holding that checkout). A kind of bad is a rule that differs between the two. Where the code is wrong it is a correctness bug, with a failing test; where the paper is wrong it goes in the PR description with the section and the rule. The paper is not edited.
+Tests: TestAllFrontend.java after each sweep, TestAllFrontendCoordinator.java at the end.
+------------------
+Chain "Coordinator"
+Repository: Coordinator. Scope: src and Build/src (LocalResources.java excluded).
+Phases: correctness, consistency, reduction, text.
+text: the messages a user of Fearless can see (compile, build, run, the portable launcher); Frontend messages are the model.
+Tests: TestAllFrontendCoordinator.java after each sweep. At the end TestAllController.java (Controllers depends on Coordinator and checks some of its texts), and TestAllFrontendCoordinatorIntegration.java when the night changed the backend, the code generation or the build.
+------------------
+Chain "Controllers"
+Repository: Controllers. Scope: src, agentTools excluded.
+Phases: correctness, consistency, reduction, text, live.
+ZeroToHero/tasks/ControllersDesign is the specification: code doing something else is a correctness finding; a place where the document is silent goes to Questions.
+text: the messages and notes the manager and the plugin show.
+live: build with DeployManagedFearless.java and use the manager: register a project, compile it, run a main, run its tests, edit a file while it compiles, forget the project, restart the manager; on the machine with Eclipse, connect Eclipse and repeat from there. A kind of bad is a behavior differing from ControllersDesign.
+Tests: TestAllController.java.
+------------------
+Chain "StandardLibrary GUI"
+Repository: StandardLibrary. Scope: base/gui, rt/gui, and the GUI integration projects (testGui2, testGuiImg, testTicTacToe, testBasketball).
+Phases: correctness, consistency, reduction, live.
+consistency: every builder offers the same family of methods in the same order and with the same names (.save, .style, the setters and their primed variants).
+live: build with DeployPortableFearless.java and run the GUI integration projects: resize, move off screen, use keys and every mouse button, close.
+Tests: TestAllFrontendCoordinatorIntegration.java after each sweep.
+------------------
+Chain "StandardLibrary base"
+Repository: StandardLibrary. Scope: base and rt, without the GUI and without the flows (base/datatypes/collections/flows, rt/Flows*: ZeroToHero/tasks/FlowDesign drives them).
+Phases: correctness, consistency, reduction, text.
+correctness: an rt override replaces the Fearless body of a method, so a bug in that body is invisible to the tests: compare the two. Numeric types at their edges (zero, the maximum, negative, overflow and underflow, wrapping).
+consistency: the same operation has the same name and argument order on every collection and numeric type; every .get has its .tryGet, with .get defined through .tryGet; string literals are delimited by "" unless they contain a double quote.
+text: the doc comments, as rendered in base.txt: what they say matches what the code does.
+Tests: TestAllFrontendCoordinatorIntegration.java after each sweep; new tests go in integrationTests/testingStandardLibrary.
+------------------
+Chain "FearlessTour"
+Repository: FearlessTour. Scope: every chapter.
+Phases: text, examples.
+text: typos; claims about base that base.txt contradicts (types, methods, signatures, supertypes); a concept used before the chapter introducing it. Inside the Java doc comments of the chapters *|/ stands for a star followed by a slash and stays written that way.
+examples: a kind of bad is code shown in the guide that the tests do not compile. Each such example becomes a test, inside the text when that is simple, otherwise at the bottom of the chapter as other chapters already do.
+Tests: src/markDownTests, run with org.junit.platform.console.ConsoleLauncher on a classpath made of the jars listed in externalJars/readme.txt, the Commons, Frontend and Coordinator jars, and the jars of Coordinator/testJars.
+------------------
+Chain "ZeroToHero puzzles"
+Repository: ZeroToHero. Scope: the levels of the minigames, src/levels, and the level editors in src/htmlMangle.
+Phases: text.
+text: puzzles are not compiled, so they drift from the language: a kind of bad is a puzzle whose code or model answer is wrong for the current language, checked by running the code of the puzzle through the Frontend parser and type system with a short program in the scratchpad, never committed; and typos in the text of the levels.
+Tests: generate the html of the game and open the changed levels in a browser.
