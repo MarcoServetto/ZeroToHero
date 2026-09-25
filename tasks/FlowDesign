@@ -649,8 +649,20 @@ Composing `f` with `.not` changes no call and no order, so `.none f` throws the 
 `.findFirst` returns `mut Opt[E]`, as `.first` does: the element may be `mut`.
 
 **Decision points:**\
-`limit` desugars to an `actorMut` returning `Break#`, and so do the short-circuit terminals and the loose desugaring of `max`. The decision points of the whole API are the `actor` and `actorMut` lambdas returning `Break#`, and positive speculation is always about the stages before one of them, not only before a `limit`.
-For example, in
+Decision points are the crux of positive speculation. A decision point is a call of an `actor` or `actorMut` lambda returning `Break#`: after it, no element is pulled. `limit` is the typical decision point because it desugars to such an `actorMut`; the short-circuit terminals and the loose desugaring of `max` do too.
+Positive speculation is running code executed as part of a stage on an element before every decision point after that stage has decided whether that element is pulled.
+
+An `actor` or `actorMut` node never runs out of order: it receives the elements in flow order, and its state can record that order. It can still run with positive speculation, ahead of a decision point after it:
+```
+l.flow
+  .actorMut[mut Var[Nat], Nat](Vars#[Nat]0, {down, s, e ->
+    Block#(s.set(s.get + e), down.push#(down, s.get), Continue#)})
+  .limit 3
+  .list
+```
+Under pipeline parallelism the `actorMut` node can make its call on the element at index 3 while the `limit` node has not yet received the element at index 2. The sequential strategy never makes that call: it is positive speculation.
+
+The stages before an `actor` or `actorMut` that returns `Break#` can run with positive speculation too. In
 ```
 l.flow.map f
   .actorMut[mut Var[Nat], Nat](Vars#[Nat]0, {down, s, e -> e > 5 ? {
@@ -658,7 +670,10 @@ l.flow.map f
     .else -> Block#(down.push#(down, e), Continue#)}})
   .list
 ```
-the map stage can run with data parallelism, passing each chunk to the `actorMut` node as soon as that chunk completes, and restoring the flow order before the `actorMut` sees the elements. This is sound, and there is no `limit` in the whole flow expression, but every call of `f` on an element after the break in flow order is positive speculation: allowed in `Par`, not allowed in `ParRepr` and `ParPod`, where the stages before such an actor can not run on elements the actor has not pulled yet.
+the map stage can run with data parallelism, ahead of the `actorMut` node, and every call of `f` on an element after the break in flow order is positive speculation.
+
+In both examples positive speculation is allowed in `Par` and not allowed in `ParRepr` and `ParPod`: there, no code executed as part of a stage runs on an element before every decision point after that stage has decided that the element is pulled.
+
 After a `.filter` the upper bound `limit 1` gives is a single element, so running more than one element at a time before a short-circuit terminal is always positive speculation: allowed in `Par`, not allowed in `ParRepr` and `ParPod` (see **example with filter, over ParRepr**).
 
 TODO: most terminals are still missing, like .list. Add a section for each of those.
