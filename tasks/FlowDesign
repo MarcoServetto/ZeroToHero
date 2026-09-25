@@ -64,7 +64,7 @@ An iso reference refers to an object whose (mutable) ROG is encapsulated under t
 The body of a try either completes successfully or leaves the state observable outside of the try unmodified. Enforced by typing: `Try#[R](try: read F[R])`. A `read` lambda cannot mutate what it captures, so the body reaches only what it created or the `iso` given to the two-argument form, and `Action` yields the value or the `Info`.
 
 Example: with `rs` of type `mut List[mut Repr[T]]`,
-`Try#{.. rs.flow(ParRepr).map{r -> r.mutate{...}}.list}`
+`Try#{.. rs.flow(ParRepr#).map{r -> r.mutate{...}}.list}`
 compiles only if `rs` is created inside the `{..` part, not captured by the `Try` lambda.
 Thus running that flow with data parallelism is correct: even if the code executed as part of the map stage throws on the element at index 3 of 7 of `rs`, no non determinism is observable, since all of ROG(rs) is garbage collectable when the exception is caught.
 
@@ -197,7 +197,7 @@ Genome: { .offspring(n: Nat): List[Genome] }
 Individual: { read .genome: Genome; read .fitness: Nat; mut .evaluate: Void }
 
 Evolve: { #(pop: mut List[mut Repr[Individual]], survivors: Nat): mut List[mut Repr[Individual]] ->
-  pop.flow(ParRepr)
+  pop.flow(ParRepr#)
     .map{r -> Block#(r.mutate{i -> i.evaluate}, r)}
     .sort(Rev#{r -> r.look{i -> i.fitness}})
     .limit survivors
@@ -629,7 +629,7 @@ This needs materialisation only if the `map` lambda captures `v` as `read`.
 The `onlyImmCapture` flag (see **Modes**) decides, with no need for `.immMap` or other methods taking `imm F` instead of `read F`:
 with the flag on every lambda of the stages, and with source elements that are `imm`, as in mode `Par` over `imm` elements, nothing forEach can mutate is visible to the code executed as part of the stages, so forEach can run on each element, in flow order, as soon as the stages have finished with it.
 Both conditions are needed:
-- `read` source elements are not enough. With `m: mut List[mut Person]` and `r: read List[mut Person]` the same list, in `r.flow(Par).map{p -> p.age}.forEach{a -> Block#(ages.add a, m.get(3).birthday)}`, with `ages` a fresh `mut EList[Nat]`, the forEach lambda captures `m`: running it on the element at index 0 before the map stage runs on index 3 changes the age `ages` holds at index 3.
+- `read` source elements are not enough. With `m: mut List[mut Person]` and `r: read List[mut Person]` the same list, in `r.flow(Par#).map{p -> p.age}.forEach{a -> Block#(ages.add a, m.get(3).birthday)}`, with `ages` a fresh `mut EList[Nat]`, the forEach lambda captures `m`: running it on the element at index 0 before the map stage runs on index 3 changes the age `ages` holds at index 3.
 - Without a mode the elements can share `mut` objects. Under `seqFlow` two persons can share one `mut Address`, as in the `++` example, and the forEach call on one person can mutate what the map stage reads on the other. Under `ParRepr`, the forEach lambda is exempt from the `onlyImmCapture` flag and can capture a `p: mut Repr[T]` that is also an element.
 This holds even if some calls of the `map` lambda throw: any mutation forEach made is garbage collectable when that exception is caught.
 This avoids materialising large ranges, as in
@@ -1253,7 +1253,7 @@ The `map` lambda captures `v`, so the forEach lambda can not run in the loop ove
 
 **example with filter, over ParRepr**\
 ```
-rs.flow(ParRepr)
+rs.flow(ParRepr#)
   .filter{r -> r.mutate{
     c -> Block#(c++, c.get)}
     > 3}
@@ -1303,7 +1303,7 @@ The lambdas are written in place, so the `onlyImmCapture` flag is checked when c
 
 Consider the same example but with a short-circuit terminal like `.any` in place of `size`
 ```
-rs.flow(ParRepr)
+rs.flow(ParRepr#)
   .filter{r -> r.mutate{
     c -> Block#(c++, c.get)}
     > 3}
@@ -1317,7 +1317,7 @@ so it throws a non deterministic exception, even when the optimiser would 'want'
 The only sound option is to insert a fence before
 any operation that would need positive speculation to run in parallel:
 ```
-rs.flow(ParRepr)
+rs.flow(ParRepr#)
   .filter{r -> r.mutate{
     c -> Block#(c++, c.get)}
     > 3}
@@ -1499,7 +1499,7 @@ The `max by2` stage runs only on the leading run `s.list` returns, so no call of
 
 **example with `++` as a fence before positive speculation, over ParRepr**
 ```
-rs.flow(ParRepr)
+rs.flow(ParRepr#)
   .map{r -> Block#(r.mutate{i -> i.evaluate}, r)}
   ++ {}
   .any{r -> r.look{i -> i.fitness > 90}}
@@ -1968,7 +1968,7 @@ What the Naive stage fixes once, for every later stage:
 - the rule for the misuse exception of positive speculation over `ParRepr` and `ParPod` (see **Modes**), stated operation by operation over the chain.
 - the misuse exception texts, following the style of the errors of the Frontend.
 
-Before it starts, `flow.fear` follows this document: `flatMap` and `flatMapMut` over lists, `++` taking a `read List[E]` and emitting `read/imm E`, `get` and `getOpt` over `.list`, `isEmpty` as `.size == 0`, `findFirst` returning `mut Opt[E]`, `findFirst` and `findMap` as their desugarings; `peek` is `map`; `rs.flow(ParRepr)` and `xs.flow(Par)` typecheck as written in this document, with no type argument. Every source runs the sequential strategy, whatever mode it enables, so that the integration projects on what a parallel flow promises pass before any parallel strategy exists. The backend puts the `onlyImmCapture` flag on the objects representing lambdas. `Yield#` and `.suppressOrderingErrors` are added by the stage that first gives them a meaning: `.suppressOrderingErrors` by this stage, `Yield#` by Stage 3.
+Before it starts, `flow.fear` follows this document: `flatMap` and `flatMapMut` over lists, `++` taking a `read List[E]` and emitting `read/imm E`, `get` and `getOpt` over `.list`, `isEmpty` as `.size == 0`, `findFirst` returning `mut Opt[E]`, `findFirst` and `findMap` as their desugarings; `peek` is `map`; `rs.flow(ParRepr#)` and `xs.flow(Par#)` typecheck as written in this document, with no type argument. Every source runs the sequential strategy, whatever mode it enables, so that the integration projects on what a parallel flow promises pass before any parallel strategy exists. The backend puts the `onlyImmCapture` flag on the objects representing lambdas. `Yield#` and `.suppressOrderingErrors` are added by the stage that first gives them a meaning: `.suppressOrderingErrors` by this stage, `Yield#` by Stage 3.
 
 Tests: every example of this document, with lambdas throwing or not terminating at chosen indexes, and with a `by` that does not respect its contract; each ordering error and misuse exception, through `checkNonDetErr`; the integration projects on what a parallel flow promises (order, the exception at the smallest index, nothing run after a decision, termination).
 Speed is not a goal: `sort` may be slow and `limit` may pull through an actor.
