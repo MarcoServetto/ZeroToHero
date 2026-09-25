@@ -497,6 +497,10 @@ A `by` is `imm`, so its calls are observable only through which one, among those
 - The number of calls stays within the usual complexity of the operation: about `n log n` for `sort`, about `n` for `max`, `min` and `distinct`.
 The key `by#e` may be computed once per element and stored (decorate, sort, undecorate), which pays an expensive key, like a fitness, about `n` times instead of about `n log n` times; this changes the call sequence the desugarings above describe, where the key is computed inside every comparison, and is allowed by the under-specification.
 
+**A `by` breaking its contract:**\
+`sort`, `sortDistinct`, `max`, `min`, `distinct`, `mapping`, `set` and `eSet` may throw a non deterministic exception when the answers of `by` show that it breaks its contract: `.cmp` not antisymmetric or not transitive on the pairs compared, or two elements ranked together with different hashes. They do not have to: detecting it is part of the chosen algorithm, as the calls are, so it is fixed once, and made the same way in every strategy: a flow expression that throws it under one strategy throws it under every strategy, and one that does not throw it under one does not throw it under any. An algorithm may detect only what its own calls show, with no extra call made just to check.
+Where they do not throw, the result is whatever the chosen algorithm returns with those answers, the same in every strategy.
+
 ### distinct
 
 `mut .distinct[K](by: OrderHashBy[imm E,K]): mut Flow[E]`
@@ -969,7 +973,7 @@ Otherwise the whole flow expression returns, in flow order, those of the kept va
 - `f#2` at index `2` is kept when `by` ranks it apart from every kept value.
 
 **Warning: `by` is user code, and nothing forces it to rank two structurally equivalent values together.**
-The two `f#1` are structurally equivalent, but a `by` whose `.cmp` answers `.lt` to every call keeps both of them. No reasoning in this document may assume that `by` respects the contract of an order (reflexive, antisymmetric, transitive): the semantics must hold for every `by`, and the contract is logical, not enforced.
+The two `f#1` are structurally equivalent, but a `by` whose `.cmp` answers `.lt` to every call keeps both of them. No reasoning in this document may assume that `by` respects the contract of an order (reflexive, antisymmetric, transitive): the contract is logical, not enforced. For a `by` breaking it, the operation either returns what its chosen algorithm returns or throws a non deterministic exception, the same in every strategy (see **A `by` breaking its contract**).
 
 **Parallelisation options:**
 
@@ -1834,7 +1838,7 @@ No JDK stream, sequential or parallel, can be the implementation of a flow, nor 
 - A parallel `forEach`, or a collector writing into one `LinkedHashMap`, runs the consumer on several workers: the order is lost, and elements too.
 - The iterator of a stream buffers whole `flatMap` expansions (see **Consuming terminals**).
 - `min` and `max` return one element, not every element tied for the maximum; `distinct` uses `equals` and `hashCode`, not an `OrderHashBy`; `limit(0)` returns the empty stream; `Stream.concat` is not a fence.
-- `List.sort` (TimSort) compares an element with one before it in flow order, in its own order of calls, and throws `IllegalArgumentException` for a comparator that does not respect its contract, while the semantics must hold for every `by` (see **Warning** in **example with distinct, on a repeated element**). Sorting uses the merge tree of **example with sort and limit: one merge tree for every strategy**.
+- `List.sort` (TimSort) compares an element with one before it in flow order, in its own order of calls, which no parallel sort can reproduce, and whether it throws `IllegalArgumentException` for a comparator breaking its contract depends on those calls: a parallel strategy would detect a different set of broken comparators (see **A `by` breaking its contract**). Sorting uses the merge tree of **example with sort and limit: one merge tree for every strategy** in every strategy, with its detection, if any, part of the tree.
 - `Collectors.toMap` and `Map.put` keep one value for a repeated key, where `mapping` throws.
 
 **Cancellation:**
@@ -1944,7 +1948,7 @@ Everything else desugars: `map`, `filter`, `flatMap` and `flatMapMut`, `limit`, 
 The loose desugarings can not be used: `max` as a sort makes different calls of `by` than `Max#`, and every later stage must make the calls `Max#` makes.
 
 What the Naive stage fixes once, for every later stage:
-- the under-specified calls of `by`: the merge tree, the max tree, the placement algorithm of `distinct`, `mapping`, `set` and `eSet` (which `.hash` and `.cmp` calls, in which order), and whether the key `by#e` is computed once per element or once per comparison. Changing any of them later is a change of semantics.
+- the under-specified calls of `by`: the merge tree, the max tree, the placement algorithm of `distinct`, `mapping`, `set` and `eSet` (which `.hash` and `.cmp` calls, in which order), whether the key `by#e` is computed once per element or once per comparison, and which answers of a `by` breaking its contract make them throw (see **A `by` breaking its contract**). Changing any of them later is a change of semantics.
 - the rule for the misuse exception of positive speculation over `ParRepr` and `ParPod` (see **Modes**), stated operation by operation over the chain.
 - the misuse exception texts, following the style of the errors of the Frontend.
 
