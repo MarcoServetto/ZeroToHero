@@ -1892,3 +1892,126 @@ Integration 318/320, the 2 known flow failures; no live GUI run.
 PR: https://github.com/FearlessLang/StandardLibrary/pull/120 (open).
 Log: /data/fearlessBranch3/overnightLogs/2026-09-25-standardlibrary-gui-code-reduction/log.txt
 (machine-local).
+
+Tasks preparing the standard library for the flow design in
+ZeroToHero/tasks/FlowDesign (overnight 2026-09-26). Baseline on main for all of
+them: Frontend 1045/1045, Coordinator 308/311, failing flowsAreDeterministic and
+flowFirstDoesNotWaitForDivergingElements (fixed by StandardLibrary #123) and
+virtualizationMapMentionsAPackageThatDoesNotExist (fixed by Coordinator #182).
+Logs: /data/fearlessBranch3/overnightLogs/2026-09-26-<slug>/log.txt (machine-local).
+
+Task "flows sequential on main"
+
+Report:
+Every .parallel() removed from Flows, EList.flow(mode) and ESet.flow; the two
+projects testFlowDeterminism and testFlowTermination added from #86 without the
+flatMap check. The eSet and set checks of #86 were rewritten: their AsImm lambda
+is read and can not add to a captured list, and ESet has no .seqFlow; they now
+check only that the result keeps the flow order.
+Coordinator 310/311, only the virtualizationMap failure left.
+PR: https://github.com/FearlessLang/StandardLibrary/pull/123 (open).
+Log slug: flows-sequential.
+
+Task "flatMap and flatMapMut over lists"
+
+Report:
+Both signatures and a runtime that streams the finished list; fenced example
+(.limit 3 throws "poison", .limit 2 gives Lists#(2, 3)) and a mut check pass.
+Frontend limitation: a lambda for read F[E, read List[R]] is inferred only when
+its body is exactly a read List[R], so ps.flow.flatMap{::.cats} does not
+compile (cause in inject/InjectionSteps; a one-line fix broke toOrderHash and
+was reverted). Tests use explicit lambda types or .flatMapMut.
+Not done: FearlessTour ZH_024 and ZH_027 (and the generated ZeroToHero html)
+call flatMap and stop compiling once #124 merges.
+Coordinator 308/311 (baseline).
+PR: https://github.com/FearlessLang/StandardLibrary/pull/124 (open).
+Log slug: flat-map-lists.
+
+Task "++ takes a list and is a fence"
+
+Report:
+++ takes a read List[E]; a sequential gatherer collects the receiver, then emits
+it followed by b, so the flow stays lazy and "Flow consumed" still works.
+5 checks in FlowPlusPlusTests (types FlowPerson/FlowAddress: Person exists in
+_test). The tank game NextState calls ++ on flows (ZH_022, ZH_023, 22_01.html):
+updated in companion PRs; the three merge together.
+Coordinator 308/311 (baseline).
+PRs: https://github.com/FearlessLang/StandardLibrary/pull/127,
+https://github.com/MarcoServetto/FearlessTour/pull/28,
+https://github.com/MarcoServetto/ZeroToHero/pull/107 (open).
+Log slug: flow-plus-plus-fence.
+
+Task "findFirst and findMap"
+
+Report:
+Both are now the desugarings of the document; mapFilter[R] widened to [R:*]
+(same body) because findMap[R:*] does not typecheck against an imm only R.
+FlowShortCircuitTests covers findFirst, findMap, any, none, all, empty flows.
+No callers in FearlessTour or ZeroToHero.
+Coordinator 308/311 (baseline).
+PR: https://github.com/FearlessLang/StandardLibrary/pull/129 (open).
+Log slug: flow-find-first.
+
+Task "Rev for comparators"
+
+Report:
+Rev typechecks exactly as written in the document. Its doc comment and //>
+checks are on the # method: the generated base tests only run examples attached
+to methods (the example in pipes.fear above a type never runs; left alone).
+The four requested checks pass; the throwing by gives "cmp 2 1" with and
+without Rev.
+Coordinator 308/311 (baseline).
+PR: https://github.com/FearlessLang/StandardLibrary/pull/130 (open).
+Log slug: rev-comparator.
+
+Task "FlowDesign examples as tests"
+
+Report:
+134 checks over 26 entries (plus the close calls under "Ordering errors");
+103 pass on main and are wired into MyTests. The 31 others are in the PR
+description verbatim: 24 do not compile (17 .suppressOrderingErrors, 4 ++,
+3 flatMap), 7 fail (4 actorMut TODO, 1 ParRepr parallel stream, 2 max compares
+as elements arrive so a by exception comes before an f exception at a later
+index). With #123, #124, #127 all but the 2 max checks and the missing
+operations pass.
+Open questions: is .sort by .filter{::>3} an ordering error at Stage 1; the 2
+max expectations come from the pseudocode, not from a sentence of the entry.
+Coordinator 308/311 (baseline).
+PR: https://github.com/FearlessLang/StandardLibrary/pull/131 (open).
+Log slug: flow-design-examples.
+
+Task "mode arguments without type arguments"
+
+Report:
+xs.flow(Par#) and rs.flow(ParRepr#) typecheck today with no library or Frontend
+change; the document should write Par# and ParRepr# (a bare Par is not a
+FlowMode[E]). FlowModeTests added.
+Coordinator 308/311 (baseline).
+PR: https://github.com/FearlessLang/StandardLibrary/pull/128 (open).
+Log slug: mode-arguments.
+
+Task "onlyImmCapture flag on lambda objects"
+
+Report:
+One boolean per literal, set by the type system in a mutable box on
+core.E.Literal (as Call.expectedRes). A Java anonymous class can not implement
+an extra interface, so every plain lambda with the flag gets its own generated
+interface. RunIntegration.onlyImmCapture marks exactly the literals the task
+lists. Open question: a top level declaration used as a value captures nothing
+but is not marked, since its interface is extended by literals capturing mut.
+Coordinator 309/312 (baseline plus the new test).
+PRs: https://github.com/FearlessLang/Frontend/pull/85,
+https://github.com/FearlessLang/Coordinator/pull/183,
+https://github.com/FearlessLang/StandardLibrary/pull/125 (open).
+Log slug: only-imm-capture.
+
+Task "virtualizationMap expected message"
+
+Report:
+Frontend #84 (1f1238a) made the error list the current package too: "Visible
+packages" reads "base", "pkb" instead of "base". Accurate and within the
+wording rules, so only the expected text changed. The error never names the map
+directive that produced the missing package (true before #84 as well).
+Coordinator 309/311.
+PR: https://github.com/FearlessLang/Coordinator/pull/182 (open).
+Log slug: virtualization-map-message.
