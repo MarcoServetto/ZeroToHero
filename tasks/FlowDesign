@@ -474,7 +474,7 @@ Care is needed to throw the same exceptions as the desugaring above.
 
 These four cannot emit anything before consuming everything, so they are fences.
 Their output is a finished sequence of known size, indistinguishable from a fresh source,
-so a new data parallel region can start after it:
+so a new data parallel region can start after it, unless the elements may share `mut` objects (see **Duplicated `mut` elements**):
 `map f .sort by .limit 10000 .filter g .list`
 is two data parallel regions with one fence in between.
 A fence at the beginning or directly after another fence allows further optimisations.
@@ -684,7 +684,7 @@ It consumes the flow into a list, passes that list to `x`, and passes
 The elements are needed twice and a flow consumes once, so they are materialised here.
 Passing on the list rather than a flow makes that visible and allows parallelism:
 the user calls `.flow` or `.seqFlow` on it.
-//TODO: investigate ways to preserve this semantic while optimising let execution.
+What an optimising backend does with it, keeping this semantics, is in **example with let**.
 
 
 ### first, any, all, none, findFirst, findMap
@@ -735,8 +735,25 @@ l.flow.map f
 the map stage can run with data parallelism, ahead of the `actorMut` node, and every call of `f` on an element after the break in flow order is positive speculation.
 
 In both examples positive speculation is allowed in `Par` and not allowed in `ParRepr` and `ParPod`: there, no code executed as part of a stage runs on an element before every decision point after that stage has decided that the element is pulled.
+A `limit` after only 1-1 stages (`map`, `peek`, `scan`, map with context) is no decision point for them: the canonical form moves it to the source (see **Canonical form**), so `rs.flow(ParRepr#).map f .limit n .list` needs no positive speculation and runs `f` on the `n` elements with the smallest indexes in parallel.
 
 After a `.filter` the upper bound `limit 1` gives is a single element, so running more than one element at a time before a short-circuit terminal is always positive speculation: allowed in `Par`, not allowed in `ParRepr` and `ParPod` (see **example with filter, over ParRepr**).
+
+### set, eSet
+
+`set` and `eSet` take an `AsImm[E, E']`, whose `read #` turns each element into the `imm E'` the set holds, and an `OrderHashBy` placing it.
+`.set(asImm, by)` returns what adding `asImm#ej` in flow order to an empty `Set` under `by` returns, and `.eSet(asImm, by)` the same over a fresh `mut ESet`: both are folds (see **Consuming terminals**), and the collection decides what adding an element `by` ranks together with one already present does. The flow order decides which element of each class arrives at the set before the others, so `.sort by .set(..)` reads the order (see **Ordering errors**).
+The two halves of **mapping** apply: `asImm#ej` depends only on `ej`, so it is elementwise and joins the data parallel region before the terminal; the placement makes its calls of `by` one at a time, in flow order, with the placement algorithm fixed once (see **A `by` breaking its contract**). An exception of `asImm` at index `j` is held until the placement arrives at `j`, as the exceptions of `kem.key` and `kem.elem` are under **mapping**.
+
+### fold, foldAcc, sum, join, last
+
+`fold(acc, f)` builds the accumulator with `acc#` and calls `f` on it and each element in flow order: every call observes what the calls before it left in the accumulator, so the calls form a sequence. `fold` is the primitive consuming terminal, and its only parallelism is the node of **Consuming terminals**, fed by the stages before it.
+The others desugar to it:
+```
+.foldAcc acc -> this.fold(acc, {a, e -> a.acc e}).result
+.last        -> this.fold[mut Opt[E]]({{}}, {_, e -> Opts#e})
+```
+`sum(sn)` and `join(js)` are `sn.sumNumber this` and `js.joinStr this`: a fold written by the number and string types over the flow, `sum` with the checked `+` (see **Ordering errors** for which sums read the order).
 
 ### Consuming terminals
 
@@ -754,8 +771,6 @@ A trickling terminal fed through an iterator or any other pull that buffers brea
 .list -> this.fold({EList#[E]}, {acc, e -> Block#(acc.add e, acc)}).list
 ```
 `isEmpty` is a consuming terminal, `.size == 0`: as `.first.isEmpty` it would be a short-circuit terminal, with positive speculation, not allowed over `ParRepr` and `ParPod`, for a question whose answer is known from the size of the source whenever no stage runs user code.
-
-TODO: add a section for each of the remaining terminals.
 
 ## Examples of combining operations
 
@@ -837,6 +852,8 @@ return n;
 This code returns `Opts#(0)`; the exception of the element at index 5 is never thrown. Any strategy that runs the map lambda on the element at index 5 has to either discard that exception or throw a non deterministic exception.\
 In other approaches a parallel strategy may non deterministically let that exception propagate.
 
+The canonical form moves the `limit 1` of `.first` before the `map` (see **Canonical form**), so an optimising backend pulls the element at index `0` alone; the strategies below are those of a `first` after a stage a `limit` can not cross, as the `filter` of the next example, shown on this simpler chain.
+
 **Pseudocode:**
 
 Sequential strategy:
@@ -858,7 +875,7 @@ return fork(Range c: Chunks#(l.size)){
     }
   }.first;//for(T x: this){ return Opts#x; } return Opt#;
 ```
-Each task stops after its first element: no other element of its chunk can come first. The task whose chunk holds index 5 throws, but in the mailbox that exception comes after `0`: the terminal returns before it arrives, and leaving cancels the tasks still running.
+Each task stops after its first element: no other element of its chunk can come first. The task whose chunk starts at index 5, if any, throws, but in the mailbox that exception comes after `0`: the terminal returns before it arrives, and leaving cancels the tasks still running.
 
 Pipeline parallelism:
 ```
@@ -1090,7 +1107,7 @@ Before generating code, a backend can rewrite the chain into a canonical form. E
 - `.map f .map g` is `.map{x -> g#(f#x)}`, and `.filter p .filter q` is `.filter{x -> p#x && {q#x}}`.
 - `.limit n` right after a list source of known size is the source cut to its first `n` elements.
 
-The canonical form moves each `limit` as close to the source as these rewrites allow, and fuses what is left. A `limit` can not move before a `filter`, `flatMap`, `flatMapMut`, actor or fence: they change which elements arrive at it. `.filter p .map f` can not become `.map f .filter{..}` either: `f` would run on the elements `p` rejects, and its exceptions and non termination would be observable.
+The canonical form moves each `limit` as close to the source as these rewrites allow, and fuses what is left. A `limit` can not move before a `filter`, `flatMap`, `flatMapMut`, a fence, or an `actor` or `actorMut` whose lambda may push other than once or return `Break#` (see **scan then limit**): they change which elements arrive at it. `.filter p .map f` can not become `.map f .filter{..}` either: `f` would run on the elements `p` rejects, and its exceptions and non termination would be observable.
 The canonical form of this example is `l.flow.limit 3 .map{x -> g#(f#x)}.list`: the limit becomes part of the source, and the pseudocode is generated from what is left. `l.take(3)` is the list of the first `3` elements of `l`, or all of them when `l` is shorter.
 
 **Pseudocode:**
@@ -1351,7 +1368,7 @@ rs.flow(ParRepr#)
 Overall, parallelising `Repr`s and `IsoPod`s is about
 - running an identity check
 - checking the `onlyImmCapture` flag on the lambdas of the flow
-- avoiding positive speculation with no fence before it, and using the sequential strategy where positive speculation after a fence would be needed, unless the operations show that every element after the fence is `read` or `imm` (see **example with `++` as a fence before positive speculation, over ParRepr**): only the signatures of `++`, `flatMap`, `actor` and `scan` show it, since the chain records no element type, so a `map` returning an `imm` value does not count, and a `map`, `flatMapMut`, `actorMut` or map with context after them may emit `mut` elements again
+- avoiding positive speculation with no fence before it, and using the sequential strategy where positive speculation after a fence would be needed, unless the elements arriving at the fence are `read` or `imm` in the sense of **Ordering errors**: the fence is a `++`, or a `++`, a `flatMap`, an `actor` or a `scan` comes before it (see **example with `++` as a fence before positive speculation, over ParRepr**). The chain records no element type, so a `map` returning an `imm` value does not count; a `map` after such an operation may create `mut` objects, but they reach no `Repr` or `IsoPod` of the source, so the stages after the fence can not mutate anything that exists before the flow
 - behaving exactly as if a flow in mode `Par` created a mut object in the map stage after the source: those muts are isolated from each other and from what the lambdas captured, so they can not interact until a `flatMapMut` or an `actorMut` duplicates them (see **Duplicated `mut` elements**). Depending on the stages, data parallelism or pipeline parallelism could be more appropriate.
 
 **example with sort and limit: one merge tree for every strategy**\
@@ -1633,10 +1650,10 @@ An ordering error is decided by the shape of the flow expression alone: the sequ
 
 `mut .suppressOrderingErrors: mut Flow[E]` records the flag and emits every element it pulls, unchanged. It works like a hint: it can be called anywhere in the flow expression, conventionally at its beginning with the hints (see **Chunk sizes**), and it suppresses every ordering error of the whole flow expression. It can not say which error it is meant for: that imprecision is accepted, since asking for it at the exact place of each error would make the flow expressions hard to write and to rearrange.
 
-The ordering errors, with the reason the stage is pointless and the shape the message suggests:
-- **Discarded order**: `.sort by` directly before `.size`, `.isEmpty`, `.get`, `.getOpt`, or `.sum` over `Nat`, `Byte` or `Num` elements, also with only elementwise stages (`map`, `filter`, `flatMap`, `flatMapMut`, `mapFilter`, `peek`) between the sort and the terminal. None of these terminals reads the order: `.get` and `.getOpt` complete successfully only when at most one element arrives, a sum of `Num` is exact, and a sum of `Nat` or `Byte` overflows in one order exactly when it overflows in every order, and the elementwise stages do not read the order. Over `Int` and `Float` the order decides whether the sum overflows and how it rounds: no error. Suggests removing the sort.
-- **Unread results**: `.map f` or `.scan(acc, h)` directly before `.size` or `.isEmpty`, in mode `Par`. Over `imm` and `read` elements the calls of `f` and `h` can only throw or not terminate, and `.size` and `.isEmpty` read none of their results. Suggests removing the stage.
-- **Two sorting stages**: `.sort by1 .sort by2`, whatever `by1` and `by2` are. The second sort reorders every element, and the order of the first survives only among the elements `by2` ranks together: the two stages are one sort with a composed order. The message offers both `.sort(by2.then by1)`, what the two stages compute, and `.sort(by1.then by2)`: two stable sorts give priority to the last one, while the user may mean `by1` as the primary order. A `.sortDistinct` directly before or after a `.sort` or a `.sortDistinct` is the same ordering error.
+The ordering errors, with the reason the stage is pointless and the shape the message suggests. 'Over `read` or `imm` elements' means that the shape shows that no element can lead to a `mut` object existing before the flow: mode `Par`, or a `++`, a `flatMap`, an `actor` or a `scan` before the stage. A `mut` object a stage creates after that point is reachable from nowhere else, so what the stages do to it is not observable outside the whole flow expression (see **Modes**).
+- **Discarded order**: `.sort by` directly before `.size`, `.isEmpty`, `.get`, `.getOpt`, or `.sum` over `Nat`, `Byte` or `Num` elements, also with only elementwise stages (`map`, `filter`, `flatMap`, `flatMapMut`, `mapFilter`, `peek`) between the sort and the terminal when those stages run over `read` or `imm` elements. None of these terminals reads the order: `.get` and `.getOpt` complete successfully only when at most one element arrives, a sum of `Num` is exact, and a sum of `Nat` or `Byte` overflows in one order exactly when it overflows in every order, and the elementwise stages do not read the order. Over `Int` and `Float` the order decides whether the sum overflows and how it rounds: no error. Over `mut` elements, as under `seqFlow`, a stage between the sort and the terminal may mutate its element, and the sort decides the order of those mutations: no error. Suggests removing the sort.
+- **Unread results**: `.map f` or `.scan(acc, h)` directly before `.size` or `.isEmpty`, over `read` or `imm` elements. The calls of `f` and `h` can only throw or not terminate, and `.size` and `.isEmpty` read none of their results. Suggests removing the stage.
+- **Two sorting stages**: `.sort by1 .sort by2`, whatever `by1` and `by2` are. The second sort reorders every element, and the order of the first survives only among the elements `by2` ranks together: the two stages are one sort with a composed order. The message offers both `.sort(by2.then by1)`, what the two stages compute, and `.sort(by1.then by2)`: two stable sorts give priority to the last one, while the user may mean `by1` as the primary order.
 - **Two limits**: `.limit n .limit m`. Whatever `n` and `m` are, the limit with the greater number stops nothing that the other does not stop. Suggests a single `.limit(n.min(m))`.
 - **Filter after sort**: `.sort by .filter p` with no decision point after the filter (see **Sort before a search** below). The sort also orders the elements the filter drops, and nothing reads their place. Suggests `.filter p .sort by`. Where **Discarded order** also applies, as in `.sort by .filter p .size`, the message suggests removing the sort.
 
@@ -1647,10 +1664,12 @@ Close calls that are not ordering errors:
 - `.filter p .filter q`: `p` is often a guard that `q` relies on, as in `.filter{x -> x != 0}.filter{x -> 12 / x > 2}`.
 - `.sort by .first`, `.sort by .last`, `.sort by .limit k`: the order of the elements kept is read.
 - `.sort by .set(..)`, `.sort by .eSet(..)`, `.sort by .mapping(..)`: the order decides which element of each class a `Set` keeps, and the order of the elements of an `ESet` and of the entries of the map.
+- `.sort by1 .sortDistinct by2`, `.sort by1 .distinct by2` and `.sortDistinct by1 .sortDistinct by2`: the order of the first stage decides which element of each class the second keeps, as when sorting by fitness and keeping the fittest of each species.
+- `.sortDistinct by1 .sort by2`: the first stage also drops the repeated elements, which the second does not; only an `OrderHashBy` would allow `.distinct by1 .sort(by2.then by1)`, and the shape does not see which `by1` is.
 - `.distinct by .filter p` and `.sortDistinct by .filter p`: when two elements of one class disagree on `p`, the two orders keep different elements; when `p` rejects the element of a class with the smallest index and accepts one after it, only `.filter p .distinct by` keeps that one.
 - `.map f .limit n`: it makes the same calls as `.limit n .map f` (see **Canonical form**), and neither stage is pointless.
 - `.map f .last`: the last result of `f` is read.
-- `.map f .size` without a mode, as in `persons.seqFlow.map{p -> Block#(p.birthday, p)}.size`: `f` may mutate its `mut` element on purpose.
+- `.map f .size` over `mut` elements, as in `persons.seqFlow.map{p -> Block#(p.birthday, p)}.size`: `f` may mutate its `mut` element on purpose.
 - `.peek f .size`, in every mode: the calls of `f` are the purpose of `peek`, checking invariants or printing with `Debug#`, so `peek` is a step of its own in the shape, not the `map` it desugars to.
 - `.map(ctx, g) .size` and `.peek(ctx, f) .size`, in every mode: the context of map with context can carry IO.
 - `.distinct by1 .distinct by2`, `.max by1 .sort by2`, and the other sequences whose second stage is pointless only when the two arguments are equal: the arguments are not part of the shape.
@@ -1919,7 +1938,7 @@ Open decision, hints: a hint can never change what a flow expression returns, so
 
 The flow object records its chain: the source, its mode, each operation with its lambdas and the numbers known before any element is pulled. The terminal first runs the checks over the whole chain, then runs the desugared chain. The checks can not be done operation by operation, since whether positive speculation is needed depends on the operations after a stage.
 
-Besides the lambdas that run the flow, the flow object keeps the list of the steps taken so far: the mode, and for each operation its shape (`map`, `peek`, `filter`, `limit n`, `actorMut`, a fence, ...) with no element type, except the element type of `.sum` (see **Ordering errors**). The terminal reads this list for the checks. Open decision: whether this list and the checks are written in Fearless, next to the desugarings, or in the runtime (Java), where the identity check and the `onlyImmCapture` check live in any case.
+Besides the lambdas that run the flow, the flow object keeps the list of the steps taken so far: the mode, and for each operation its shape (`map`, `peek`, `filter`, `limit`, `actorMut`, a fence, ...) with no element type, except the element type of `.sum` (see **Ordering errors**). The terminal reads this list for the checks. Open decision: whether this list and the checks are written in Fearless, next to the desugarings, or in the runtime (Java), where the identity check and the `onlyImmCapture` check live in any case.
 
 The primitives, the only operations with a direct implementation:
 - the sources: lists, sets, ranges, `Flows#`;
@@ -1955,7 +1974,7 @@ Speed goal: close to a plain Java loop over the same work, and never slower than
 The same semantics. When the mode allows it, the terminal analyses the chain and picks a parallel strategy at run time, or the sequential strategy of stage 2.
 - Data parallelism for the regions of elementwise stages, with the fences as the boundaries between regions: the tasks send their outputs element by element, in flow order, as the mailboxes of **Pseudocode**; exceptions are held and discarded as in **Speculation**; a short-circuit terminal returns at its decision without waiting (see **Termination**).
 - Positive speculation in `Par` only; over `ParRepr` and `ParPod`, parallelism only where it needs no positive speculation.
-- The fences run their merge trees as tasks while the elements arrive; `forEach` waits for every task.
+- The fences run their merge trees as tasks while the elements arrive; `forEach` waits for every task, except where **forEach** lets it run as the elements arrive.
 - Pipeline parallelism for `actor`, `actorMut`, `scan`, map with context and the placement of `distinct` and `mapping`, fed by data parallel regions.
 - Choosing: the calling worker runs a task itself when no worker has started it; the hints; the size of the source; a static estimate of the cost of each stage where the lambdas are known; measurements of the first elements.
 - The runtime pieces of **Implementation pitfalls**: `Yield#` wherever user code runs, the catch points letting cancellation through, platform threads for user code, nested flows, memo caches never storing non deterministic exceptions, and the open decision on elements under a task that has not finished (see **Negative speculation over `ParRepr` and `ParPod`**).
