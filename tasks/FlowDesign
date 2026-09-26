@@ -119,9 +119,9 @@ The semantics is given by multiple descriptions, validated by checking that they
 
 **Elementwise:** `map`, `filter`, `flatMap`, `flatMapMut`, and `peek` and `mapFilter`, which desugar to them. The output for an element depends only on that element, so any element can run on any worker.
 
-**Streaming stateful:** `limit`, `scan`, `actor`, `actorMut`, `map with context`, `distinct`, `distinctMut`. They need the elements in order and emit as they go.
+**Streaming stateful:** `limit`, `scan`, `actor`, `actorMut`, `map with context`, `distinct`. They need the elements in order and emit as they go.
 
-**Fence:** `allToAll`, and `sort`, `sortDistinct`, `max`, `min`, which desugar to it. They consume everything before emitting anything.
+**Fence:** `allToAll`, and `sort`, `sortDistinct`, `max`, `min`, `distinctMut`, which desugar to it. They consume everything before emitting anything.
 
 **Source combinator:** `++`. A fence that appends the elements of a list to those of the flow; it desugars to `allToAll` too.
 
@@ -361,7 +361,7 @@ The lambda returns `Continue#` or `Break#`, the same values `Block.loop` uses.
 In a loop, `OuterReturn#v` skips the rest of the enclosing block and makes `v` its result; we use subtyping to ensure `OuterReturn#v` does not typecheck as the result of an `actor` lambda.
 
 **Using the sink and the state of `actorMut`:**\
-In `actorMut` the sink and the state are `mutH`, and a `mutH` binding can not be captured by any literal, so they appear only as receivers and arguments in the body of the lambda itself, never inside a nested literal: not in a branch of `? {..}`, not in a `.match{..}`, a `.thenDo{..}`, a `|> {..}` or a `.do{..}`. A step that pushes conditionally computes its decision first, as a `Bool` or a `mut Opt`, pushes with `pushOpt`, and answers `Continue#` or `Break#` from that decision; a helper method taking the sink and the state as `mutH` parameters gives a name to what the step needs twice, as the desugaring of `distinctMut` does. A stage that has to keep a `read` key or a `mut` element across its calls can not be an `actorMut` at all, and should not: a fence decides everything inside the one call of `allToAll` (see **allToAll**), and a stage that is not a fence keeps only `imm` values across its calls (see **distinct, distinctMut**). In `actor` the sink is `mut` and the state is passed as it is, so both can be used anywhere in the lambda, as the window example does. The desugarings through `actorMut` use
+In `actorMut` the sink and the state are `mutH`, and a `mutH` binding can not be captured by any literal, so they appear only as receivers and arguments in the body of the lambda itself, never inside a nested literal: not in a branch of `? {..}`, not in a `.match{..}`, a `.thenDo{..}`, a `|> {..}` or a `.do{..}`. A step that pushes conditionally computes its decision first, as a `Bool` or a `mut Opt`, pushes with `pushOpt`, and answers `Continue#` or `Break#` from that decision; a helper method taking the sink and the state as `mutH` parameters gives a name to what the step needs twice. A stage that has to keep a `read` key or a `mut` element across its calls can not be an `actorMut` at all, and should not: a fence decides everything inside the one call of `allToAll` (see **allToAll**), and a stage that is not a fence keeps only `imm` values across its calls (see **distinct, distinctMut**). In `actor` the sink is `mut` and the state is passed as it is, so both can be used anywhere in the lambda, as the window example does. The desugarings through `actorMut` use
 ```
 IfSome: { #[E:*](b: Bool, e: E): mut Opt[E] -> b ?[mut Opt[E]]{ .then -> Opts#e; .else -> {} } }
 ```
@@ -485,9 +485,9 @@ Care is needed to throw the same exceptions as the desugaring above.
 
 `allToAll` is the fence every other fence desugars to: when the terminal runs, it collects every element that arrives at it into a list, passes the list to `f` once, and emits the elements of the list `f` returns, in order. It is `.list |> f` followed by flowing the result, but lazy and inside the chain: nothing runs until the terminal is called, the mode and the checks are those of the whole flow expression, and the stages after it are stages of the same chain.
 **Why a fence this radical:**\
-A stage can release an element or keep it, never both. Once an element has left a stage, the stage after may hold it `mut` and mutate it, in another node or task; if the stage that released it still reads it, to compare the next element with it or to decide whether to emit another, that read races with the mutation under a parallel strategy, and what the stage emits depends on the race. Under the sequential strategy the same code is deterministic and merely reads a mutated element, so nothing in the sequential semantics shows the problem: it is a rule the parallel strategies need, and the type system enforces it where it can. It is why the hygienic state of `actorMut` takes only `iso` and `imm` values (see **Using the sink and the state of `actorMut`**), why `distinct` may keep only `imm` keys (see **distinct, distinctMut**), and why no weaker fence exists: a `sort` that emitted its first elements while still comparing the rest with them, or a `max` that emitted the first maximum and then compared the others with it, would keep what it had released. A stage whose decision needs more than the current element and `imm` state must therefore hold every element, decide everything, and only then release all of them: that is `allToAll`, and `.list |> f` followed by flowing the result is the same shape as a terminal.
+A stage can release an element or keep it, never both. Once an element has left a stage, the stage after may hold it `mut` and mutate it, in another node or task; if the stage that released it still reads it, to compare the next element with it or to decide whether to emit another, that read races with the mutation under a parallel strategy, and what the stage emits depends on the race. Under the sequential strategy the same code is deterministic and merely reads a mutated element, so nothing in the sequential semantics shows the problem: it is a rule the parallel strategies need, and the type system enforces it where it can. It is why the hygienic state of `actorMut` takes only `iso` and `imm` values (see **Using the sink and the state of `actorMut`**), why `distinct` releases its elements only as `read` or `imm` and `distinctMut` is a fence (see **distinct, distinctMut**), and why no weaker fence exists: a `sort` that emitted its first elements while still comparing the rest with them, or a `max` that emitted the first maximum and then compared the others with it, would keep what it had released. A stage whose decision needs more than the current element and `imm` state must therefore hold every element, decide everything, and only then release all of them: that is `allToAll`, and `.list |> f` followed by flowing the result is the same shape as a terminal.
 Nothing leaves it before `f` returns, so `f` may read the list freely while it decides: no element is under a stage after it yet. `f` runs only once every stage before it has finished with every element, and its exceptions and non termination come after theirs (see **Flow abstraction**). The list is fresh and owned by the flow, so `f` receives it `mut`; the elements it returns may be those it received, in any order and number, or new ones.
-The list `f` returns may hold one `mut` object twice, as the list of a `flatMapMut` may, so after an `allToAll` with an arbitrary `f` the elements can not be given to different tasks (see **Duplicated `mut` elements**); `sort`, `max`, `min`, `sortDistinct` and `++` are recorded under their own names in the chain and return each element they received once, so a data parallel region can start after them.
+The list `f` returns may hold one `mut` object twice, as the list of a `flatMapMut` may, so after an `allToAll` with an arbitrary `f` the elements can not be given to different tasks (see **Duplicated `mut` elements**); `sort`, `max`, `min`, `sortDistinct`, `distinctMut` and `++` are recorded under their own names in the chain and return each element they received once, so a data parallel region can start after them.
 It is the one primitive of Stage 1 for the fences (see **Stage 1: Naive**); `Maxes` and `Collapse` below are two of the functions it runs.
 
 ### sort, sortDistinct, max, min
@@ -581,30 +581,33 @@ Where they do not throw, the result is whatever the chosen algorithm returns wit
 
 ```
 mut .distinct[K](by: OrderHashBy[imm E,K]): mut Flow[read/imm E]
-mut .distinctMut[K](key: read F[E,K], by: OrderHashBy[K]): mut Flow[E]
+mut .distinctMut[K](by: OrderHashBy[imm E,K]): mut Flow[E]
 ```
 
-Both keep, for each class of elements ranked together, the one with the smallest index, in flow order: `Lists#(3,1,3,2,1).flow.distinct{::}.list` is `Lists#(3,1,2)`.
-Neither is a fence: each element is emitted as soon as it is found new.
-Collecting the flow into a list and removing the repeated elements there makes it a fence: `.distinct by .first` would run the stages before it on every element, and `map f .distinct by .map g` would throw an exception of `f` at a greater index where the sequential strategy throws one of `g` at a smaller index.
+Both keep, for each class of elements ranked together, the one with the smallest index, in flow order: `Lists#(3,1,3,2,1).flow.distinct{::}.list` is `Lists#(3,1,2)`, and so is `Lists#(3,1,3,2,1).flow.distinctMut{::}.list`.
+`distinct` is not a fence: each element is emitted as soon as it is found new. `distinctMut` is a fence: it emits nothing until every element has arrived (see **Flow abstraction**).
+The difference is observable: `.distinct by .first` runs the stages before it on the elements up to the first, `.distinctMut by .first` on every element; `map f .distinct by .map g` throws an exception of `g` at a smaller index where `map f .distinctMut by .map g` throws one of `f` at a greater index.
 
 **Why two:**\
-A stage that is not a fence releases each element as it goes, and what it keeps across its calls must not alias what it has released (see **allToAll**). `distinct` keeps the key `by#e .close`, a `read K` that with `by` an identity, as `{::}`, is the element itself seen through `read`; so it emits its elements as `read` or `imm`, as `flatMap` does: no stage after it can mutate what a kept key aliases, the stages before it are finished with it, and nothing else in the flow reaches it. After a `distinct` the elements are `read` or `imm` for every rule that cares (see **Ordering errors**). `distinctMut` keeps the elements `mut`, so it may keep only `imm` values across its calls: `key` computes an `imm` key from the element as it arrives, and `by` orders keys, the shape of `set` (`AsImm`, then `OrderHashBy`) and of `mapping` (`kem.key`). A `distinctMut({::}, {::})` typechecks only over `imm` elements, which is the point.
+A stage that is not a fence releases each element as it goes, and what it keeps across its calls must not alias what it has released (see **allToAll**). `distinct` keeps the key `by#e .close`, a `read K` that with `by` an identity, as `{::}`, is the element itself seen through `read`; so it emits its elements as `read` or `imm`, as `flatMap` does: no stage after it can mutate what a kept key aliases, the stages before it are finished with it, and nothing else in the flow reaches it. After a `distinct` the elements are `read` or `imm` for every rule that cares (see **Ordering errors**). `distinctMut` keeps the elements `mut`, so it may release none of them while it still compares with their keys: it decides everything inside the one call of `allToAll`, as `max` and `sortDistinct` do, and no key outlives the call. Streaming over `mut` elements is still possible where the elements have an `imm` key: an `actorMut` whose state holds the keys kept so far (see **Using the sink and the state of `actorMut`**).
 
 **Desugaring:**\
-distinctMut desugars to an `actorMut` whose state holds the keys kept so far:
+distinctMut desugars through `allToAll`, keeping the keys of the kept elements as the `read Order[K]` that `by#e` returns, in a plain `mut Var`, as `Maxes` and `Collapse` do:
 ```
-.distinctMut(key, by) -> this.actorMut[mut Var[List[K]], E](Vars#[List[K]]{}, {down, s, e -> DistinctStep#(down, s, by, key#e, e)})
-DistinctStep: { #[E:*,K](down: mutH ActorSink[E], s: mutH Var[List[K]], by: OrderHashBy[K], k: K, e: E): mut ContinueBreak[Void] ->
-  DistinctPush#(down, s, k, e, s.get.flow.none{k2 -> by#k == k2}) }
-DistinctPush: { #[E:*,K](down: mutH ActorSink[E], s: mutH Var[List[K]], k: K, e: E, new: Bool): mut ContinueBreak[Void] -> Block#(
-  s.set(Added#(s.get, k, new)),
-  down.pushOpt#(down, IfSome#(new, e)),
-  Continue#) }
-Added: { #[K](ks: List[K], k: K, add: Bool): List[K] -> add ? { .then -> ks +> k; .else -> ks } }
+.distinctMut by -> this.allToAll{xs -> Distinct#(xs, by)}
+Distinct: { #[E:*,K](xs: mut List[E], by: OrderHashBy[imm E,K]): mut List[E] -> Block#
+  .var[read List[read Order[K]]] keys = {{}}
+  .var[mut EList[E]] kept = {ELists#[E]}
+  .var[Nat] i = {0}
+  .loop{ i.get == (xs.size) ?[mut ControlFlow[mut List[E]]]{ .then -> Break#; .else -> Block#(
+    DistinctStep#(keys, kept, by#(xs.get(i.get)), xs.get(i.get)),
+    i.set(i.get + 1),
+    Continue#) } }
+  .return{ kept.get.list } }
+DistinctStep: { #[E:*,K](keys: mut Var[read List[read Order[K]]], kept: mut Var[mut EList[E]], o: read Order[K], e: E): Void ->
+  keys.get.flow.none{k -> o == (k.close)} ? { .then -> Block#(keys.set(keys.get +> o), kept.get.add(e), Void); .else -> Void } }
 ```
-The state holds only `imm` keys, so the elements themselves may be `mut`.
-distinct has the same desugaring with `by#e` in place of `key#e` and a `read Order[K]` in place of `k`, as its semantics; it is not Fearless: the hygienic state refuses a `read` key, and it can not know that nothing after this stage can mutate what the key aliases, since that lives in the `read/imm` of the result, not in the state. So `distinct` is a primitive of the runtime (see **Stage 1: Naive**), and `distinctMut` desugars.
+distinct has the same semantics emitting each kept element at once; it is not Fearless: the hygienic state of `actorMut` refuses a `read` key, and it can not know that nothing after this stage can mutate what the key aliases, since that lives in the `read/imm` of the result, not in the state. So `distinct` is a primitive of the runtime (see **Stage 1: Naive**), and `distinctMut` desugars.
 This desugaring compares each element with every kept key and never calls `.hash`; a direct implementation keeps the keys in a hash set, calling `.hash` on each element and `.cmp` only on keys with the same hash. The hash is what `OrderHashBy` adds over the `OrderBy` of sortDistinct.
 The result is the same when every call of `by` completes successfully; which calls to `by` are made is left under-specified as for `.sort`, provided the same choice is made in every strategy.
 
