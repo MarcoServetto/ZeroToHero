@@ -1,11 +1,13 @@
 # Flow API design
 
+This document is the design of flows and the steps to reach it: the properties every part of the language respects, the design of flows and of each operation, examples with the imperative code each strategy generates, the combinations of operators, the ways an implementation can look correct and be wrong, and the implementation stages. The notes at the end are guidance for whoever works on this document.
+
 General Facts:
 
-Fearless has two kinds of errors: deterministic and non deterministic (like stack overflow).
+Fearless has two kinds of exceptions: deterministic and non deterministic (like stack overflow).
 They both use an imm Info object instead of an arbitrary exception object.
-`Try#` catches deterministic errors anywhere; observing a non deterministic one needs `mut CapTry` from `mut System`.
-In the current standard library Repr is mostly complete, while IsoPod is still under design and may end up offering most of the functionality of Repr, allowing reads and mutation of the IsoPod without opening it.
+`Try#` catches deterministic exceptions anywhere; observing a non deterministic one needs `mut CapTry` from `mut System`.
+`Repr` and `IsoPod` both offer reads and mutation in place (`look`, `mutate`); an `IsoPod` can also be opened once, giving its `iso` back and staying empty from then on.
 
 ## Vocabulary:
 Use 'throw'; do not use: raise
@@ -16,8 +18,7 @@ Exception is used to talk about the still uncaught Info object.
 'discard': drop a held exception or a computed result for good. Not: never surfaces, never reported.
 'garbage collectable': an object no reference leads to. Not: garbage, unreachable.
 'structurally equivalent' Not: structurally identical, equal, identical, same.
-'identity equal': Java ==; do not use language confusing == and 
-structurally equivalent.
+'identity equal': Java ==; do not use language confusing == and structurally equivalent.
 'executed as part of the xxx stage' (for example the map stage):
 user code, provided via a lambda passed to that stage.
 Do not use general terms like "earlier", "first", "later" etc.
@@ -35,11 +36,16 @@ Do not use general terms like "earlier", "first", "later" etc.
 'mode': `Par`, `ParRepr` or `ParPod`, enabled by the type of the source. Not: execution mode, par mode.
 'strategy': how the terminal runs the whole flow expression: the sequential strategy, data parallelism, pipeline parallelism, or a mix of them. Not: mode, shape, parallel shape.
 'the sequential strategy': runs the elements through the stages one at a time; every other strategy must be observably equal to it. Not: sequential execution, sequential run, sequential mode.
-'reach': only about the ROG. A stage emits an element, the next operation pulls it, and the element arrives at that operation. Not: reach, move, go past, come out, hand on, send downstream, deliver, release.
+'emits', 'pulls', 'arrives at': a stage emits an element, the next operation pulls it, and the element arrives at that operation. Not: reach, move, go past, come out, hand on, send downstream, deliver, release.
+'reach': only about the ROG: an object reaches what is in its ROG.
 'pass': give an argument to a call. Not: hand.
 'fence'. Not: fence operation, barrier.
 'positive speculation', 'negative speculation'. Not: speculative execution, speculate.
+'speculative call': a call the sequential strategy may not make, or may make only after a call that throws.
 'whole flow expression': a source, its stages and its terminal. Not: this flow.
+'chain': what the flow object records of the whole flow expression: the source, its mode and each operation with its arguments. Not: pipeline; pipeline is only pipeline parallelism.
+'shape': the chain without the values of its arguments: the sequence of the operations, the mode and the element types the operations reveal (see **Ordering errors**).
+'misuse exception': the non deterministic exception a flow expression throws because of how it is written: the identity check, `onlyImmCapture`, positive speculation over `ParRepr` and `ParPod`, the ordering errors. Not: misuse error, mode error.
 
 
 ## Properties to be respected by any part of the language
@@ -90,6 +96,7 @@ Fences are the only deviation: a fence emits nothing until every stage before it
 What a fence restricts is observable: with `read` and `imm` elements the stages after a fence may run before it opens, as positive speculation, provided their exceptions are held until it opens (see **example with a fence**).
 
 It must not be observable whether a flow runs the stages one at a time or passes the elements one at a time through all the stages, whether it does internal materialisations, etc.
+A stronger property, that how the lambdas are run is not observable at all, is out of reach: when two calls throw, the exception that propagates is the one at the smallest index, so the order of the calls is observable through it. The property above is worded to keep that window as small as it is.
 
 **Flow unobservable parallelism:**\
 It must not be observable whether a potentially parallel flow actually runs in parallel or sequentially. This is intentionally slightly stronger than what Determinism alone needs.
@@ -110,7 +117,7 @@ The semantics is given by multiple descriptions, validated by checking that they
 
 **Stages** are the intermediate operations returning another flow.
 
-**Elementwise:** `map`, `filter`, `flatMap`, `flatMapMut`. The output for an element depends only on that element, so any element can run on any worker.
+**Elementwise:** `map`, `filter`, `flatMap`, `flatMapMut`, and `peek` and `mapFilter`, which desugar to them. The output for an element depends only on that element, so any element can run on any worker.
 
 **Streaming stateful:** `limit`, `scan`, `actor`, `actorMut`, `map with context`, `distinct`. They need the elements in order and emit as they go.
 
@@ -120,7 +127,7 @@ The semantics is given by multiple descriptions, validated by checking that they
 
 **Terminals** end the flow and return something that is not a flow.
 
-**Consuming:** `list`, `eList`, `set`, `eSet`, `mapping`, `forEach`, `fold`, `foldAcc`, `size`, `get`, `getOpt`, `join`, `sum`, `last`, `let`. Every element passes the whole chain.
+**Consuming:** `list`, `eList`, `set`, `eSet`, `mapping`, `forEach`, `fold`, `foldAcc`, `size`, `isEmpty`, `get`, `getOpt`, `join`, `sum`, `last`, `let`. Every element passes the whole chain.
 
 **Short-circuit:** `first`, `any`, `all`, `none`, `findFirst`, `findMap`. They can decide before the end, leaving the elements after the decision in flow order never pulled.
 
@@ -138,8 +145,8 @@ The whole flow expression returns as soon as the sequential strategy would retur
 - reading the output of a task only once the whole task has finished: the terminal waits for the elements of the task after its decision, and one of them may not terminate. The output of a task arrives at the terminal element by element, as the mailboxes of **Pseudocode** send it.
 
 **Non deterministic exceptions of speculative calls:**\
-They are discarded exactly as the deterministic ones: a stack overflow or an out of memory error thrown by a call the sequential strategy does not make never propagates, and one thrown at a greater index than a deterministic exception never replaces it. Letting them propagate would not break Determinism, since observing them needs `mut CapTry`, but a program would crash under a parallel strategy where it completes successfully under the sequential strategy. The exceptions that must propagate whatever the elements do are the misuse errors (identity check, `onlyImmCapture`, positive speculation over `ParRepr` and `ParPod`, ordering errors): they depend only on the flow expression and on the source, so they are thrown before the result of any element is used.
-A worker may have a smaller stack than the calling worker, so a call may throw a stack overflow on one and complete successfully on the other: this is non determinism, allowed, but a cache of results (such as a memo) must never store a non deterministic exception, or every later call through that cache throws it.
+They are discarded exactly as the deterministic ones: a stack overflow or an out of memory error thrown by a call the sequential strategy does not make never propagates, and one thrown at a greater index than a deterministic exception never replaces it. Letting them propagate would not break Determinism, since observing them needs `mut CapTry`, but a program would crash under a parallel strategy where it completes successfully under the sequential strategy. The exceptions that must propagate whatever the elements do are the misuse exceptions (identity check, `onlyImmCapture`, positive speculation over `ParRepr` and `ParPod`, ordering errors): they depend only on the flow expression and on the source, so they are thrown before the result of any element is used.
+A worker may have a smaller stack than the calling worker, so a call may throw a stack overflow on one and complete successfully on the other: this is non determinism, allowed, but a cache of results (such as a memo) must never store a non deterministic exception, or every call through that cache from then on throws it.
 
 **Cancellation: `Yield#`:**\
 `Yield: Sealed { #: Void }`. `Yield#` is a cancellation point: in a speculative call whose result can no longer affect what the whole flow expression returns, it stops that call, and nothing the call computed is used; in every other call, under every strategy, it returns `Void` and does nothing. So it is not observable, and it can sit in any loop or recursion that may run for long, in the lambdas of a flow or in the methods they call. A speculative call that does not terminate releases its worker only through `Yield#`. It does nothing inside the body of `Repr.mutate` and `IsoPod.mutate` (see **Implementation pitfalls**).
@@ -157,11 +164,11 @@ The static type of the source collection enables one or more modes. They crystal
 
 **`Par[T:imm,read]`:** can be enabled if source elements are `imm` or `read`.
 
-**`ParRepr[T]`:** can be enabled if source elements are `mut Repr[T]`. `Reprs#` takes an `iso T`, so two distinct `Repr`s share no inner state. This does not ensure the `Repr`s in the source are distinct objects: the flow runs an identity check over the source and throws a non deterministic exception when two elements are identity equal.
+**`ParRepr[T]`:** can be enabled if source elements are `mut Repr[T]`. `Reprs#` takes an `iso T`, so two distinct `Repr`s share no inner state. This does not ensure the `Repr`s in the source are distinct objects: the flow runs an identity check over the source and throws a non deterministic exception when two elements are identity equal; a deterministic one would expose object identities (see **Identity Transparency**).
 
 **`ParPod[T]`:** can be enabled if source elements are `mut IsoPod[T]`, with the same guarantee through `IsoPods#` and the same identity check.
 
-The modes are not about the type of the elements between the stages. A stage of a flow in mode `Par` may create mutable objects, and another stage may mutate them: over an `imm List[imm Nat]`, `l.flow.map{i -> Persons#i}.map{p -> ...}` runs in parallel and every (mut) `Person` it builds is reachable from nowhere else, so later stages can mutate it safely.
+The modes are not about the type of the elements between the stages. A stage of a flow in mode `Par` may create mutable objects, and another stage may mutate them: over an `imm List[imm Nat]`, `l.flow.map{i -> Persons#i}.map{p -> ...}` runs in parallel and every (mut) `Person` it builds is reachable from nowhere else, so the stages after it can mutate it safely.
 
 **Duplicated `mut` elements:**\
 The paragraph above stops holding after a `flatMapMut` or an `actorMut`: they can emit one `mut` object as two elements, or as parts of two elements, like two pairs holding the same `Person`.
@@ -169,16 +176,15 @@ The paragraph above stops holding after a `flatMapMut` or an `actorMut`: they ca
 numbers.flow.map{n -> Persons#n}.flatMapMut{p -> Lists#(p, p)}.filter{..}.list
 ```
 The lambda of `filter` is a `read F`: it can not mutate what it captured, but it can mutate its `mut` parameter, so two tasks running `filter` on the two copies would race on one `Person`.
-No identity check can find the shared parts, so the elements a `flatMapMut` or an `actorMut` produces from the same input can not be given to different tasks, by any split into chunks, including one after a fence, with the only exception of `++`.
+No identity check can find the shared parts, so the elements a `flatMapMut` or an `actorMut` emits from the same input can not be given to different tasks, by any split into chunks, including one after a fence, with the only exception of `++`.
 `++` is a special fence: it emits every element as `read` or `imm`, so no stage after it can mutate an element, and elements sharing `mut` objects can go to different tasks (see **++**).
 
 **`onlyImmCapture` flag:**\
-The backend marks each lambda object that captures only `imm` values; the flag is visible to the runtime (in Java), not in Fearless.
+The backend marks each lambda object that captures only `imm` values; the flag is visible to the runtime (in Java), not in Fearless. A top level declaration used as a value captures nothing, so it carries the flag, and so does every `imm` lambda, which can capture only `imm` values.
 The identity check only compares the elements with each other, while a `read` lambda can capture any `mut` binding as `read`: the source list itself, or a local or parameter `p: mut Repr[T]` that is also one of the elements. Such a lambda can read that `Repr` while the task of its element mutates it, and the parallel execution becomes observable.
 No `imm` value can reach a `mut Repr` or `mut IsoPod`, so `ParRepr` and `ParPod` need the flag on every lambda of the flow except those of `forEach` and `let`, which run once every stage has finished; without it the whole flow expression throws a non deterministic exception (see below). With the flag, each task reaches no `Repr` or `IsoPod` but its own element.
-//TODO: minimally extend the backend to put this flag on the objects representing lambdas.
 
-`.seqFlow` exists only on sources whose elements may be `mut`, such as `List` and `EList`, to flow them as `mut` without a mode. Where the elements are always `read` or `imm`, as in `Set` and `ESet`, `.flow` is the only entry point: running in parallel or sequentially is not observable there, so a preference for sequential execution is only a hint (see **Chunk sizes**).
+`.seqFlow` exists only on sources whose elements may be `mut`, such as `List` and `EList`, to flow them as `mut` without a mode. Where the elements are always `read` or `imm`, as in `Set` and `ESet`, `.flow` is the only entry point: running in parallel or sequentially is not observable there, so a preference for the sequential strategy is only a hint (see **Chunk sizes**).
 
 **Sources:**\
 A source is any call returning a fresh `mut Flow`; its static type decides the mode, by the rule above:
@@ -189,7 +195,7 @@ A source is any call returning a fresh `mut Flow`; its static type decides the m
 
 Calling `.flow` with calls suggesting that parallelism is possible, while passing parameters or calling methods that prevent any parallelism, is most likely a user mistake. When the type system can not check this statically, a non deterministic exception is thrown. A linter could catch more cases statically, but never all of them, since flows under construction are first class values that can travel freely through the code.
 
-The mode checks (identity check, `onlyImmCapture`, positive speculation over `ParRepr` and `ParPod`) are part of the semantics, not of the parallel strategies: every strategy runs them, the sequential strategy included, and a mode argument can never be accepted and ignored. Which misuse exception a flow expression throws is decided by a rule over the chain alone: its operations, its mode, the types of its elements and the numbers known before any element is pulled, such as the `n` of `limit`; never by the size of the source, the elements, the results of the lambdas, the number of workers or the size of the chunks. Stating that rule exactly, operation by operation, is still to be done (see **Implementation stages**).
+The mode checks (identity check, `onlyImmCapture`, positive speculation over `ParRepr` and `ParPod`) are part of the semantics, not of the parallel strategies: every strategy runs them, the sequential strategy included, and a mode argument can never be accepted and ignored. The identity check reads the source and the `onlyImmCapture` check reads the lambdas; whether a flow expression needs positive speculation over `ParRepr` or `ParPod`, and so throws that misuse exception, is decided by its shape alone, as the ordering errors are (see **Ordering errors**): never by the size of the source, the elements, the results of the lambdas, the number passed to `limit`, the number of workers or the size of the chunks. Stating that rule exactly, operation by operation, is still to be done (see **Implementation stages**).
 
 A good example of why a flow of Repr could be great is genetic evolution:
 ```
@@ -225,6 +231,22 @@ The `map` node receives elements from the flow (in chunks or not), applies f1 an
 
 This applies in plenty of cases where data parallelism does not, and it is more efficient when code locality is crucial: the same node runs the same code over and over, and if that code fits in cache this may beat data parallelism, especially when the whole flow expression (not broken into chunks) would not fit in cache.
 
+## Hints
+
+**Chunk sizes:**\
+The runtime cannot know how expensive a lambda is, and element count alone is a poor proxy. What are Java streams and other approaches doing? We could have some way to annotate a flow with code generation/code execution hints.
+```
+es.flow //examples, of course it does not make sense to use those together
+  .hintSeq// to run sequential, like Java .sequential
+  .hintTaskSize 10
+  .hintSpeculativeSize 25
+  .hintPipeline //to prefer pipeline parallelism when possible
+  .hintDataParallel //to prefer fork-join parallelism when possible
+  .map{..}.list
+```
+Then we could have unchecked exceptions on inapplicable hints etc.
+A hint never changes what a flow expression returns; a hint whose misuse throws is part of the semantics (see **Stage 1: Naive**). `.suppressOrderingErrors` works like a hint (see **Ordering errors**).
+
 ## Per operation
 
 The kinds above say what an operation is. Each section below is the design space of one operation: what an implementation is free to do with it, and what is still open. The sections state all the reasonably possible parallel strategies, not just the ones we think are the most performant.
@@ -239,7 +261,7 @@ mut .flatMap[R:*](f: read F[E, read List[R]]): mut Flow[read/imm R]
 mut .flatMapMut[R:*](f: read F[E, mut List[R]]): mut Flow[R]
 ```
 `.flatMap` takes a `read` list and emits its elements as `read` or `imm`, as `++` does; the list of `.flatMapMut` is `mut`, since the elements of a `read` list are `read`.
-The restricted signature allows more parallelism: no stage after it can mutate the elements of `.flatMap`, so it keeps a data parallel region going, while `.flatMapMut` ends it, since the elements it produces from the same input may share `mut` objects (see **Duplicated `mut` elements**).
+The restricted signature allows more parallelism: no stage after it can mutate the elements of `.flatMap`, so it keeps a data parallel region going, while `.flatMapMut` ends it, since the elements it emits from the same input may share `mut` objects (see **Duplicated `mut` elements**).
 
 **Desugaring:**\
 map, filter and flatMap trivially desugar to flatMapMut:
@@ -247,6 +269,8 @@ map, filter and flatMap trivially desugar to flatMapMut:
 .map f     -> this.flatMapMut{e->Lists#(f#e)}
 .filter f  -> this.flatMapMut{e->f#e?{.then-> Lists#e; .else->{}} }
 .flatMap f -> this.flatMapMut{e -> f#e .flow.list}
+.peek f      -> this.map{e -> Block#(f#e, e)}
+.mapFilter f -> this.map f .filter{o -> o.isSome}.map{o -> o!}
 ```
 map and filter exist as separate methods for readability and performance.
 map goes 1-1, so it preserves the size, and returning exactly 1 element avoids the 'sequence API' any flatMap implementation requires.
@@ -275,10 +299,6 @@ With `.limit 2` it returns `Lists#(2, 3)`, since the element at index 1 is never
 Where the lambda returns the inner flow instead, without the final `.list`, the same chain returns `Lists#(2, 3, 1)`: `.limit 3` stops the inner `map` before it pulls `"poison"`.
 
 In our approach, any inner flow in the lambda is normal code, run in parallel when possible under the same rules as any other code.
-
-
-//TODO: change the current standard library to include (only) those two flat maps
-
 
 ### limit
 
@@ -310,7 +330,7 @@ Emit, decrement, stop on the element that exhausts the budget; element `n` is ne
 `limit 0` throws. Most other approaches return the empty flow, but that is the mistake of the iconic functional `zip`: an answer manufactured so that the call can proceed rather than admit that something upstream is wrong. Asking for no elements while writing out a whole chain of stages signals a logic mistake. Since `n` is known before any element is pulled, a user wanting `n = 0` to give the empty flow can just put an `.if` around the flow call.
 The exception is deterministic, and thrown where `.limit` is called rather than by the terminal: `n` is not a user lambda, so this does not weaken Lazy, and nothing has run yet, so nothing is left half done.
 A deterministic exception fits here:
-- The identity check over Repr and IsoPod has to be non deterministic to avoid exposing object identities; this does not apply here.
+- The identity check over Repr and IsoPod has to be non deterministic, since a deterministic one would expose object identities (see **Modes**); this does not apply here.
 - limit already throws deterministic exceptions for numbers too big.
 A linter can not take this over, since `.limit x` may take `x` from outside.
 
@@ -462,6 +482,7 @@ A fence at the beginning or directly after another fence allows further optimisa
 `max` and `min` emit every element tied for the maximum (minimum), in flow order: `Lists#(3,1,3).flow.max{::}.list` is `Lists#(3,3)`.
 `sort` is stable: elements that `by` ranks together keep their flow order.
 All four take an `OrderBy`, not an `OrderHashBy`, so they never call `.hash`.
+Under the sequential strategy the calls of `by` start only once every stage before the fence has finished with every element: placing each element as it arrives would let a call of `by` that does not terminate hide an exception thrown by a stage before the fence at a greater index. So, in every strategy, an exception of a stage before the fence propagates before any exception of `by`, whatever their indexes, and an exception of `by` propagates before any exception of a stage after the fence (see **example with a fence**).
 
 **Desugaring:**\
 min desugars exactly to max under the reversed order:
@@ -602,7 +623,7 @@ The placement then makes its calls one at a time, taking the pairs in flow order
 Pipeline parallelism:
 
 It can work as two nodes: one computes `map f`, `kem.key` and `kem.elem`, and one places the pairs into the map being built. The pairs naturally arrive in flow order.
-The two overlap in time: the placing node places the element at index `j` while the other node computes the element at index `j+1`. The same holds when a stage whose calls form a sequence, such as an `actor`, comes before `.mapping`: the terminal's own per-element work overlaps the later elements of that stage.
+The two overlap in time: the placing node places the element at index `j` while the other node computes the element at index `j+1`. The same holds when a stage whose calls form a sequence, such as an `actor`, comes before `.mapping`: the terminal's own per-element work overlaps the elements of that stage after `j` in flow order.
 As usual, `Yield#` is needed to cancel speculative work that does not terminate, after an exception is thrown.
 
 ### forEach
@@ -682,7 +703,7 @@ None of these is primitive; they all desugar to `.limit 1`:
 .none f      -> this.any f .not
 .all f       -> this.none{e -> f#e .not}
 ```
-with `.mapFilter f` being `this.map f .filter{o -> o.isSome}.map{o -> o!}`.
+with `.mapFilter f` as in **map, filter, flatMap**.
 `.limit 1` breaks right after pushing the element that arrives at it, so no other element is pulled, and `.getOpt` can not throw about the size since at most one element arrives at it.
 On an empty flow the actor of `.limit 1` never runs, so `.first` is the empty `Opt`, `.any` is `False` and `.all` is `True`.
 Composing `f` with `.not` changes no call and no order, so `.none f` throws the same exception at the same element as `.any f`, and `.all f` throws the same exception at the same element as `.any{e -> f#e .not}` (see **example with filter, under a short-circuit terminal**). `.all f` and `.any f` stop at different elements: `.any f` at the element where `f` completes successfully with `True`, `.all f` at the element where `f` completes successfully with `False`.
@@ -723,6 +744,7 @@ Apart from `forEach` and `let`, the consuming terminals are not fences: they tri
 So a terminal with work of its own that can throw or not terminate is not `.list` followed by a loop. With `f` not terminating on `e1`, and `h` throwing on the first call,
 `l.flow.map f .fold({0}, h)` throws: the sequential strategy calls `h` on `f#e0` and never pulls `e1`. `.list` followed by a fold calls `f#e1` first, and never returns.
 The same holds for `foldAcc`, `mapping` (a repeated key throws), `set` and `eSet` (the calls of `by`), `sum` (the checked `+` throws on overflow) and `join`.
+Under pipeline parallelism such a terminal is a node of its own: it places, adds or sums the element at index `j` while the stage before it works on the element at index `j+1` (see **mapping**).
 The terminals with no work of their own that can throw or not terminate, `list`, `eList`, `size`, `get`, `getOpt` and `last`, can be `.list` followed by their work.
 
 A trickling terminal fed through an iterator or any other pull that buffers breaks this when one element pulled becomes many elements, as a `flatMap` expansion or an `actor` pushing twice: the stages after the expansion run on all of it before the terminal sees its first element, so an exception of a stage at a greater index is thrown instead of the one of the terminal at a smaller index.
@@ -759,7 +781,7 @@ The parallel strategies use a few primitives:
 - Leaving the whole flow expression, with `return` or with an exception, cancels through `Yield#` every task and node still running, and discards what they would send.
 - `Sort#`, `Max#`, `MergeTree#` and `MaxTree#` are defined in **example with sort and limit: one merge tree for every strategy**. `KeySet#by` is a hash set placing its keys with `by.hash` and `by.cmp`; `s.add(x)` returns whether `x` was new. `IdentityCheck#rs` throws a non deterministic exception when two elements of `rs` are identity equal.
 
-A mailbox delivers an exception only after every element before it in flow order: this is how the pseudocode holds exceptions (see **Speculation**).
+An exception arrives from a mailbox only after every element before it in flow order: this is how the pseudocode holds exceptions (see **Speculation**).
 The flow expression above becomes, with data parallelism:
 ```
 return fork(Range c: Chunks#(ps.size)){
@@ -903,7 +925,7 @@ Otherwise, let `v0,...,vn` be the `f#ej` in `by` order, ties ordered by smallest
 When no such `k` exists, the whole flow expression returns the empty `Opt`. When `{::>3}` applied to `vk` throws or does not terminate, the whole flow expression returns what that call returns.\
 Otherwise the whole flow expression returns `Opts#(vk)`.
 
-Which calls to `by.cmp(...)` the sorting process makes, and in which order, is intentionally under-specified; the sorting process is under the control of the terminal. So `.sort by .first` could be optimised to just find the minimum element with the lowest index.
+Which calls to `by.cmp(...)` the sorting process makes, and in which order, is intentionally under-specified; the sorting process is under the control of the terminal. So `.sort by .first` could be optimised to just find the minimum element with the smallest index.
 
 **Parallelisation options:**
 
@@ -1146,7 +1168,7 @@ return fork(List[Nat] c: Chunks#ss){
   }.list;
 ```
 The actor node receives the results of `map f` in flow order: the mailbox `vs` is the reordering buffer.
-An exception of `f` at index `j` arrives at the actor node after the elements before it, is sent on after their sums, and arrives in `gs` after the results of `g` on those sums: it propagates only if no call of `g` before it in flow order throws, as under the sequential strategy.
+An exception of `f` at index `j` arrives at the actor node after the elements before it, is sent on after their sums, and arrives at the terminal after the results of `g` on those sums: it propagates only if no call of `g` before it in flow order throws, as under the sequential strategy.
 
 Pipeline parallelism:
 ```
@@ -1329,8 +1351,8 @@ rs.flow(ParRepr#)
 Overall, parallelising `Repr`s and `IsoPod`s is about
 - running an identity check
 - checking the `onlyImmCapture` flag on the lambdas of the flow
-- avoiding positive speculation with no fence before it, and using the sequential strategy where positive speculation after a fence would be needed, unless the fence is a `++` (see **example with `++` as a fence before positive speculation, over ParRepr**)
-- behaving exactly as if a flow in mode `Par` produced a mut in the map stage after the source: those muts are isolated from each other and from what the lambdas captured, so they can not interact until a `flatMapMut` or an `actorMut` duplicates them (see **Duplicated `mut` elements**). Depending on the stages, data parallelism or pipeline parallelism could be more appropriate.
+- avoiding positive speculation with no fence before it, and using the sequential strategy where positive speculation after a fence would be needed, unless the operations show that every element after the fence is `read` or `imm` (see **example with `++` as a fence before positive speculation, over ParRepr**): only the signatures of `++`, `flatMap`, `actor` and `scan` show it, since the chain records no element type, so a `map` returning an `imm` value does not count, and a `map`, `flatMapMut`, `actorMut` or map with context after them may emit `mut` elements again
+- behaving exactly as if a flow in mode `Par` created a mut object in the map stage after the source: those muts are isolated from each other and from what the lambdas captured, so they can not interact until a `flatMapMut` or an `actorMut` duplicates them (see **Duplicated `mut` elements**). Depending on the stages, data parallelism or pipeline parallelism could be more appropriate.
 
 **example with sort and limit: one merge tree for every strategy**\
 `l.flow.map f .sort by .limit 3 .list`\
@@ -1413,7 +1435,7 @@ MergeTree[Nat] s= MergeTree#(by, 3);
 for(Nat v: m){ s.add(v); }
 return s.list;
 ```
-The loop over `m` adds the elements in flow order, whatever the order in which the tasks finish; the merges of the blocks of different chunks run while the tasks of the later chunks are still running.
+The loop over `m` adds the elements in flow order, whatever the order in which the tasks finish; the merges of the blocks of different chunks run while the tasks of the chunks after them are still running.
 Pipeline parallelism is the same code, with `Mailbox[Nat] m= node(l){e, out -> out.send(f#e)};`.
 
 **example with elementwise work after a fence**\
@@ -1474,7 +1496,9 @@ with `by1` and `by2` of type `OrderBy[Nat]`.
 
 Not an ordering error (see **Ordering errors**).
 
-The `max by1` stage keeps the elements tied for the maximum under `by1`, in flow order; the `max by2` stage keeps, among those, the ones tied for the maximum under `by2`. When every call of `by1` and `by2` completes successfully, this is one `max` under the order that compares with `by1` and breaks ties with `by2`.
+If there is a smallest index `j` such that `f#ej` throws or does not terminate, the whole flow expression returns what `f#ej` returns.\
+Otherwise, if some calls of `by1` made by the max tree throw or do not terminate, it returns what the one the tree makes before the others returns; every call of `by2` comes after every call of `by1`, since the `max by2` stage receives nothing until the `max by1` stage has finished (see **sort, sortDistinct, max, min**).\
+Otherwise the `max by1` stage keeps the elements tied for the maximum under `by1`, in flow order; the `max by2` stage keeps, among those, the ones tied for the maximum under `by2`. When every call of `by1` and `by2` completes successfully, this is one `max` under the order that compares with `by1` and breaks ties with `by2`.
 That single pass is not a legal replacement: it calls `by2` on two elements as soon as `by1` ties them, and an element after both in flow order may beat both under `by1`. Such elements never arrive at the `max by2` stage, so a call of `by2` on them that throws or does not terminate changes the result.
 Compare `.filter p .filter q`, which is exactly `.filter{e -> p#e && {q#e}}`: `&&` calls `q` only on the elements `p` accepts, known at once. Whether an element passes the `max by1` stage is known only when the flow ends.
 
@@ -1604,14 +1628,14 @@ The rewrites of **Canonical form** (see **example with limit**) are not repeated
 ### Ordering errors
 
 An ordering error is a sequence of operations in which a stage is pointless: in that shape, what the stage computes is discarded or overridden by the operations after it, and removing or moving the stage changes the result only when some call throws or does not terminate. Such sequences are written by mistake, so the terminal throws an ordering error: a non deterministic exception naming the shape to write instead, as for the other misuses of flows (see **Modes**). The terminal sees the whole flow expression however it was built, so the check needs nothing from the compiler; a linter can report many of the same errors statically.
-An ordering error is decided by the shape of the flow expression alone: the sequence of its operations, its mode and the types of its elements. It never depends on the values of the arguments: not on whether two `by` or two `p` are the same object or structurally equivalent, not on whether the list passed to `++` is empty, not on the number passed to `limit`. It never looks into the lambdas: not at what a lambda computes, nor at whether it can throw or not terminate. It never depends on the algorithm implementing a stage either: which calls of `.cmp` and `.hash` a stage makes stays under-specified (see **How `.cmp` and `.hash` are called**). The optimiser is a separate matter: where the lambdas are simple enough, as `{::>3}` over a `Nat`, which can not throw, the backend may perform a rewrite that is not legal in general, but whether a sequence is an ordering error never depends on it.
+An ordering error is decided by the shape of the flow expression alone: the sequence of its operations, its mode and the types of its elements as far as the operations reveal them: the mode of the source, the `read` or `imm` elements that `++`, `flatMap`, `actor` and `scan` emit, and the number type of the argument of `.sum`; the chain records no other element type (see **Stage 1: Naive**). It never depends on the values of the arguments: not on whether two `by` or two `p` are the same object or structurally equivalent, not on whether the list passed to `++` is empty, not on the number passed to `limit`. It never looks into the lambdas: not at what a lambda computes, nor at whether it can throw or not terminate. It never depends on the algorithm implementing a stage either: which calls of `.cmp` and `.hash` a stage makes stays under-specified (see **How `.cmp` and `.hash` are called**). The optimiser is a separate matter: where the lambdas are simple enough, as `{::>3}` over a `Nat`, which can not throw, the backend may perform a rewrite that is not legal in general, but whether a sequence is an ordering error never depends on it: `.sort by .filter{::>3}.list` is an ordering error at every stage.
 <HELP ME WITH WORDING> Example message: ``The flow expression sorts with `.sort by` and then drops elements with `.filter p`: the sort also orders the elements the filter drops. Write `.filter p .sort by`. To keep this order, call `.suppressOrderingErrors` on the flow.``
 
 `mut .suppressOrderingErrors: mut Flow[E]` records the flag and emits every element it pulls, unchanged. It works like a hint: it can be called anywhere in the flow expression, conventionally at its beginning with the hints (see **Chunk sizes**), and it suppresses every ordering error of the whole flow expression. It can not say which error it is meant for: that imprecision is accepted, since asking for it at the exact place of each error would make the flow expressions hard to write and to rearrange.
 
 The ordering errors, with the reason the stage is pointless and the shape the message suggests:
-- **Discarded order**: `.sort by` directly before `.size`, `.isEmpty`, `.get`, `.getOpt`, or `.sum` over `Nat`, `Byte` or `Num` elements, also with only elementwise stages (`map`, `filter`, `flatMap`, `flatMapMut`, `mapFilter`) between the sort and the terminal. None of these terminals reads the order: `.get` and `.getOpt` complete successfully only when at most one element arrives, a sum of `Num` is exact, and a sum of `Nat` or `Byte` overflows in one order exactly when it overflows in every order, and the elementwise stages do not read the order. Over `Int` and `Float` the order decides whether the sum overflows and how it rounds: no error. Suggests removing the sort.
-- **Unread results**: `.map f .size` and `.scan(acc, h) .size` in mode `Par`. Over `imm` and `read` elements the calls of `f` and `h` can only throw or not terminate, and `.size` reads none of their results. Suggests removing the stage.
+- **Discarded order**: `.sort by` directly before `.size`, `.isEmpty`, `.get`, `.getOpt`, or `.sum` over `Nat`, `Byte` or `Num` elements, also with only elementwise stages (`map`, `filter`, `flatMap`, `flatMapMut`, `mapFilter`, `peek`) between the sort and the terminal. None of these terminals reads the order: `.get` and `.getOpt` complete successfully only when at most one element arrives, a sum of `Num` is exact, and a sum of `Nat` or `Byte` overflows in one order exactly when it overflows in every order, and the elementwise stages do not read the order. Over `Int` and `Float` the order decides whether the sum overflows and how it rounds: no error. Suggests removing the sort.
+- **Unread results**: `.map f` or `.scan(acc, h)` directly before `.size` or `.isEmpty`, in mode `Par`. Over `imm` and `read` elements the calls of `f` and `h` can only throw or not terminate, and `.size` and `.isEmpty` read none of their results. Suggests removing the stage.
 - **Two sorting stages**: `.sort by1 .sort by2`, whatever `by1` and `by2` are. The second sort reorders every element, and the order of the first survives only among the elements `by2` ranks together: the two stages are one sort with a composed order. The message offers both `.sort(by2.then by1)`, what the two stages compute, and `.sort(by1.then by2)`: two stable sorts give priority to the last one, while the user may mean `by1` as the primary order. A `.sortDistinct` directly before or after a `.sort` or a `.sortDistinct` is the same ordering error.
 - **Two limits**: `.limit n .limit m`. Whatever `n` and `m` are, the limit with the greater number stops nothing that the other does not stop. Suggests a single `.limit(n.min(m))`.
 - **Filter after sort**: `.sort by .filter p` with no decision point after the filter (see **Sort before a search** below). The sort also orders the elements the filter drops, and nothing reads their place. Suggests `.filter p .sort by`. Where **Discarded order** also applies, as in `.sort by .filter p .size`, the message suggests removing the sort.
@@ -1623,7 +1647,7 @@ Close calls that are not ordering errors:
 - `.filter p .filter q`: `p` is often a guard that `q` relies on, as in `.filter{x -> x != 0}.filter{x -> 12 / x > 2}`.
 - `.sort by .first`, `.sort by .last`, `.sort by .limit k`: the order of the elements kept is read.
 - `.sort by .set(..)`, `.sort by .eSet(..)`, `.sort by .mapping(..)`: the order decides which element of each class a `Set` keeps, and the order of the elements of an `ESet` and of the entries of the map.
-- `.distinct by .filter p` and `.sortDistinct by .filter p`: when two elements of one class disagree on `p`, the two orders keep different elements; when `p` rejects the first element of a class and accepts a later one, only `.filter p .distinct by` keeps the later one.
+- `.distinct by .filter p` and `.sortDistinct by .filter p`: when two elements of one class disagree on `p`, the two orders keep different elements; when `p` rejects the element of a class with the smallest index and accepts one after it, only `.filter p .distinct by` keeps that one.
 - `.map f .limit n`: it makes the same calls as `.limit n .map f` (see **Canonical form**), and neither stage is pointless.
 - `.map f .last`: the last result of `f` is read.
 - `.map f .size` without a mode, as in `persons.seqFlow.map{p -> Block#(p.birthday, p)}.size`: `f` may mutate its `mut` element on purpose.
@@ -1845,13 +1869,7 @@ for(Nat e: l){
 return res.list;
 ```
 
-//TODO: discuss more interesting sequences of operators.
-
-//TODO: at the end of the document we need to
-list how all specific permutations of stages and terminals can be optimised instead of just 'combined'.
-That is, consider a code generator that, at compile time, when a flow is written all as a single expression from creation to terminal (the most common case),
-generates imperative code to optimise the behaviour as much as possible, knowing how all the operations interact.
-We should here report the 'optimisable cases' and show them by example of input and expected pseudocode output.
+//TODO: more sequences of operators, each with its pseudocode. The goal is the list of every permutation of stages and terminals that the generator of **Stage 4: Backend integration** can optimise, shown as the flow expression and the expected generated code.
 
 ## Implementation pitfalls
 
@@ -1869,7 +1887,7 @@ No JDK stream, sequential or parallel, can be the implementation of a flow, nor 
 - `Collectors.toMap` and `Map.put` keep one value for a repeated key, where `mapping` throws.
 
 **Cancellation:**
-- `Yield#` cancels by throwing a Java exception that is not an `Info`: no Fearless code can catch it. Every place of the runtime that catches Java exceptions on behalf of Fearless code must let it through: `System.try` (`CapTry`), which otherwise turns it into an `Info` and lets the cancelled call go on, and the memo caches, which otherwise store it and throw it to every later caller. A memo body cancelled halfway leaves no entry.
+- `Yield#` cancels by throwing a Java exception that is not an `Info`: no Fearless code can catch it. Every place of the runtime that catches Java exceptions on behalf of Fearless code must let it through: `System.try` (`CapTry`), which otherwise turns it into an `Info` and lets the cancelled call go on, and the memo caches, which otherwise store it and throw it to every caller from then on. A memo body cancelled halfway leaves no entry.
 - `Yield#` has to work wherever user code runs: data parallel tasks, nodes, the calling worker running the terminal, and nested flows. A `Yield#` that works only in data parallel tasks leaves every node uncancellable.
 - `Yield#` does nothing inside the body of `Repr.mutate` and `IsoPod.mutate`: cancelling there would skip the invariant check and leave the object half mutated. So a call inside `mutate` can not be cancelled, and nothing may wait for it (see **Termination**).
 
@@ -1885,74 +1903,6 @@ No JDK stream, sequential or parallel, can be the implementation of a flow, nor 
 
 **Tests:**\
 A test checking that the values and their order are right does not test a flow. Every behaviour above needs a test in which some lambdas throw, or do not terminate, at chosen indexes, and in which `by` does not respect its contract; the examples of this document are the first such tests. A test for non termination uses a lambda that loops without `Yield#`, and a timeout in the test runner. Tests over `ParRepr` and `ParPod` check which elements were mutated after the flow returns, not only that each mutation is complete.
-
-## Notes to keep in mind while doing any task on this document
-
-.size should be implementable as .list.size
-
-most operations should be implementable as .actorMut
-
-Fence behaviour should be implementable as .list.flow, but we still need to make the full design for each fence operation, including a .list or .eList call and then flowing again at the end.
-As a clear optimisation, in most cases fencing is not needed when fence operations are concatenated. For example multiple `.max` could be concatenated
-`.max{..}.max{..}` and indeed it would work like concatenating 'filter'; a common programming pattern.
-`.max{..}.max{..}` gives the same result as `.max({..}.then{..})` when every call of the two `by` completes successfully (see **example with two max**).
-
-Misunderstanding:
-"Duplicate identity is a runtime property of the list, so a non deterministic exception is the only shape available."
-
-The pipeline gap: the terminal is not discussed enough as something that can run concurrently with an upstream serial stage.
-
-Nothing says that in a chain ending `.set` or `.sum` (see **mapping** for how it goes there) the terminal's own per-element work can overlap the actor's later elements. We need to improve the text above.
-
-Found bug that should disappear when racing is gone anyway:\
-"Two tasks racing inside `IsoPod.consume` make one of them call `open` on an already open pod, so the flow sometimes returns a value and sometimes throws. Determinism covers the thrown `Info`, so this breaks it directly, with no capability anywhere." It should disappear as a side effect of fixing the overall design, since two threads should never be able to race on calling a mut method ever.
-
-.forEach needs to be always sequential no matter what; in any design we need it sequential.
-
-The `IdentityHashMap` pass over the source at flow creation for `Repr`s and `IsoPod`s can be in parallel with the flow execution itself; a non deterministic exception (even a deterministic one) will only be capturable if the list of mut `Repr`s/`IsoPod`s is garbage collectable/unreachable.
-It needs to be non deterministic to avoid exposing object identities.
-
-An `IdentityHashMap` pass can be considered over Par flows: any identity identical element can get the result of its computation cached. In some kinds of data this could save massive amounts of repeated computation. In others it is going to be a waste, but at this stage the goal is to list all the optimisation options and make clear how/why they are possible. Note that the current `read F` functions of most stages are perfectly fine for this, since nothing before the fence can possibly mutate the captured values.
-
-
-Accepted: Giving up strong Flow abstraction.
-For a while I hoped to be able to have a property saying that how those lambdas are executed is unobservable; but given that they can throw and the error we get is the first failing lambda, we do get an unavoidable way to look into the ordering. This is a small observability window, and we may try to word the property to show 'how small' it is, but it is there.
-
-**Chunk sizes:**\
-The runtime cannot know how expensive a lambda is, and element count alone is a poor proxy. What are Java streams and other approaches doing? We could have some way to annotate a flow with code generation/code execution hints.
-```
-es.flow //examples, of course it does not make sense to use those together
-  .hintSeq// to run sequential, like Java .sequential
-  .hintTaskSize 10
-  .hintSpeculativeSize 25
-  .hintPipeline //to prefer pipeline parallelism when possible
-  .hintDataParallel //to prefer fork-join parallelism when possible
-  .map{..}.list
-```
-Then we could have unchecked exceptions on inapplicable hints etc.
-
-TODO: minor fixes that could go on separate PRs:
-
-**map(ctx, f)** seems to be slightly different in this document, in current fearless, in fearless70, in Legacy and Legacy+. I think the version in this document is the best, but we should think about advantages and disadvantages.
-
-
-Overall feedback notes:
-The agents working on this document and former iterations of it kept telling me specific things but in no case did they note that '.limit 0' is probably a bad idea, just because most other approaches also allow .limit 0.
-This suggests that the agents are using their common knowledge instead of their reasoning to find errors and logical fallacies in this document.
-Please focus on using reasoning instead.
-One may say "limit 0 has an answer, and it is the one callers expect."
-But no, this is exactly the same mistake of the iconic functional .zip.
-Most likely something has gone wrong and we are hiding the error to move on: Graceful degradation instead of offensive programming.
-This is particularly clear cut for limit: since the number is known before the flow starts, we could just check that number before running a potentially unpredicted flow (unpredicted by the programmer, not unpredictable in the sense of the specification).
-Is there some other case like .limit 0 that we should be aware of?
-
-Misunderstanding:
-One time you stated that "Decisively, a non deterministic error may legally be replaced by a no op". This is false. Consider the case of the identity checks, we would get broken behaviour without the mandatory non det error there.
-
-
-Suggestion: "The alternative is to let the literal capture them and give the literal the hygienic modifier."
-Not sound. The current set up is that hygienics are powerful but hard to use. They are only used in a few places, which is better than not having them at all. It is like reflection in Java: a few lines with Java reflection can make a whole program that does not otherwise use reflection do a lot more, like having dynamically loaded plug ins.
-Similarly, Fearless programs with a few occurrences of hygienics can do more, with most of the code not mentioning them. That is the goal: find ways to limit their scope while gaining the benefits.
 
 ## Implementation stages
 
@@ -1976,16 +1926,16 @@ The primitives, the only operations with a direct implementation:
 - `actorMut`; `actor` is the same code with a different signature;
 - `fold`, the trickling consuming terminal (see **Consuming terminals**);
 - the fences: `++` and `forEach` over a list materialised by `fold`, `sort` as `Sort#` and `max` as `Max#` (see **example with sort and limit: one merge tree for every strategy**), `sortDistinct` as the same tree with its merge;
-- `distinct` and `mapping` as an `actorMut` and a `fold` placing keys into one hash set, with one fixed placement algorithm.
-Everything else desugars: `map`, `filter`, `flatMap` and `flatMapMut`, `limit`, `scan`, map with context, `min`, the short-circuit terminals, `size`, `get`, `getOpt`, `let`.
-The loose desugarings can not be used: `max` as a sort makes different calls of `by` than `Max#`, and every later stage must make the calls `Max#` makes.
+- `distinct`, `mapping`, `set` and `eSet` as an `actorMut` or a `fold` placing keys into one hash set, with one fixed placement algorithm.
+Everything else desugars: `map`, `filter`, `flatMap` and `flatMapMut`, `peek`, `mapFilter`, `limit`, `scan`, map with context, `min`, the short-circuit terminals, `list`, `eList`, `foldAcc`, `sum`, `join`, `last`, `size`, `isEmpty`, `get`, `getOpt`, `let`.
+The loose desugarings can not be used: `max` as a sort makes different calls of `by` than `Max#`, and every stage after this one must make the calls `Max#` makes.
 
-What the Naive stage fixes once, for every later stage:
+What the Naive stage fixes once, for every stage after it:
 - the under-specified calls of `by`: the merge tree, the max tree, the placement algorithm of `distinct`, `mapping`, `set` and `eSet` (which `.hash` and `.cmp` calls, in which order), whether the key `by#e` is computed once per element or once per comparison, and which answers of a `by` breaking its contract make them throw (see **A `by` breaking its contract**). Changing any of them later is a change of semantics.
 - the rule for the misuse exception of positive speculation over `ParRepr` and `ParPod` (see **Modes**), stated operation by operation over the chain.
 - the misuse exception texts, following the style of the errors of the Frontend.
 
-Before it starts, `flow.fear` follows this document: `flatMap` and `flatMapMut` over lists, `++` taking a `read List[E]` and emitting `read/imm E`, `get` and `getOpt` over `.list`, `isEmpty` as `.size == 0`, `findFirst` returning `mut Opt[E]`, `findFirst` and `findMap` as their desugarings; `peek` is `map`; `rs.flow(ParRepr#)` and `xs.flow(Par#)` typecheck as written in this document, with no type argument. Every source runs the sequential strategy, whatever mode it enables, so that the integration projects on what a parallel flow promises pass before any parallel strategy exists. The backend puts the `onlyImmCapture` flag on the objects representing lambdas. `Yield#` and `.suppressOrderingErrors` are added by the stage that first gives them a meaning: `.suppressOrderingErrors` by this stage, `Yield#` by Stage 3.
+`.suppressOrderingErrors` gets its meaning at this stage; `Yield#` at Stage 3, the first stage that can cancel anything.
 
 Tests: every example of this document, with lambdas throwing or not terminating at chosen indexes, and with a `by` that does not respect its contract; each ordering error and misuse exception, through `checkNonDetErr`; the integration projects on what a parallel flow promises (order, the exception at the smallest index, nothing run after a decision, termination).
 Speed is not a goal: `sort` may be slow and `limit` may pull through an actor.
@@ -2010,7 +1960,7 @@ The same semantics. When the mode allows it, the terminal analyses the chain and
 - Choosing: the calling worker runs a task itself when no worker has started it; the hints; the size of the source; a static estimate of the cost of each stage where the lambdas are known; measurements of the first elements.
 - The runtime pieces of **Implementation pitfalls**: `Yield#` wherever user code runs, the catch points letting cancellation through, platform threads for user code, nested flows, memo caches never storing non deterministic exceptions, and the open decision on elements under a task that has not finished (see **Negative speculation over `ParRepr` and `ParPod`**).
 A reasonable order inside this stage: data parallel regions before consuming terminals over `Par`; short-circuit terminals with positive speculation; fences; `ParRepr` and `ParPod`; pipeline parallelism.
-Tests: every test of the earlier stages run under every strategy the terminal can pick, forced through the hints; tests where lambdas throw at a greater index earlier in time, and where a call after a decision does not terminate; repeated runs of the same flow expression, since a scheduling dependent result shows only sometimes.
+Tests: every test of the stages before it run under every strategy the terminal can pick, forced through the hints; tests where lambdas throw at a greater index earlier in time, and where a call after a decision does not terminate; repeated runs of the same flow expression, since a scheduling dependent result shows only sometimes.
 Speed goal: benchmarks with CPU bound lambdas that do not allocate (see **Measuring**), compared with stage 2 at one worker and at every worker.
 
 ### Stage 4: Backend integration
@@ -2019,5 +1969,31 @@ The same semantics as stage 3. When a whole flow expression is written in one pl
 - Inlining the lambdas makes the static cost estimate and the legal merges that need to know that a lambda can not throw or fail to terminate (as `{::>3}` over a `Nat` in **sort then filter**) available.
 - `onlyImmCapture` is known from the literals, and the misuse exceptions and ordering errors are known at compile time: the backend can also report them as it compiles, but the generated code still throws them.
 - A flow expression that is not written in one place, as a flow passed to a method, still runs through the library of stage 3.
-Tests: the pseudocode of the examples as the expected output of the generator for their flow expressions; every test of the earlier stages with each flow expression written in one place and passed through a method, comparing the two.
+Tests: the pseudocode of the examples as the expected output of the generator for their flow expressions; every test of the stages before it with each flow expression written in one place and passed through a method, comparing the two.
+
+## Notes to keep in mind while doing any task on this document
+
+Misunderstanding:
+"Duplicate identity is a runtime property of the list, so a non deterministic exception is the only shape available."
+
+TODO: minor fixes that could go on separate PRs:
+
+**map(ctx, f)** seems to be slightly different in this document, in current fearless, in fearless70, in Legacy and Legacy+. I think the version in this document is the best, but we should think about advantages and disadvantages.
+
+Overall feedback notes:
+The agents working on this document and former iterations of it kept telling me specific things but in no case did they note that '.limit 0' is probably a bad idea, just because most other approaches also allow .limit 0.
+This suggests that the agents are using their common knowledge instead of their reasoning to find errors and logical fallacies in this document.
+Please focus on using reasoning instead.
+One may say "limit 0 has an answer, and it is the one callers expect."
+But no, this is exactly the same mistake of the iconic functional .zip.
+Most likely something has gone wrong and we are hiding the error to move on: Graceful degradation instead of offensive programming.
+This is particularly clear cut for limit: since the number is known before the flow starts, we could just check that number before running a potentially unpredicted flow (unpredicted by the programmer, not unpredictable in the sense of the specification).
+Is there some other case like .limit 0 that we should be aware of?
+
+Misunderstanding:
+One time you stated that "Decisively, a non deterministic error may legally be replaced by a no op". This is false. Consider the case of the identity checks, we would get broken behaviour without the mandatory non det error there.
+
+Suggestion: "The alternative is to let the literal capture them and give the literal the hygienic modifier."
+Not sound. The current set up is that hygienics are powerful but hard to use. They are only used in a few places, which is better than not having them at all. It is like reflection in Java: a few lines with Java reflection can make a whole program that does not otherwise use reflection do a lot more, like having dynamically loaded plug ins.
+Similarly, Fearless programs with a few occurrences of hygienics can do more, with most of the code not mentioning them. That is the goal: find ways to limit their scope while gaining the benefits.
 
