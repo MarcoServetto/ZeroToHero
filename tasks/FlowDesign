@@ -2069,6 +2069,44 @@ What the Naive stage fixes once, for every stage after it:
 Tests: every example of this document, with lambdas throwing or not terminating at chosen indexes, and with a `by` that does not respect its contract; each ordering error and misuse exception, through `checkNonDetErr`; the integration projects on what a parallel flow promises (order, the exception at the smallest index, nothing run after a decision, termination).
 Speed is not a goal: `sort` may be slow and `limit` may pull through an actor.
 
+### Before Stage 1: decisions to take and things to fix
+
+Each item is one session of work: it names what is open, where in this document the answer goes, the options with the one recommended, and when it is done. Items 1 to 4 are semantics that Stage 1 fixes for every later stage, so they come first; 5 to 8 are what the implementation needs and this document does not describe yet; 9 to 11 can run alongside the implementation. Nothing here changes what a flow expression returns when every call completes.
+
+1. **The key `by#e`: once per element or once per comparison.**\
+Open in the list of what the Naive stage fixes once (**Stage 1**). The desugarings `Maxes`, `Collapse` and `Distinct` call `by#e` once per element and compare the `read Order[K]`s with `<=>`; the pseudocode `Sort#` and `Max#` calls `by.cmp(a.get(0), b.get(0))`, which through `OrderBy[T,K]` computes both keys again at every comparison. The two make different calls, so they differ when a call of `by` throws or does not terminate. Options: (a) once per element, in flow order, before any comparison, the key kept next to the element; (b) once per comparison. Recommended: (a), the fewest calls, the desugarings as they stand, and one rule for where an exception of `by#e` propagates: at the index of `e`, before any `.cmp`. Goes in **How `.cmp` and `.hash` are called**; `Sort#`, `Max#` and the merges of **example with sort and limit: one merge tree for every strategy** then compare stored keys. Done when the rule is stated once and every desugaring and pseudocode follows it.
+
+2. **The placement algorithm of `distinct`, `distinctMut`, `mapping`, `set` and `eSet`.**\
+Open in the list of what the Naive stage fixes once (**Stage 1**); `KeySet#by` is only named. To fix: `.hash` once per element, in flow order; `.cmp` between the new key and the kept keys with the same hash, in the order they were kept, stopping at the first `eq`; which answers throw (an `eq` between keys of different hashes is never seen, so never thrown; a `.cmp` that is not antisymmetric is seen only if both directions are called, which this algorithm never does). Also whether `distinctMut` runs the `Distinct` loop of **distinct, distinctMut**, which never calls `.hash`, or the same placement as `distinct`. Recommended: one placement in the runtime for all five, `Distinct` kept as the readable semantics as `Maxes` is for `max`. Goes in **How `.cmp` and `.hash` are called**, **A `by` breaking its contract**, and the primitives list of **Stage 1**. Done when the calls of `.hash` and `.cmp` of the five operations are stated and `Distinct` is marked like `Maxes`.
+
+3. **Positive speculation over `ParRepr` and `ParPod`, operation by operation.**\
+**Modes** says the rule is still to be done, and Stage 1 throws its misuse exception from the shape alone. To write: for each stage and terminal, whether a parallel strategy needs positive speculation to run it after the operations before it (a short-circuit terminal or a `limit` after a fence, an `actor` whose stage after may break, `first` with chunks, ...), and for each such shape over `ParRepr` or `ParPod` whether the flow expression throws, or every strategy falls back to sequential for that part with no exception (**example with sort and limit** describes the fallback, **Modes** the exception; the two must agree). Recommended: throw, since an accepted mode that runs sequentially is the mistake **Sources** describes as most likely a user mistake. Goes next to **Ordering errors**, as a list in the same style, with the shape and the message. Done when the list covers every operation of `Flow` and the Stage 1 checks can be written from it.
+
+4. **Hints.**\
+Open in **Stage 1** and **Chunk sizes**: a hint whose misuse throws is semantics. Options: (a) no hint at Stage 1 but `.suppressOrderingErrors`, and every later hint never throws; (b) name the throwing hints now, with their exceptions. Recommended: (a). Goes in **Chunk sizes** and **Stage 1**. Done when both say so and the open decision line is gone.
+
+5. **Where the shape and the checks live.**\
+Open in **Stage 1**. Options: (a) the flow object keeps the chain as Fearless data (the mode, one step per operation with its lambdas and the `limit` numbers) and the checks are Fearless over it, with two magic predicates: whether a lambda carries `onlyImmCapture` (the backend marks such lambdas with the `OnlyImmCapture` marker interface of the runtime) and whether two elements of the source are identity equal; (b) chain and checks in the runtime. Recommended: (a). Goes in **Stage 1**. Done when the step data type and the two predicates are named there.
+
+6. **How `.sum` reaches the shape.**\
+**Ordering errors** keys **Discarded order** on the argument of `.sum` being a `Nat`, `Byte` or `Num`, but `.sum(sn)` is `sn.sumNumber this`, and the flow object sees an object of unknown type. Options: (a) the base `SumNumber`s of the number types fold through an internal method that records an order blind step, user `SumNumber`s through the plain `fold`; (b) `SumNumber` gets a method declaring order blindness, which user code may claim. Recommended: (a). Goes in **fold, foldAcc, sum, join, last** and **Ordering errors**. Done when the shape of `.sum` is defined by construction.
+
+7. **The execution skeleton of Stage 1.**\
+Not described. To write, in **Stage 1**: a stage returns a new flow object capturing the consumed one and its lambda; the terminal runs the checks over the chain, then drives a `Block.loop` over the source, pushing each element into the first `ActorSink`, each sink running its stage and pushing on to the next; a `Break#` sets a flag the loop reads, so `.first` over `0~~10000000` pulls one element; `fold`, `allToAll` and `forEach` are the three ways the loop ends. Sources: a list with its mode, a counting loop for the ranges, `Flows#` as a list; `Set`, `ESet` and `Map` through their lists. Single use: a flag on the flow object set by the call that consumes it, with a deterministic exception. What stays magic: the sink helper, the two predicates of item 5, and nothing else of the current `Flow` runtime class, which goes. Done when the paragraph exists and names the Fearless types.
+
+8. **Tests as the oracle.**\
+**Stage 1** lists them; to define: the harness for a lambda that does not terminate (a loop with no exit, and the test declaring a timeout, as `testFlowTermination` does), the harness for a `by` breaking its contract, and the list of the examples of this document as test names, each with the indexes at which its lambdas throw. Done when every example has a test name and the two harnesses exist in `testing.fear` or the integration projects.
+
+9. **Message texts.**\
+Every `<HELP ME WITH WORDING>` of this document: **Single use**, the ordering errors, the misuse exceptions of item 3. Written in the style of the Frontend errors: the shape verbatim, what is wrong, the shape to write instead. Can be done one message at a time as the checks are implemented.
+
+10. **`let`: keep or drop.**\
+Open in **let**. `let` is `.list |> cont` with `x#xs` folded into `cont`. Recommended: drop, and keep `allToAll` for the in chain case. Done when **let** says one or the other and `Flow` matches.
+
+11. **Deferred to Stage 3, not needed before.**\
+The sink of `actor` as `mut` or `mutH` (a push inside `Repr.mutate` after a `Break#`; under the sequential strategy **A push after a `Break#`** already decides: the rest of the call runs); `Yield#` and the catch points of **Cancellation: `Yield#`**; the busy marking of **Negative speculation over `ParRepr` and `ParPod`**; the hints that never throw. Listed so that no session spends time on them before Stage 2 exists.
+
+
 ### Stage 2: Sequential
 
 The same semantics, with optimised implementations of the sequential strategy.
