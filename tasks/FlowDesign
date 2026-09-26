@@ -347,7 +347,7 @@ mut .actorMut[S:*,R:*](state: iso S, f: read ActorImplMut[S,E,R]): mut Flow[R];
 ```
 with
 ```
-ActorImpl[S:*,E:*,R]:      { read #(down: mutH ActorSink[R], state: S,      e: E): mut ContinueBreak[Void] }
+ActorImpl[S:*,E:*,R]:      { read #(down: mut ActorSink[R],  state: S,      e: E): mut ContinueBreak[Void] }
 ActorImplMut[S:*,E:*,R:*]: { read #(down: mutH ActorSink[R], state: mutH S, e: E): mut ContinueBreak[Void] }
 ```
 
@@ -360,25 +360,23 @@ This avoids allocating a container for them, and enables more parallelism: each 
 The lambda returns `Continue#` or `Break#`, the same values `Block.loop` uses.
 In a loop, `OuterReturn#v` skips the rest of the enclosing block and makes `v` its result; we use subtyping to ensure `OuterReturn#v` does not typecheck as the result of an `actor` lambda.
 
-**Using the sink and the state:**\
-A `mutH` binding can not be captured by any literal, so the sink, and in `actorMut` the state, appear only as receivers and arguments in the body of the lambda itself, never inside a nested literal: not in a branch of `? {..}`, not in a `.match{..}`, a `.thenDo{..}`, a `|> {..}` or a `.do{..}`. A step that pushes conditionally computes its decision first, as a `Bool` or a `mut Opt`, pushes with `pushOpt`, and answers `Continue#` or `Break#` from that decision; a helper method taking the sink and the state as `mutH` parameters gives a name to what the step needs twice, as the desugarings of `max`, `sortDistinct` and `distinct` do. The desugarings and the examples use
+**Using the sink and the state of `actorMut`:**\
+In `actorMut` the sink and the state are `mutH`, and a `mutH` binding can not be captured by any literal, so they appear only as receivers and arguments in the body of the lambda itself, never inside a nested literal: not in a branch of `? {..}`, not in a `.match{..}`, a `.thenDo{..}`, a `|> {..}` or a `.do{..}`. A step that pushes conditionally computes its decision first, as a `Bool` or a `mut Opt`, pushes with `pushOpt`, and answers `Continue#` or `Break#` from that decision; a helper method taking the sink and the state as `mutH` parameters gives a name to what the step needs twice, as the desugarings of `max`, `sortDistinct` and `distinct` do. In `actor` the sink is `mut` and the state is passed as it is, so both can be used anywhere in the lambda, as the window example does. The desugarings through `actorMut` use
 ```
 IfSome: { #[E:*](b: Bool, e: E): mut Opt[E] -> b ?[mut Opt[E]]{ .then -> Opts#e; .else -> {} } }
 ```
 
 **A push after a `Break#`:**\
-A stage after the actor may return `Break#` on an element the actor pushed while the actor call that pushed it is still running: the elements of a `flatMapMut` expansion after the one that fills a `limit`, or the code between two pushes. Nothing after that push can affect what the whole flow expression returns, so a push that a stage after answers with `Break#`, and every push after it, is a cancellation point: it stops the call, as `Yield#` does in a speculative call (see **Cancellation: `Yield#`**), and nothing after it runs, in every strategy, the sequential strategy included. This is what the `return` inside the loops of the pseudocode does (see **flatMap then flatMap**). An implementation that lets the call go on and drops its pushes runs code the sequential strategy never runs, and its exceptions and non termination become observable: with the actor ``{down, s, e -> Block#(down.push#(down, e), Error.msg`after`, Continue#)}`` before `.limit 1 .list`, the whole flow expression returns the list holding the element at index `0` and never throws `after`. The desugaring of `flatMapMut` relies on this: the `forEach` pushing the expansion is stopped at the push after the break, through the nested flow (see **Implementation pitfalls**). Under pipeline parallelism the actor node may be past the push when the break arrives: over `Par` that is positive speculation, with the usual holding; over `ParRepr` and `ParPod` it is not allowed, so an actor whose stage after may break runs in lockstep with it.
-
-A push can not be inside `Repr.mutate` or `IsoPod.mutate`, where stopping the call would skip the invariant check and leave an object the caller keeps using half mutated (see **Implementation pitfalls**): the sink is `mutH` in both signatures, and a `mutH` reference can not be captured by the lambda passed to `mutate`, nor by any other.
+A stage after the actor may return `Break#` on an element the actor pushed while the actor call that pushed it is still running: the elements of a `flatMapMut` expansion after the one that fills a `limit`, or the code between two pushes. That call is one the sequential strategy makes, and it completes: a push after the break drops its element, the rest of the call runs, and what it throws or whether it terminates is part of what the whole flow expression returns; no element is pulled once it has returned. With the actor ``{down, s, e -> Block#(down.push#(down, e), Error.msg`after`, Continue#)}`` before `.limit 1 .list`, the whole flow expression throws `after`. A code generator inlining the actor body lets the call finish and drops its later pushes; the `return` inside the loops of the pseudocode is legal where nothing the sequential strategy runs follows the push in the same call, as in the finished list of a `flatMap` expansion (see **flatMap then flatMap**) and in the actor of `limit` itself. Under pipeline parallelism the actor node may already be running the calls on the elements after it when the break arrives: those calls are positive speculation, cancelled as speculative calls are (see **Cancellation: `Yield#`**) over `Par`, with the usual holding, and not allowed over `ParRepr` and `ParPod`, so an actor whose stage after may break runs in lockstep with it.
 
 **Why two different type signatures:**\
 Many other approaches do 'something' if the sink is emitted as an element.
 In Java, with gatherers, the results are unpredictable, depending on implementation details and differing between parallel and sequential flows.
 Emitting the sink, or the mutable actor state, is highly counter intuitive, and even a consistent design for it would make parallelisation either unsafe or very limited.
 
-If the emitted elements can be mut, the sink itself, or the mutable actor state, could be emitted as a mut element. In both signatures the sink is `mutH`: it can be pushed to and passed on, never stored, emitted or captured. The state is where the two differ:
-- `actor` does not emit mut elements. Since mut can be assigned to read, read is blocked too and only imm survives, and the state is passed as it is. This simple restriction works in most cases.
-- `actorMut` uses the harder to use but more expressive hygienic types: mut elements can be emitted, but the actor state is sealed as mutH too.
+If the emitted elements can be mut, the sink itself, or the mutable actor state, could be emitted as a mut element. There are two ways to avoid this:
+- `actor` does not emit mut elements. Since mut can be assigned to read, read is blocked too and only imm survives; the sink stays `mut` and the state is passed as it is, and both can be used anywhere in the lambda. This simple restriction works in most cases.
+- `actorMut` uses the harder to use but more expressive hygienic types: mut elements can be emitted, but the actor state and the sink are sealed as mutH, so they can be pushed to, called and passed on, never stored, emitted or captured (see **Using the sink and the state of `actorMut`**).
 To push many elements, like every element of a list, the sink is passed to the `forEach` that takes a hygienic value: `xs.seqFlow.forEach(down, {d, x -> d.push#(d, x)})` (see **forEach**).
 
 **scan:**\
@@ -404,15 +402,13 @@ Some other approaches support a 'window', for example processing a list of numbe
 Lists#(1,2,3,4,5,6,7,8).flow
   .actor[mut Var[List[Nat]], List[Nat]](Vars#[List[Nat]]{}, {down, s, e -> Block#(
     s.set(Trim#(s.get +> e, 3)),
-    down.pushOpt#(down, Full#(s.get, 3)),
+    s.get.size == 3 .thenDo{ down.push#(down, s.get)},
     Continue#
     )})
   .map{..}
   .list
 Trim: { #(w: List[Nat], width: Nat): List[Nat] ->
   w.size > width ? { .then -> w.subList(1); .else -> w } }
-Full: { #(w: List[Nat], width: Nat): mut Opt[List[Nat]] ->
-  w.size == width ?[mut Opt[List[Nat]]]{ .then -> Opts#w; .else -> {} } }
 ```
 Here map sees `[1,2,3]`; `[2,3,4]`; ...`[6,7,8]`.
 The state is a `Var` of an imm `List[Nat]`, accumulating elements to emit them when the window is full; the window itself is imm, so `actor` suffices.
@@ -733,7 +729,7 @@ Composing `f` with `.not` changes no call and no order, so `.none f` throws the 
 `.findFirst` returns `mut Opt[E]`, as `.first` does: the element may be `mut`.
 
 **Decision points:**\
-Decision points are the crux of positive speculation. A decision point is a call of an `actor` or `actorMut` lambda returning `Break#`: after it, no element is pulled, and the call of the stage before it that pushed the element is stopped at that push (see **A push after a `Break#`**). `limit` is the typical decision point because it desugars to such an `actorMut`; the short-circuit terminals and the loose desugaring of `max` do too.
+Decision points are the crux of positive speculation. A decision point is a call of an `actor` or `actorMut` lambda returning `Break#`: after it, no element is pulled; the call of the stage before it that pushed the element completes (see **A push after a `Break#`**). `limit` is the typical decision point because it desugars to such an `actorMut`; the short-circuit terminals and the loose desugaring of `max` do too.
 Positive speculation is running code executed as part of a stage on an element before every decision point after that stage has decided whether that element is pulled.
 
 An `actor` or `actorMut` node never runs out of order: it receives the elements in flow order, and its state can record that order. It can still run with positive speculation, ahead of a decision point after it:
@@ -1948,7 +1944,7 @@ No JDK stream, sequential or parallel, can be the implementation of a flow, nor 
 
 **Cancellation:**
 - `Yield#` cancels by throwing a Java exception that is not an `Info`: no Fearless code can catch it. Every place of the runtime that catches Java exceptions on behalf of Fearless code must let it through: `System.try` (`CapTry`), which otherwise turns it into an `Info` and lets the cancelled call go on, and the memo caches, which otherwise store it and throw it to every caller from then on. A memo body cancelled halfway leaves no entry.
-- `Yield#` has to work wherever user code runs: data parallel tasks, nodes, the calling worker running the terminal, and nested flows. A `Yield#` that works only in data parallel tasks leaves every node uncancellable. A push after a `Break#` cancels the same way (see **A push after a `Break#`**), also through a nested flow: the `forEach` of the desugaring of `flatMapMut` must let it through, as `System.try` does.
+- `Yield#` has to work wherever user code runs: data parallel tasks, nodes, the calling worker running the terminal, and nested flows. A `Yield#` that works only in data parallel tasks leaves every node uncancellable.
 - `Yield#` does nothing inside the body of `Repr.mutate` and `IsoPod.mutate`: cancelling there would skip the invariant check and leave the object half mutated. So a call inside `mutate` can not be cancelled, and nothing may wait for it (see **Termination**).
 
 **Workers:**
