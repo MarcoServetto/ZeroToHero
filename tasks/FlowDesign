@@ -360,6 +360,12 @@ This avoids allocating a container for them, and enables more parallelism: each 
 The lambda returns `Continue#` or `Break#`, the same values `Block.loop` uses.
 In a loop, `OuterReturn#v` skips the rest of the enclosing block and makes `v` its result; we use subtyping to ensure `OuterReturn#v` does not typecheck as the result of an `actor` lambda.
 
+**Using the sink and the state:**\
+A `mutH` binding can not be captured by any literal, so the sink, and in `actorMut` the state, appear only as receivers and arguments in the body of the lambda itself, never inside a nested literal: not in a branch of `? {..}`, not in a `.match{..}`, a `.thenDo{..}`, a `|> {..}` or a `.do{..}`. A step that pushes conditionally computes its decision first, as a `Bool` or a `mut Opt`, pushes with `pushOpt`, and answers `Continue#` or `Break#` from that decision; a helper method taking the sink and the state as `mutH` parameters gives a name to what the step needs twice, as the desugarings of `max`, `sortDistinct` and `distinct` do. The desugarings and the examples use
+```
+IfSome: { #[E:*](b: Bool, e: E): mut Opt[E] -> b ?[mut Opt[E]]{ .then -> Opts#e; .else -> {} } }
+```
+
 **A push after a `Break#`:**\
 A stage after the actor may return `Break#` on an element the actor pushed while the actor call that pushed it is still running: the elements of a `flatMapMut` expansion after the one that fills a `limit`, or the code between two pushes. Nothing after that push can affect what the whole flow expression returns, so a push that a stage after answers with `Break#`, and every push after it, is a cancellation point: it stops the call, as `Yield#` does in a speculative call (see **Cancellation: `Yield#`**), and nothing after it runs, in every strategy, the sequential strategy included. This is what the `return` inside the loops of the pseudocode does (see **flatMap then flatMap**). An implementation that lets the call go on and drops its pushes runs code the sequential strategy never runs, and its exceptions and non termination become observable: with the actor ``{down, s, e -> Block#(down.push#(down, e), Error.msg`after`, Continue#)}`` before `.limit 1 .list`, the whole flow expression returns the list holding the element at index `0` and never throws `after`. The desugaring of `flatMapMut` relies on this: the `forEach` pushing the expansion is stopped at the push after the break, through the nested flow (see **Implementation pitfalls**). Under pipeline parallelism the actor node may be past the push when the break arrives: over `Par` that is positive speculation, with the usual holding; over `ParRepr` and `ParPod` it is not allowed, so an actor whose stage after may break runs in lockstep with it.
 
@@ -398,13 +404,15 @@ Some other approaches support a 'window', for example processing a list of numbe
 Lists#(1,2,3,4,5,6,7,8).flow
   .actor[mut Var[List[Nat]], List[Nat]](Vars#[List[Nat]]{}, {down, s, e -> Block#(
     s.set(Trim#(s.get +> e, 3)),
-    s.get.size == 3 .thenDo{ down.push#(down, s.get)},
+    down.pushOpt#(down, Full#(s.get, 3)),
     Continue#
     )})
   .map{..}
   .list
 Trim: { #(w: List[Nat], width: Nat): List[Nat] ->
   w.size > width ? { .then -> w.subList(1); .else -> w } }
+Full: { #(w: List[Nat], width: Nat): mut Opt[List[Nat]] ->
+  w.size == width ?[mut Opt[List[Nat]]]{ .then -> Opts#w; .else -> {} } }
 ```
 Here map sees `[1,2,3]`; `[2,3,4]`; ...`[6,7,8]`.
 The state is a `Var` of an imm `List[Nat]`, accumulating elements to emit them when the window is full; the window itself is imm, so `actor` suffices.
@@ -503,21 +511,26 @@ Ties stay ties, so the same elements are emitted in the same flow order, and if 
 max has a loose desugaring to sort: a stable sort under `Rev#by` emits the maximal elements before the others, in flow order, and an `actorMut` emits the run of elements tied with the one it pulls at the start:
 ```
 .max by -> this.sort(Rev#by)
-  .actorMut[mut Var[Opt[K]], E](Vars#[Opt[K]]{}, {down, s, e -> by#e |> {o -> s.get.match{
-    .empty  -> Block#(s.set(Opts#(o.close)), down.push#(down, e), Continue#);
-    .some k -> o == k ? {.then -> Block#(down.push#(down, e), Continue#); .else -> Break#}
-    }}})
+  .actorMut[mut Var[Opt[K]], E](Vars#[Opt[K]]{}, {down, s, e -> MaxStep#(down, s, by#e, e)})
+MaxStep: { #[E:*,K](down: mutH ActorSink[E], s: mutH Var[Opt[K]], o: read Order[K], e: E): mut ContinueBreak[Void] ->
+  KeyStep#(down, s, o, e, s.get.match{ .empty -> True; .some k -> o == k }) ? { .then -> Continue#; .else -> Break# } }
+KeyStep: { #[E:*,K](down: mutH ActorSink[E], s: mutH Var[Opt[K]], o: read Order[K], e: E, keep: Bool): Bool -> Block#(
+  s.set(Kept#(s.get, o, keep)),
+  down.pushOpt#(down, IfSome#(keep, e)),
+  keep) }
+Kept: { #[K](old: Opt[K], o: read Order[K], keep: Bool): Opt[K] -> keep ? { .then -> Opts#(o.close); .else -> old } }
 ```
+`KeyStep` records the key and pushes the element when `keep` holds, and returns `keep`; `sortDistinct` shares it.
 The state holds only the key of the element pulled at the start, which is `imm`, so the elements themselves may be `mut`.
+The key comes out of `by#e .close` as a `read K`, and a `read K` is not a `K`, even when `K` is `imm`: this desugaring, and those of `sortDistinct` and `distinct` below, do not typecheck as Fearless today, since the key can not be put into the `Opt[K]` or the `List[K]` of the state. Open decision: `Order[T].close`, and with it the `read T` that `OrderBy[T,K]#` receives, become `read/imm T`, so that the key of an `imm` `K` comes out `imm`; or the stages that keep keys stay primitives of the runtime, where a key is a Java object (see **Stage 1: Naive**). Until it is taken, these desugarings state the semantics and are not Fearless.
 The result is the same when every call of `by` completes successfully, but an optimised implementation may make a different sequence of calls to `by`: a direct max needs about `n` comparisons where the sort needs about `n log n`, and the actor calls `by#e` again on the leading run. Thus, if some of those calls throw or do not terminate, this desugaring is not fully semantically accurate (while the desugaring of min is).
 
 sortDistinct desugars to `.sort by` followed by collapsing each run of tied elements into the element of the run with the smallest index:
 ```
 .sortDistinct by -> this.sort by
-  .actorMut[mut Var[Opt[K]], E](Vars#[Opt[K]]{}, {down, s, e -> by#e |> {o -> Block#(
-    s.get.match{.empty -> True; .some k -> o != k}
-      .thenDo{Block#(s.set(Opts#(o.close)), down.push#(down, e))},
-    Continue#)}})
+  .actorMut[mut Var[Opt[K]], E](Vars#[Opt[K]]{}, {down, s, e -> SortDistinctStep#(down, s, by#e, e)})
+SortDistinctStep: { #[E:*,K](down: mutH ActorSink[E], s: mutH Var[Opt[K]], o: read Order[K], e: E): mut ContinueBreak[Void] ->
+  Block#(KeyStep#(down, s, o, e, s.get.match{ .empty -> True; .some k -> o != k }), Continue#) }
 ```
 The other candidates, `.distinct by .sort by` and `.sort by .distinct by`, do not typecheck when `by` is only an `OrderBy`: `.distinct` needs an `OrderHashBy`. With an `OrderHashBy`, a subtype of `OrderBy`, both typecheck, and return what `.sortDistinct by` returns when every call of `by` completes successfully.
 Sorting before collapsing is what makes the hash unnecessary: after a stable sort the elements `by` ranks together are adjacent, so each element is compared only with the kept element before it in flow order, and the state is a single key rather than a set of all kept keys.
@@ -548,12 +561,16 @@ Collecting the flow into a list and removing the repeated elements there makes i
 **Desugaring:**\
 distinct desugars to an `actorMut` whose state holds the keys kept so far:
 ```
-.distinct by -> this.actorMut[mut Var[List[K]], E](Vars#[List[K]]{}, {down, s, e -> by#e |> {o -> Block#(
-    s.get.flow.none{k -> o == k}
-      .thenDo{Block#(s.set(s.get +> (o.close)), down.push#(down, e))},
-    Continue#)}})
+.distinct by -> this.actorMut[mut Var[List[K]], E](Vars#[List[K]]{}, {down, s, e -> DistinctStep#(down, s, by#e, e)})
+DistinctStep: { #[E:*,K](down: mutH ActorSink[E], s: mutH Var[List[K]], o: read Order[K], e: E): mut ContinueBreak[Void] ->
+  DistinctPush#(down, s, o, e, s.get.flow.none{k -> o == k}) }
+DistinctPush: { #[E:*,K](down: mutH ActorSink[E], s: mutH Var[List[K]], o: read Order[K], e: E, new: Bool): mut ContinueBreak[Void] -> Block#(
+  s.set(Added#(s.get, o, new)),
+  down.pushOpt#(down, IfSome#(new, e)),
+  Continue#) }
+Added: { #[K](ks: List[K], o: read Order[K], add: Bool): List[K] -> add ? { .then -> ks +> (o.close); .else -> ks } }
 ```
-As for max, the state holds only `imm` keys, so the elements themselves may be `mut`.
+As for max, the state holds only `imm` keys, so the elements themselves may be `mut`, and as for max the key comes out of `by#e .close` as a `read K` (see the open decision under **sort, sortDistinct, max, min**).
 This desugaring compares each element with every kept key and never calls `.hash`; a direct implementation keeps the keys in a hash set, calling `.hash` on each element and `.cmp` only on keys with the same hash. The hash is what `OrderHashBy` adds over the `OrderBy` of sortDistinct.
 The result is the same when every call of `by` completes successfully; which calls to `by` are made is left under-specified as for `.sort`, provided the same choice is made in every strategy.
 
@@ -732,9 +749,9 @@ Under pipeline parallelism the `actorMut` node can make its call on the element 
 The stages before an `actor` or `actorMut` that returns `Break#` can run with positive speculation too. In
 ```
 l.flow.map f
-  .actorMut[mut Var[Nat], Nat](Vars#[Nat]0, {down, s, e -> e > 5 ? {
-    .then -> Break#;
-    .else -> Block#(down.push#(down, e), Continue#)}})
+  .actorMut[Void, Nat](Void, {down, _, e -> Block#(
+    down.pushOpt#(down, IfSome#(e <= 5, e)),
+    e > 5 ? { .then -> Break#; .else -> Continue# })})
   .list
 ```
 the map stage can run with data parallelism, ahead of the `actorMut` node, and every call of `f` on an element after the break in flow order is positive speculation.
@@ -1969,7 +1986,7 @@ The primitives, the only operations with a direct implementation:
 - `actorMut`; `actor` is the same code with a different signature;
 - `fold`, the trickling consuming terminal (see **Consuming terminals**);
 - the fences: `++` and `forEach` over a list materialised by `fold`, `sort` as `Sort#` and `max` as `Max#` (see **example with sort and limit: one merge tree for every strategy**), `sortDistinct` as the same tree with its merge;
-- `distinct`, `mapping`, `set` and `eSet` as an `actorMut` or a `fold` placing keys into one hash set, with one fixed placement algorithm.
+- `distinct`, `mapping`, `set` and `eSet` as an `actorMut` or a `fold` placing keys into one hash set, with one fixed placement algorithm; in the runtime, unless the open decision under **sort, sortDistinct, max, min** is taken, since in Fearless a key `by#e .close` is a `read K` that no `Set[K]` accepts.
 Everything else desugars: `map`, `filter`, `flatMap` and `flatMapMut`, `peek`, `mapFilter`, `limit`, `scan`, map with context, `min`, the short-circuit terminals, `list`, `eList`, `foldAcc`, `sum`, `join`, `last`, `size`, `isEmpty`, `get`, `getOpt`, `let`.
 The loose desugarings can not be used: `max` as a sort makes different calls of `by` than `Max#`, and every stage after this one must make the calls `Max#` makes.
 
