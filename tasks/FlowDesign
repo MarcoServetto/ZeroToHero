@@ -347,7 +347,7 @@ mut .actorMut[S:*,R:*](state: iso S, f: read ActorImplMut[S,E,R]): mut Flow[R];
 ```
 with
 ```
-ActorImpl[S:*,E:*,R]:      { read #(down: mut ActorSink[R],  state: S,      e: E): mut ContinueBreak[Void] }
+ActorImpl[S:*,E:*,R]:      { read #(down: mutH ActorSink[R], state: S,      e: E): mut ContinueBreak[Void] }
 ActorImplMut[S:*,E:*,R:*]: { read #(down: mutH ActorSink[R], state: mutH S, e: E): mut ContinueBreak[Void] }
 ```
 
@@ -363,20 +363,16 @@ In a loop, `OuterReturn#v` skips the rest of the enclosing block and makes `v` i
 **A push after a `Break#`:**\
 A stage after the actor may return `Break#` on an element the actor pushed while the actor call that pushed it is still running: the elements of a `flatMapMut` expansion after the one that fills a `limit`, or the code between two pushes. Nothing after that push can affect what the whole flow expression returns, so a push that a stage after answers with `Break#`, and every push after it, is a cancellation point: it stops the call, as `Yield#` does in a speculative call (see **Cancellation: `Yield#`**), and nothing after it runs, in every strategy, the sequential strategy included. This is what the `return` inside the loops of the pseudocode does (see **flatMap then flatMap**). An implementation that lets the call go on and drops its pushes runs code the sequential strategy never runs, and its exceptions and non termination become observable: with the actor ``{down, s, e -> Block#(down.push#(down, e), Error.msg`after`, Continue#)}`` before `.limit 1 .list`, the whole flow expression returns the list holding the element at index `0` and never throws `after`. The desugaring of `flatMapMut` relies on this: the `forEach` pushing the expansion is stopped at the push after the break, through the nested flow (see **Implementation pitfalls**). Under pipeline parallelism the actor node may be past the push when the break arrives: over `Par` that is positive speculation, with the usual holding; over `ParRepr` and `ParPod` it is not allowed, so an actor whose stage after may break runs in lockstep with it.
 
-**A push inside `mutate`:**\
-The sink of `actor` is `mut`, so the `mut` lambda passed to `Repr.mutate` or `IsoPod.mutate` inside an `actor` lambda can capture it and push from there: `r.mutate{x -> down#(x.value)}`. The sink of `actorMut` is `mutH`, which no lambda can capture, so this can not happen in an `actorMut`. A push inside `mutate` that a stage after answers with `Break#` can not stop the call there: as for `Yield#` (see **Implementation pitfalls**), leaving `mutate` halfway skips the invariant check and leaves the object half mutated, and here the object is not garbage: under `seqFlow` or `ParRepr` it is an element the caller keeps using after the whole flow expression has completed successfully. Open decision, between:
-- the sink of `actor` becomes `mutH` too, pushed with `down.push#(down, e)` as in `actorMut`: no push can then be inside `mutate`, and nothing else changes, `actor` keeps emitting `imm R` and taking its state as `S`;
-- the semantics: inside `mutate` a push after a `Break#` drops its element and returns, the rest of `mutate` runs, and the call is stopped when the outermost `mutate` returns, in every strategy.
-Until it is taken, the document assumes the second, which needs no API change; the first removes the case and the runtime code for it.
+A push can not be inside `Repr.mutate` or `IsoPod.mutate`, where stopping the call would skip the invariant check and leave an object the caller keeps using half mutated (see **Implementation pitfalls**): the sink is `mutH` in both signatures, and a `mutH` reference can not be captured by the lambda passed to `mutate`, nor by any other.
 
 **Why two different type signatures:**\
 Many other approaches do 'something' if the sink is emitted as an element.
 In Java, with gatherers, the results are unpredictable, depending on implementation details and differing between parallel and sequential flows.
 Emitting the sink, or the mutable actor state, is highly counter intuitive, and even a consistent design for it would make parallelisation either unsafe or very limited.
 
-If the emitted elements can be mut, the sink itself could be emitted as a mut element. There are two ways to avoid this:
-- `actor` does not emit mut elements. Since mut can be assigned to read, read is blocked too and only imm survives. This simple restriction works in most cases.
-- `actorMut` uses the harder to use but more expressive hygienic types: mut elements can be emitted, but the actor state and the sink are sealed as mutH.
+If the emitted elements can be mut, the sink itself, or the mutable actor state, could be emitted as a mut element. In both signatures the sink is `mutH`: it can be pushed to and passed on, never stored, emitted or captured. The state is where the two differ:
+- `actor` does not emit mut elements. Since mut can be assigned to read, read is blocked too and only imm survives, and the state is passed as it is. This simple restriction works in most cases.
+- `actorMut` uses the harder to use but more expressive hygienic types: mut elements can be emitted, but the actor state is sealed as mutH too.
 To push many elements, like every element of a list, the sink is passed to the `forEach` that takes a hygienic value: `xs.seqFlow.forEach(down, {d, x -> d.push#(d, x)})` (see **forEach**).
 
 **scan:**\
