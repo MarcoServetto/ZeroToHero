@@ -225,9 +225,10 @@ List[E]: {
   mut  .seqFlow: mut Flow[E];
   }
 EList[E]: {
-  imm .flow: mut Flow[imm E];
-  mut .flow(mode: FlowMode[E]): mut Flow[E];//consumes the EList
-  mut .seqFlow: mut Flow[E];//consumes the EList
+  read .flow: mut Flow[read/imm E];
+  imm  .flow: mut Flow[imm E];
+  mut  .flow(mode: FlowMode[E]): mut Flow[E];//consumes the EList
+  mut  .seqFlow: mut Flow[E];//consumes the EList
   }
 Set[E]:  { .flow: mut Flow[E]; }
 ESet[E]: { mut .flow: mut Flow[E]; }//consumes the ESet
@@ -255,7 +256,7 @@ Flow[E:*]: {
   mut .actorMut[S:*,R:*](state: iso S, f: read ActorImplMut[S,E,R]): mut Flow[R];
   mut .allToAll[R:*](f: read F[mut List[E], mut List[R]]): mut Flow[R];
   mut .distinct[K](by: OrderHashBy[imm E,K]): mut Flow[read/imm E];
-  mut .suppressOrderingErrors: mut Flow[E];
+  mut .suppressDeceptiveShapesException: mut Flow[E];
   //desugared stages
   mut .flatMapMut[R:*](f: read F[E, mut List[R]]): mut Flow[R] ->
     this.actorMut[Void, R](Void, {down, _, e ->
@@ -344,7 +345,7 @@ The core methods have a direct implementation. Each is core because no combinati
 - **`actor`** is `actorMut` with a `mut` sink, the state passed as it is, and only `imm` elements sent downstream. The same code implements both.
 - **`allToAll`** collects every element it receives into a list, passes the list to `f` once, and sends downstream the elements of the list `f` returns, in order. It is `.list |> f` followed by flowing the result, but lazy and inside the chain: nothing runs until the terminal is called, the mode and the checks are those of the whole flow expression, and the stages after it are stages of the same chain. It is core because no `actorMut` can keep the elements it has seen: the hygienic state takes only `iso` and `imm` values, and a stage must not keep what it sends downstream (see **A stage sends an element downstream or keeps it, never both**). The list is fresh and owned by the flow, so `f` receives it `mut`; the elements it returns may be those it received, in any order and number, or new ones.
 - **`distinct`** keeps the key `by#e .close` of each kept element, a `read K`, and sends each new element downstream at once, as `read` or `imm`. It is core because no actor can do both. `actorMut` can not keep the key: its hygienic state refuses a `read` key. `actor` can keep it, since its state is passed as it is, but it sends downstream only `imm` elements, and `distinct` sends the element itself, as `read` when it is `read` or `mut`. `actor` can not send `read` elements: its lambda could send its own state as `read`, and the stage after would read it while the next call mutates it. `distinct` never sends its state, which the signature of `actor` can not express.
-- **`suppressOrderingErrors`** records a flag in the chain and sends downstream every element it receives, unchanged; it has no desugaring since the flag is part of the chain.
+- **`suppressDeceptiveShapesException`** records a flag in the chain and sends downstream every element it receives, unchanged; it has no desugaring since the flag is part of the chain.
 
 ### Desugared methods
 
@@ -434,7 +435,7 @@ l.flow.map f .sort by .filter {::>3}.first
 ```
 with `by` an `OrderBy[Nat]`.
 
-Not a deceptive shape exception: a decision point follows the filter.
+It throws no deceptive shape exception: a decision point follows the filter.
 
 If there is a smallest index `j` such that `f#ej` throws or does not terminate, the whole flow expression returns what `f#ej` returns.\
 Otherwise, if some calls of `by.cmp(...)` made by the sorting process throw or do not terminate, let `c` be the one the sorting process makes before the others: the whole flow expression returns what `c` returns.\
@@ -760,7 +761,7 @@ numbers.flow.map{n -> Persons#n}.flatMapMut{p -> Lists#(p, p)}.filter{..}.list
 The lambda of `filter` is a `read F`: it can not mutate what it captured, but it can mutate its `mut` parameter, so two tasks running `filter` on the two copies would race on one `Person`.
 No identity check can find the shared parts, so the elements a `flatMapMut` or an `actorMut` sends downstream from the same input can not be given to different tasks, by any split into chunks, including one after a fence, until a `++` or a `distinct` as below. The list an `allToAll` with an arbitrary `f` returns may hold one `mut` object twice in the same way; `sort`, `max`, `min`, `sortDistinct`, `distinctMut` and `++` are recorded under their own names in the chain and return each element they received once, so they add no sharing, and a data parallel region can start after them unless the elements already shared `mut` objects.
 `++` sends every element downstream as `read` or `imm`, so no stage after it can mutate an element, and elements sharing `mut` objects can go to different tasks.
-`distinct` does the same without a fence when it comes directly after the `actorMut`, or with only stages between that pass the elements to no lambda (`sort`, `max`, `min`, `sortDistinct`, `distinctMut`, `limit`): it sends every element downstream as `read` or `imm`, its `by` receives `imm E` and can not mutate, and the `actorMut` lambda at index `j+1` mutates only its own input, which shares nothing with index `j`; so no task writes a `mut` object while a task after the `distinct` reads its twin. The same holds after a `flatMapMut`, but that shape is a deceptive shape exception: a `flatMap` computes the same and never ends the region. A stage between them whose lambda receives the `mut` element may mutate it at index `j+1` while a task after the `distinct` reads its twin at index `j`, as in `.flatMapMut{p -> Lists#(p, p)}.map{p -> Block#(p.birthday, p)}.distinct{::}.map{p -> p.age}`; then only a fence before the `distinct` restores the split, as in `.sort by .distinct by2`. `flatMap`, `scan` and `actor` also send `read` or `imm` elements downstream, but their lambdas receive the `mut` element and may mutate it, so they never restore it.
+`distinct` does the same without a fence when it comes directly after the `actorMut`, or with only stages between that pass the elements to no lambda (`sort`, `max`, `min`, `sortDistinct`, `distinctMut`, `limit`): it sends every element downstream as `read` or `imm`, its `by` receives `imm E` and can not mutate, and the `actorMut` lambda at index `j+1` mutates only its own input, which shares nothing with index `j`; so no task writes a `mut` object while a task after the `distinct` reads its twin. The same holds after a `flatMapMut`, but that shape throws a deceptive shape exception: a `flatMap` computes the same and never ends the region. A stage between them whose lambda receives the `mut` element may mutate it at index `j+1` while a task after the `distinct` reads its twin at index `j`, as in `.flatMapMut{p -> Lists#(p, p)}.map{p -> Block#(p.birthday, p)}.distinct{::}.map{p -> p.age}`; then only a fence before the `distinct` restores the split, as in `.sort by .distinct by2`. `flatMap`, `scan` and `actor` also send `read` or `imm` elements downstream, but their lambdas receive the `mut` element and may mutate it, so they never restore it.
 
 ### Positive speculation calls over `ParRepr` and `ParPod`
 
@@ -924,7 +925,7 @@ es.map.filter.size//slow
 `` l.flow.map{x -> Error.msg`boom`}.size ``
 
 This code throws. In other approaches this may return the size without running the lambda, since the size is known.
-`l.flow` enables mode `Par`, so this is a deceptive shape exception; the pseudocode below is what runs under `.suppressOrderingErrors`.
+`l.flow` enables mode `Par`, so this throws a deceptive shape exception; the pseudocode below is what runs under `.suppressDeceptiveShapesException`.
 
 Sequential strategy:
 ```
@@ -1527,7 +1528,7 @@ List[Nat] maxMerge(List[Nat] a, List[Nat] b, OrderBy[Nat] by){
 **The tree merged with the stages after it:**\
 The tree is the chosen algorithm, and a stage after the sort may choose a cheaper tree, provided the choice is known before any element is processed, so that it is the same in every strategy.
 With `.limit 3` after the sort, a merge stops once it has kept three elements: the rest of the merged block can not be among those three. Its calls are a prefix of those of the full merge, at most three per merge, with one merge fewer than the elements, and no block holds more than three elements. For a `by` respecting its contract the result is unchanged; for any other `by` the truncated tree is simply the chosen algorithm.
-Under `.suppressOrderingErrors`, `.sort by .first` may become a search for the minimum element with the smallest index; `.sort by .filter{::>3}.first` may sort only the elements passing the filter. Both change which calls of `by.cmp` are made, and both are allowed, like any other sorting algorithm. Sorting only the elements passing the filter also moves the calls of the filter, which is legal only when the filter can neither throw nor fail to terminate (see **sort then filter**).
+Under `.suppressDeceptiveShapesException`, `.sort by .first` may become a search for the minimum element with the smallest index; `.sort by .filter{::>3}.first` may sort only the elements passing the filter. Both change which calls of `by.cmp` are made, and both are allowed, like any other sorting algorithm. Sorting only the elements passing the filter also moves the calls of the filter, which is legal only when the filter can neither throw nor fail to terminate (see **sort then filter**).
 
 **example with sort and limit**\
 `l.flow.map f .sort by .limit 3 .list`\
@@ -1593,9 +1594,9 @@ trickling without the fence would read the street of the person at index 0 befor
 
 A deceptive shape exception is the misuse exception of a sequence of stages/terminals in which a stage is pointless: in that shape, what the stage computes is discarded or overridden by the stages/terminals after it, and removing or moving the stage changes the result only when some call throws or does not terminate; or in which a stage is used in the variant whose extra, the `mut` elements it sends downstream, the stages/terminals after it discard; or which computes what a cheaper sequence computes, as a whole sort to read one element. The shape deceives the reader about what the flow expression does or costs. Such sequences are written by mistake, so the terminal throws a deceptive shape exception: a non deterministic exception naming the shape to write instead, as for the other misuse exceptions. The terminal sees the whole flow expression however it was built, so the check needs nothing from the compiler; a linter can report many of the same deceptive shape exceptions statically.
 A deceptive shape exception is decided by the shape and the mode alone, together with the number type of the argument of `.sum`. It never depends on the values of the arguments: not on whether two `by` or two `p` are the same object or structurally equivalent, not on whether the list passed to `++` is empty, not on the number passed to `limit`. It never looks into the lambdas: not at what a lambda computes, nor at whether it can throw or not terminate. It never depends on the algorithm implementing a stage either: which calls of `.cmp` and `.hash` a stage makes stays under-specified. The optimiser is a separate matter: where the lambdas are simple enough, as `{::>3}` over a `Nat`, which can not throw, the backend may perform a rewrite that is not legal in general, but whether a sequence throws a deceptive shape exception never depends on it: `.sort by .filter{::>3}.list` throws a deceptive shape exception at every stage of the plan.
-<HELP ME WITH WORDING> Example message: ``The flow expression sorts with `.sort by` and then drops elements with `.filter p`: the sort also orders the elements the filter drops. Write `.filter p .sort by`. To keep this order, call `.suppressOrderingErrors` on the flow.``
+<HELP ME WITH WORDING> Example message: ``The flow expression sorts with `.sort by` and then drops elements with `.filter p`: the sort also orders the elements the filter drops. Write `.filter p .sort by`. To keep this order, call `.suppressDeceptiveShapesException` on the flow.``
 
-`.suppressOrderingErrors` works like a hint: it can be called anywhere in the flow expression, conventionally at its beginning with the hints, and it suppresses every deceptive shape exception of the whole flow expression. It can not say which deceptive shape exception it is meant for: that imprecision is accepted, since asking for it at the exact place of each one would make the flow expressions hard to write and to rearrange.
+`.suppressDeceptiveShapesException` works like a hint: it can be called anywhere in the flow expression, conventionally at its beginning with the hints, and it suppresses every deceptive shape exception of the whole flow expression. It can not say which deceptive shape exception it is meant for: that imprecision is accepted, since asking for it at the exact place of each one would make the flow expressions hard to write and to rearrange.
 
 Which stage is pointless follows from what each stage/terminal reads of the sequence it receives, and which variant is pointless from what each stage/terminal reads of the capability of its elements. The properties of a sequence, each including the ones before it: its emptiness, its count, its multiset (the elements, however ordered) and the whole sequence, order and values; and, aside, its first element.
 
@@ -1664,7 +1665,7 @@ es.flow //examples, of course it does not make sense to use those together
   .map{..}.list
 ```
 Then we could have unchecked exceptions on inapplicable hints etc.
-A hint never changes what a flow expression returns, so hints that never throw can be added at Stage 3 with no change of semantics; a hint whose misuse throws is part of the semantics, and must be named, with its exception, before Stage 1 starts. Open decision: which hints throw, if any (item 4 of **Before Stage 1: decisions to take and things to fix**). `.suppressOrderingErrors` works like a hint.
+A hint never changes what a flow expression returns, so hints that never throw can be added at Stage 3 with no change of semantics; a hint whose misuse throws is part of the semantics, and must be named, with its exception, before Stage 1 starts. Open decision: which hints throw, if any (item 4 of **Before Stage 1: decisions to take and things to fix**). `.suppressDeceptiveShapesException` works like a hint.
 
 ## Plan
 
@@ -1673,7 +1674,7 @@ Each stage lands as a sequence of small PRs, each checkable against this documen
 
 ### Stage 1: Naive
 
-No parallelism ever, and the exact semantics of the full design, including every misuse exception about parallelism that can not apply here: the identity check, the onlyImmCapture check, positive speculation calls over `ParRepr` and `ParPod`, the deceptive shape exceptions and `.suppressOrderingErrors`, `.limit 0`, single use.
+No parallelism ever, and the exact semantics of the full design, including every misuse exception about parallelism that can not apply here: the identity check, the onlyImmCapture check, positive speculation calls over `ParRepr` and `ParPod`, the deceptive shape exceptions and `.suppressDeceptiveShapesException`, `.limit 0`, single use.
 The implementation uses the desugarings of **Desugared methods** as much as possible, written in Fearless.
 This stage is the `Flow` of `base` until Stage 2 replaces it; from then on it lives in the tests, as the oracle.
 `Yield#` gets its meaning at Stage 3, the first stage that can cancel anything.
@@ -1704,7 +1705,7 @@ Open in the list of what the Naive stage fixes once; `KeySet#by` is only named. 
 Stage 1 throws its misuse exception from the shape and the mode alone, and **Positive speculation calls over `ParRepr` and `ParPod`** states the rule in general: such a shape throws, whatever fence comes before it. To write: for each stage and terminal, whether a parallel strategy needs positive speculation calls to run it after the stages before it (a short-circuit terminal or a `limit` after a fence, an `actor` whose stage after may break, `first` with chunks, ...), over `ParRepr` or `ParPod`, and before or after a `++`, `flatMap`, `distinct`, `actor` or `scan`. Goes next to **Deceptive shape exceptions**, as a list in the same style, with the shape and the message; the message suggests ending the flow expression with `.list` before that stage/terminal and continuing with `.seqFlow`. Done when the list covers every stage and terminal of `Flow` and the Stage 1 checks can be written from it.
 
 4. **Hints.**\
-Open in **Hints**: a hint whose misuse throws is semantics. Options: (a) no hint at Stage 1 but `.suppressOrderingErrors`, and every later hint never throws; (b) name the throwing hints now, with their exceptions. Recommended: (a). Goes in **Hints**. Done when it says so and the open decision line is gone.
+Open in **Hints**: a hint whose misuse throws is semantics. Options: (a) no hint at Stage 1 but `.suppressDeceptiveShapesException`, and every later hint never throws; (b) name the throwing hints now, with their exceptions. Recommended: (a). Goes in **Hints**. Done when it says so and the open decision line is gone.
 
 5. **Where the shape and the checks live.**\
 Open in **Stage 1: Naive**. Options: (a) the flow object keeps the chain as Fearless data (the mode, one step per stage/terminal with its lambdas and the `limit` numbers) and the checks are Fearless over it, with two magic predicates: whether a lambda carries the onlyImmCapture flag (the backend marks such lambdas with the `OnlyImmCapture` marker interface of the runtime) and whether two elements of the source are identity equal; (b) chain and checks in the runtime. Recommended: (a). Goes in **Stage 1: Naive**. Done when the step data type and the two predicates are named there.
@@ -1835,7 +1836,7 @@ return Max#(vs, by, 2);
 ```
 where `Max#(vs, by, k)` is the tree of `Max#` with this merge.
 
-`.sort by .last` throws a deceptive shape exception, suggesting `.max by .last`. Under `.suppressOrderingErrors` it is the greatest element under `by`, the one with the greatest index among ties, since the sort is stable. A merge tree keeping only the last element of each block makes one call per merge:
+`.sort by .last` throws a deceptive shape exception, suggesting `.max by .last`. Under `.suppressDeceptiveShapesException` it is the greatest element under `by`, the one with the greatest index among ties, since the sort is stable. A merge tree keeping only the last element of each block makes one call per merge:
 ```
 List[Nat] lastMerge(List[Nat] a, List[Nat] b, OrderBy[Nat] by){
   if(by.cmp(a.get(0), b.get(0)).isGt){ return a; }
@@ -1861,7 +1862,7 @@ With `.limit 2` in place of `.first`, the second element has to be compared with
 `l.flow.map f .sort by .filter p .list`\
 with `by` an `OrderBy[Nat]` and `p` a `read F[Nat,Bool]`.
 
-Throws a deceptive shape exception; the results and the first pseudocode below are what runs under `.suppressOrderingErrors`.
+Throws a deceptive shape exception; the results and the first pseudocode below are what runs under `.suppressDeceptiveShapesException`.
 
 If there is a smallest index `j` such that `f#ej` throws or does not terminate, the whole flow expression returns what `f#ej` returns. Otherwise, if some calls of `by` made by the sorting process throw or do not terminate, it returns what the one the sorting process makes before the others returns. Otherwise let `v0,...,v7` be the `f#ej` in `by` order, ties ordered by smallest index: if there is a smallest `k` such that `p#vk` throws or does not terminate, it returns what `p#vk` returns; otherwise it returns, in that order, the `vk` for which `p#vk` completes successfully with `True`.
 ```
@@ -1879,7 +1880,7 @@ Looks legal, is not in general: `.filter p .sort by` sorts fewer elements, and t
 - the flow order after the sort decides which exception of `p` propagates, so an element whose `p` call throws would still have to be sorted;
 - a call of `p` that does not terminate stops the sequential strategy at the smallest index, while the result is decided by the smallest `k` in `by` order: if `p` does not terminate on `f#e0` and throws on an element sorted before `f#e0`, the sequential strategy of the rewrite never returns, while the whole flow expression throws. A parallel strategy could run the calls of `p` as tasks and wait only for those it needs, but the sequential strategy can not, and the choice of which elements are sorted must be the same in every strategy.
 
-So, under `.suppressOrderingErrors`, the rewrite is legal only when `p` can neither throw nor fail to terminate, which the backend knows only from inlined code such as `{::>3}` over a `Nat`; then the backend performs it:
+So, under `.suppressDeceptiveShapesException`, the rewrite is legal only when `p` can neither throw nor fail to terminate, which the backend knows only from inlined code such as `{::>3}` over a `Nat`; then the backend performs it:
 ```
 EList[Nat] vs= EList#;
 for(Nat e: l){
@@ -1889,7 +1890,7 @@ for(Nat e: l){
 return Sort#(vs, by, vs.size);
 ```
 The pseudocode of `.filter p .sort by` is the loop above with `p#v` in place of `v > 3`.
-Under `.suppressOrderingErrors`, running `p` early without changing the calls of `by` is still possible, as in **example with elementwise work after a fence**.
+Under `.suppressDeceptiveShapesException`, running `p` early without changing the calls of `by` is still possible, as in **example with elementwise work after a fence**.
 
 **sort then sort**\
 `l.flow.map f .sort by1 .sort by2 .list`\
@@ -1901,7 +1902,7 @@ EList[Nat] vs= EList#;
 for(Nat e: l){ vs.add(f#e); }
 return Sort#(Sort#(vs, by1, vs.size), by2, vs.size);
 ```
-Throws a deceptive shape exception; the result and the pseudocode above are what runs under `.suppressOrderingErrors`.
+Throws a deceptive shape exception; the result and the pseudocode above are what runs under `.suppressDeceptiveShapesException`.
 Looks legal, is not: the second sort is stable, so for comparators respecting their contract the result is ordered by `by2`, with ties ordered by `by1`, as one `.sort(by2.then by1)`; but the calls of `by1` differ, and a comparator not respecting its contract gives a different order.
 The pseudocode of `.sort(by2.then by1)`:
 ```
@@ -1914,7 +1915,7 @@ return Sort#(vs, by2.then by1, vs.size);
 `l.flow.map f .sort by .sort by .list`, `l.flow.map f .sort by .size`, `l.flow.map f .last`, and `l.flow.map f .size` in mode `Par`\
 with `by` an `OrderBy[Nat]`.
 
-`.sort by .sort by`, `.sort by .size` and `.map f .size` in mode `Par` throw deceptive shape exceptions, `.map f .last` does not; the pseudocode below is what runs under `.suppressOrderingErrors`.
+`.sort by .sort by`, `.sort by .size` and `.map f .size` in mode `Par` throw deceptive shape exceptions, `.map f .last` does not; the pseudocode below is what runs under `.suppressDeceptiveShapesException`.
 
 In each, a stage runs although, for well behaved lambdas, the result would be the same without it: the second sort receives a list already sorted by `by`, `.size` depends neither on the order nor on the results of `f`, and `.last` reads only the last result of `f`.
 None of those stages can be dropped: its calls may throw or not terminate, and `by` is user code that nothing forces to be consistent between the two sorts. This is the reasoning of **example with size**.
