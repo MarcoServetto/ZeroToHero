@@ -1,21 +1,11 @@
 # Flow API design
 
-This document has five parts:
-1. the vocabulary, and the general explanations the rest relies on;
-2. the current design: the signature of every operation, the desugaring of every operation that is not core, and why each core operation can not be desugared;
-3. the design decisions: each place where flows do not behave like other approaches, with its justification and its examples;
-4. the plan to go from this document to an implementation;
-5. notes for whoever works on this document.
-
-## 1 Vocabulary and general explanations
-
 ### Fearless facts
 
 Fearless has two kinds of exceptions: deterministic and non deterministic (like stack overflow).
 They both use an imm Info object instead of an arbitrary exception object.
 `Try#` catches deterministic exceptions anywhere; observing a non deterministic one needs `mut CapTry` from `mut System`.
 `Repr` and `IsoPod` both offer reads and mutation in place (`look`, `mutate`); an `IsoPod` can also be opened once, giving its `iso` back and staying empty from then on.
-A `mutH` or `readH` (hygienic) binding can be called and passed on as an argument, but never stored, returned, emitted or captured by any literal. A `mut` method called on a hygienic receiver takes only `iso` and `imm` arguments, and a `mut` or `read` result comes back `mutH` or `readH`.
 
 ### Properties every part of the language respects
 
@@ -35,7 +25,7 @@ If a method has no mut parameters, any read parameter is also deeply unmodifiabl
 An iso reference refers to an object whose (mutable) ROG is encapsulated under that single reference. The ROG may share imm objects, which are referentially transparent, but every mutable object in it would be garbage collectable if that iso reference were lost.
 
 **Strong exception safety:**\
-The body of a try either completes successfully or leaves the state observable outside of the try unmodified. Enforced by typing: `Try#[R](try: read F[R])`. A `read` lambda can not mutate what it captures, so the body reaches only what it created or the `iso` given to the two-argument form, and `Action` yields the value or the `Info`.
+The body of a try either completes successfully or leaves the state observable outside of the try unmodified. Enforced by the type system: `Try#[R](try: read F[R])`. A `read` lambda can not mutate what it captures, so the body reaches only what it created or the `iso` given to the two-argument form, and `Action` yields the value or the `Info`.
 
 Example: with `rs` of type `mut List[mut Repr[T]]`,
 `Try#{.. rs.flow(ParRepr#).map{r -> r.mutate{...}}.list}`
@@ -48,17 +38,13 @@ This is enforced by careful API design in all the `_Magic!` setups, and is neede
 
 ### Terms
 
-Each term is followed by the words not to use in its place.
-
-Words:
 - 'throw'. Not: raise.
-- 'exception': the still uncaught Info object.
+- 'exception': the still uncaught Info object. Not 'error'.
 - 'catch' is what `Try#` does; 'capture' is what a lambda does.
-- 'garbage collectable': an object no reference leads to. Not: garbage, unreachable.
+- 'garbage collectable': an object no reference leads to. Not: unreachable.
 - 'structurally equivalent'. Not: structurally identical, equal, identical, same.
 - 'identity equal': Java ==; do not use language confusing == and structurally equivalent.
 - 'reach': only about the ROG: an object reaches what is in its ROG.
-- 'pass': give an argument to a call. Not: hand.
 - 'desugar/desugaring'. Not: sugar, sugaring, semantic reduction, reduce, implemented on top of, encoded on top of.
 - 'other approaches': flow and stream libraries of other languages. Not: other libraries, other systems, similar stream APIs.
 
@@ -67,27 +53,24 @@ Flow expressions:
 - 'stage': an operation returning another flow.
 - 'terminal': an operation ending the flow and returning something that is not a flow.
 - 'whole flow expression': a source, its stages and its terminal. Not: this flow.
-- 'chain': what the flow object records of the whole flow expression: the source, its mode and each operation with its arguments. Not: pipeline; pipeline is only pipeline parallelism.
-- 'shape': the chain without the values of its arguments: the sequence of the operations, the mode, and the element types the operations reveal. The operations revealing element types are the mode of the source, the `read` or `imm` elements that `++`, `flatMap`, `distinct`, `actor` and `scan` emit, and the number type of the argument of `.sum`. The chain records no other element type, so a `map` returning an `imm` value reveals nothing.
-- 'over `read` or `imm` elements' (for a stage): the shape shows that no element can lead to a `mut` object existing before the flow: mode `Par`, or a `++`, a `flatMap`, a `distinct`, an `actor` or a `scan` before the stage. A `mut` object a stage creates after that point is reachable from nowhere else.
+- 'chain': what the flow object records of the whole flow expression: the source, its mode and each stage/terminal with its arguments. Not: pipeline; pipeline is only pipeline parallelism.
+- 'shape': the chain without the values of its arguments: the sequence of the stage/terminals. 
 - 'executed as part of the xxx stage' (for example the map stage): user code, provided via a lambda passed to that stage. Do not use general terms like "earlier", "first", "later" etc.
-- 'core operation': an operation with a direct implementation; every other operation desugars to core operations.
-
+- 'core method': a method with a direct implementation; every other flow method desugars to core method.
+- use 'stage/terminal' to mean either a stage or a terminal. Do not use 'operation'.
 Elements and order:
 - 'flow order': the order of the elements arriving at one operation. Not: source order, index order.
-- 'index': the place of an element in the source, as `j` in `ej`; after a `filter`, `flatMap` or `sort` the index of an element is not its place in the flow order.
-- 'emits', 'pulls', 'arrives at': a stage emits an element, the next operation pulls it, and the element arrives at that operation. Not: reach, move, go past, come out, hand on, send downstream, deliver, release.
-- 'trickle': the elements go through the stages one at a time, as the sequential strategy runs them; the work on the element at index `j` comes before any work on the element at index `j+1`, as far as can be observed.
+- 'index': the place of an element in the source, as `j` in `ej`; for example after a `filter`, `flatMap` or `sort` the index of an element is not its place in the flow order.
+- 'send downstream', 'receives': a stage sends elements downstream, the next stage/terminal receive it, Not: pull, push, arrive, reach, move, go past, come out, hand on, deliver, release.
+- 'trickle': the elements go through the stages one at a time, as the sequential strategy runs them; the work on the element processed in flow order `j` comes before any work on the element at flow order `j+1`, as far as it can be observed.
 - 'materialise': collect elements into a list inside the whole flow expression.
-- '1-1 stage': a stage that emits exactly one element for each element it pulls and never stops pulling: `map`, `peek`, `scan`, map with context, and an `actor` or `actorMut` whose lambda pushes exactly once and returns `Continue#` on every path.
 
 Kinds of operations:
-- 'elementwise' stage: `map`, `filter`, `flatMap`, `flatMapMut`, `peek`, `mapFilter`. The output for an element depends only on that element, so any element can run on any worker.
-- 'streaming stateful' stage: `limit`, `scan`, `actor`, `actorMut`, map with context, `distinct`. They need the elements in order and emit as they go.
+- 'elementwise' stage: `map`, `filter`, `flatMap`, `flatMapMut`, `peek`, `mapFilter`.
+- 'streaming stateful' stage: `limit`, `scan`, `actor`, `actorMut`, map with context, `distinct`.
 - 'fence': an operation that emits nothing, and lets no exception of its own propagate, until every stage before it has finished with every element: the stages `allToAll`, `sort`, `sortDistinct`, `max`, `min`, `distinctMut` and `++`, and the terminal `forEach`. Not: fence operation, barrier.
 - 'consuming terminal': `list`, `eList`, `set`, `eSet`, `mapping`, `forEach`, `fold`, `foldAcc`, `size`, `isEmpty`, `get`, `getOpt`, `join`, `sum`, `last`, `let`. Every element passes the whole chain.
-- 'short-circuit terminal': `first`, `any`, `all`, `none`, `findFirst`, `findMap`. They can decide before the end, leaving the elements after the decision in flow order never pulled.
-- 'decision point': a call of an `actor` or `actorMut` lambda returning `Break#`: after it, no element is pulled. `limit` desugars to such an `actorMut`, and the short-circuit terminals desugar to `.limit 1`.
+- 'short-circuit terminal': `first`, `any`, `all`, `none`, `findFirst`, `findMap`. They can decide before the end, leaving the elements after the decision in flow order never processed.
 
 Results and exceptions:
 - 'returns': includes the result value, deterministic exceptions and non termination. Do not use 'produces' 'evaluate into'.
@@ -95,33 +78,29 @@ Results and exceptions:
 - 'held': an exception not yet allowed to propagate out of the flow expression. Not: kept on hold, wait.
 - 'discard': drop a held exception or a computed result for good. Not: never surfaces, never reported.
 - 'cancel': stop a running call from outside, through `Yield#`. Not: terminate; terminate is only used in "does not terminate".
-- 'misuse exception': the non deterministic exception a flow expression throws because of how it is written: the identity check, the `onlyImmCapture` check, positive speculation over `ParRepr` and `ParPod`, the ordering errors. Not: misuse error, mode error.
 - 'identity check': the check over the source of mode `ParRepr` or `ParPod` that no two elements are identity equal.
-- '`onlyImmCapture` flag': the mark the backend puts on each lambda object that captures only `imm` values; visible to the runtime (in Java), not in Fearless.
-- 'ordering error': the misuse exception of a sequence of operations in which a stage is pointless, or used in a variant whose extra nothing reads.
+- 'onlyImmCapture flag': the mark the backend puts on each lambda object that captures only `imm` values.
 
 Strategies:
 - 'mode': `Par`, `ParRepr` or `ParPod`, enabled by the type of the source. Not: execution mode, par mode.
 - 'strategy': how the terminal runs the whole flow expression: the sequential strategy, data parallelism, pipeline parallelism, or a mix of them. Not: mode, shape, parallel shape.
-- 'the sequential strategy': runs the elements through the stages one at a time; every other strategy must be observably equal to it. Not: sequential execution, sequential run, sequential mode.
+- 'sequential strategy': Not: sequential execution, sequential run, sequential mode.
 - 'data parallelism/fork-join': the elements are split into chunks; a task runs one chunk through a sequence of stages; workers execute tasks.
 - 'worker'. Not: thread, core.
-- 'data parallel region': consecutive stages run with data parallelism. Not: parallel region, section.
+- 'data parallel region': consecutive stages (could be a single one) running with data parallelism. Not: parallel region, section.
 - 'pipeline parallelism/nodes': stages run in nodes; a node receives elements in flow order and sends its output to the next node. Elements can be in chunks or not.
 - 'node': one part of pipeline parallelism, as an actor in actor systems. Not: actor, worker; actor is only the `actor` operation, do not use 'actor' as a worker entity to avoid confusion.
-- 'speculative call': a call the sequential strategy may not make, or may make only after a call that throws.
-- 'positive speculation': running code executed as part of a stage on an element before every decision point after that stage has decided whether that element is pulled; the sequential strategy may never pull it. Not: speculative execution, speculate.
-- 'negative speculation': running stages on elements after, in flow order, one whose deterministic exception stops the sequential strategy.
-- 'placement': the part of `distinct`, `distinctMut`, `mapping`, `set` and `eSet` that places each key among the keys already present, calling `.hash` and `.cmp` of `by`.
-- 'merge tree', 'max tree': the fixed order of the calls of `by` made by `sort` and by `max`, described under **The calls of `by`**.
-- 'canonical form': the chain after the rewrites of **Canonical form**, the form a backend generates code from.
+- 'speculative call': a call the sequential strategy may not make.
+- 'positive speculation calls': the calls that could be made by a flow expression that completes successfully in a parallel strategy, but that the same flow expression would not make in a sequential strategy.
+- 'speculation calls': the calls that could be made by a flow expression  in a parallel strategy, but that the same flow expression would not make in a sequential strategy.
+- 'negative speculation calls': speculation calls that are not positive speculation calls. That is, calls that parallelism performs early that would
+be eventually executed if the flow expressions completes successfully; but that could be prevented by an exception or non termination of a former call. 
 
 ### The two kinds of parallelism
 
 **Data parallelism/fork-join:**\
 The iconic map reduce set up: `a.flow.map f1 .filter f2 .list` is divided into chunks, one task per chunk; workers execute some tasks and some are left 'for later'.
 Each task conceptually applies `f1#e |> {x->f2#x .thenDo{acc.append x}}` to each element `e` of its chunk, with an accumulator `acc` that preserves the flow order.
-This is often the favourite strategy.
 
 **Pipeline parallelism/nodes:**\
 What happens in actor systems: `a.flow.map f1 .filter f2 .list` is made of 3 nodes.
@@ -133,17 +112,15 @@ This applies in plenty of cases where data parallelism does not, and it is more 
 
 The semantics is given by multiple descriptions, validated by checking that they all agree:
 1. the simple composition of all the stages and the terminal;
-2. desugaring all flow operations into other operations, until a few core operations remain with an un-optimised but trivially correct direct implementation;
+2. desugaring all flow methods into other methods, until a few core methods remain with an un-optimised but trivially correct direct implementation in pseudocode;
 3. examples of many thorny cases;
-4. translation of full flow expressions into traditional imperative statements.
+4. translation of full flow expressions into traditional imperative statements/pseudocode.
 
 ### Examples and pseudocode
 
 In all the examples `l` is `Lists#(0,1,2,3,4,5,6,7)`, with `ej` its element at index `j`, and `f` and `g` are of type `read F[Nat,Nat]`.
 
-Many examples end with the imperative code an optimising backend could generate for the whole flow expression, under the sequential strategy and under some parallel strategies.
-The pseudocode is Java statements over Fearless expressions. Every lambda written in place in the flow expression is inlined, and the state of an actor becomes local variables; the lambdas the examples leave abstract, such as `f`, `g` and `by`, are called, as in `f#e`. `Opt#` is the empty `Opt`.
-For example, with `ps` a `List[Person]`, `ps.flow.map{::.name}.filter{::.size > 3}.list` is
+Example pseudocode  with `ps` a `List[Person]`, `ps.flow.map{::.name}.filter{::.size > 3}.list` is
 ```
 EList[Str] res= EList#;
 for(Person p: ps){
@@ -154,12 +131,12 @@ for(Person p: ps){
 return res.list;
 ```
 The parallel strategies use a few primitives:
-- `Mailbox[T]`: elements in flow order, possibly followed by one exception. `for(T x: m){..}` waits for each element as it arrives, and throws the exception when it arrives; `m.join` waits for the end of `m`, and throws its exception if any. `m.list` and `m.first` are sequential methods of `Mailbox`, with the obvious implementation in a comment where they first appear. An exception arrives from a mailbox only after every element before it in flow order: this is how the pseudocode holds exceptions.
-- `fork(Range c: Chunks#n){..}` splits the indexes from `0` to `n` into chunks and starts one task per chunk, running the block on some worker. The block sends elements with `out.send(x)`; when it throws, its exception is sent after them. `fork` returns the mailbox of the elements sent by the tasks, task after task in chunk order. `fork(List[T] c: Chunks#m){..}` does the same over the elements of the mailbox `m`, forming each chunk as its elements arrive; an exception arriving in `m` is sent after the elements of the tasks of the chunks before it.
-- `node(in){x, out -> ..}` starts a node receiving the elements of `in`, a list or a mailbox, in flow order, and returns its mailbox `out`. The block runs on each element and sends with `out.send(x)`; it may update the local variables declared just before the node, which no other code uses. When the block throws, or an exception arrives, the node sends the exception and stops. Apart from those passed to methods of the elements, such as `Repr.mutate`, nodes are the only lambdas left in the pseudocode.
-- `Mailbox#` is an empty mailbox the code itself feeds, with `feed.send(x)` and `feed.close`; a node reads it as any other mailbox.
-- Leaving the whole flow expression, with `return` or with an exception, cancels through `Yield#` every task and node still running, and discards what they would send.
-- `Sort#`, `Max#`, `MergeTree#` and `MaxTree#` are the merge tree and the max tree, written out under **The calls of `by`**. `KeySet#by` is a hash set placing its keys with `by.hash` and `by.cmp`; `s.add(x)` returns whether `x` was new. `IdentityCheck#rs` throws a non deterministic exception when two elements of `rs` are identity equal.
+- `m : Mailbox[T]`: elements in flow order, possibly followed by one exception. `for(T x: m){..}` waits for each element as it arrives, and throws the exception when it arrives; `m.join` waits for the end of `m`, and throws its exception if any. `m.list` and `m.first` are sequential methods of `Mailbox`.
+- `fork(Range c: Chunks#n){..}` splits the indexes from `0` to `n` into chunks and starts one task per chunk, running the block on some worker. The block sends elements with `out.send(x)`; a thrown exception moves in the mailbox exactly as a value does. 
+`fork(List[T] c: Chunks#m){..}` does the same over the elements of the mailbox `m`, forming each chunk as its elements arrive.
+//Note: node has been removed since it was just like `fork(List[T] c: Chunks#m) with chunks of size 1.
+- `Mailbox#` is an empty mailbox the code itself feeds, with `feed.send(x)` and `feed.close`.
+- when the pseudocode complete (return or exception), it cancels through `Yield#` every task and node still running.
 
 The flow expression above becomes, with data parallelism:
 ```
@@ -173,10 +150,10 @@ return fork(Range c: Chunks#(ps.size)){
 ```
 and with pipeline parallelism:
 ```
-Mailbox[Str] names= node(ps){p, out -> out.send(p.name)};
-return node(names){name, out -> if(name.size > 3){ out.send(name); }}.list;
+Mailbox[Str] names= fork(Person p: ps){ out.send(p.name) };
+return fork(Str name:names){ if(name.size > 3){ out.send(name); }}.list;
 ```
-
+//HERE
 ## 2 Current design
 
 A whole flow expression is a source, then stages, then one terminal.
