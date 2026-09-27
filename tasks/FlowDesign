@@ -132,9 +132,10 @@ return res.list;
 ```
 The parallel strategies use a few primitives:
 - `m : Mailbox[T]`: elements in flow order, possibly followed by one exception. `for(T x: m){..}` waits for each element as it arrives, and throws the exception when it arrives; `m.join` waits for the end of `m`, and throws its exception if any. `m.list` and `m.first` are sequential methods of `Mailbox`.
-- `fork(Range c: Chunks#n){..}` splits the indexes from `0` to `n` into chunks and starts one task per chunk, running the block on some worker. The block sends elements with `out.send(x)`; a thrown exception moves in the mailbox exactly as a value does. 
+- `fork(List[T] c: Chunks#n){..}` splits the indexes from `0` to `n` into chunks and starts one task per chunk, running the block on some worker. The block sends elements with `out.send(x)`; a thrown exception moves in the mailbox exactly as a value does. 
 `fork(List[T] c: Chunks#m){..}` does the same over the elements of the mailbox `m`, forming each chunk as its elements arrive.
-//Note: node has been removed since it was just like `fork(List[T] c: Chunks#m) with chunks of size 1.
+`node(T c: m){..}` over a mailbox or list m process the elements one at a time. All nodes in a pseudocode section start at the same time, so that they can work in parallel (as soon/as long as they all have elements)
+
 - `Mailbox#` is an empty mailbox the code itself feeds, with `feed.send(x)` and `feed.close`.
 - when the pseudocode complete (return or exception), it cancels through `Yield#` every task and node still running.
 
@@ -151,8 +152,9 @@ return fork(Range c: Chunks#(ps.size)){
 and with pipeline parallelism:
 ```
 Mailbox[Str] names= fork(Person p: ps){ out.send(p.name) };
-return fork(Str name:names){ if(name.size > 3){ out.send(name); }}.list;
+return node(Str name:names){ if(name.size > 3){ out.send(name); }}.list;
 ```
+
 ## Current design
 
 A whole flow expression is a source, then stages, then one terminal.
@@ -173,7 +175,7 @@ EList[E]: {
   mut .seqFlow: mut Flow[E];//consumes the EList
   }
 Set[E]:  { .flow: mut Flow[E]; }
-ESet[E]: { mut .flow: mut Flow[E]; }//drains the ESet
+ESet[E]: { mut .flow: mut Flow[E]; }//consumes the ESet
 Map[K,E]: {
   mut  .flow: mut Flow[KeyElem[K,E]];
   read .flow: mut Flow[KeyElem[K,read/imm E]];
@@ -196,27 +198,19 @@ ParRepr: Sealed{ #[T]: ParRepr[T] }
 ParRepr[T]: FlowMode[mut Repr[T]]
 ParPod: Sealed{ #[T]: ParPod[T] }
 ParPod[T]: FlowMode[mut IsoPod[T]]
-```
-The static type of the source decides the mode:
-- `Par` is enabled where the type shows that every element is `read` or `imm`: `.flow` on a `read List`, an `imm List`, an `imm EList`, a `Set`, an `ESet` (which it drains), a `Map` through a `read` or `imm` reference (`.flow`, `.keys`, `.elems`), and the ranges (`0 =~~= 199`, `.flow(step)`).
-- `xs.flow(mode)` on a `mut List` or a `mut EList` enables the mode passed; the type of `mode` checks the elements: `Par[T:imm,read]`, `ParRepr[T]` over `mut Repr[T]`, `ParPod[T]` over `mut IsoPod[T]`. The flow object keeps the mode passed, and the checks tell the modes apart by its type.
-- No mode is enabled where the elements may be `mut` and no mode is passed: `.seqFlow` on a `mut List` or a `mut EList`, `.flow` on a `mut Map`, and `Flows#(e1, .., en)`, whose elements are `R:*`. Only the sequential strategy runs such a flow expression, up to a `++`.
-
-`.seqFlow` exists only on sources whose elements may be `mut`, such as `List` and `EList`, to flow them as `mut` without a mode. Where the elements are always `read` or `imm`, as in `Set` and `ESet`, `.flow` is the only entry point.
-
-Every strategy, the sequential strategy included, runs the mode checks before any element is sent downstream: the identity check over a source of mode `ParRepr` or `ParPod`, the onlyImmCapture check on every lambda of a flow of mode `ParRepr` or `ParPod` except those of `forEach` and `let`, the check that no stage/terminal of a flow of mode `ParRepr` or `ParPod` needs positive speculation calls, and the ordering exceptions. Each throws a misuse exception.
-
-### Signatures
-
-```
+//HERE, just comments below
 Flow[E:*]: {
+  //core terminals
+  mut .fold[R:*](acc: iso MF[R], f: read F[R,E,R]): R;
+  mut .forEach[A](a: mutH A, f: mut ForEachBody[A,E]): Void;
+  mut .forEach[R:*](f: mut MF[E,Void]): Void;//I suspect this forEach can be sugared over the one above.
   //core stages
   mut .actor[S:*,R](state: iso S, f: read ActorImpl[S,E,R]): mut Flow[imm R];
   mut .actorMut[S:*,R:*](state: iso S, f: read ActorImplMut[S,E,R]): mut Flow[R];
   mut .allToAll[R:*](f: read F[mut List[E], mut List[R]]): mut Flow[R];
-  mut .distinct[K](by: OrderHashBy[imm E,K]): mut Flow[read/imm E];
   //desugared stages
-  mut .map[R:*](f: read F[E, R]): mut Flow[R];
+  mut .distinct[K](by: OrderHashBy[imm E,K]): mut Flow[read/imm E];//distinct can be desugared over actor
+  mut .map[R:*](f: read F[E, R]): mut Flow[R];//all the desugared stages should have their sugar here in place
   mut .filter(f: read F[E, Bool]): mut Flow[E];
   mut .flatMap[R:*](f: read F[E, read List[R]]): mut Flow[read/imm R];
   mut .flatMapMut[R:*](f: read F[E, mut List[R]]): mut Flow[R];
@@ -233,10 +227,6 @@ Flow[E:*]: {
   mut .distinctMut[K](by: OrderHashBy[imm E,K]): mut Flow[E];
   mut ++ (b: read List[E]): mut Flow[read/imm E];
   mut .suppressOrderingErrors: mut Flow[E];
-  //core terminals
-  mut .fold[R:*](acc: iso MF[R], f: read F[R,E,R]): R;
-  mut .forEach[R:*](f: mut MF[E,Void]): Void;
-  mut .forEach[A](a: mutH A, f: mut ForEachBody[A,E]): Void;
   //desugared terminals
   mut .list: mut List[E];
   mut .eList: mut EList[E];
@@ -261,6 +251,8 @@ Flow[E:*]: {
   mut .all(f: read F[E, Bool]): Bool;
   mut .none(f: read F[E, Bool]): Bool;
   }
+
+//Should those be before Flow? so that all the helpers are above?
 ActorImpl[S:*,E:*,R]:      { read #(down: mut ActorSink[R],  state: S,      e: E): mut ContinueBreak[Void] }
 ActorImplMut[S:*,E:*,R:*]: { read #(down: mutH ActorSink[R], state: mutH S, e: E): mut ContinueBreak[Void] }
 ActorSink[E:*]: Sealed { read .push: ActorSinkHelper; read .pushOpt: ActorSinkOptHelper; }
@@ -276,7 +268,19 @@ SumNumber[E:*]: { .sumNumber(mut Flow[E]): E }
 FlowContinuation[E:*,T:*,R:*]: { mut #(x: T, self: mut List[E]): R }
 IfSome: { #[E:*](b: Bool, e: E): mut Opt[E] -> b ?[mut Opt[E]]{ .then -> Opts#e; .else -> {} } }
 ```
+
 `down.push#(down, e)` sends `e` downstream; `down.pushOpt#(down, o)` sends the element of `o` downstream when `o` is not empty.
+
+//Why this text was in the middle of the signature??
+The static type of the source decides the mode:
+- `Par` is enabled where the type shows that every element is `read` or `imm`: `.flow` on a read or imm `List`, a read or imm `EList`, a `Set`, an `ESet`, a read or imm Map, and the ranges (`0 =~~= 199`, `.flow(step)`).
+- `xs.flow(mode)` on a `mut List` or a `mut EList` enables the mode passed; the type of `mode` checks the elements: `Par[T:imm,read]`, `ParRepr[T]` over `mut Repr[T]`, `ParPod[T]` over `mut IsoPod[T]`. The flow object keeps the mode passed, and the checks tell the modes apart by its type.
+- No mode is enabled where the elements may be `mut` and no mode is passed.
+
+`.seqFlow` exists only on sources whose elements may be `mut`, such as `List` and `EList`, to flow them as `mut` without a mode. Where the elements are always `read` or `imm`, as in `Set` and `ESet`, `.flow` is the only entry point.
+
+Every strategy, the sequential strategy included, runs the mode checks before any element is sent downstream: the identity check over a source of mode `ParRepr` or `ParPod`, the onlyImmCapture check on every lambda of a flow of mode `ParRepr` or `ParPod` except those of `forEach` and `let`, the check that no stage/terminal of a flow of mode `ParRepr` or `ParPod` needs positive speculation calls, and the ordering exceptions. Each throws a misuse exception.
+
 
 ### Core methods
 
