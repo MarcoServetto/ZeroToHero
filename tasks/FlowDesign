@@ -831,6 +831,7 @@ No identity check can find the shared parts, so the elements a `flatMapMut` or a
 
 Positive speculation on a `mut Repr` or a `mut IsoPod` of the source is observable: a stage may mutate an element the sequential strategy never pulls, the mutation stays visible after the result, and how many elements are mutated depends on chunk sizes and scheduling. So no strategy runs positive speculation on code that can reach an element of the source as `mut`.
 Over `ParRepr` and `ParPod` the `limit` of a flow expression, and the `limit 1` of a short-circuit terminal, allow parallelism only where they need no positive speculation.
+A flow expression over `ParRepr` or `ParPod` with an operation that could run in parallel only with positive speculation on code that can reach an element of the source as `mut` throws a misuse exception, in every strategy, whatever fence comes before that operation: the mode asks for parallelism that the flow expression can not have. Ending the flow expression before that operation and running the rest with `.seqFlow` states the intent, and costs little: `.list` directly after a fence takes the list the fence has already materialised.
 
 **example with filter, over ParRepr**\
 ```
@@ -890,7 +891,7 @@ We can not accept this.
 This is exactly code screaming 'parallel' that is only safe to execute sequentially,
 so it throws a misuse exception, even when the optimiser would 'want' to run it sequentially.
 
-Inserting a fence before the short-circuit terminal lets the stages before the fence run in parallel with no positive speculation:
+A fence before the short-circuit terminal does not help:
 ```
 rs.flow(ParRepr#)
   .filter{r -> r.mutate{
@@ -899,7 +900,18 @@ rs.flow(ParRepr#)
   .sort {..}
   .any {r->r.look{..}}
 ```
-The elements after `.sort` are still `mut Repr`s, so the `any` can run in parallel only with positive speculation. Whether this flow expression runs the `any` with the sequential strategy or throws the misuse exception is open (see item 3 of **Before Stage 1: decisions to take and things to fix**).
+The fence lets the filter stage run in parallel with no positive speculation, but the elements after `.sort` are still `mut Repr`s and the lambda of `any` can mutate them, so the `any` can run in parallel only with positive speculation: this throws the misuse exception too. Written as
+```
+rs.flow(ParRepr#)
+  .filter{r -> r.mutate{
+    c -> Block#(c++, c.get)}
+    > 3}
+  .sort {..}
+  .list
+  .seqFlow
+  .any {r->r.look{..}}
+```
+the first flow expression runs the filter stage in parallel and ends at the fence, and the second runs the `any` with the sequential strategy, as its source asks.
 
 **example with `++` as a fence before positive speculation, over ParRepr**
 ```
@@ -1746,7 +1758,7 @@ Open in the list of what the Naive stage fixes once. The desugarings `Maxes`, `C
 Open in the list of what the Naive stage fixes once; `KeySet#by` is only named. To fix: `.hash` once per element, in flow order; `.cmp` between the new key and the kept keys with the same hash, in the order they were kept, stopping at the first `eq`; which answers throw (an `eq` between keys of different hashes is never seen, so never thrown; a `.cmp` that is not antisymmetric is seen only if both directions are called, which this algorithm never does). Also whether `distinctMut` runs the `Distinct` loop, which never calls `.hash`, or the same placement as `distinct`. Recommended: one placement in the runtime for all five, `Distinct` kept as the readable semantics as `Maxes` is for `max`. Goes in **The calls of `by`** and **Stage 1: Naive**. Done when the calls of `.hash` and `.cmp` of the five operations are stated and `Distinct` is marked like `Maxes`.
 
 3. **Positive speculation over `ParRepr` and `ParPod`, operation by operation.**\
-Stage 1 throws its misuse exception from the shape alone, and **Positive speculation over `ParRepr` and `ParPod`** states the rule only for a short-circuit terminal right after stages mutating the elements. To write: for each stage and terminal, whether a parallel strategy needs positive speculation to run it after the operations before it (a short-circuit terminal or a `limit` after a fence, an `actor` whose stage after may break, `first` with chunks, ...), and for each such shape over `ParRepr` or `ParPod` whether the flow expression throws, or every strategy runs that part with the sequential strategy with no exception, as in `.filter{..}.sort{..}.any{..}`. Recommended: throw, since an accepted mode that runs sequentially is most likely a user mistake. Goes next to **Ordering errors**, as a list in the same style, with the shape and the message. Done when the list covers every operation of `Flow` and the Stage 1 checks can be written from it.
+Stage 1 throws its misuse exception from the shape alone, and **Positive speculation over `ParRepr` and `ParPod`** states the rule in general: such a shape throws, whatever fence comes before it. To write: for each stage and terminal, whether a parallel strategy needs positive speculation to run it after the operations before it (a short-circuit terminal or a `limit` after a fence, an `actor` whose stage after may break, `first` with chunks, ...), over `ParRepr` or `ParPod`, and before or after a `++`, `flatMap`, `distinct`, `actor` or `scan`. Goes next to **Ordering errors**, as a list in the same style, with the shape and the message; the message suggests ending the flow expression with `.list` before that operation and continuing with `.seqFlow`. Done when the list covers every operation of `Flow` and the Stage 1 checks can be written from it.
 
 4. **Hints.**\
 Open in **Hints**: a hint whose misuse throws is semantics. Options: (a) no hint at Stage 1 but `.suppressOrderingErrors`, and every later hint never throws; (b) name the throwing hints now, with their exceptions. Recommended: (a). Goes in **Hints**. Done when it says so and the open decision line is gone.
