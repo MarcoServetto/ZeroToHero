@@ -175,7 +175,7 @@ KeyElemMapper[A:*,K,E:*]: { .key(A): K; .elem(A): E; }
 ToIso[R]: { mut .iso: iso ToIso[R]; mut .close: mut R; }
 JoinStr[E:*]: { .joinStr(mut Flow[E]): E }
 SumNumber[E:*]: { .sumNumber(mut Flow[E]): E }
-FlowContinuation[E:*,T:*,R:*]: { mut #(x: T, self: mut List[E]): R }
+FlowContinuation[E:*,T:*,R:*]: { mut #(x: T, self: mut EList[E]): R }
 IfSome: { #[E:*](b: Bool, e: E): mut Opt[E] -> b ?[mut Opt[E]]{ .then -> Opts#e; .else -> {} } }
 Rev: { #[T,K](by: OrderBy[T,K]): OrderBy[T] ->
   {t0, t1, m -> by#t0 <=> (by#t1, {.lt -> m.gt; .eq -> m.eq; .gt -> m.lt})} }
@@ -205,14 +205,12 @@ Distinct: { #[E:*,K](xs: mut List[E], by: OrderHashBy[imm E,K]): mut List[E] -> 
     Continue#) } }
   .return{ kept.get.list } }
 DistinctStep: { #[E:*,K](keys: mut Var[read List[read Order[K]]], kept: mut Var[mut EList[E]], o: read Order[K], e: E): Void ->
-  keys.get.flow.none{k -> o == (k.close)} ? { .then -> Block#(keys.set(keys.get +> o), kept.get.add(e), Void); .else -> Void } }
+  keys.get.seqFlow.none{k -> o == (k.close)} ? { .then -> Block#(keys.set(keys.get +> o), kept.get.add(e), Void); .else -> Void } }
 MappingStep: { #[K,E:*](m: mut Map[K,E], k: K, e: E): mut Map[K,E] -> m.containsKey(k) ?[mut Map[K,E]]{
   .then -> Error.msg`Flow.mapping: two elements have the same key`;
   .else -> m.with(k, e) } }
 
 FlowMode[T:*]: Sealed{ .flowMode: FlowMode[T]; }
-Seq: Sealed{ #[T:*]: Seq[T] }
-Seq[T:*]: FlowMode[T]
 ParImm: Sealed{ #[T:imm]: ParImm[T] }
 ParImm[T:imm]: FlowMode[T]
 ParRead: Sealed{ #[T:imm,read]: ParRead[T] }
@@ -222,21 +220,25 @@ ParRepr[T]: FlowMode[mut Repr[T]]
 ParPod: Sealed{ #[T]: ParPod[T] }
 ParPod[T]: FlowMode[mut IsoPod[T]]
 
-List[E]: {
+ToFlow[E:*]: Sealed {
+  read .seqFlow: mut Flow[read/imm E];
+  mut  .seqFlow: mut Flow[E];
+  }
+List[E]: ToFlow[E] {
   imm  .flow: mut Flow[imm E];
   read .flow(mode: FlowMode[read/imm E]): mut Flow[read/imm E];
   mut  .flow(mode: FlowMode[E]): mut Flow[E];
   }
-EList[E]: {
+EList[E]: ToFlow[E] {//mut .seqFlow consumes the EList
   imm  .flow: mut Flow[imm E];
   read .flow(mode: FlowMode[read/imm E]): mut Flow[read/imm E];
   mut  .flow(mode: FlowMode[E]): mut Flow[E];//consumes the EList
   }
-Set[E]:  { .flow: mut Flow[E]; }
-ESet[E]: { mut .flow: mut Flow[E]; }//consumes the ESet
-Map[K,E]: {
-  mut  .flow(mode: FlowMode[KeyElem[K,E]]): mut Flow[KeyElem[K,E]];
-  read .flow(mode: FlowMode[KeyElem[K,read/imm E]]): mut Flow[KeyElem[K,read/imm E]];
+Set[E]:  ToFlow[E] { .flow: mut Flow[E]; }
+ESet[E]: ToFlow[E] { mut .flow: mut Flow[E]; }//mut .seqFlow and mut .flow consume the ESet
+Map[K,E]: ToFlow[mut KeyElem[K,E]] {
+  mut  .flow(mode: FlowMode[mut KeyElem[K,E]]): mut Flow[mut KeyElem[K,E]];
+  read .flow(mode: FlowMode[read KeyElem[K,E]]): mut Flow[read KeyElem[K,E]];
   imm  .flow: mut Flow[KeyElem[K,imm E]];
   mut  .flow[R:*](mode: FlowMode[R], f: read F[K,E,R]): mut Flow[R];
   read .flow[R:*](mode: FlowMode[R], f: read F[K,read/imm E,R]): mut Flow[R];
@@ -244,9 +246,9 @@ Map[K,E]: {
   read .keys: mut Flow[K];
   read .elems(mode: FlowMode[read/imm E]): mut Flow[read/imm E];
   }
-Range[N]: { .flow: mut Flow[N]; .flow(stepSize: N): mut Flow[N]; }
-Opt[E]: { mut .flow(mode: FlowMode[E]): mut Flow[E]; read .flow(mode: FlowMode[read/imm E]): mut Flow[read/imm E]; imm .flow: mut Flow[imm E]; }
-UStr: { .flow: mut Flow[Nat]; }
+Range[N]: ToFlow[N] { .flow: mut Flow[N]; .flow(stepSize: N): mut Flow[N]; }
+Opt[E]: ToFlow[E] { mut .flow(mode: FlowMode[E]): mut Flow[E]; read .flow(mode: FlowMode[read/imm E]): mut Flow[read/imm E]; imm .flow: mut Flow[imm E]; }
+UStr: ToFlow[Nat] { .flow: mut Flow[Nat]; }
 Flows: { #[R:*](r1: R, .., rn: R): mut Flow[R]; }//from 0 to 16 elements, in mode Seq
 
 Flow[E:*]: {
@@ -261,12 +263,12 @@ Flow[E:*]: {
   mut .distinct[K](by: OrderHashBy[imm E,K]): mut Flow[read/imm E];
   mut .suppressDeceptiveShapesException: mut Flow[E];
   //desugared stages
-  mut .flatMapMut[R:*](f: read F[E, mut List[R]]): mut Flow[R] ->
+  mut .flatMapMut[R:*](f: read F[E, mut ToFlow[R]]): mut Flow[R] ->
     this.actorMut[Void, R](Void, {down, _, e ->
-      Block#(f#e .flow(Seq#).for(down, {d, x -> d.push#(d, x)}), Continue#)});
+      Block#(f#e .seqFlow.for(down, {d, x -> d.push#(d, x)}), Continue#)});
   mut .map[R:*](f: read F[E, R]): mut Flow[R] -> this.flatMapMut{e -> Lists#(f#e)};
-  mut .filter(f: read F[E, Bool]): mut Flow[E] -> this.flatMapMut{e -> f#e ?{ .then -> Lists#e; .else -> {} }};
-  mut .flatMap[R:*](f: read F[E, read List[R]]): mut Flow[read/imm R] -> this.flatMapMut{e -> f#e .flow.list};
+  mut .filter(f: read F[E, Bool]): mut Flow[E] -> this.flatMapMut{e -> f#e ?[mut List[E]]{ .then -> Lists#e; .else -> {} }};
+  mut .flatMap[R:*](f: read F[E, read ToFlow[R]]): mut Flow[read/imm R] -> this.flatMapMut{e -> f#e .seqFlow.eList};
   mut .peek(f: read F[E, Void]): mut Flow[E] -> this.map{e -> Block#(f#e, e)};
   mut .mapFilter[R:*](f: read F[E, mut Opt[R]]): mut Flow[R] -> this.map f .filter{o -> o.isSome}.map{o -> o!};
   mut .limit(n: Nat): mut Flow[E] -> n == 0 ? {
@@ -289,7 +291,7 @@ Flow[E:*]: {
   mut .min[K](by: OrderBy[imm E,K]): mut Flow[E] -> this.max(Rev#by);
   mut .sortDistinct[K](by: OrderBy[imm E,K]): mut Flow[E] -> this.sort by .allToAll{xs -> Collapse#(xs, by)};
   mut .distinctMut[K](by: OrderHashBy[imm E,K]): mut Flow[E] -> this.allToAll{xs -> Distinct#(xs, by)};
-  mut ++ (b: read List[E]): mut Flow[read/imm E] -> this.allToAll{xs -> Append#(xs, b)};
+  mut ++ (b: read ToFlow[E]): mut Flow[read/imm E] -> this.allToAll{xs -> Append#(xs, b)};
   //desugared terminals
   mut .for(f: mut MF[E,Void]): Void -> this.for(Vars#[Void]Void, {_, e -> f#e});
   mut .forEach(f: mut MF[E,Void]): Void -> this.forEach(Vars#[Void]Void, {_, e -> f#e});
@@ -298,7 +300,7 @@ Flow[E:*]: {
   mut .eSet[E', K](asImm: mut AsImm[E, E'], by: OrderHashBy[E', K]): mut ESet[E'] ->
     this.fold({ESets#[E', K](by)}, {s, e -> s.add(asImm#e)});
   mut .set[E', K](asImm: mut AsImm[E, E'], by: OrderHashBy[E', K]): Set[E'] -> this.eSet(asImm, by).set;
-  mut .mapping[K,K0,E0:*](by: OrderHashBy[K,K0], kem: read KeyElemMapper[E,K,E0]): mut Map[K,E0] ->
+  mut .mapping[K,K0,E0:*](by: OrderHashBy[K,K0], kem: KeyElemMapper[E,K,E0]): mut Map[K,E0] ->
     this.fold({Maps#[K,K0,E0](by)}, {m, e -> MappingStep#(m, kem.key(e), kem.elem(e))});
   mut .foldAcc[R:*](acc: iso MF[mut FoldAcc[E,R]]): R -> this.fold(acc, {a, e -> a.acc e}).result;
   mut .sum(sn: SumNumber[E]): E -> sn.sumNumber this;
@@ -314,8 +316,8 @@ Flow[E:*]: {
     .then -> Actions.ok(xs.first);
     .else -> Actions.msg("Flow.getOpt: the flow has "+(xs.size)+" elements, but .getOpt needs at most one")}};
   mut .getOpt: mut Opt[E] -> this.tryGetOpt!;
-  mut .let[DR:*,R:*](x: read F[mut List[E],DR], cont: mut FlowContinuation[E,DR,R]): R ->
-    this.list |> {xs -> cont#(x#xs, xs)};
+  mut .let[DR:*,R:*](x: read F[mut EList[E],DR], cont: mut FlowContinuation[E,DR,R]): R ->
+    this.eList |> {xs -> cont#(x#xs, xs)};
   mut .first: mut Opt[E] -> this.limit 1 .getOpt;
   mut .findFirst(f: read F[E, Bool]): mut Opt[E] -> this.filter f .first;
   mut .findMap[R:*](f: read F[E, mut Opt[R]]): mut Opt[R] -> this.mapFilter f .first;
@@ -326,7 +328,7 @@ Flow[E:*]: {
 ```
 
 `down.push#(down, e)` sends `e` downstream; `down.pushOpt#(down, o)` sends the element of `o` downstream when `o` is not empty.
-`Sort#(xs, by, k)` and `Max#(xs, by)` are the merge tree and the max tree of **The calls of `by`**. `Append#(xs, b)` is the fresh list of the elements of `xs` followed by those of `b`, each as `read/imm E`.
+`Sort#(xs, by, k)` and `Max#(xs, by)` are the merge tree and the max tree of **The calls of `by`**. `Append#(xs, b)` is the fresh list of the elements of `xs` followed by those of `b.seqFlow`, each as `read/imm E`.
 
 ### Sources and modes
 
@@ -338,8 +340,13 @@ The mode decides which strategies the terminal may pick:
 
 The source records the mode:
 - `.flow` with no argument exists only where the type of the receiver shows that every element is `imm`, and records `ParImm`: `.flow` on an imm `List`, `EList`, `Map` or `Opt`, on a `Set` and an `ESet`, `.keys` of a `Map`, `UStr`, and the ranges (`0 =~~= 199`, `.flow(step)`).
-- `xs.flow(mode)` on a read or mut `List`, `EList`, `Map` or `Opt` records the mode passed; the type of `mode` checks the elements: `Seq[T]` over any `T`, `ParImm[T:imm]`, `ParRead[T:imm,read]`, `ParRepr[T]` over `mut Repr[T]`, `ParPod[T]` over `mut IsoPod[T]`. The flow object keeps the mode passed, and the checks tell the modes apart by its type.
+- `.seqFlow`, on every `ToFlow`, records `Seq`.
+- `xs.flow(mode)` on a read or mut `List`, `EList`, `Map` or `Opt` records the mode passed; the type of `mode` checks the elements: `ParImm[T:imm]`, `ParRead[T:imm,read]`, `ParRepr[T]` over `mut Repr[T]`, `ParPod[T]` over `mut IsoPod[T]`. The flow object keeps the mode passed, and the checks tell the modes apart by its type.
 - `Flows#` records `Seq`.
+
+A mode is what the chain records, not a Fearless type: `ParImm`, `ParRead`, `ParRepr` and `ParPod` are also the types of the argument of `.flow(mode)`, while `Seq` has no type and is recorded by `.seqFlow` and `Flows#`.
+
+`ToFlow` is the finished collections: `List`, `EList`, `Set`, `ESet`, `Map`, `Opt`, the ranges and `UStr`. `.seqFlow` on a `ToFlow` runs no user code: it always terminates, never throws, and gives the same elements in the same order for structurally equivalent receivers. `ToFlow` is sealed so that no user type can break this, and `Flow` is not a `ToFlow`. The lambdas of `flatMap` and `flatMapMut` return a `ToFlow`, and `++` takes one, so a `Set` or an `Opt` needs no `.list` first; the runtime can iterate a `ToFlow` it receives directly, with no flow object and no copy. `Map` is a `ToFlow[mut KeyElem[K,E]]`: through a `read` map the entries are `read KeyElem`s, whose `.elem` is `read/imm E`; a `KeyElem[K,E]` written with no capability is `imm`, so as a `ToFlow[KeyElem[K,E]]`, or with `Flow[KeyElem[K,read/imm E]]` from `read .flow(mode)`, a `read` map would give `imm` entries whose `imm .elem` is an `imm` view of an element others may mutate; the `read` and `mut` variants of `.flow(mode)` give `read KeyElem` and `mut KeyElem` for the same reason.
 
 Whether an element is `imm` or only `read` is known to the type system alone: the runtime can not tell them apart. So `ParImm` is never discovered from the elements: it comes from `.flow` with no argument, where the type of the receiver shows it, or from `ParImm#`, where the type of `mode` checks it.
 
@@ -514,7 +521,7 @@ When the lambdas are written in place, the flag is checked when compiling and le
 
 **Positive speculation calls over `ParRepr` and `ParPod`:**\
 Over `ParRepr` and `ParPod` the `limit` of a flow expression, and the `limit 1` of a short-circuit terminal, allow parallelism only where they need no positive speculation calls.
-A flow expression over `ParRepr` or `ParPod` with a stage/terminal that could run in parallel only with positive speculation calls on code that can reach an element of the source as `mut` throws a misuse exception, in every strategy, whatever fence comes before that stage/terminal: the mode asks for parallelism that the flow expression can not have. Ending the flow expression before that stage/terminal and running the rest with `.flow(Seq#)` states the intent, and costs little: `.list` directly after a fence takes the list the fence has already materialised.
+A flow expression over `ParRepr` or `ParPod` with a stage/terminal that could run in parallel only with positive speculation calls on code that can reach an element of the source as `mut` throws a misuse exception, in every strategy, whatever fence comes before that stage/terminal: the mode asks for parallelism that the flow expression can not have. Ending the flow expression before that stage/terminal and running the rest with `.seqFlow` states the intent, and costs little: `.list` directly after a fence takes the list the fence has already materialised.
 
 **Over `read` or `imm` elements:**\
 A stage runs over `read` or `imm` elements when the shape and the mode show that no element can lead to a `mut` object existing before the flow: in mode `ParImm` or `ParRead`, or after a `++`, a `flatMap`, a `distinct`, an `actor` or a `scan`, which send their elements downstream as `read` or `imm`. The chain records no other element type, so a `map` returning an `imm` value shows nothing. A `mut` object a stage creates after that point is reachable from nowhere else.
@@ -582,7 +589,7 @@ Close calls that throw no deceptive shape exception:
 - `.distinct by .filter p` and `.sortDistinct by .filter p`: when two elements of one class disagree on `p`, the two orders keep different elements; when `p` rejects the element of a class with the smallest index and accepts one after it, only `.filter p .distinct by` keeps that one.
 - `.map f .limit n`: it makes the same calls as `.limit n .map f`, and neither stage is pointless.
 - `.map f .last`: the last result of `f` is read.
-- `.map f .size` over `mut` elements, as in `persons.flow(Seq#).map{p -> Block#(p.birthday, p)}.size`: `f` may mutate its `mut` element on purpose.
+- `.map f .size` over `mut` elements, as in `persons.seqFlow.map{p -> Block#(p.birthday, p)}.size`: `f` may mutate its `mut` element on purpose.
 - `.peek f .size`, in every mode: the calls of `f` are the purpose of `peek`, checking invariants or printing with `Debug#`, so `peek` is a step of its own in the shape, not the `map` it desugars to.
 - `.map(ctx, g) .size` and `.peek(ctx, f) .size`, in every mode: the context of map with context can carry IO.
 - `.distinct by1 .distinct by2`, `.max by1 .sort by2`, and the other sequences whose second stage is pointless only when the two arguments are equal: the arguments are not part of the shape.
@@ -799,7 +806,7 @@ Many other approaches make positive speculation calls over mutable elements, and
 The misuse exception keeps the result deterministic, and states that the flow expression can not have the parallelism its mode asks for.
 
 **Disadvantages:**\
-The user ends the flow expression before the search and writes the search as a second flow expression with `.flow(Seq#)`.
+The user ends the flow expression before the search and writes the search as a second flow expression with `.seqFlow`.
 
 ### Throwing on deceptive shapes
 
@@ -899,11 +906,11 @@ and run map with context with data parallelism, calling
 `g#(_,e)` in parallel, each with its own `s.iso.close` result.
 Care is needed to throw the same exceptions as the desugaring.
 
-### flatMap takes a list
+### flatMap takes a finished collection
 
 **Fenced expansions:**\
 In most other approaches the lambda of `.flatMap` returns a flow, and this subtly interacts with fences/trickle down/lazy.
-Our lambda returns a list, so it builds its whole expansion before sending any element of it downstream:
+Our lambda returns a `ToFlow`, a finished collection, so it builds its whole expansion before sending any element of it downstream:
 ```
 Lists#(Lists#("aa","bbb"), Lists#("c","poison","dd"), Lists#("e"))
   .flow
@@ -920,8 +927,8 @@ Where the lambda returns the inner flow instead, without the final `.list`, the 
 In our approach, any inner flow in the lambda is normal code, run in parallel when possible under the same rules as any other code.
 
 **flatMap and flatMapMut:**\
-`.flatMap` takes a `read` list and sends its elements downstream as `read` or `imm`, as `++` does; the list of `.flatMapMut` is `mut`, since the elements of a `read` list are `read`.
-`.flatMap` accepts every lambda `.flatMapMut` accepts, since a `mut List[R]` is a `read List[R]`, and computes the same.
+`.flatMap` takes a `read ToFlow` and sends its elements downstream as `read` or `imm`, as `++` does; the `ToFlow` of `.flatMapMut` is `mut`, since the elements of a `read` collection are `read`.
+`.flatMap` accepts every lambda `.flatMapMut` accepts, since a `mut ToFlow[R]` is a `read ToFlow[R]`, and computes the same.
 The restricted signature allows more parallelism: no stage after it can mutate the elements of `.flatMap`, so it keeps a data parallel region going, while `.flatMapMut` ends it, since the elements it sends downstream from the same input may share `mut` objects.
 
 ### actor and actorMut
@@ -942,7 +949,7 @@ Sending the sink, or the mutable actor state, downstream is highly counter intui
 If the elements sent downstream can be mut, the sink itself, or the mutable actor state, could be sent downstream as a mut element. There are two ways to avoid this:
 - `actor` does not send mut elements downstream. Since mut can be assigned to read, read is blocked too and only imm survives; the sink stays `mut` and the state is passed as it is, and both can be used anywhere in the lambda. This simple restriction works in most cases.
 - `actorMut` uses the harder to use but more expressive hygienic types: mut elements can be sent downstream, but the actor state and the sink are sealed as `mutH`. A `mutH` binding can be called and passed on as an argument, but never stored, returned, sent downstream or captured by any literal. A `mut` method called on a hygienic receiver takes only `iso` and `imm` arguments, and a `mut` or `read` result comes back `mutH` or `readH`.
-To send many elements downstream, like every element of a list, the sink is passed to the `for` that takes a hygienic value: `xs.flow(Seq#).for(down, {d, x -> d.push#(d, x)})`.
+To send many elements downstream, like every element of a list, the sink is passed to the `for` that takes a hygienic value: `xs.seqFlow.for(down, {d, x -> d.push#(d, x)})`.
 
 **Using the sink and the state of `actorMut`:**\
 In `actorMut` the sink and the state are `mutH`, and a `mutH` binding can not be captured by any literal, so they appear only as receivers and arguments in the body of the lambda itself, never inside a nested literal: not in a branch of `? {..}`, not in a `.match{..}`, a `.thenDo{..}`, a `|> {..}` or a `.do{..}`. A step that sends an element downstream conditionally computes its decision first, as a `Bool` or a `mut Opt`, sends it with `pushOpt`, and answers `Continue#` or `Break#` from that decision; `IfSome` computes such a `mut Opt`, and a helper method taking the sink and the state as `mutH` parameters gives a name to what the step needs twice. A stage that has to keep a `read` key or a `mut` element across its calls can not be an `actorMut` at all, and should not: a stage sends an element downstream or keeps it, never both. In `actor` the sink is `mut` and the state is passed as it is, so both can be used anywhere in the lambda, as the window example does.
@@ -1064,12 +1071,12 @@ The result is the same when every call of `by` completes successfully; which cal
 It is useful both in the modes and to start data parallelism after the fact.
 After the `++` every element is `read` or `imm` and the stages before it have finished, so nothing the stages after it can reach is still being mutated: even if the receiver is in mode `Seq`, the stages after the `++` can run data parallel on all the elements, of the receiver and of `b`.
 This starts data parallelism after a stage run with the sequential strategy:
-`persons.flow(Seq#).map{p->p.computeDNA}++{}.map{..}.list`
+`persons.seqFlow.map{p->p.computeDNA}++{}.map{..}.list`
 This is arguably not the most readable code, but appending the empty list gives type safe knowledge that the second map can be data parallel.
 
 It is the fence, not the types alone, that makes this sound. Two persons of `persons` can share one `mut Address`, and in
 ```
-persons.flow(Seq#).map{p -> Block#(p.moveTo(p.name), p)} ++ {} .map{q -> q.address.street}.list
+persons.seqFlow.map{p -> Block#(p.moveTo(p.name), p)} ++ {} .map{q -> q.address.street}.list
 ```
 trickling without the fence would read the street of the person at index 0 before the person at index 1 moves, while a parallel strategy could read it after that move. With the fence, both streets are read after every move, in every strategy.
 
@@ -1165,14 +1172,14 @@ Let is the most unusual method: it declares a local variable in the middle of a 
 ```
 es.flow.map{i -> Persons#(..)}
   .let stuff = {listUpToNow -> ..}
-  .flow(Seq#)
+  .seqFlow
   .map{..}
   .list
 ```
 `let` is a terminal, not a core method.
 The elements are needed twice and a flow consumes once, so they are materialised here.
 Passing on the list rather than a flow makes that visible and allows parallelism:
-the user calls `.flow(mode)` on it.
+the user calls `.seqFlow` or `.flow(mode)` on it.
 Where `x` only reads, `let` does what `allToAll` does, but as a terminal: the flow after it is a new flow expression, with its own mode and checks. `l.flow.map f .allToAll{xs -> PlusTotal#(xs)}.list` computes the total and adds it to each element inside one chain, where the example below starts a second one. What is left to `let` is a continuation that mutates what it captured or returns something that is not a flow, and that is `.list |> cont`, with `x#xs` folded into `cont`. Open decision: keep `let` with that desugaring, or drop it.
 
 ### Short-circuit terminals
@@ -1465,7 +1472,7 @@ rs.flow(ParRepr#)
     > 3}
   .sort {..}
   .list
-  .flow(Seq#)
+  .seqFlow
   .any {r->r.look{..}}
 ```
 the first flow expression runs the filter stage in parallel and ends at the fence, and the second runs the `any` with the sequential strategy, as its source asks.
@@ -1715,8 +1722,8 @@ The calling worker runs `b` in flow order as it receives the results of `a`. An 
 ```
 l.flow
   .map f
-  .let[Nat, mut List[Nat]] total = {xs -> xs.flow.sum 0}
-  .flow
+  .let[Nat, mut List[Nat]] total = {xs -> xs.seqFlow.sum 0}
+  .flow(ParImm#)
   .map{n -> n + total}
   .list
 ```
@@ -1750,7 +1757,7 @@ return fork(Range c: Chunks#(xs.size)){
 ```
 The sum runs only once every call of `f` has returned, as `let` passes the whole list to its lambda.
 
-With `{xs -> xs.flow.fold({0}, {a, x -> a.aluAddWrap x})}` in place of `{xs -> xs.flow.sum 0}`, the sum can not throw or fail to terminate, so it runs inside the loop of `f`, and the loop computing `total` disappears:
+With `{xs -> xs.seqFlow.fold({0}, {a, x -> a.aluAddWrap x})}` in place of `{xs -> xs.seqFlow.sum 0}`, the sum can not throw or fail to terminate, so it runs inside the loop of `f`, and the loop computing `total` disappears:
 ```
 EList[Nat] xs= EList#;
 Nat total= 0;
@@ -1896,7 +1903,7 @@ Open in the list of what the Naive stage fixes once. The desugarings `Maxes`, `C
 Open in the list of what the Naive stage fixes once; `KeySet#by` is only named. To fix: `.hash` once per element, in flow order; `.cmp` between the new key and the kept keys with the same hash, in the order they were kept, stopping at the first `eq`; which answers throw (an `eq` between keys of different hashes is never seen, so never thrown; a `.cmp` that is not antisymmetric is seen only if both directions are called, which this algorithm never does). Also whether `distinctMut` runs the `Distinct` loop, which never calls `.hash`, or the same placement as `distinct`. Recommended: one placement in the runtime for all five, `Distinct` kept as the readable semantics as `Maxes` is for `max`. Goes in **The calls of `by`** and **Stage 1: Naive**. Done when the calls of `.hash` and `.cmp` of the five methods are stated and `Distinct` is marked like `Maxes`.
 
 3. **Positive speculation calls over `ParRepr` and `ParPod`, stage by stage.**\
-Stage 1 throws its misuse exception from the shape and the mode alone, and **Positive speculation calls over `ParRepr` and `ParPod`** states the rule in general: such a shape throws, whatever fence comes before it. To write: for each stage and terminal, whether a parallel strategy needs positive speculation calls to run it after the stages before it (a short-circuit terminal or a `limit` after a fence, an `actor` whose stage after may break, `first` with chunks, ...), over `ParRepr` or `ParPod`, and before or after a `++`, `flatMap`, `distinct`, `actor` or `scan`. Goes next to **Deceptive shape exceptions**, as a list in the same style, with the shape and the message; the message suggests ending the flow expression with `.list` before that stage/terminal and continuing with `.flow(Seq#)`. Done when the list covers every stage and terminal of `Flow` and the Stage 1 checks can be written from it.
+Stage 1 throws its misuse exception from the shape and the mode alone, and **Positive speculation calls over `ParRepr` and `ParPod`** states the rule in general: such a shape throws, whatever fence comes before it. To write: for each stage and terminal, whether a parallel strategy needs positive speculation calls to run it after the stages before it (a short-circuit terminal or a `limit` after a fence, an `actor` whose stage after may break, `first` with chunks, ...), over `ParRepr` or `ParPod`, and before or after a `++`, `flatMap`, `distinct`, `actor` or `scan`. Goes next to **Deceptive shape exceptions**, as a list in the same style, with the shape and the message; the message suggests ending the flow expression with `.list` before that stage/terminal and continuing with `.seqFlow`. Done when the list covers every stage and terminal of `Flow` and the Stage 1 checks can be written from it.
 
 4. **Hints.**\
 Open in **Hints**: a hint whose misuse throws is semantics. Options: (a) no hint at Stage 1 but `.suppressDeceptiveShapesException`, and every later hint never throws; (b) name the throwing hints now, with their exceptions. Recommended: (a). Goes in **Hints**. Done when it says so and the open decision line is gone.
@@ -2150,12 +2157,12 @@ for(Nat e: l){
   }
 return res.list;
 ```
-Looks legal, is not: `.flatMap f .flatMap g` looks associative, as `.flatMap{x -> f#x .flow.flatMap g .list}`, but the lambda of `.flatMap` builds its whole list before sending any element of it downstream. The candidate calls `g` on every element of `f#e0`, even after the third element is sent downstream.
+Looks legal, is not: `.flatMap f .flatMap g` looks associative, as `.flatMap{x -> f#x .seqFlow.flatMap g .list}`, but the lambda of `.flatMap` builds its whole list before sending any element of it downstream. The candidate calls `g` on every element of `f#e0`, even after the third element is sent downstream.
 With `f#0` returning `Lists#(1, 2)`, `g#1` returning `Lists#(10, 11, 12)` and `g#2` throwing, the whole flow expression returns `Lists#(10, 11, 12)`, and the candidate throws.
 With a consuming terminal and no decision point after the two stages, the calls and their order are the same, and the rewrite is legal.
 
 **a fence before a short-circuit terminal**\
-`ps.flow(Seq#).map{p -> Block#(p.birthday, p)} ++ {} .first`\
+`ps.seqFlow.map{p -> Block#(p.birthday, p)} ++ {} .first`\
 with `ps` a `mut List[mut Person]`.
 
 If `ps` is empty, the whole flow expression returns `Opt#`. Otherwise, if there is a smallest index `j` such that `pj.birthday` throws or does not terminate, it returns what that call returns. Otherwise every person in `ps` is one year older, and it returns `Opts#p0`, as `read`.
@@ -2351,5 +2358,8 @@ The type system blocks what is subtly unsound for exactly the reasons this docum
 - a `mut` lambda passed to `Repr.mutate` may capture `mut` bindings, and the inner entity still can not leave through them: `acc.add(c.get)` compiles and `acc.add(c)` does not;
 - no Fearless code can stop a call at a `down.push#`, so a rule that did so was not a semantics, and the call completes (see **A `Break#` while the call before it is still running**);
 - a fence that runs its lambda as it receives the elements (**for and forEach**) is making speculative calls, whose exceptions are held like any other.
+- an empty literal `{}` where a `ToFlow` is expected is an instance of `ToFlow` itself, which is sealed and has no body: the empty branch of `filter` names its type, `?[mut List[E]]`;
+- the methods of `KeyElemMapper` are `imm`, so `mapping` takes it `imm`, not `read`;
+- a signature that compiles can still promise too much: `read .flow(mode): mut Flow[KeyElem[K,read/imm E]]` on `Map` compiles, and so does a client taking an `imm` element out of a `read` map of `mut` elements through it; only compiling such a client shows it.
 Each rule above came out of writing the desugaring in Fearless and compiling it; the shapes that compile are in `test_max_shapes.fear` and `flow_actor_shapes.fear` of the standard library.
 It works the other way round too: a scenario claimed to break the design is written in Fearless and compiled before the design changes for it. A `mut CapTry` whose body mutates a captured list, read by the catcher while a speculative call still writes to it, does not compile: the body of `CapTry` is a `read` lambda, as the one of `Try#`. A scenario reasoned about without compiling it can make the design grow a mechanism that answers nothing, as the busy marking of **Notes**.
