@@ -4,8 +4,9 @@
 
 Fearless has two kinds of exceptions: deterministic and non deterministic (like stack overflow).
 They both use an imm Info object instead of an arbitrary exception object.
-`Try#` and `mut CapTry`, from `mut System`, offer the same two methods, with a `read` body, and both uphold strong exception safety; the only difference is whether a non deterministic exception can be caught at all: `Try#` catches only deterministic ones, anywhere.
-`Repr` and `IsoPod` both offer reads and mutation in place (`look`, `mutate`); an `IsoPod` can also be opened once, giving its `iso` back and staying empty from then on.
+`mut CapTry`(from `mut System`) and `Try` both uphold strong exception safety; the only difference is whether a non deterministic exception can be caught at all: `Try#{..}` catches only deterministic exceptions thrown by `..`, `myCapTry#{..}` all of the exceptions thrown by `..`.
+`Repr` and `IsoPod` both offer reads and mutation in place (`look`, `mutate`);
+an `IsoPod` can also be opened once, giving its `iso` back and staying empty from then on.
 
 ### Properties every part of the language respects
 
@@ -33,7 +34,7 @@ compiles only if `rs` is created inside the `{..` part, not captured by the `Try
 Thus running that flow with data parallelism is correct: even if the code executed as part of the map stage throws on the element at index 3 of 7 of `rs`, no non determinism is observable, since all of ROG(rs) is garbage collectable when the exception is caught.
 
 **Identity Transparency:**\
-Without the mut methods of capability objects, we can not distinguish whether two references are identity equal or just structurally equivalent.\
+Without using mut methods of capability objects, we can not distinguish whether two references are identity equal or just structurally equivalent.\
 This is enforced by careful API design in all the `_Magic!` setups, and is needed for Determinism and caching: otherwise one could call something twice and tell re-computation from a cached result, violating Determinism of an outer expression that internally uses caching (and tests for identity).
 
 ### Terms
@@ -63,7 +64,7 @@ Elements and order:
 - 'flow order': the order in which one stage/terminal receives the elements. Not: source order, index order.
 - 'index': the place of an element in the source, as `j` in `ej`; for example after a `filter`, `flatMap` or `sort` the index of an element is not its place in the flow order.
 - 'send downstream', 'receives': a stage sends elements downstream, the next stage/terminal receives them. Not: pull, push, arrive, reach, move, go past, come out, hand on, deliver, release.
-- 'trickle': the elements go through the stages one at a time, as the sequential strategy runs them; the work on the element processed in flow order `j` comes before any work on the element at flow order `j+1`, as far as it can be observed.
+- 'trickle': the elements go through the stages one at a time; the work on the element processed in flow order `j` comes before any work on the element at flow order `j+1`, as far as it can be observed.
 - 'materialise': collect elements into a list inside the whole flow expression.
 
 Kinds of stages/terminals:
@@ -79,8 +80,6 @@ Results and exceptions:
 - 'held': an exception not yet allowed to propagate out of the flow expression. Not: kept on hold, wait.
 - 'discard': drop a held exception or a computed result for good. Not: never surfaces, never reported.
 - 'cancel': stop a running call from outside, through `Yield#`. Not: terminate; terminate is only used in "does not terminate".
-- 'identity check': the check over the source of mode `ParRepr` or `ParPod` that no two elements are identity equal.
-- 'onlyImmCapture flag': the mark the backend puts on each lambda object that captures only `imm` values.
 
 Strategies:
 - 'mode': `Seq`, `ParImm`, `ParRead`, `ParRepr` or `ParPod`, recorded by the source. Not: execution mode, par mode.
@@ -209,7 +208,9 @@ DistinctStep: { #[E:*,K](keys: mut Var[read List[read Order[K]]], kept: mut Var[
 MappingStep: { #[K,E:*](m: mut Map[K,E], k: K, e: E): mut Map[K,E] -> m.containsKey(k) ?[mut Map[K,E]]{
   .then -> Error.msg`Flow.mapping: two elements have the same key`;
   .else -> m.with(k, e) } }
-
+Sort:{#(xs, by, k)....complete here, you can use '...' when it make sense, same for Distinct above, the point is just that there is a fixed algorithm; if it is a family of algorithms wiht fixed set of calls to work in parallel, make sure to write the set of signatures allowing the parallel work and the intended calls contract. }
+Max:{#(xs, by)....complete here same as Sort}
+Append:{#(xs, b) .. this seems simle enough to write down in full?}
 FlowMode[T:*]: Sealed{ .flowMode: FlowMode[T]; }
 ParImm: Sealed{ #[T:imm]: ParImm[T] }
 ParImm[T:imm]: FlowMode[T]
@@ -326,11 +327,18 @@ Flow[E:*]: {
   mut .all(f: read F[E, Bool]): Bool -> this.none{e -> f#e .not};
   }
 ```
+//Again for this """`down.push#(down, e)` sends `e` downstream; `down.pushOpt#(down, o)` sends the element of `o` downstream when `o` is not empty."""
+//just write the needed signatures and the contract.
 
-`down.push#(down, e)` sends `e` downstream; `down.pushOpt#(down, o)` sends the element of `o` downstream when `o` is not empty.
-`Sort#(xs, by, k)` and `Max#(xs, by)` are the merge tree and the max tree of **The calls of `by`**. `Append#(xs, b)` is the fresh list of the elements of `xs` followed by those of `b.seqFlow`, each as `read/imm E`.
+//Ok the above tell us 'What we plan to do'; a few tweaks and it should be good.
+//but it still miss the set of all the calls that will trigger error.
+//A programmer reading the text up to here still can not fully predict all the observable behaviour of any usage of the intended Flow API. We need to get to this level before we move on.
+//--------
+//The text directly below needs to tell why we want to do this, what is the balance of simplicity/predictability/performance/compilation cost we are going for.
 
-### Sources and modes
+//Then we explain 'how we do it': implementation strategies, choices, heuristics etc.
+//This below is part of 'how we do it'
+### Sources and modes// this is not the right content here.
 
 The mode decides which strategies the terminal may pick:
 - `Seq`: only the sequential strategy, over any elements.
@@ -352,12 +360,21 @@ Whether an element is `imm` or only `read` is known to the type system alone: th
 
 Every strategy, the sequential strategy included, runs the mode checks before any element is sent downstream: the identity check over a source of mode `ParRepr` or `ParPod`, the onlyImmCapture check on every lambda of a flow of mode `ParRepr` or `ParPod` except those of `for`, `forEach` and `let`, the check that no stage/terminal of a flow of mode `ParRepr` or `ParPod` needs positive speculation calls, the condition of `.forEach`, and the deceptive shape exceptions. Each throws a misuse exception.
 
+//This is part of What we want to do and need to go above.
 ### Core methods
+The core methods have a direct implementation.
+//List one by one the core methods and describe the behaviour with pseudocode. Limit the English to the mininum, rely on pseudocode. The text below is the opposite of what we need:
+- **`fold`** builds the accumulator
+//'build' is not a defined term
+with `acc#` and calls `f` on it and each element in flow order:
+// (pseudo)code is way more compact than english here
+every call observes what the calls before it left in the accumulator.
+//'observe' hits our observable determinism, but is not what you mean here.
+It is core because it is the one terminal that trickles:
+//False, it is core because we could not figure out a way to desugare it to something else.
+`allToAll` followed by a loop over the list would be a fence.
+//True and the sky is blue, are you tring to explain why it can not be desugared on this particular one? why this one?
 
-The core methods have a direct implementation. Each is core because no combination of the other methods can express it:
-
-- **The sources** are `_Magic!`: they are where the elements come from.
-- **`fold`** builds the accumulator with `acc#` and calls `f` on it and each element in flow order: every call observes what the calls before it left in the accumulator. It is core because it is the one terminal that trickles: `allToAll` followed by a loop over the list would be a fence.
 - **`for(a, f)`** calls its lambda on every element, in flow order, once every stage has finished with every element, passing `a` to every call, as `Block.loop(a, body)` does. It is core because its lambda is `mut`, and `fold` and `allToAll` take only `read` lambdas. `for(f)` is this one with a value its lambda ignores.
 - **`forEach(a, f)`** is `for(a, f)` without the fence: it calls its lambda on each element, in flow order, as soon as the stages have finished with that element; it trickles, as `fold` does. It is core for the same reason as `for`, and it throws a misuse exception unless the condition of `.forEach` holds (see **Misuse exceptions**). `forEach(f)` is this one with a value its lambda ignores.
 - **`actorMut`** runs its lambda on every element in flow order, passing it the sink, the current state and the element; the lambda sends zero or more elements downstream through the sink and returns `Continue#` or `Break#`. It is the only stage that keeps state across its calls and the only stage that can stop receiving elements: every other stage with one of those two abilities desugars to it. The lambda returns `Continue#` or `Break#`, the same values `Block.loop` uses; `OuterReturn#v`, which in a loop skips the rest of the enclosing block and makes `v` its result, does not typecheck as the result of an `actor` lambda. Its state and its sink are `mutH`: see **actor and actorMut**.
@@ -366,7 +383,7 @@ The core methods have a direct implementation. Each is core because no combinati
 - **`distinct`** keeps the key `by#e .close` of each kept element, a `read K`, and sends each new element downstream at once, as `read` or `imm`. It is core because no actor can do both. `actorMut` can not keep the key: its hygienic state refuses a `read` key. `actor` can keep it, since its state is passed as it is, but it sends downstream only `imm` elements, and `distinct` sends the element itself, as `read` when it is `read` or `mut`. `actor` can not send `read` elements: its lambda could send its own state as `read`, and the stage after would read it while the next call mutates it. `distinct` never sends its state, which the signature of `actor` can not express.
 - **`suppressDeceptiveShapesException`** records a flag in the chain and sends downstream every element it receives, unchanged; it has no desugaring since the flag is part of the chain.
 
-### What the signatures do not show
+### What the signatures do not show//redundant now that we have full implementations in either code or pseudocode; some of the text must move in the .. or comments of Sort etc.
 
 **Fences and distinct.**\
 `sort` is stable: elements that `by` ranks together keep their flow order. `max` and `min` send downstream every element tied for the maximum (minimum), in flow order: `Lists#(3,1,3).flow.max{::}.list` is `Lists#(3,3)`. `sortDistinct` keeps, for each class of elements `by` ranks together, the element with the smallest index, in `by` order: `Lists#(3,1,3,2,1).flow.sortDistinct{::}.list` is `Lists#(1,2,3)`. `sort`, `sortDistinct`, `max` and `min` take an `OrderBy`, not an `OrderHashBy`, so they never call `.hash`.
