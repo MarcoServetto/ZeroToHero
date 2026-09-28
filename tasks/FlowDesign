@@ -4,8 +4,7 @@
 
 Fearless has two kinds of exceptions: deterministic and non deterministic (like stack overflow).
 They both use an imm Info object instead of an arbitrary exception object.
-`Try#` catches deterministic exceptions anywhere; observing a non deterministic one needs `mut CapTry` from `mut System`.
-`Try#` and `mut CapTry` offer the same two methods and both uphold strong exception safety, with a `read` body; the only difference is whether a non deterministic exception can be caught at all.
+`Try#` and `mut CapTry`, from `mut System`, offer the same two methods, with a `read` body, and both uphold strong exception safety; the only difference is whether a non deterministic exception can be caught at all: `Try#` catches only deterministic ones, anywhere.
 `Repr` and `IsoPod` both offer reads and mutation in place (`look`, `mutate`); an `IsoPod` can also be opened once, giving its `iso` back and staying empty from then on.
 
 ### Properties every part of the language respects
@@ -419,7 +418,7 @@ A worker may have a smaller stack than the calling worker, so a call may throw a
 ### Cancellation: `Yield#`
 
 `Yield: Sealed { #: Void }`. `Yield#` is a cancellation point: in a speculative call whose result can no longer affect what the whole flow expression returns, it stops that call, and nothing the call computed is used; in every other call, under every strategy, it returns `Void` and does nothing. So it is not observable, and it can sit in any loop or recursion that may run for long, in the lambdas of a flow or in the methods they call. A speculative call that does not terminate releases its worker only through `Yield#`.
-`Yield#` stops a call only on a worker whose whole ROG is garbage collectable except through that worker: nothing can observe what the call leaves half done, inside `Repr.mutate` and `IsoPod.mutate` as anywhere else.
+`Yield#` can stop a call anywhere, inside `Repr.mutate` and `IsoPod.mutate` as elsewhere: a call whose result can no longer affect what the whole flow expression returns mutates only objects the flow created for elements whose results are discarded, or, when the flow throws, objects that are garbage collectable once the exception is caught, since every try has a `read` body; everything else it reads as `read` or `imm`. So nothing can observe what it leaves half done.
 
 ### The calls of `by`
 
@@ -593,7 +592,7 @@ Close calls that throw no deceptive shape exception:
 
 ### Negative speculation calls over `ParRepr` and `ParPod`
 
-Whether the exception is caught by `Try#` or by `mut CapTry`, every element is garbage collectable once it is caught: both bodies are `read` lambdas, so the `Repr`s and `IsoPod`s the flow mutates were created inside the body or came in through its `iso` argument, which the `Action` does not give back. A task still inside `mutate` on one of them after the whole flow expression has returned mutates an object nothing else can reach, so negative speculation calls are unobservable.
+Once the exception is caught, every element is garbage collectable: every try has a `read` body, so the `Repr`s and `IsoPod`s the flow mutates were created inside the body or came in through its `iso` argument, which the `Action` does not give back. A task still inside `mutate` on one of them after the whole flow expression has returned mutates an object nothing else can reach, so negative speculation calls are unobservable.
 
 ## Design decisions
 
@@ -649,7 +648,7 @@ Over `mut` elements, a stage deciding from more than the current element and `im
 ### Parallelism is not observable
 
 It must not be observable whether a potentially parallel flow actually runs in parallel or sequentially: every strategy must be observably equal to the sequential strategy. This is intentionally slightly stronger than what Determinism alone needs.
-'Observable' here means observable without capabilities. Through `mut CapTry` from `mut System` a program can observe non determinism, and through it which strategy ran a flow: which non deterministic exception, if any, a flow throws, as a stack overflow thrown only on a worker with a smaller stack. It can not observe what a parallel strategy mutated: its body is a `read` lambda, as the one of `Try#`, so strong exception safety holds there too. This is fine: Determinism only covers methods with no mut parameters, and using `CapTry` needs `mut System`.
+'Observable' here means observable without capabilities. Through `mut CapTry` from `mut System` a program can observe non determinism, and through it which strategy ran a flow: which non deterministic exception, if any, a flow throws, as a stack overflow thrown only on a worker with a smaller stack. It can not observe what a parallel strategy mutated: strong exception safety holds for it as for `Try#`. This is fine: Determinism only covers methods with no mut parameters, and using `CapTry` needs `mut System`.
 
 This property enables a crucial optimisation: a terminal can check at its start whether all the workers are busy (`allTheCoresBusy`) and, if so, run that flow sequentially.
 
@@ -1146,7 +1145,7 @@ with the flag on every lambda of the stages, and with source elements that are `
 The first two conditions are needed:
 - `read` source elements are not enough. With `m: mut List[mut Person]` and `r: read List[mut Person]` the same list, in `r.flow(ParRead#).map{p -> p.age}.for{a -> Block#(ages.add a, m.get(3).birthday)}`, with `ages` a fresh `mut EList[Nat]`, the `for` lambda captures `m`: running it on the element at index 0 before the map stage runs on index 3 changes the age `ages` holds at index 3.
 - In mode `Seq` the elements can share `mut` objects: two persons can share one `mut Address`, as in the `++` example, and the `for` call on one person can mutate what the map stage reads on the other. Under `ParRepr`, the `for` lambda is exempt from the onlyImmCapture flag and can capture a `p: mut Repr[T]` that is also an element.
-The `for` calls made this way are speculative calls: under the sequential strategy every call of every stage comes before the first `for` call, so a `for` call on the element at index `j` runs before a call of a stage at a greater index that may still throw or not terminate. As for every speculative call, its exception is held until every stage has finished with every element, and it never delays the exception of a stage: the `for` lambda runs in a node of its own, not on the calling worker, the node stops at its first exception and holds it, and the terminal returns as soon as it receives an exception of a stage, whatever the node is doing. Running the `for` lambda on the calling worker as it receives the elements would throw its exception at index `2` where the sequential strategy throws the exception of a stage at index `5`, and would not return at all where that lambda does not terminate at index `2`. Every mutation such a call makes, also while it is still running after the whole flow expression has returned, is on objects that are garbage collectable once the exception of the stage is caught, by `Try#` or by `mut CapTry`: both bodies are `read` lambdas. The same holds for the `mutH` value passed to `.for(a, f)`, such as the sink or the state of an enclosing `actorMut`, whose call has then thrown; the runtime still drops every element sent through a sink after the call that owns it has returned.
+The `for` calls made this way are speculative calls: under the sequential strategy every call of every stage comes before the first `for` call, so a `for` call on the element at index `j` runs before a call of a stage at a greater index that may still throw or not terminate. As for every speculative call, its exception is held until every stage has finished with every element, and it never delays the exception of a stage: the `for` lambda runs in a node of its own, not on the calling worker, the node stops at its first exception and holds it, and the terminal returns as soon as it receives an exception of a stage, whatever the node is doing. Running the `for` lambda on the calling worker as it receives the elements would throw its exception at index `2` where the sequential strategy throws the exception of a stage at index `5`, and would not return at all where that lambda does not terminate at index `2`. Every mutation such a call makes, also while it is still running after the whole flow expression has returned, is on objects that are garbage collectable once the exception of the stage is caught. The same holds for the `mutH` value passed to `.for(a, f)`, such as the sink or the state of an enclosing `actorMut`, whose call has then thrown; the runtime still drops every element sent through a sink after the call that owns it has returned.
 This avoids materialising large ranges, as in
 `0~~10000000 .flow.map{..}.for{..}`
 as long as the `for` lambda keeps up with the stages: the stages can not wait for the node, since one of them may still throw at a greater index, so when the node falls behind their results wait for it in its mailbox, up to the whole materialisation.
@@ -1401,7 +1400,7 @@ rs.flow(ParRepr#)
 ```
 If any two `Repr`s (or `IsoPod`s in an equivalent example) are identity equal, a non deterministic exception is thrown.
 
-If there is a smallest index `j` such that `rj.mutate{c -> Block#(c++, c.get)}` throws or does not terminate, the whole flow expression returns what `rj.mutate{c -> Block#(c++, c.get)}` returns. Thanks to strong exception safety, how many elements in the flow/list have been mutated is not observable: `Try#` and `mut CapTry` both leave every element garbage collectable once the exception is caught.\
+If there is a smallest index `j` such that `rj.mutate{c -> Block#(c++, c.get)}` throws or does not terminate, the whole flow expression returns what `rj.mutate{c -> Block#(c++, c.get)}` returns. Thanks to strong exception safety, how many elements in the flow/list have been mutated is not observable: every element is garbage collectable once the exception is caught.\
 Otherwise the whole flow expression returns the number of indices `j` where `rj` holds more than `3` after being increased, and afterwards every `rj` in `rs` holds one more than `rj` held before the flow.
 
 Every element is increased, the rejected elements included, and `rs` still holds every element, so the increases are readable once the whole flow expression has completed successfully.
