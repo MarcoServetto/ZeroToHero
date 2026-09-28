@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Squares in Squares — the packing game</title>
+<style>
+  :root{
+    --ink:#080d16;          /* deepest ground */
+    --sheet:#0d1524;        /* drafting sheet */
+    --panel:#111b2c;
+    --panel2:#0b1322;
+    --rule:#1e3350;
+    --txt:#d6e5f6;
+    --dim:#7b93b1;
+    --dimmer:#4d6685;
+    --cyan:#6fd3ff;
+    --amber:#ffb454;
+    --green:#7ee3a2;
+    --red:#ff7a72;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;
+    --sans:"Avenir Next","Segoe UI",system-ui,-apple-system,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+  body{background:var(--ink);color:var(--txt);font-family:var(--sans);font-size:13px;
+       -webkit-touch-callout:none;
+       -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  [hidden]{display:none !important}
+
+  /* ---------- shell ---------- */
+  #app{position:fixed;inset:0;display:flex;flex-direction:column}
+  #bar{display:flex;align-items:center;gap:10px;padding:5px 10px;background:var(--panel);
+       border-bottom:1px solid var(--rule);flex:0 0 auto;min-height:40px;overflow:hidden}
+  #brand{display:flex;align-items:baseline;gap:8px;white-space:nowrap;min-width:0;overflow:hidden;flex:0 1 auto}
+  #brand .mark{width:15px;height:15px;border:1.5px solid var(--cyan);position:relative;
+               transform:translateY(2px);flex:0 0 auto}
+  #brand .mark:after{content:"";position:absolute;inset:2.5px;border:1.5px solid var(--amber);
+                     transform:rotate(28deg)}
+  #brand h1{margin:0;font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+            overflow:hidden;text-overflow:ellipsis}
+  #brand .sub{font-family:var(--mono);font-size:10.5px;color:var(--dimmer);letter-spacing:.04em}
+
+  #stats{display:flex;align-items:center;gap:0;margin-left:auto;flex-wrap:nowrap}
+  .stat{padding:0 9px;border-left:1px solid var(--rule);text-align:right;line-height:1.15;flex:0 0 auto}
+  .stat:first-child{border-left:0}
+  .stat .k{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--dimmer)}
+  .stat .v{font-family:var(--mono);font-size:14px;color:var(--txt);font-variant-numeric:tabular-nums}
+  .stat.big .v{font-size:17px;letter-spacing:-.02em}
+  #vTime{color:var(--amber)}
+  #vLeft.done{color:var(--green)}
+  #barbtns{display:flex;gap:4px;margin-left:10px;flex:0 0 auto}
+
+  button{background:#182642;color:var(--txt);border:1px solid var(--rule);border-radius:3px;
+         padding:5px 9px;cursor:pointer;font:inherit;font-size:12px;white-space:nowrap;line-height:1.15}
+  button:hover:not(:disabled){background:#22355a;border-color:#31507f}
+  button:active:not(:disabled){transform:translateY(1px)}
+  button:disabled{opacity:.32;cursor:default}
+  button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--cyan);outline-offset:1px}
+  button.pri{background:#1d4f6b;border-color:#2f7ea3;color:#e8f7ff}
+  button.pri:hover:not(:disabled){background:#26637f}
+  kbd{font-family:var(--mono);font-size:10.5px;background:#070c15;border:1px solid var(--rule);
+      border-radius:2px;padding:1px 4px;color:var(--txt);white-space:nowrap}
+  button.gold{background:#5a4114;border-color:#8a6420;color:#ffe6b8}
+  button.gold:hover:not(:disabled){background:#6d4f19}
+  button.ghost{background:transparent;border-color:transparent;color:var(--dim);padding:6px 8px}
+  button.ghost:hover:not(:disabled){background:#182642;color:var(--txt)}
+
+  /* ---------- main ---------- */
+  #main{flex:1 1 auto;display:flex;min-height:0}
+  #stage{flex:1 1 auto;position:relative;min-width:0;background:var(--ink);touch-action:none}
+  #cv{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:default}
+  #hud{position:absolute;left:10px;bottom:10px;font-family:var(--mono);font-size:11px;
+       color:var(--dim);pointer-events:none;line-height:1.5;text-shadow:0 1px 3px #000}
+  #hud b{color:var(--cyan);font-weight:400}
+  #hud .warn{color:var(--red)}
+  #zoomctl{position:absolute;right:10px;bottom:10px;display:flex;gap:4px;align-items:center}
+  #zoomctl button{padding:5px 9px;font-family:var(--mono)}
+  #zlabel{font-family:var(--mono);font-size:11px;color:var(--dim);min-width:46px;text-align:right}
+  #toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:rgba(10,17,28,.94);
+         border:1px solid var(--rule);border-radius:3px;padding:6px 12px;font-size:12px;
+         opacity:0;transition:opacity .25s;pointer-events:none;max-width:80%;text-align:center}
+  #toast.show{opacity:1}
+  #toast.bad{color:#ffc9c4;border-color:#5e2a2a}
+  #toast.good{color:#c4f5d8;border-color:#2a5e40}
+
+  /* ---------- overlays ---------- */
+  .over{position:fixed;inset:0;background:rgba(4,7,12,.88);display:flex;align-items:center;
+        justify-content:center;z-index:30;padding:16px}
+  .card{background:var(--panel);border:1px solid var(--rule);border-top:2px solid var(--cyan);
+        border-radius:4px;padding:14px 16px;max-width:640px;width:100%;max-height:94vh;overflow:auto}
+  .card h2{margin:0 0 2px;font-size:15px;letter-spacing:.14em;text-transform:uppercase;font-weight:600}
+  .card .lede{color:var(--dim);font-size:11.5px;margin:0 0 10px;line-height:1.45}
+  .card h3{margin:12px 0 5px;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--dimmer);
+           border-bottom:1px solid var(--rule);padding-bottom:5px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  @media (max-height:700px){ .card .lede{display:none} .card{padding:12px 14px} #levels{max-height:26vh} }
+  .grow{flex:1 1 auto}
+  input[type=number],textarea{background:#070c15;color:var(--txt);border:1px solid var(--rule);
+        border-radius:3px;padding:7px;font-family:var(--mono);font-size:12px;width:100%}
+  textarea{height:150px;resize:vertical;white-space:pre;overflow-wrap:normal;overflow-x:auto}
+  input[type=range]{width:100%;accent-color:var(--cyan);height:22px}
+
+  /* level grid: the record table itself */
+  #levels{display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,1fr));gap:3px;
+          max-height:min(30vh,190px);overflow:auto;padding:2px}
+  .lv{background:#0b1322;border:1px solid var(--rule);border-radius:2px;padding:3px 2px;cursor:pointer;
+      text-align:center;line-height:1.15}
+  .lv .n{font-family:var(--mono);font-size:13px;color:var(--txt)}
+  .lv .s{font-family:var(--mono);font-size:8.5px;color:var(--dimmer)}
+  .lv:hover{border-color:#31507f;background:#14203a}
+  .lv.tilt{border-color:#33526e}
+  .lv.tilt .s{color:var(--cyan)}
+  .lv.on{background:#1d4f6b;border-color:var(--cyan)}
+  .lv.on .n,.lv.on .s{color:#eaf8ff}
+
+  .readout{font-family:var(--mono);font-size:11.5px;color:var(--dim);line-height:1.6}
+  .readout b{color:var(--txt);font-weight:400}
+  .readout .hi{color:var(--amber)}
+  .keys{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:11.5px;color:var(--dim);align-items:baseline}
+  .keys kbd{font-family:var(--mono);font-size:10.5px;background:#070c15;border:1px solid var(--rule);
+            border-radius:2px;padding:1px 5px;color:var(--txt);white-space:nowrap}
+  .seg{display:flex;border:1px solid var(--rule);border-radius:3px;overflow:hidden}
+  .seg button{border:0;border-radius:0;border-left:1px solid var(--rule);flex:1 1 auto;background:#0b1322}
+  .seg button:first-child{border-left:0}
+  .seg button.on{background:#1d4f6b;color:#e8f7ff}
+
+  #winnum{font-family:var(--mono);font-size:44px;color:var(--amber);line-height:1;letter-spacing:-.02em}
+
+  @media (max-width:560px){
+    #brand h1{display:none}
+    .stat:nth-child(3),.stat:nth-child(4){display:none}
+  }
+  @media (max-width:720px){
+    #bar{gap:8px;padding:6px 8px}
+    #brand .sub{display:none}
+    .stat{padding:0 7px}
+    .stat .v{font-size:13px}
+    .stat.big .v{font-size:16px}
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header id="bar">
+    <div id="brand"><span class="mark"></span>
+      <h1>Squares&nbsp;in&nbsp;Squares</h1>
+      <span class="sub" id="brandSub">n=— · s=—</span>
+    </div>
+    <div id="stats">
+      <div class="stat big"><div class="k">Time</div><div class="v" id="vTime">0:00.0</div></div>
+      <div class="stat"><div class="k">To grow</div><div class="v" id="vLeft">—</div></div>
+      <div class="stat"><div class="k">Board</div><div class="v" id="vSide">—</div></div>
+      <div class="stat"><div class="k">Slack</div><div class="v" id="vSlack">—</div></div>
+    </div>
+    <div id="barbtns">
+      <button id="bUndo" title="Undo (Ctrl+Z)">Undo</button>
+      <button id="bShare" title="Copy or load a configuration">Share</button>
+      <button id="bHelp" class="ghost" title="Controls (H)">?</button>
+      <button id="bNew" title="Choose another level">New</button>
+    </div>
+  </header>
+
+  <div id="main">
+    <section id="stage">
+      <canvas id="cv"></canvas>
+      <div id="hud"></div>
+      <div id="zoomctl">
+        <span id="zlabel">1.00×</span>
+        <button id="bZoomOut" title="Zoom out (−)">−</button>
+        <button id="bZoomIn" title="Zoom in (+)">+</button>
+        <button id="bFit" title="Fit board (0)">fit</button>
+      </div>
+      <div id="toast"></div>
+    </section>
+  </div>
+</div>
+
+<!-- ===== setup ===== -->
+<div class="over" id="setup">
+  <div class="card">
+    <h2>Pick a packing</h2>
+    <p class="lede">Fit <b id="suN">n</b> unit squares inside one big square. Tilting is allowed — and for most
+      counts it's the only way. The number under each count is the smallest square anyone has ever managed;
+      blue means the record needs tilted squares.</p>
+    <p class="lede" style="margin:-6px 0 10px">Your board is that record plus a little slack, added down the right side
+      and along the bottom — so the top-left corner is always the honest one. All the squares start on the sheet at half
+      size; double-click one to grow it.</p>
+
+    <h3>How many squares</h3>
+    <div id="levels"></div>
+
+    <h3>How much slack you get</h3>
+    <div class="row">
+      <input type="range" id="tolR" min="0" max="10" step="0.1" value="0.5" class="grow">
+      <input type="number" id="tolN" min="0" max="30" step="0.1" value="0.5" style="width:70px">
+      <span style="color:var(--dim)">%</span>
+    </div>
+    <div class="readout" id="suRead"></div>
+
+    <h3>Magnet</h3>
+    <div class="row">
+      <div class="seg grow" id="magSeg">
+        <button data-m="0">Off</button>
+        <button data-m="1">Light</button>
+        <button data-m="2" class="on">Normal</button>
+        <button data-m="3">Strong</button>
+      </div>
+    </div>
+    <div class="readout" style="font-size:11.5px" id="magRead"></div>
+
+    <div class="row" style="margin-top:14px">
+      <button class="pri grow" id="bStart" style="padding:9px">Start the clock</button>
+      <button id="bLoadHere">Load a configuration</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== share / load ===== -->
+<div class="over" id="share" hidden>
+  <div class="card" style="max-width:560px">
+    <h2>Configuration</h2>
+    <p class="lede">Every square's centre and tilt, in board units. Paste one back in to replay a friend's layout.</p>
+    <textarea id="shareText" spellcheck="false"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="pri" id="bCopy">Copy</button>
+      <button id="bLoad">Load what's in the box</button>
+      <button class="ghost grow" style="text-align:right" id="bShareClose">Close</button>
+    </div>
+    <div class="readout" id="shareMsg" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<!-- ===== help ===== -->
+<div class="over" id="help" hidden>
+  <div class="card" style="max-width:520px">
+    <h2>Controls</h2>
+    <p class="lede">Movement and rotation scale with the zoom: zoom in for finer control.</p>
+    <div class="keys">
+      <kbd>double-click</kbd><span>Grow a half-size square to full size, or shrink a full one back out of the way.</span>
+      <kbd>drag</kbd><span>Move a square. Half-size ones pass through everything; full-size ones snap and shove.</span>
+      <kbd>Enter</kbd><span>Grow or shrink whatever is selected.</span>
+      <kbd>← ↑ → ↓</kbd><span>Nudge the selected square.</span>
+      <kbd>Shift + ←→</kbd><span>Rotate. So does dragging the handle, or <kbd>[</kbd> <kbd>]</kbd>.</span>
+      <kbd>Alt</kbd><span>Hold for one-fifth speed on any nudge or rotation.</span>
+      <kbd>wheel</kbd><span>Zoom at the pointer. Pinch works too. <kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd> also.</span>
+      <kbd>drag bg</kbd><span>Pan the sheet.</span>
+      <kbd>Tab</kbd><span>Select the next square.</span>
+      <kbd>N</kbd><span>Snap the selected square into the nearest gap.</span>
+      <kbd>⌫</kbd><span>Shrink the selected square back down.</span>
+      <kbd>⌘Z / Ctrl+Z</kbd><span>Undo.</span>
+      <kbd>H</kbd><span>This list.</span>
+    </div>
+    <h3>The idea</h3>
+    <p class="lede" style="margin:0 0 4px">You start with every square already on the sheet at half size, so nothing is
+      in a queue and nothing is in your way. Grow them one at a time and slide them home. Stuck? Shrink a
+      neighbour back down and the space it was holding is yours again.</p>
+    <h3>What counts as solved</h3>
+    <p class="lede" style="margin:0">Every square inside the border, no two overlapping. A whisker of overlap is
+      forgiven so you never lose to a rounding error — a fortieth of the slack you were given, at most
+      a five-hundredth of a square's edge. Tight boards have to be solved honestly.</p>
+    <div class="row" style="margin-top:14px"><button class="pri grow" id="bHelpClose">Back to the sheet</button></div>
+  </div>
+</div>
+
+<!-- ===== win ===== -->
+<div class="over" id="win" hidden>
+  <div class="card" style="max-width:460px;border-top-color:var(--amber)">
+    <h2 style="color:var(--amber)">Packed</h2>
+    <p class="lede" id="winSub"></p>
+    <div id="winnum">0:00.0</div>
+    <div class="readout" id="winRead" style="margin-top:12px"></div>
+    <div class="row" style="margin-top:16px">
+      <button class="gold grow" id="bWinShare">Copy my solution</button>
+      <button id="bWinAgain">Another level</button>
+      <button class="ghost" id="bWinClose">Keep fiddling</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+// ============================================================ GEOM_START
+/* Pure geometry + packing rules. No DOM in here. */
+const HALF = 0.5, SMALL = 0.25, D90 = Math.PI/2, TAU = Math.PI*2;
+const FIT_EPS = 0.002;          // ceiling on forgiven overlap, in square-edge units
+/* Forgive only a sliver, and never more than a fortieth of the slack on offer,
+   so a 0.5% board still has to be solved honestly. */
+function fitEps(S, sBest){ return Math.max(0.00015, Math.min(FIT_EPS, (S-sBest)*0.04)); }
+
+function corners(s){
+  const H = (s.h===undefined ? HALF : s.h);
+  const c = Math.cos(s.a)*H, n = Math.sin(s.a)*H;
+  // local +x = (c,n)*1 ; local +y = (-n,c)
+  return [
+    {x:s.x-c+n, y:s.y-n-c},
+    {x:s.x+c+n, y:s.y+n-c},
+    {x:s.x+c-n, y:s.y+n+c},
+    {x:s.x-c-n, y:s.y-n+c}
+  ];
+}
+function axesOf(s){ const c=Math.cos(s.a), n=Math.sin(s.a); return [{x:c,y:n},{x:-n,y:c}]; }
+function projPts(pts,d){ let lo=Infinity,hi=-Infinity;
+  for(const p of pts){ const t=p.x*d.x+p.y*d.y; if(t<lo)lo=t; if(t>hi)hi=t; } return [lo,hi];
+}
+/* Separating-axis test. Returns null when apart, else how deep A sits in B and
+   the unit direction that pushes A out the cheap way. */
+function sat(A,B){
+  const ca=corners(A), cb=corners(B), axes=axesOf(A).concat(axesOf(B));
+  let best=Infinity, ax=null;
+  for(const d of axes){
+    const a=projPts(ca,d), b=projPts(cb,d);
+    const o = Math.min(a[1],b[1]) - Math.max(a[0],b[0]);
+    if(o<=0) return null;
+    if(o<best){
+      best=o;
+      const sign = ((a[0]+a[1]) < (b[0]+b[1])) ? -1 : 1;
+      ax = {x:d.x*sign, y:d.y*sign};
+    }
+  }
+  return {depth:best, ax:ax};
+}
+function bbox(s){
+  const c=corners(s); let a=Infinity,b=-Infinity,e=Infinity,f=-Infinity;
+  for(const p of c){ if(p.x<a)a=p.x; if(p.x>b)b=p.x; if(p.y<e)e=p.y; if(p.y>f)f=p.y; }
+  return {x0:a,x1:b,y0:e,y1:f};
+}
+/* How far outside the S-by-S board, and the shove that fixes it. */
+function outOfBounds(s,S){
+  const B=bbox(s);
+  let dx=0, dy=0;
+  if(B.x0<0) dx=-B.x0; else if(B.x1>S) dx=S-B.x1;
+  if(B.y0<0) dy=-B.y0; else if(B.y1>S) dy=S-B.y1;
+  const viol = Math.max(0, -B.x0, B.x1-S, -B.y0, B.y1-S);
+  return {dx:dx, dy:dy, viol:viol};
+}
+function wrap90(t){ let r=(t+Math.PI/4)%D90; if(r<0)r+=D90; return r-Math.PI/4; }
+
+/* --- the magnet ---------------------------------------------------------
+   1. tilt: fall onto the board's axes or onto a neighbour's tilt
+   2. slide: flush an edge against the border or against a neighbour
+   Both only when already close; opt.ang in radians, opt.pos in units.        */
+function snapPose(sq, others, S, opt){
+  let a=sq.a, x=sq.x, y=sq.y;
+  if(opt.ang>0){
+    let bd=Infinity;
+    let cand=[0, Math.PI/4];
+    for(let i=0;i<others.length;i++) cand.push(others[i].a);
+    for(let i=0;i<cand.length;i++){
+      const d=wrap90(cand[i]-a);
+      if(Math.abs(d)<Math.abs(bd)) bd=d;
+    }
+    if(Math.abs(bd)<=opt.ang) a+=bd;
+  }
+  if(opt.pos>0){
+    const me={x:x,y:y,a:a};
+    const cs=corners(me);
+    const dirs=[{x:Math.cos(a),y:Math.sin(a)},{x:-Math.sin(a),y:Math.cos(a)}];
+    const boardPts=[{x:0,y:0},{x:S,y:0},{x:S,y:S},{x:0,y:S}];
+    let mv={x:0,y:0};
+    for(let k=0;k<2;k++){
+      const d=dirs[k], me2=projPts(cs,d);
+      let bestD=Infinity;
+      const consider=function(v){ if(Math.abs(v)<Math.abs(bestD)) bestD=v; };
+      const bp=projPts(boardPts,d);
+      consider(bp[0]-me2[0]);                 // flush with one border
+      consider(bp[1]-me2[1]);                 // flush with the opposite border
+      for(let i=0;i<others.length;i++){
+        const o=projPts(corners(others[i]),d);
+        consider(o[1]-me2[0]);                // sit just after them
+        consider(o[0]-me2[1]);                // sit just before them
+        consider(o[0]-me2[0]);                // line up low edges
+        consider(o[1]-me2[1]);                // line up high edges
+      }
+      if(Math.abs(bestD)<=opt.pos){ mv.x+=d.x*bestD; mv.y+=d.y*bestD; }
+    }
+    x+=mv.x; y+=mv.y;
+  }
+  return {x:x,y:y,a:a};
+}
+/* Shove a square out of everything it is currently inside of. */
+function relax(sq, others, S, iters){
+  let s={x:sq.x,y:sq.y,a:sq.a};
+  iters = iters||28;
+  for(let it=0; it<iters; it++){
+    let moved=0;
+    for(let i=0;i<others.length;i++){
+      const r=sat(s,others[i]);
+      if(r && r.depth>1e-9){ s.x+=r.ax.x*r.depth; s.y+=r.ax.y*r.depth; moved+=r.depth; }
+    }
+    /* the border is the hard edge: fix it last so we never finish outside it */
+    const ob=outOfBounds(s,S);
+    if(ob.viol>1e-9){ s.x+=ob.dx; s.y+=ob.dy; moved+=Math.abs(ob.dx)+Math.abs(ob.dy); }
+    if(moved<1e-9) break;
+  }
+  return s;
+}
+/* Full drop: magnet, then untangle, then a gentler magnet pass. */
+function settle(sq, others, S, opt){
+  let p = snapPose(sq, others, S, opt);
+  let q = relax(p, others, S, 28);
+  if(Math.abs(q.x-p.x)+Math.abs(q.y-p.y) > 1e-7){
+    p = snapPose(q, others, S, {ang:opt.ang*0.5, pos:opt.pos*0.6});
+    q = relax(p, others, S, 20);
+  }
+  return q;
+}
+/* ids of squares that overlap someone or poke out */
+function problems(list, S, eps){
+  if(eps===undefined) eps=FIT_EPS;
+  const bad = {};
+  for(let i=0;i<list.length;i++){
+    if(outOfBounds(list[i],S).viol > eps) bad[list[i].id]=1;
+    for(let j=i+1;j<list.length;j++){
+      const r=sat(list[i],list[j]);
+      if(r && r.depth > eps){ bad[list[i].id]=1; bad[list[j].id]=1; }
+    }
+  }
+  return bad;
+}
+/* Smallest square anyone has packed n unit squares into.
+   Values from Erich Friedman's survey as maintained by David Ellsworth
+   (kingbird.myphotos.cc/packing). Anything unlisted is the plain grid. */
+const RECORD = {
+  1:1, 2:2, 3:2, 4:2, 5:2.70710678118654, 6:3, 7:3, 8:3, 9:3,
+  10:3.70710678118654, 11:3.87708359002281, 13:4, 14:4, 15:4,
+  17:4.67553009360455, 18:4.82287565553229, 19:4.88561808316412,
+  22:5, 23:5, 24:5, 26:5.62132034355964, 27:5.70710678118654,
+  28:5.82444461667405, 29:5.93383346267692, 33:6, 34:6, 35:6,
+  37:6.59861960924436, 38:6.70710678118654, 39:6.81072208306864,
+  40:6.82842712474619, 41:6.92669309446880, 46:7, 47:7, 48:7,
+  50:7.57142857142857, 51:7.70079923541701, 52:7.70710678118654,
+  53:7.82287565553229, 54:7.84666719284348, 55:7.94577100750391,
+  62:8, 63:8, 65:8.53553390593273, 66:8.65685424949238,
+  67:8.70710678118654, 68:8.80345993651653, 69:8.82721205592900,
+  70:8.88166675700900, 71:8.94407155757031, 79:9, 80:9,
+  82:9.53553390593273, 83:9.63482562092335, 84:9.70710678118654,
+  85:9.74264068711928, 86:9.82287565553229, 87:9.83881743996618,
+  88:9.88815305375857, 89:9.94974746830583, 98:10, 99:10
+};
+function bestSide(n){ return RECORD[n] !== undefined ? RECORD[n] : Math.ceil(Math.sqrt(n)); }
+function needsTilt(n){ return bestSide(n) < Math.ceil(Math.sqrt(n)) - 1e-9; }
+// ============================================================ GEOM_END
+
+if (typeof window !== "undefined") (function(){
+
+const $ = function(id){ return document.getElementById(id); };
+const MAG = [
+  {ang:0,               pos:0,    label:"No help at all. Squares land exactly where you drop them."},
+  {ang:1.2*Math.PI/180, pos:0.03, label:"A faint pull onto neighbouring edges."},
+  {ang:3.0*Math.PI/180, pos:0.07, label:"Near-misses flush themselves against whatever they touch."},
+  {ang:6.0*Math.PI/180, pos:0.14, label:"Generous. Get it roughly right and the square finds the gap."}
+];
+
+const G = {
+  n:11, tolPct:0.5, S:4, sBest:1, eps:0.002, mag:2,
+  sq:[],                 // {id,x,y,a,big,h}
+  sel:null,
+  view:{cx:0, cy:0, zoom:1},
+  scale:1, base:1,
+  t0:0, running:false, elapsed:0, solved:false,
+  bad:{},
+  undo:[], drag:null, lastTap:null, keys:{}, lastFrame:0, keyActive:false
+};
+
+const cv=$("cv"), ctx=cv.getContext("2d");
+let W=0,H=0,DPR=1;
+
+/* ---------------------------------------------------------------- level */
+function buildLevels(){
+  const box=$("levels"); box.innerHTML="";
+  for(let n=1;n<=60;n++){
+    const b=document.createElement("div");
+    b.className="lv"+(needsTilt(n)?" tilt":"")+(n===G.n?" on":"");
+    b.dataset.n=n;
+    const s=bestSide(n);
+    b.innerHTML='<div class="n">'+n+'</div><div class="s">'+
+      (Number.isInteger(s)? s : s.toFixed(2))+'</div>';
+    b.onclick=function(){ G.n=n; /* no image-save menu or long-press callout while you are shoving squares around */
+document.addEventListener("contextmenu", function(e){
+  const t=e.target.tagName;
+  if(t==="TEXTAREA"||t==="INPUT") return;
+  e.preventDefault();
+});
+cv.addEventListener("dragstart", function(e){ e.preventDefault(); });
+
+buildLevels(); readout(); };
+    box.appendChild(b);
+  }
+}
+function readout(){
+  const s=bestSide(G.n), S=s*(1+G.tolPct/100);
+  $("suN").textContent=G.n;
+  $("suRead").innerHTML =
+    "record for <b>"+G.n+"</b> squares &nbsp;s = <b>"+s.toFixed(6)+"</b><br>"+
+    "your board &nbsp;<span class='hi'>"+S.toFixed(6)+"</span> &nbsp;("+
+    (S-s).toFixed(4)+" of slack, "+(100*G.n/(S*S)).toFixed(1)+"% density needed)"+
+    (needsTilt(G.n) ? "<br><span style='color:var(--cyan)'>the record here needs tilted squares</span>"
+                    : "<br>a plain "+Math.ceil(Math.sqrt(G.n))+"×"+Math.ceil(Math.sqrt(G.n))+" grid ties the record");
+  $("magRead").textContent = MAG[G.mag].label;
+}
+function newGame(n, tolPct, keep){
+  G.n=n; G.tolPct=tolPct;
+  G.sBest=bestSide(n); G.S=G.sBest*(1+tolPct/100); G.eps=fitEps(G.S,G.sBest);
+  /* every square is on the sheet from the start, at half size, on a loose lattice */
+  G.sq=[];
+  const cols=Math.ceil(Math.sqrt(n)), rows=Math.ceil(n/cols);
+  for(let i=0;i<n;i++){
+    G.sq.push({id:i, big:false, h:SMALL, a:0,
+               x:G.S*((i%cols)+0.5)/cols,
+               y:G.S*(Math.floor(i/cols)+0.5)/rows});
+  }
+  G.sel=null; G.solved=false; G.running=false; G.elapsed=0; G.t0=0;
+  G.undo=[]; G.drag=null; G.lastTap=null; G.bad={};
+  fit(); syncBar();
+  if(!keep) toast("Double-click a square to grow it to full size");
+}
+
+/* ---------------------------------------------------------------- view */
+function resize(){
+  DPR=Math.min(window.devicePixelRatio||1, 2.5);
+  const r=cv.getBoundingClientRect();
+  W=r.width; H=r.height;
+  cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  recomputeScale();
+}
+function recomputeScale(){
+  G.base = Math.min(W,H)/(G.S*1.14);
+  G.scale = G.base*G.view.zoom;
+}
+function fit(){ G.view.cx=G.S/2; G.view.cy=G.S/2; G.view.zoom=1; recomputeScale(); }
+function w2s(x,y){ return {x:W/2+(x-G.view.cx)*G.scale, y:H/2+(y-G.view.cy)*G.scale}; }
+function s2w(x,y){ return {x:G.view.cx+(x-W/2)/G.scale, y:G.view.cy+(y-H/2)/G.scale}; }
+function setZoom(z, ax, ay){
+  z=Math.max(0.35, Math.min(160, z));
+  if(ax===undefined){ ax=W/2; ay=H/2; }
+  const before=s2w(ax,ay);
+  G.view.zoom=z; recomputeScale();
+  const after=s2w(ax,ay);
+  G.view.cx += before.x-after.x; G.view.cy += before.y-after.y;
+  clampView();
+}
+function clampView(){
+  const m=G.S*1.2;
+  G.view.cx=Math.max(-m+G.S/2, Math.min(G.S+m-G.S/2, G.view.cx));
+  G.view.cy=Math.max(-m+G.S/2, Math.min(G.S+m-G.S/2, G.view.cy));
+}
+
+/* ---------------------------------------------------------------- state */
+/* only full-size squares are part of the packing; half-size ones are still spare parts */
+function grown(){ return G.sq.filter(function(s){ return s.big; }); }
+function othersOf(id){ return G.sq.filter(function(s){ return s.big && s.id!==id; }); }
+function opt(){ return MAG[G.mag]; }
+function pushUndo(){
+  G.undo.push(JSON.stringify({sq:G.sq, sel:G.sel}));
+  if(G.undo.length>120) G.undo.shift();
+}
+function doUndo(){
+  if(!G.undo.length){ toast("Nothing to undo"); return; }
+  const st=JSON.parse(G.undo.pop());
+  G.sq=st.sq; G.sel=st.sel; G.solved=false;
+  revalidate(); syncBar();
+}
+function startClock(){ if(!G.running && !G.solved){ G.running=true; G.t0=performance.now()-G.elapsed; } }
+function revalidate(){ G.bad = problems(grown(), G.S, G.eps); }
+function checkWin(){
+  if(G.solved) return;
+  const p=grown();
+  if(p.length<G.n) return;
+  if(Object.keys(G.bad).length) return;
+  G.solved=true; G.running=false;
+  const t=fmt(G.elapsed);
+  $("winnum").textContent=t;
+  $("winSub").textContent = G.n+" squares in a "+G.S.toFixed(4)+" board, "+
+                            G.tolPct+"% above the record.";
+  $("winRead").innerHTML =
+    "record &nbsp;<b>s("+G.n+") = "+G.sBest.toFixed(6)+"</b><br>"+
+    "density &nbsp;<b>"+(100*G.n/(G.S*G.S)).toFixed(2)+"%</b><br>"+
+    "squares tilted &nbsp;<b>"+tiltedCount()+"</b> of "+G.n;
+  $("win").hidden=false;
+}
+function tiltedCount(){
+  let k=0;
+  for(const s of G.sq) if(s.big && Math.abs(wrap90(s.a))>0.5*Math.PI/180) k++;
+  return k;
+}
+
+/* ---------------------------------------------------------------- moves */
+/* Growing commits a square to the packing; it snaps and untangles on the way up.
+   Shrinking pulls it back out of play so its space is free again. */
+function setBig(sq, big){
+  sq.big=big; sq.h = big?HALF:SMALL;
+  G.solved=false;
+  if(big){
+    const p=settle(sq, othersOf(sq.id), G.S, opt());
+    sq.x=p.x; sq.y=p.y; sq.a=p.a;
+  }
+  startClock(); revalidate(); syncBar(); checkWin();
+}
+function toggleSize(id){
+  const sq=G.sq.find(function(q){ return q.id===id; });
+  if(!sq) return;
+  pushUndo();
+  G.sel=id;
+  setBig(sq, !sq.big);
+}
+function nudgeSettle(id, strong){
+  const s=G.sq.find(function(q){ return q.id===id; });
+  if(!s||!s.big) return;
+  const o=opt(), use = strong ? {ang:Math.max(o.ang,6*Math.PI/180), pos:Math.max(o.pos,0.16)} : o;
+  const p=settle(s, othersOf(id), G.S, use);
+  s.x=p.x; s.y=p.y; s.a=p.a;
+  revalidate(); checkWin();
+}
+function pickAt(wx, wy){
+  for(let i=G.sq.length-1;i>=0;i--){
+    const s=G.sq[i];
+    const dx=wx-s.x, dy=wy-s.y, c=Math.cos(-s.a), n=Math.sin(-s.a);
+    const lx=dx*c-dy*n, ly=dx*n+dy*c;
+    if(Math.abs(lx)<=s.h && Math.abs(ly)<=s.h) return s;
+  }
+  return null;
+}
+function handlePos(s){
+  const d=s.h+22/G.scale;
+  return {x:s.x - Math.sin(s.a)*d, y:s.y + Math.cos(s.a)*d};
+}
+
+/* ---------------------------------------------------------------- input */
+const ptrs=new Map();
+let pinch=null;
+
+cv.addEventListener("pointerdown", function(e){
+  cv.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size===2){
+    G.drag=null;
+    const a=Array.from(ptrs.values());
+    pinch={d:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y), z:G.view.zoom};
+    return;
+  }
+  const r=cv.getBoundingClientRect(), px=e.clientX-r.left, py=e.clientY-r.top;
+  const w=s2w(px,py);
+  if(G.sel!==null){
+    const s=G.sq.find(function(q){ return q.id===G.sel; });
+    if(s){
+      const h=w2s(handlePos(s).x, handlePos(s).y);
+      if(Math.hypot(h.x-px,h.y-py)<=15){
+        pushUndo();
+        G.drag={mode:"rot", id:s.id, a0:s.a, ang0:Math.atan2(w.y-s.y,w.x-s.x)};
+        return;
+      }
+    }
+  }
+  const hit=pickAt(w.x,w.y);
+  if(hit){
+    pushUndo();
+    G.sel=hit.id;
+    G.drag={mode:"sq", id:hit.id, rx:hit.x, ry:hit.y, ox:hit.x-w.x, oy:hit.y-w.y,
+            px:px, py:py, far:0};
+    syncBar();
+  } else {
+    G.drag={mode:"pan", px:px, py:py, cx:G.view.cx, cy:G.view.cy, far:0};
+  }
+});
+cv.addEventListener("pointermove", function(e){
+  if(ptrs.has(e.pointerId)) ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinch && ptrs.size>=2){
+    const a=Array.from(ptrs.values());
+    const d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+    const r=cv.getBoundingClientRect();
+    setZoom(pinch.z*d/pinch.d, (a[0].x+a[1].x)/2-r.left, (a[0].y+a[1].y)/2-r.top);
+    return;
+  }
+  if(!G.drag) return;
+  const r=cv.getBoundingClientRect(), px=e.clientX-r.left, py=e.clientY-r.top;
+  const w=s2w(px,py);
+  if(G.drag.mode==="pan"){
+    G.drag.far=Math.max(G.drag.far, Math.abs(px-G.drag.px)+Math.abs(py-G.drag.py));
+    G.view.cx=G.drag.cx-(px-G.drag.px)/G.scale;
+    G.view.cy=G.drag.cy-(py-G.drag.py)/G.scale;
+    clampView();
+  } else if(G.drag.mode==="sq"){
+    const s=G.sq.find(function(q){ return q.id===G.drag.id; });
+    G.drag.far=Math.max(G.drag.far, Math.abs(px-G.drag.px)+Math.abs(py-G.drag.py));
+    G.drag.rx=w.x+G.drag.ox; G.drag.ry=w.y+G.drag.oy;
+    if(s.big){
+      const p=snapPose({x:G.drag.rx,y:G.drag.ry,a:s.a,h:s.h}, othersOf(s.id), G.S, opt());
+      s.x=p.x; s.y=p.y; s.a=p.a;
+    } else { s.x=G.drag.rx; s.y=G.drag.ry; }   /* spare parts move freely */
+    revalidate();
+  } else if(G.drag.mode==="rot"){
+    const s=G.sq.find(function(q){ return q.id===G.drag.id; });
+    const ang=Math.atan2(w.y-s.y, w.x-s.x);
+    const raw=G.drag.a0+(ang-G.drag.ang0);
+    if(s.big){
+      const p=snapPose({x:s.x,y:s.y,a:raw,h:s.h}, othersOf(s.id), G.S, {ang:opt().ang, pos:0});
+      s.a=p.a;
+    } else s.a=raw;
+    revalidate();
+  }
+});
+function endPointer(e){
+  ptrs.delete(e.pointerId);
+  if(ptrs.size<2) pinch=null;
+  if(!G.drag) return;
+  const d=G.drag; G.drag=null;
+  if(d.mode==="sq"||d.mode==="rot"){
+    const s=G.sq.find(function(q){ return q.id===d.id; });
+    /* a second tap on the same square, without dragging it, flips its size */
+    if(d.mode==="sq" && d.far<5){
+      const now=performance.now();
+      if(G.lastTap && G.lastTap.id===d.id && now-G.lastTap.t<340){
+        G.lastTap=null; toggleSize(d.id); syncBar(); return;
+      }
+      G.lastTap={id:d.id, t:now};
+    }
+    if(s&&s.big){
+      const p=settle(s, othersOf(s.id), G.S, opt());
+      s.x=p.x; s.y=p.y; s.a=p.a;
+      startClock(); revalidate(); checkWin();
+    }
+  } else if(d.mode==="pan" && d.far<4){ G.sel=null; G.lastTap=null; }
+  syncBar();
+}
+cv.addEventListener("pointerup", endPointer);
+cv.addEventListener("pointercancel", endPointer);
+
+cv.addEventListener("wheel", function(e){
+  e.preventDefault();
+  const r=cv.getBoundingClientRect();
+  if(e.shiftKey && G.sel!==null){
+    const s=G.sq.find(function(q){ return q.id===G.sel; });
+    if(s){
+      pushUndo();
+      s.a += (e.deltaY>0?1:-1)*(3/G.scale)/0.7071;
+      if(s.big){
+        const p=settle(s, othersOf(s.id), G.S, opt());
+        s.x=p.x; s.y=p.y; s.a=p.a;
+      }
+      startClock(); revalidate(); checkWin();
+    }
+    return;
+  }
+  setZoom(G.view.zoom*Math.pow(1.0016, -e.deltaY), e.clientX-r.left, e.clientY-r.top);
+},{passive:false});
+
+/* ---- keyboard ---- */
+const MOVE_PPS=260, ROT_PPS=170;
+window.addEventListener("keydown", function(e){
+  if(e.target.tagName==="TEXTAREA"||e.target.tagName==="INPUT") return;
+  const k=e.key;
+  if((e.metaKey||e.ctrlKey) && (k==="z"||k==="Z")){ e.preventDefault(); doUndo(); return; }
+  if(anyOverlayOpen()){
+    if(k==="Escape") closeTop();
+    return;
+  }
+  switch(k){
+    case "ArrowLeft": case "ArrowRight": case "ArrowUp": case "ArrowDown":
+      e.preventDefault();
+      if(G.sel===null) return;
+      if(!G.keys[k]) pushUndo();
+      G.keys[k]=1; G.keyActive=true; startClock(); return;
+    case "Enter":
+      e.preventDefault();
+      if(G.sel===null){ toast("Click a square first"); return; }
+      toggleSize(G.sel); syncBar(); return;
+    case "Backspace": case "Delete": {
+      e.preventDefault();
+      if(G.sel===null) return;
+      const q=G.sq.find(function(z){ return z.id===G.sel; });
+      if(q&&q.big) toggleSize(G.sel);
+      syncBar(); return;
+    }
+    case "Tab": {
+      e.preventDefault();
+      const p=G.sq; if(!p.length) return;
+      let i=p.findIndex(function(s){ return s.id===G.sel; });
+      G.sel=p[(i+1)%p.length].id; syncBar(); return;
+    }
+    case "[": case "]": {
+      e.preventDefault();
+      if(G.sel===null) return;
+      if(!G.keys[k]) pushUndo();
+      G.keys[k]=1; G.keyActive=true; startClock(); return;
+    }
+    case "+": case "=": setZoom(G.view.zoom*1.3); return;
+    case "-": case "_": setZoom(G.view.zoom/1.3); return;
+    case "0": fit(); return;
+    case "n": case "N": if(G.sel!==null){ pushUndo(); nudgeSettle(G.sel,true); } return;
+    case "h": case "H": case "?": $("help").hidden=false; return;
+    case "Escape": if(G.sel!==null){ G.sel=null; syncBar(); } return;
+  }
+  if(k===" " && G.sel!==null){ e.preventDefault(); toggleSize(G.sel); syncBar(); }
+});
+window.addEventListener("keyup", function(e){
+  const k=e.key;
+  if(G.keys[k]){
+    delete G.keys[k];
+    if(!Object.keys(G.keys).length){
+      G.keyActive=false;
+      if(G.sel!==null){
+        const s=G.sq.find(function(q){ return q.id===G.sel; });
+        if(s&&s.big){
+          const p=settle(s, othersOf(s.id), G.S, opt());
+          s.x=p.x; s.y=p.y; s.a=p.a;
+          revalidate(); checkWin();
+        }
+      }
+    }
+  }
+});
+window.addEventListener("blur", function(){ G.keys={}; G.keyActive=false; });
+
+function stepKeys(dt){
+  if(!G.keyActive || G.sel===null) return;
+  const s=G.sq.find(function(q){ return q.id===G.sel; });
+  if(!s) return;
+  const slow = keyAlt?0.2:1;
+  const step = (MOVE_PPS*slow/G.scale)*dt;
+  const rot  = ((ROT_PPS*slow/G.scale)/0.7071)*dt;
+  let dx=0,dy=0,da=0;
+  if(G.keys.ArrowLeft)  { if(keyShift) da-=rot; else dx-=step; }
+  if(G.keys.ArrowRight) { if(keyShift) da+=rot; else dx+=step; }
+  if(G.keys.ArrowUp)    { if(keyShift) da-=rot; else dy-=step; }
+  if(G.keys.ArrowDown)  { if(keyShift) da+=rot; else dy+=step; }
+  if(G.keys["["]) da-=rot;
+  if(G.keys["]"]) da+=rot;
+  if(dx||dy||da){ s.x+=dx; s.y+=dy; s.a+=da; revalidate(); }
+}
+let keyShift=false, keyAlt=false;
+window.addEventListener("keydown",function(e){ keyShift=e.shiftKey; keyAlt=e.altKey; });
+window.addEventListener("keyup",function(e){ keyShift=e.shiftKey; keyAlt=e.altKey; });
+
+/* ---------------------------------------------------------------- paint */
+function drawSquare(s, style){
+  const c=corners(s);
+  const p0=w2s(c[0].x,c[0].y), p1=w2s(c[1].x,c[1].y), p2=w2s(c[2].x,c[2].y), p3=w2s(c[3].x,c[3].y);
+  ctx.beginPath();
+  ctx.moveTo(p0.x,p0.y); ctx.lineTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.lineTo(p3.x,p3.y); ctx.closePath();
+  ctx.fillStyle=style.fill; ctx.fill();
+  ctx.lineWidth=style.lw; ctx.strokeStyle=style.stroke; ctx.stroke();
+  if(style.diag){
+    ctx.beginPath(); ctx.moveTo(p0.x,p0.y); ctx.lineTo(p2.x,p2.y);
+    ctx.moveTo(p1.x,p1.y); ctx.lineTo(p3.x,p3.y);
+    ctx.strokeStyle=style.stroke; ctx.globalAlpha=.25; ctx.lineWidth=1; ctx.stroke(); ctx.globalAlpha=1;
+  }
+}
+function paint(){
+  ctx.clearRect(0,0,W,H);
+  const S=G.S;
+  const o=w2s(0,0), e=w2s(S,S);
+
+  /* sheet */
+  ctx.fillStyle="#0d1524";
+  ctx.fillRect(o.x,o.y,e.x-o.x,e.y-o.y);
+
+  /* unit grid */
+  if(G.scale>7){
+    ctx.strokeStyle="rgba(111,211,255,.075)"; ctx.lineWidth=1;
+    ctx.beginPath();
+    for(let i=1;i<Math.ceil(S);i++){
+      const a=w2s(i,0), b=w2s(i,S);
+      ctx.moveTo(Math.round(a.x)+.5,a.y); ctx.lineTo(Math.round(b.x)+.5,b.y);
+      const c=w2s(0,i), d=w2s(S,i);
+      ctx.moveTo(c.x,Math.round(c.y)+.5); ctx.lineTo(d.x,Math.round(d.y)+.5);
+    }
+    ctx.stroke();
+  }
+
+  /* the record, anchored top-left: the slack is the band down the right and bottom */
+  const gap=S-G.sBest;
+  if(gap>1e-9){
+    const b0=w2s(G.sBest,0), b1=w2s(S,S), c0=w2s(0,G.sBest);
+    ctx.fillStyle="rgba(255,180,84,.075)";
+    ctx.fillRect(b0.x, b0.y, b1.x-b0.x, b1.y-b0.y);              // right band
+    ctx.fillRect(w2s(0,0).x, c0.y, b0.x-w2s(0,0).x, b1.y-c0.y);  // bottom band
+    ctx.save();
+    ctx.setLineDash([6,5]); ctx.lineWidth=1; ctx.strokeStyle="rgba(255,180,84,.6)";
+    ctx.beginPath();
+    ctx.moveTo(b0.x, b0.y); ctx.lineTo(b0.x, c0.y);
+    ctx.lineTo(c0.x, c0.y);
+    ctx.stroke();
+    ctx.restore();
+    if(G.scale>18){
+      ctx.fillStyle="rgba(255,180,84,.75)"; ctx.font="10px ui-monospace,monospace";
+      ctx.textAlign="right"; ctx.textBaseline="bottom";
+      ctx.fillText("record s("+G.n+") = "+G.sBest.toFixed(4)+"  ·  slack "+gap.toFixed(4),
+                   b0.x-4, c0.y-4);
+    }
+  }
+
+  /* border */
+  ctx.lineWidth=2; ctx.strokeStyle="#6fd3ff";
+  ctx.strokeRect(o.x,o.y,e.x-o.x,e.y-o.y);
+
+  /* ruler ticks */
+  if(G.scale>26){
+    ctx.fillStyle="rgba(123,147,177,.75)"; ctx.font="9px ui-monospace,monospace";
+    ctx.textAlign="center"; ctx.textBaseline="top";
+    for(let i=0;i<=Math.floor(S);i++){
+      const p=w2s(i,S); ctx.fillText(String(i), p.x, p.y+4);
+      const q=w2s(0,i);
+      ctx.save(); ctx.textAlign="right"; ctx.textBaseline="middle";
+      ctx.fillText(String(i), q.x-5, q.y); ctx.restore();
+    }
+  }
+
+  /* squares: half-size ones are spare parts, drawn quietly */
+  for(const s of G.sq){
+    if(s.id===G.sel) continue;
+    if(!s.big){
+      ctx.save(); ctx.setLineDash([3,3]);
+      drawSquare(s, {fill:"rgba(123,147,177,.12)", stroke:"rgba(160,186,214,.6)", lw:1});
+      ctx.restore();
+      continue;
+    }
+    const bad=G.bad[s.id];
+    drawSquare(s, bad
+      ? {fill:"rgba(255,122,114,.15)", stroke:"rgba(255,122,114,.9)", lw:1.5}
+      : {fill:"rgba(111,211,255,.13)", stroke:"rgba(111,211,255,.75)", lw:1.2});
+  }
+  const sel=G.sel!==null? G.sq.find(function(q){ return q.id===G.sel; }) : null;
+  if(sel){
+    const bad=G.bad[sel.id];
+    ctx.save(); if(!sel.big) ctx.setLineDash([3,3]);
+    drawSquare(sel, {fill: bad?"rgba(255,122,114,.20)":"rgba(255,180,84,.18)",
+                     stroke: bad?"#ff7a72":"#ffb454", lw:2, diag:sel.big});
+    ctx.restore();
+    /* rotation handle */
+    const h=handlePos(sel), hs=w2s(h.x,h.y), cs=w2s(sel.x,sel.y);
+    ctx.beginPath(); ctx.moveTo(cs.x,cs.y); ctx.lineTo(hs.x,hs.y);
+    ctx.strokeStyle="rgba(255,180,84,.5)"; ctx.lineWidth=1; ctx.stroke();
+    ctx.beginPath(); ctx.arc(hs.x,hs.y,7,0,TAU);
+    ctx.fillStyle="rgba(255,180,84,.25)"; ctx.fill();
+    ctx.strokeStyle="#ffb454"; ctx.lineWidth=1.5; ctx.stroke();
+  }
+
+  /* solved wash */
+  if(G.solved){
+    ctx.strokeStyle="rgba(126,227,162,.9)"; ctx.lineWidth=3;
+    ctx.strokeRect(o.x,o.y,e.x-o.x,e.y-o.y);
+  }
+}
+
+/* ---------------------------------------------------------------- chrome */
+function fmt(ms){
+  const t=Math.max(0,ms)/1000;
+  const m=Math.floor(t/60), s=t-m*60;
+  return m+":"+(s<10?"0":"")+s.toFixed(1);
+}
+let lastHud="";
+function syncBar(){
+  const left=G.n-grown().length;
+  $("vLeft").textContent=left;
+  $("vLeft").className="v"+(left===0?" done":"");
+  $("vSide").textContent=G.S.toFixed(4);
+  $("vSlack").textContent="+"+(G.tolPct<10?G.tolPct.toFixed(1):G.tolPct)+"%";
+  $("brandSub").textContent="n="+G.n+" · s="+G.sBest.toFixed(4);
+  $("bUndo").disabled=!G.undo.length;
+  const sel=G.sel!==null? G.sq.find(function(q){ return q.id===G.sel; }) : null;
+  let h='<b>'+grown().length+'</b>/'+G.n+' grown · density '+
+        (100*grown().length/(G.S*G.S)).toFixed(1)+'%';
+  if(sel){
+    const deg=(sel.a*180/Math.PI)%90;
+    h+='<br>x <b>'+sel.x.toFixed(4)+'</b>  y <b>'+sel.y.toFixed(4)+
+       '</b>  θ <b>'+((deg<0?deg+90:deg).toFixed(3))+'°</b>'+(sel.big?'':'  <i>half size</i>');
+  }
+  const nb=Object.keys(G.bad).length;
+  if(nb) h+='<br><span class="warn">'+nb+' square'+(nb>1?"s":"")+' overlapping or over the line</span>';
+  if(h!==lastHud){ $("hud").innerHTML=h; lastHud=h; }
+  $("zlabel").textContent=G.view.zoom.toFixed(2)+"×";
+}
+let toastT=0;
+function toast(msg, kind){
+  const t=$("toast");
+  t.textContent=msg;
+  t.className="show"+(kind?" "+kind:"");
+  clearTimeout(toastT);
+  toastT=setTimeout(function(){ t.className=""; }, 2600);
+}
+function anyOverlayOpen(){
+  return !$("setup").hidden || !$("share").hidden || !$("help").hidden || !$("win").hidden;
+}
+function closeTop(){
+  if(!$("help").hidden){ $("help").hidden=true; return; }
+  if(!$("share").hidden){ $("share").hidden=true; return; }
+  if(!$("win").hidden){ $("win").hidden=true; return; }
+}
+
+/* ---------------------------------------------------------------- text io */
+function configText(){
+  const lines=[];
+  lines.push("# squares in squares — "+G.n+" unit squares");
+  lines.push("# board "+G.S.toFixed(6)+" = record "+G.sBest.toFixed(6)+" +"+G.tolPct+"%");
+  lines.push("# "+(G.solved? "solved in "+fmt(G.elapsed) : grown().length+" of "+G.n+" grown, "+fmt(G.elapsed)));
+  lines.push("n="+G.n+" tol="+G.tolPct);
+  lines.push("# x y tilt full");
+  for(const s of G.sq){
+    let d=(s.a*180/Math.PI)%90; if(d<0)d+=90;
+    lines.push(s.x.toFixed(6)+" "+s.y.toFixed(6)+" "+d.toFixed(4)+" "+(s.big?1:0));
+  }
+  return lines.join("\n");
+}
+function loadText(txt){
+  const nm=/n\s*=\s*(\d+)/.exec(txt), tm=/tol\s*=\s*([\d.]+)/.exec(txt);
+  const rows=[];
+  txt.split(/[\r\n]+/).forEach(function(line){
+    if(/^\s*#/.test(line)) return;
+    if(/[=]/.test(line)) return;
+    const m=line.match(/-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?/g);
+    if(m&&m.length>=3) rows.push([parseFloat(m[0]),parseFloat(m[1]),parseFloat(m[2]),
+                                  m.length>3?parseFloat(m[3]):1]);
+  });
+  if(!rows.length) return {ok:false, msg:"No square coordinates found in there."};
+  const n = nm? parseInt(nm[1],10) : rows.length;
+  const tol = tm? parseFloat(tm[1]) : G.tolPct;
+  if(n<1||n>200) return {ok:false, msg:"That square count is out of range."};
+  if(rows.length>n) return {ok:false, msg:"More coordinates ("+rows.length+") than squares ("+n+")."};
+  newGame(n, tol, true);
+  for(let i=0;i<rows.length;i++){
+    const s=G.sq[i]; if(!s) break;
+    s.x=rows[i][0]; s.y=rows[i][1]; s.a=rows[i][2]*Math.PI/180;
+    s.big = rows[i][3]>0.5; s.h = s.big?HALF:SMALL;
+  }
+  G.sel=null; G.elapsed=0; G.running=false; G.solved=false;
+  revalidate(); syncBar();
+  const nb=Object.keys(G.bad).length;
+  const done=grown().length===n && nb===0;
+  if(done){ G.solved=true; }
+  return {ok:true, msg: done
+      ? "Loaded — a valid packing of "+n+" squares. Nice."
+      : "Loaded "+rows.length+" squares, "+grown().length+" at full size"+
+        (nb?", "+nb+" of them clashing.":".")};
+}
+
+/* ---------------------------------------------------------------- wiring */
+$("tolR").oninput=function(){ G.tolPct=parseFloat(this.value); $("tolN").value=this.value; readout(); };
+$("tolN").oninput=function(){
+  let v=parseFloat(this.value); if(isNaN(v)) return;
+  v=Math.max(0,Math.min(30,v)); G.tolPct=v; $("tolR").value=Math.min(10,v); readout();
+};
+Array.prototype.forEach.call($("magSeg").children, function(b){
+  b.onclick=function(){
+    Array.prototype.forEach.call($("magSeg").children,function(x){ x.classList.remove("on"); });
+    b.classList.add("on"); G.mag=parseInt(b.dataset.m,10); readout();
+  };
+});
+$("bStart").onclick=function(){
+  $("setup").hidden=true;
+  newGame(G.n, G.tolPct, false);
+};
+$("bNew").onclick=function(){ $("setup").hidden=false; buildLevels(); readout(); };
+$("bHelp").onclick=function(){ $("help").hidden=false; };
+$("bHelpClose").onclick=function(){ $("help").hidden=true; };
+$("bShare").onclick=function(){
+  $("shareText").value=configText(); $("shareMsg").textContent=""; $("share").hidden=false;
+};
+$("bLoadHere").onclick=function(){
+  $("shareText").value=""; $("shareMsg").textContent="Paste a configuration, then load it.";
+  $("share").hidden=false;
+};
+$("bShareClose").onclick=function(){ $("share").hidden=true; };
+$("bCopy").onclick=function(){
+  const ta=$("shareText"); ta.select();
+  const done=function(){ $("shareMsg").textContent="Copied."; };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(ta.value).then(done,function(){ document.execCommand("copy"); done(); });
+  } else { document.execCommand("copy"); done(); }
+};
+$("bLoad").onclick=function(){
+  const r=loadText($("shareText").value);
+  $("shareMsg").textContent=r.msg;
+  if(r.ok){ $("share").hidden=true; $("setup").hidden=true; toast(r.msg, "good"); }
+};
+$("bWinShare").onclick=function(){
+  $("shareText").value=configText();
+  const ta=$("shareText");
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value);
+  $("win").hidden=true; $("share").hidden=false; $("shareMsg").textContent="Copied — paste it to a friend.";
+};
+$("bWinAgain").onclick=function(){ $("win").hidden=true; $("setup").hidden=false; buildLevels(); readout(); };
+$("bWinClose").onclick=function(){ $("win").hidden=true; };
+$("bUndo").onclick=doUndo;
+$("bZoomIn").onclick=function(){ setZoom(G.view.zoom*1.3); };
+$("bZoomOut").onclick=function(){ setZoom(G.view.zoom/1.3); };
+$("bFit").onclick=fit;
+window.addEventListener("resize", function(){ resize(); });
+
+/* ---------------------------------------------------------------- loop */
+function frame(ts){
+  const dt=Math.min(0.05,(ts-(G.lastFrame||ts))/1000); G.lastFrame=ts;
+  if(G.keyActive){ stepKeys(dt); }
+  if(G.running){ G.elapsed=performance.now()-G.t0; }
+  $("vTime").textContent=fmt(G.elapsed);
+  paint();
+  syncBar();
+  requestAnimationFrame(frame);
+}
+
+buildLevels(); readout();
+resize();
+newGame(G.n, G.tolPct, true);
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
