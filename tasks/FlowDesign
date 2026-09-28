@@ -164,18 +164,25 @@ The helpers first, then the modes and the sources, then `Flow`. Every desugared 
 ```
 ActorImpl[S:*,E:*,R]:      { read #(down: mut ActorSink[R],  state: S,      e: E): mut ContinueBreak[Void] }
 ActorImplMut[S:*,E:*,R:*]: { read #(down: mutH ActorSink[R], state: mutH S, e: E): mut ContinueBreak[Void] }
-ActorSink[E:*]: Sealed { read .push: ActorSinkHelper; read .pushOpt: ActorSinkOptHelper; }
-ActorSinkHelper: Sealed { imm #[E:*](down: mutH ActorSink[E], e: E): Void }
-ActorSinkOptHelper: Sealed { imm #[E:*](down: mutH ActorSink[E], e: mut Opt[E]): Void }
+ActorSink[E:*]: Sealed {
+  mut #(e: E): Void;//sends `e` downstream: the stages after it receive `e` before `#` returns; once a stage after it has returned `Break#`, `#` drops `e`
+  read .push: ActorSinkHelper;
+  read .pushOpt: ActorSinkOptHelper;
+  }
+ActorSinkHelper: Sealed { imm #[E:*](down: mutH ActorSink[E], e: E): Void }//`down.push#(down, e)` is `down#e`, also on a `mutH` sink
+ActorSinkOptHelper: Sealed { imm #[E:*](down: mutH ActorSink[E], e: mut Opt[E]): Void -> e.isSome
+  .if[_PushOptStep[E]]{ .then -> {d, o -> d.push#(d, o!)}; .else -> {_, _ -> Void} }#(down, e) }
+_PushOptStep[E:*]: { read #(down: mutH ActorSink[E], e: mut Opt[E]): Void }
 ForEachBody[A,E:*]: { mut #(a: mutH A, e: E): Void }
 FoldAcc[E:*,R:**]: { mut .result: R; mut .acc(E): mut FoldAcc[E,R] }
 AsImm[E:*, R]: { read #(E): R; }
 KeyElemMapper[A:*,K,E:*]: { .key(A): K; .elem(A): E; }
 ToIso[R]: { mut .iso: iso ToIso[R]; mut .close: mut R; }
-JoinStr[E:*]: { .joinStr(mut Flow[E]): E }
-SumNumber[E:*]: { .sumNumber(mut Flow[E]): E }
+JoinStr[E:*]: { .joinStr(mut Flow[E]): E }//the string types fold with `+`
+SumNumber[E:*]: { .sumNumber(mut Flow[E]): E }//the number types fold with the checked `+`
 FlowContinuation[E:*,T:*,R:*]: { mut #(x: T, self: mut EList[E]): R }
 IfSome: { #[E:*](b: Bool, e: E): mut Opt[E] -> b ?[mut Opt[E]]{ .then -> Opts#e; .else -> {} } }
+Yield: Sealed { #: Void }//returns `Void` in every call the sequential strategy makes (see **Cancellation: `Yield#`**)
 Rev: { #[T,K](by: OrderBy[T,K]): OrderBy[T] ->
   {t0, t1, m -> by#t0 <=> (by#t1, {.lt -> m.gt; .eq -> m.eq; .gt -> m.lt})} }
 Collapse: { #[E:*,K](xs: mut List[E], by: OrderBy[imm E,K]): mut List[E] -> Block#
@@ -194,8 +201,56 @@ CollapseStep: { #[E:*,K](last: mut Var[mut Opt[read Order[K]]], kept: mut Var[mu
       .lt -> Block#(last.set(Opts#o), kept.get.add(e), Void);
       .eq -> Void;
       .gt -> Block#(last.set(Opts#o), kept.get.add(e), Void) }) } }
+MappingStep: { #[K,E:*](m: mut Map[K,E], k: K, e: E): mut Map[K,E] -> m.containsKey(k) ?[mut Map[K,E]]{
+  .then -> Error.msg`Flow.mapping: two elements have the same key`;
+  .else -> m.with(k, e) } }
+//The calls of `by` in `Sort` and `Max`: `by#e` once per element, in flow order, as `Tree` receives it; then exactly the
+//comparisons of the merges, in the order `Tree` makes them: the merges of the binary counter as each element is received,
+//then those of the blocks left over, from the right. Every comparison compares a key of the left block with one of the right block.
+//`Sort#(xs, by, k)` keeps the first `k` elements of the stable sort: on a tie the merge takes from the left block, so the
+//elements `by` ranks together keep their flow order. `Max` keeps every element tied for the maximum, in flow order.
+//`sort`, `sortDistinct`, `max` and `min` take an `OrderBy`, not an `OrderHashBy`: they never call `.hash`.
+//The calls of `by` in `Distinct`, and in `distinct`, `mapping`, `set` and `eSet` through `Map` and `ESet`: `by#e` and its `.hash`
+//once per element, in flow order, then `==` with the kept keys of equal hash, in the order they were kept, up to the first equal one.
+//`Append#(xs, b)` is the elements of `xs` followed by those of `b.seqFlow`, as `read` or `imm`.
+Keyed[E:*,K]: { mut .elem: E; read .key: read Order[K]; }
+Keyeds: { #[E:*,K](key: read Order[K], elem: E): mut Keyed[E,K] -> { .elem -> elem; .key -> key; } }
+TreeMerge[E:*,K]: { read #(a: mut List[mut Keyed[E,K]], b: mut List[mut Keyed[E,K]]): mut List[mut Keyed[E,K]] }
+Sort: { #[E:*,K](xs: mut List[E], by: OrderBy[imm E,K], k: Nat): mut List[E] -> Tree#(xs, by, Merges#[E,K](k)) }
+Max: { #[E:*,K](xs: mut List[E], by: OrderBy[imm E,K]): mut List[E] -> Tree#(xs, by, MaxMerges#[E,K]) }
+Tree: { #[E:*,K](xs: mut List[E], by: OrderBy[imm E,K], m: TreeMerge[E,K]): mut List[E] -> Block#
+  .var[mut List[mut List[mut Keyed[E,K]]]] blocks = {Lists#[mut List[mut Keyed[E,K]]]}
+  .var[Nat] j = {0}
+  .loop{ j.get == (xs.size) ?[mut ControlFlow[mut List[E]]]{ .then -> Break#; .else -> Block#(
+    blocks.set(Carry#(blocks.get, Lists#(Keyeds#[E,K](by#(xs.get(j.get)), xs.get(j.get))), j.get, m)),
+    j.set(j.get + 1),
+    Continue#) } }
+  .return{ blocks.get.isEmpty ?[mut List[E]]{ .then -> Lists#[E]; .else -> Elems#(Rest#(blocks.get, m)) } } }
+Carry: { #[E:*,K](blocks: mut List[mut List[mut Keyed[E,K]]], b: mut List[mut Keyed[E,K]], n: Nat, m: TreeMerge[E,K]): mut List[mut List[mut Keyed[E,K]]] ->
+  n.getRem(2) == 1 ?[mut List[mut List[mut Keyed[E,K]]]]{
+    .then -> Carry#(blocks.subList(0, blocks.size - 1), m#(blocks.getLast, b), n.getTruncDiv(2), m);
+    .else -> blocks +> b } }
+Rest: { #[E:*,K](blocks: mut List[mut List[mut Keyed[E,K]]], m: TreeMerge[E,K]): mut List[mut Keyed[E,K]] ->
+  blocks.size == 1 ?[mut List[mut Keyed[E,K]]]{
+    .then -> blocks.getLast;
+    .else -> Rest#(blocks.subList(0, blocks.size - 2) +> (m#(blocks.get(blocks.size - 2), blocks.getLast)), m) } }
+Elems: { #[E:*,K](ks: mut List[mut Keyed[E,K]]): mut List[E] -> ks.seqFlow.map{k -> k.elem}.list }
+Merges: { #[E:*,K](k: Nat): TreeMerge[E,K] -> {a, b -> MergeFrom#(a, 0, b, 0, k, ELists#[mut Keyed[E,K]])} }
+MergeFrom: { #[E:*,K](a: mut List[mut Keyed[E,K]], i: Nat, b: mut List[mut Keyed[E,K]], j: Nat, k: Nat, res: mut EList[mut Keyed[E,K]]): mut List[mut Keyed[E,K]] ->
+  res.size == k ?[mut List[mut Keyed[E,K]]]{ .then -> res.list; .else ->
+  i == (a.size) ?[mut List[mut Keyed[E,K]]]{
+    .then -> j == (b.size) ?[mut List[mut Keyed[E,K]]]{ .then -> res.list; .else -> MergeFrom#(a, i, b, j + 1, k, res.addAnd(b.get j)) };
+    .else -> j == (b.size) ?[mut List[mut Keyed[E,K]]]{ .then -> MergeFrom#(a, i + 1, b, j, k, res.addAnd(a.get i)); .else ->
+      a.get(i).key <= (b.get(j).key.close) ?[mut List[mut Keyed[E,K]]]{
+        .then -> MergeFrom#(a, i + 1, b, j, k, res.addAnd(a.get i));
+        .else -> MergeFrom#(a, i, b, j + 1, k, res.addAnd(b.get j)) } } } } }
+MaxMerges: { #[E:*,K]: TreeMerge[E,K] -> {a, b -> MaxPick#(a.getFirst.key <=> (b.getFirst.key, { .lt -> 0; .eq -> 1; .gt -> 2 }), a, b)} }
+MaxPick: { #[E:*,K](o: Nat, a: mut List[mut Keyed[E,K]], b: mut List[mut Keyed[E,K]]): mut List[mut Keyed[E,K]] ->
+  o == 0 ?[mut List[mut Keyed[E,K]]]{ .then -> b; .else -> o == 1 ?[mut List[mut Keyed[E,K]]]{ .then -> a ++ b; .else -> a } } }
+HashedKey[K]: { read .hash: Nat; read .key: read OrderHash[K]; }
+HashedKeys: { #[K](h: Nat, o: read OrderHash[K]): read HashedKey[K] -> { .hash -> h; .key -> o; } }
 Distinct: { #[E:*,K](xs: mut List[E], by: OrderHashBy[imm E,K]): mut List[E] -> Block#
-  .var[read List[read Order[K]]] keys = {{}}
+  .var[read List[read HashedKey[K]]] keys = {{}}
   .var[mut EList[E]] kept = {ELists#[E]}
   .var[Nat] i = {0}
   .loop{ i.get == (xs.size) ?[mut ControlFlow[mut List[E]]]{ .then -> Break#; .else -> Block#(
@@ -203,14 +258,14 @@ Distinct: { #[E:*,K](xs: mut List[E], by: OrderHashBy[imm E,K]): mut List[E] -> 
     i.set(i.get + 1),
     Continue#) } }
   .return{ kept.get.list } }
-DistinctStep: { #[E:*,K](keys: mut Var[read List[read Order[K]]], kept: mut Var[mut EList[E]], o: read Order[K], e: E): Void ->
-  keys.get.seqFlow.none{k -> o == (k.close)} ? { .then -> Block#(keys.set(keys.get +> o), kept.get.add(e), Void); .else -> Void } }
-MappingStep: { #[K,E:*](m: mut Map[K,E], k: K, e: E): mut Map[K,E] -> m.containsKey(k) ?[mut Map[K,E]]{
-  .then -> Error.msg`Flow.mapping: two elements have the same key`;
-  .else -> m.with(k, e) } }
-Sort:{#(xs, by, k)....complete here, you can use '...' when it make sense, same for Distinct above, the point is just that there is a fixed algorithm; if it is a family of algorithms wiht fixed set of calls to work in parallel, make sure to write the set of signatures allowing the parallel work and the intended calls contract. }
-Max:{#(xs, by)....complete here same as Sort}
-Append:{#(xs, b) .. this seems simle enough to write down in full?}
+DistinctStep: { #[E:*,K](keys: mut Var[read List[read HashedKey[K]]], kept: mut Var[mut EList[E]], o: read OrderHash[K], e: E): Void ->
+  KeepNew#(keys, o) ?{ .then -> kept.get.add(e); .else -> Void } }
+KeepNew: { #[K](keys: mut Var[read List[read HashedKey[K]]], o: read OrderHash[K]): Bool -> KeepHashed#(keys, o, o.hash) }
+KeepHashed: { #[K](keys: mut Var[read List[read HashedKey[K]]], o: read OrderHash[K], h: Nat): Bool ->
+  keys.get.seqFlow.any{kk -> kk.hash == h ?{ .then -> o == (kk.key.close); .else -> False }} ?{
+    .then -> False;
+    .else -> Block#(keys.set(keys.get +> (HashedKeys#[K](h, o))), True) } }
+Append: { #[E:*](xs: mut List[E], b: read ToFlow[E]): mut List[read/imm E] -> Flows#[read ToFlow[E]](xs, b).flatMap[E](read F[read ToFlow[E], read ToFlow[E]]{c -> c}).list }
 FlowMode[T:*]: Sealed{ .flowMode: FlowMode[T]; }
 ParImm: Sealed{ #[T:imm]: ParImm[T] }
 ParImm[T:imm]: FlowMode[T]
@@ -327,18 +382,8 @@ Flow[E:*]: {
   mut .all(f: read F[E, Bool]): Bool -> this.none{e -> f#e .not};
   }
 ```
-//Again for this """`down.push#(down, e)` sends `e` downstream; `down.pushOpt#(down, o)` sends the element of `o` downstream when `o` is not empty."""
-//just write the needed signatures and the contract.
 
-//Ok the above tell us 'What we plan to do'; a few tweaks and it should be good.
-//but it still miss the set of all the calls that will trigger error.
-//A programmer reading the text up to here still can not fully predict all the observable behaviour of any usage of the intended Flow API. We need to get to this level before we move on.
-//--------
-//The text directly below needs to tell why we want to do this, what is the balance of simplicity/predictability/performance/compilation cost we are going for.
-
-//Then we explain 'how we do it': implementation strategies, choices, heuristics etc.
-//This below is part of 'how we do it'
-### Sources and modes// this is not the right content here.
+### Sources and modes
 
 The mode decides which strategies the terminal may pick:
 - `Seq`: only the sequential strategy, over any elements.
@@ -360,172 +405,77 @@ Whether an element is `imm` or only `read` is known to the type system alone: th
 
 Every strategy, the sequential strategy included, runs the mode checks before any element is sent downstream: the identity check over a source of mode `ParRepr` or `ParPod`, the onlyImmCapture check on every lambda of a flow of mode `ParRepr` or `ParPod` except those of `for`, `forEach` and `let`, the check that no stage/terminal of a flow of mode `ParRepr` or `ParPod` needs positive speculation calls, the condition of `.forEach`, and the deceptive shape exceptions. Each throws a misuse exception.
 
-//This is part of What we want to do and need to go above.
 ### Core methods
-The core methods have a direct implementation.
-//List one by one the core methods and describe the behaviour with pseudocode. Limit the English to the mininum, rely on pseudocode. The text below is the opposite of what we need:
-- **`fold`** builds the accumulator
-//'build' is not a defined term
-with `acc#` and calls `f` on it and each element in flow order:
-// (pseudo)code is way more compact than english here
-every call observes what the calls before it left in the accumulator.
-//'observe' hits our observable determinism, but is not what you mean here.
-It is core because it is the one terminal that trickles:
-//False, it is core because we could not figure out a way to desugare it to something else.
-`allToAll` followed by a loop over the list would be a fence.
-//True and the sky is blue, are you tring to explain why it can not be desugared on this particular one? why this one?
 
-- **`for(a, f)`** calls its lambda on every element, in flow order, once every stage has finished with every element, passing `a` to every call, as `Block.loop(a, body)` does. It is core because its lambda is `mut`, and `fold` and `allToAll` take only `read` lambdas. `for(f)` is this one with a value its lambda ignores.
-- **`forEach(a, f)`** is `for(a, f)` without the fence: it calls its lambda on each element, in flow order, as soon as the stages have finished with that element; it trickles, as `fold` does. It is core for the same reason as `for`, and it throws a misuse exception unless the condition of `.forEach` holds (see **Misuse exceptions**). `forEach(f)` is this one with a value its lambda ignores.
-- **`actorMut`** runs its lambda on every element in flow order, passing it the sink, the current state and the element; the lambda sends zero or more elements downstream through the sink and returns `Continue#` or `Break#`. It is the only stage that keeps state across its calls and the only stage that can stop receiving elements: every other stage with one of those two abilities desugars to it. The lambda returns `Continue#` or `Break#`, the same values `Block.loop` uses; `OuterReturn#v`, which in a loop skips the rest of the enclosing block and makes `v` its result, does not typecheck as the result of an `actor` lambda. Its state and its sink are `mutH`: see **actor and actorMut**.
-- **`actor`** is `actorMut` with a `mut` sink, the state passed as it is, and only `imm` elements sent downstream. The same code implements both.
-- **`allToAll`** collects every element it receives into a list, passes the list to `f` once, and sends downstream the elements of the list `f` returns, in order. It is `.list |> f` followed by flowing the result, but lazy and inside the chain: nothing runs until the terminal is called, the mode and the checks are those of the whole flow expression, and the stages after it are stages of the same chain. It is core because no `actorMut` can keep the elements it has seen: the hygienic state takes only `iso` and `imm` values, and a stage must not keep what it sends downstream (see **A stage sends an element downstream or keeps it, never both**). The list is fresh and owned by the flow, so `f` receives it `mut`; the elements it returns may be those it received, in any order and number, or new ones.
-- **`distinct`** keeps the key `by#e .close` of each kept element, a `read K`, and sends each new element downstream at once, as `read` or `imm`. It is core because no actor can do both. `actorMut` can not keep the key: its hygienic state refuses a `read` key. `actor` can keep it, since its state is passed as it is, but it sends downstream only `imm` elements, and `distinct` sends the element itself, as `read` when it is `read` or `mut`. `actor` can not send `read` elements: its lambda could send its own state as `read`, and the stage after would read it while the next call mutates it. `distinct` never sends its state, which the signature of `actor` can not express.
-- **`suppressDeceptiveShapesException`** records a flag in the chain and sends downstream every element it receives, unchanged; it has no desugaring since the flag is part of the chain.
+The core methods have a direct implementation, given here as pseudocode for the sequential strategy.
+`for(E e: in)` receives the elements the stage before sends downstream, in flow order, one at a time: the stages before run on the element at flow order `j+1` only after the body has finished with the element at flow order `j`. `in.list` receives every element into a fresh list first. `out` is the sink of the stage, as in **Signatures**. `stop` ends the receiving: no stage before runs on any other element.
 
-### What the signatures do not show//redundant now that we have full implementations in either code or pseudocode; some of the text must move in the .. or comments of Sort etc.
+**`fold(acc, f)`**, core since no desugaring of it is known:
+```
+R r= acc#;
+for(E e: in){ r= f#(r, e); }
+return r;
+```
+**`for(a, f)`**, core since its lambda is `mut` and the other terminals take `read` lambdas:
+```
+List[E] xs= in.list;
+for(E e: xs){ f#(a, e); }
+return Void;
+```
+**`forEach(a, f)`**, core for the same reason:
+```
+for(E e: in){ f#(a, e); }
+return Void;
+```
+**`actorMut(state, f)`**, core since every other stage keeping state across its calls, or stopping its receiving, desugars to it:
+```
+S s= state;
+for(E e: in){ if(f#(out, s, e) == Break#){ stop; } }
+```
+The sink and the state are `mutH`. A `Break#` of a stage after it, returned while a call of `f` is running, does not stop that call: it runs to its end, what it sends downstream from then on is dropped, and then the actor stops (see **A `Break#` while the call before it is still running**).
 
-**Fences and distinct.**\
-`sort` is stable: elements that `by` ranks together keep their flow order. `max` and `min` send downstream every element tied for the maximum (minimum), in flow order: `Lists#(3,1,3).flow.max{::}.list` is `Lists#(3,3)`. `sortDistinct` keeps, for each class of elements `by` ranks together, the element with the smallest index, in `by` order: `Lists#(3,1,3,2,1).flow.sortDistinct{::}.list` is `Lists#(1,2,3)`. `sort`, `sortDistinct`, `max` and `min` take an `OrderBy`, not an `OrderHashBy`, so they never call `.hash`.
-`distinct` keeps the same elements as `distinctMut`, sending each kept element downstream at once, as `read` or `imm`: `Lists#(3,1,3,2,1).flow.distinct{::}.list` is `Lists#(3,1,2)`, and so is `Lists#(3,1,3,2,1).flow.distinctMut{::}.list`.
+**`actor(state, f)`** is `actorMut` with a `mut` sink, the state as it is, and `imm R` elements sent downstream; the same code implements both.
 
-**limit.**\
-`.limit 0` throws a deterministic exception where `.limit` is called.
+**`allToAll(f)`**, core since no `actorMut` can keep the elements it receives:
+```
+List[E] xs= in.list;
+for(R r: f#xs){ out.send(r); }
+```
+**`distinct(by)`**, core since no `actor` can keep a `read` key and send `read` elements:
+```
+Var[List[HashedKey[K]]] keys= {};
+for(E e: in){ if(KeepNew#(keys, by#e)){ out.send(e); } }//`e` as `read` or `imm`
+```
+**`suppressDeceptiveShapesException`** records a flag in the chain:
+```
+for(E e: in){ out.send(e); }
+```
+Every other method desugars to these in **Signatures**. The sources are `_Magic!`: `.seqFlow`, `.flow` and `Flows#` send the elements of the collection in its order.
 
-**sum and join.**\
-The number types implement `SumNumber` as a fold with the checked `+`; the string types implement `JoinStr` as a fold.
+### What a flow expression returns
 
-### Lazy and single use
+Every strategy returns what the sequential strategy returns: the core methods as in their pseudocode, every other method through its desugaring. The same calls of the lambdas are made, in the same order, as far as can be observed; the parallel strategies differ only in when they make them (see **How: the parallel strategies**). Two things can still differ between strategies, both non deterministic: a non deterministic exception, such as a stack overflow, of a call the sequential strategy makes, and a misuse exception, which every strategy throws in the same cases, before any element is sent downstream.
 
 **Lazy:** No code executed as part of a stage runs until the terminal is called.
 
 A flow is consumed by the call that adds the next stage or the terminal: calling a stage or a terminal on a flow that is already consumed throws. Nothing has run yet when this is detected, and whether a flow is consumed is known without looking at any element, so the exception is deterministic, thrown by that call, as for `.limit 0`.
 
-### Flows trickle, except at fences
-
-Observably, the flow must behave as if it trickled the elements through the stages one at a time.
-It must not be observable whether a flow runs the stages one at a time or sends the elements one at a time through all the stages, whether it does internal materialisations, etc.
-
-Fences are the only deviation: a fence sends nothing downstream until every stage before it has finished with every element.
-An exception of a stage before the fence propagates before any exception caused by any stage after and included the fence.
-A fence restricts what is observable, not when code runs: with `read` and `imm` elements the stages after a fence may run before it opens, as positive speculation calls, provided their exceptions are held until it opens.
-
-Apart from `for` and `let`, the consuming terminals are not fences: they trickle like the stages. The work of the terminal on the element at flow order `j` comes before any stage runs on the element at flow order `j+1`, as far as it can be observed.
-So a terminal with work of its own that can throw or not terminate is not `.list` followed by a loop. With `f` not terminating on `e1`, and `h` throwing on the first call,
-`l.flow.map f .fold({0}, h)` throws: the sequential strategy calls `h` on `f#e0` and never processes `e1`. `.list` followed by a fold calls `f#e1` first, and never returns.
-The same holds for `foldAcc`, `mapping` (a repeated key throws), `set` and `eSet` (the calls of `by`), `sum` (the checked `+` throws on overflow) and `join`.
-
-### A `Break#` while the call before it is still running
-
-A stage after an `actor` or `actorMut` may return `Break#` on an element the actor sent downstream while the actor call that sent it is still running: the elements of a `flatMapMut` expansion after the one that fills a `limit`, or the code between two calls of `down.push#`. That call is one the sequential strategy makes, and it completes: an element sent downstream after the break is dropped, the rest of the call runs, and what it throws or whether it terminates is part of what the whole flow expression returns; no element is processed once it has returned. With the actor ``{down, s, e -> Block#(down.push#(down, e), Error.msg`after`, Continue#)}`` before `.limit 1 .list`, the whole flow expression throws `after`. A code generator inlining the actor body lets the call finish and drops the elements sent downstream after the break; a `return` inside the loops of the pseudocode is legal where nothing the sequential strategy runs follows the `down.push#` in the same call, as in the finished list of a `flatMap` expansion and in the actor of `limit` itself. Under pipeline parallelism the actor node may already be running the calls on the elements after it when the break is received: those calls are positive speculation calls, cancelled as speculative calls are over `ParImm` and `ParRead`, with the usual holding, and not allowed over `ParRepr` and `ParPod`, so an actor whose stage after may break runs in lockstep with it.
-
-### Every strategy returns what the sequential strategy returns
-
-It must not be observable whether a potentially parallel flow actually runs in parallel or sequentially: every strategy must be observably equal to the sequential strategy.
-
-Where a method contract is purposely under-specified, such as the tournament order in max, min and sort, the same choice must be made in every strategy: a different winner under a parallel strategy and the sequential strategy would make the strategy observable.
-
-**Holding:**\
-In every parallel strategy, an exception thrown by a call is held until two things are known: whether the sequential strategy makes that call at all, and whether every call the sequential strategy makes before it completes successfully. The exception propagates only if the sequential strategy makes that call and every call it makes before that call completes successfully. Otherwise the exception is discarded: for a positive speculation call when the sequential strategy never makes that call, for a negative speculation call when a call it makes before that call throws. If a call the sequential strategy makes before that call does not terminate, the exception is held forever. Speculative calls that can no longer affect the result can be cancelled only if they use `Yield#` correctly.
-
-**Decision points:**\
-A decision point is a call of an `actor` or `actorMut` lambda returning `Break#`: after it, the actor receives no other element. The call of the stage before it that sent the element downstream completes (see **A `Break#` while the call before it is still running**). `limit` desugars to such an `actorMut`, and the short-circuit terminals desugar to `.limit 1`, so they are the most common decision points, but not the only ones.
-A call executed as part of a stage on an element is a positive speculation call when it runs before every decision point after that stage has decided whether that element is processed.
-
-**Termination:**\
-The whole flow expression returns as soon as the sequential strategy would return: no terminal waits for a call the sequential strategy does not make, or makes after a call that throws. A speculative call that does not terminate and never reaches a `Yield#` keeps its worker for the life of the process, but never delays the result. The output of a task is received by the terminal element by element, as the mailboxes of the pseudocode send it.
-
-**Non deterministic exceptions of speculative calls:**\
-Non deterministic exceptions are discarded exactly as the deterministic ones: a stack overflow or an out of memory error thrown by a call the sequential strategy does not make never propagates, and one thrown at a greater index than a deterministic exception never replaces it.
-A worker may have a smaller stack than the calling worker, so a call may throw a stack overflow on one and complete successfully on the other: this is non determinism, allowed, but a cache of results (such as a memo) must never store a non deterministic exception, or every call through that cache from then on throws it.
-
-### Cancellation: `Yield#`
-
-`Yield: Sealed { #: Void }`. `Yield#` is a cancellation point: in a speculative call whose result can no longer affect what the whole flow expression returns, it stops that call, and nothing the call computed is used; in every other call, under every strategy, it returns `Void` and does nothing. So it is not observable, and it can sit in any loop or recursion that may run for long, in the lambdas of a flow or in the methods they call. A speculative call that does not terminate releases its worker only through `Yield#`.
-`Yield#` can stop a call anywhere, inside `Repr.mutate` and `IsoPod.mutate` as elsewhere: a call whose result can no longer affect what the whole flow expression returns mutates only objects the flow created for elements whose results are discarded, or, when the flow throws, objects that are garbage collectable once the exception is caught, since every try has a `read` body; everything else it reads as `read` or `imm`. So nothing can observe what it leaves half done.
-
-### The calls of `by`
-
-**Under-specified, the same in every strategy:**\
-A `by` is `imm`, so its calls are observable only through which one, among those that throw or do not terminate, is made before the others, and through their cost. Which calls are made is under-specified, and must stay so: the implementation needs the freedom to pick its algorithms. The only requirement is the same choice in every strategy. Promises beyond that should only exclude truly pointless freedom, and should be worded loosely. Candidates:
-- `by.cmp(e, e)` is never made: comparing an element with itself is pointless.
-- `.hash` is not called on the same element many times: the hash can be stored next to the element, as a hash set does anyway.
-- `.cmp` is called only on elements whose hashes are equal, for the methods taking an `OrderHashBy`, where comparing elements with different hashes is pointless.
-- `.cmp(a, b)` is called with `a` before `b` in flow order. This only removes the dependence on the order of the two arguments; different algorithms still compare different pairs, so a `by` that is not antisymmetric or not transitive still gives different results under different algorithms.
-- The number of calls stays within the usual complexity of the method: about `n log n` for `sort`, about `n` for `max`, `min` and `distinct`.
-The key `by#e` may be computed once per element and stored (decorate, sort, undecorate), which pays an expensive key, like a fitness, about `n` times instead of about `n log n` times; this changes the call sequence where the key is computed inside every comparison, and is allowed by the under-specification.
-
-**Placement:**\
-`distinct`, `distinctMut`, `mapping`, `set` and `eSet` place each key among the keys already present, calling `.hash` and `.cmp` of `by`: the placement. The placement can not be split, since it is where a repeated key is found; it makes its calls one at a time, in flow order, with one placement algorithm fixed once for every strategy.
+**Sort then limit:**\
+When `.limit n` comes directly after `.sort by`, also as the `limit 1` of `.first`, the sort runs `Sort#(xs, by, n)` instead of `Sort#(xs, by, xs.size)`: the same elements for a `by` respecting the contract of an order, with fewer calls of `by`.
 
 **A `by` breaking its contract:**\
-`by` is user code: nothing forces it to rank two structurally equivalent values together, or to respect the contract of an order (reflexive, antisymmetric, transitive). The contract is logical, not enforced, and no reasoning in this document may assume it.
-`sort`, `sortDistinct`, `max`, `min`, `distinct`, `distinctMut`, `mapping`, `set` and `eSet` may throw a non deterministic exception when the answers of `by` show that it breaks its contract: `.cmp` not antisymmetric or not transitive on the pairs compared, or two elements ranked together with different hashes. They do not have to: detecting it is part of the chosen algorithm, as the calls are, so it is fixed once, and made the same way in every strategy: a flow expression that throws it under one strategy throws it under every strategy, and one that does not throw it under one does not throw it under any. An algorithm may detect only what its own calls show, with no extra call made just to check.
-Where they do not throw, the result is whatever the chosen algorithm returns with those answers, the same in every strategy.
+`by` is user code: nothing forces it to rank two structurally equivalent values together, or to respect the contract of an order (reflexive, antisymmetric, transitive). No flow method checks the contract: with a `by` breaking it, the result is what `Sort`, `Max`, `Collapse` and `KeepNew` return with those answers.
 
-**One merge tree for every strategy:**\
-Inserting each element as it is received suits pipeline parallelism, merging sorted chunks suits data parallelism, and sorting the whole list suits the sequential strategy; the three make different calls, so picking one per strategy would make the strategy observable whenever a call of `by` throws or does not terminate.
-
-One choice serves every strategy: a stable merge sort over a tree fixed by the indices alone, the merge tree. Blocks `(0,1)`, `(2,3)`, `(4,5)`, `(6,7)` are merged, then `(0..1,2..3)` and `(4..5,6..7)`, then `(0..3,4..7)`; when the size is not a power of two, the blocks left over when the sort receives its last element are merged from the right. The tree depends on the size alone, not on chunk sizes or on the number of workers.
-The merges have a fixed order: each runs as soon as both its blocks are finished, as in a binary counter, so when the sort receives the element at index `7` the merges `(6,7)`, `(4..5,6..7)` and `(0..3,4..7)` run in this order.
-- Sequential strategy: the merges run in this order once every element has been received.
-- Pipeline parallelism: the sort node places each element as it receives it, running each merge as a task of its own, so that a call of `by` that does not terminate does not stop the node from receiving an exception thrown by a stage before it.
-- Data parallelism: a merge depends only on its two blocks, so a task can run any merge whose blocks are finished, on any worker. An exception thrown by a call of `by` is held until every stage before the sort and every call the sequential strategy makes before it have returned.
-- Every merge compares an element of its left block with one of its right block, so in every `.cmp(a, b)` call `a` is before `b` in flow order.
-
-The same tree serves `max` and `min` as the max tree: a merge compares the front elements of its two blocks and keeps the leading run of the winner, or both runs in order on a tie: one call per merge, seven over `l`. For `sortDistinct`, a merge drops the element of the right block of each pair ranked together.
-
-`Sort#(vs, by, k)` calls `sort`, the merge tree under the sequential strategy, each merge keeping at most `k` elements:
-```
-List[Nat] sort(List[Nat] vs, OrderBy[Nat] by, Nat k){
-  if(vs.isEmpty){ return vs; }
-  EList[List[Nat]] blocks= EList#;
-  for(Nat j: vs.indexes){
-    List[Nat] b= Lists#(vs.get(j));
-    for(Nat n= j; n % 2 == 1; n= n / 2){ b= merge(blocks.pop, b, by, k); }
-    blocks.push(b);
-    }
-  while(blocks.size > 1){
-    List[Nat] b= blocks.pop;
-    blocks.push(merge(blocks.pop, b, by, k));
-    }
-  return blocks.pop;
-  }
-List[Nat] merge(List[Nat] a, List[Nat] b, OrderBy[Nat] by, Nat k){
-  EList[Nat] res= EList#;
-  Nat i= 0;
-  Nat j= 0;
-  while(res.size < k && i < a.size && j < b.size){
-    if(by.cmp(a.get(i), b.get(j)).isGt){ res.add(b.get(j)); j= j + 1; continue; }
-    res.add(a.get(i));
-    i= i + 1;
-    }
-  while(res.size < k && i < a.size){ res.add(a.get(i)); i= i + 1; }
-  while(res.size < k && j < b.size){ res.add(b.get(j)); j= j + 1; }
-  return res.list;
-  }
-```
-Adding the element at index `j` runs one merge per trailing `1` in the binary digits of `j`: the binary counter. The left block is popped after the right one, so `a` is before `b` in flow order.
-`Max#(vs, by)` is the same tree with this merge in place of `merge`:
-```
-List[Nat] maxMerge(List[Nat] a, List[Nat] b, OrderBy[Nat] by){
-  Ord o= by.cmp(a.get(0), b.get(0));
-  if(o.isGt){ return a; }
-  if(o.isLt){ return b; }
-  return a ++ b;
-  }
-```
-`MergeTree#(by, k)` makes the calls of `Sort#`, with each merge running as a task of its own as soon as its two blocks are complete. `s.add(x)` adds `x` as the element at the next index; it never waits for a call of `by` and never throws. `s.list` merges the blocks left over from the right, waits for the merges in the order `Sort#` makes them, and returns the result: if some calls of `by` throw or do not terminate, it returns what the one `Sort#` makes before the others returns. `MaxTree#by` is the same for `Max#`.
-
-**The tree merged with the stages after it:**\
-The tree is the chosen algorithm, and a stage after the sort may choose a cheaper tree, provided the choice is known before any element is processed, so that it is the same in every strategy.
-With `.limit 3` after the sort, a merge stops once it has kept three elements: the rest of the merged block can not be among those three. Its calls are a prefix of those of the full merge, at most three per merge, with one merge fewer than the elements, and no block holds more than three elements. For a `by` respecting its contract the result is unchanged; for any other `by` the truncated tree is simply the chosen algorithm.
-Under `.suppressDeceptiveShapesException`, `.sort by .first` may become a search for the minimum element with the smallest index; `.sort by .filter{::>3}.first` may sort only the elements passing the filter. Both change which calls of `by.cmp` are made, and both are allowed, like any other sorting algorithm. Sorting only the elements passing the filter also moves the calls of the filter, which is legal only when the filter can neither throw nor fail to terminate (see **sort then filter**).
+**The exceptions a flow expression throws:**
+- the exceptions of the lambdas, and of the checked `+` of `sum`, in the calls the sequential strategy makes;
+- deterministic exceptions of the desugarings: `.limit 0` where `.limit` is called, a repeated key in `mapping`, a size other than one in `get` and more than one in `getOpt`;
+- a deterministic exception, thrown by the call, when a stage or a terminal is called on a flow that is already consumed;
+- the misuse exceptions below, non deterministic, thrown by the terminal.
 
 ### Misuse exceptions
 
-A misuse exception is a non deterministic exception a flow expression throws because of how it is written: the identity check, the onlyImmCapture check, positive speculation calls over `ParRepr` and `ParPod`, and the deceptive shape exceptions. The misuse exceptions of a whole flow expression depend only on the flow expression and on its source, so its terminal throws them before any element is sent downstream. A misuse exception thrown by a flow nested inside a lambda is an exception of the call running that lambda: when that call is speculative, it is held and discarded as any other exception.
-The mode checks are part of the semantics, not of the parallel strategies: every strategy runs them, the sequential strategy included, and a mode argument can never be accepted and ignored. The identity check reads the source and the onlyImmCapture check reads the lambdas; whether a flow expression needs positive speculation calls over `ParRepr` or `ParPod`, and so throws that misuse exception, is decided by its shape and its mode alone, as the deceptive shape exceptions are: never by the size of the source, the elements, the results of the lambdas, the number passed to `limit`, the number of workers or the size of the chunks.
+A misuse exception is a non deterministic exception a flow expression throws because of how it is written: the identity check, the onlyImmCapture check, positive speculation calls over `ParRepr` and `ParPod`, the condition of `.forEach`, and the deceptive shape exceptions. The misuse exceptions of a whole flow expression depend only on the flow expression and on its source, so its terminal throws them before any element is sent downstream. A misuse exception thrown by a flow nested inside a lambda is an exception of the call running that lambda: when that call is speculative, it is held and discarded as any other exception.
+The mode checks are part of the semantics, not of the parallel strategies: every strategy runs them, the sequential strategy included, and a mode argument can never be accepted and ignored. The identity check reads the source and the onlyImmCapture check reads the lambdas; the other misuse exceptions are decided by the shape and the mode alone: never by the size of the source, the elements, the results of the lambdas, the number passed to `limit`, the number of workers or the size of the chunks.
 
 **The identity check:**\
 The flow runs an identity check over a source of mode `ParRepr` or `ParPod`, and throws a non deterministic exception when two elements are identity equal.
@@ -537,8 +487,10 @@ No `imm` value can reach a `mut Repr` or `mut IsoPod`, so `ParRepr` and `ParPod`
 When the lambdas are written in place, the flag is checked when compiling and leaves no code.
 
 **Positive speculation calls over `ParRepr` and `ParPod`:**\
-Over `ParRepr` and `ParPod` the `limit` of a flow expression, and the `limit 1` of a short-circuit terminal, allow parallelism only where they need no positive speculation calls.
-A flow expression over `ParRepr` or `ParPod` with a stage/terminal that could run in parallel only with positive speculation calls on code that can reach an element of the source as `mut` throws a misuse exception, in every strategy, whatever fence comes before that stage/terminal: the mode asks for parallelism that the flow expression can not have. Ending the flow expression before that stage/terminal and running the rest with `.seqFlow` states the intent, and costs little: `.list` directly after a fence takes the list the fence has already materialised.
+A decision point is a `limit`, an `actor` or `actorMut` (their lambda may return `Break#`), or the `limit 1` a short-circuit terminal desugars to. A lambda reaches the source as `mut` when no `++`, `flatMap`, `distinct`, `actor` or `scan` comes before it: those send their elements downstream as `read` or `imm`.
+Over `ParRepr` and `ParPod`, a flow expression throws a misuse exception when a lambda reaching the source as `mut` comes before a decision point with no fence between them; the lambda of a short-circuit terminal comes before its `limit 1`. Such a lambda could run in parallel only with positive speculation calls, which may mutate elements the sequential strategy never processes.
+The canonical form applies first: a `limit` with only `map`, `peek`, `scan`, map and peek with context between it and the last fence before it, or the source, moves to the start of that stretch, and no lambda comes before it any more.
+So `rs.flow(ParRepr#).map f .limit n .list`, `.map f .first` and `.map f .sort by .first` do not throw, and `.filter p .limit n`, `.map f .any p`, `.sort by .any p` and `.map f .actorMut(s, g)` do. Ending the flow expression before the decision point and running the rest with `.seqFlow` states the intent, and costs little: `.list` directly after a fence takes the list the fence has already materialised.
 
 **Over `read` or `imm` elements:**\
 A stage runs over `read` or `imm` elements when the shape and the mode show that no element can lead to a `mut` object existing before the flow: in mode `ParImm` or `ParRead`, or after a `++`, a `flatMap`, a `distinct`, an `actor` or a `scan`, which send their elements downstream as `read` or `imm`. The chain records no other element type, so a `map` returning an `imm` value shows nothing. A `mut` object a stage creates after that point is reachable from nowhere else.
@@ -549,12 +501,12 @@ The segment of a `.forEach` is the stages between it and the last fence before i
 - every lambda of the flow before the `.forEach` carries the onlyImmCapture flag;
 - no `flatMapMut`, `actorMut`, `allToAll` with an arbitrary `f`, or `++` comes before it: the first three can send one `mut` object downstream as two elements, and `++` sends downstream the elements of its argument, which may reach `mut` objects the lambda of `.forEach` reaches too.
 
-Then no stage can read what the lambda of `.forEach` writes: every `mut` object a stage reads was created by the flow for that element alone. With an empty segment, or in mode `Seq` with no stage of the segment starting a data parallel region, it never throws: only the sequential strategy runs the segment. Open decision: `ParRepr` and `ParPod` (item 12 of **Before Stage 1: decisions to take and things to fix**).
+Then no stage can read what the lambda of `.forEach` writes: every `mut` object a stage reads was created by the flow for that element alone. With an empty segment, or in mode `Seq` with no stage of the segment starting a data parallel region, it never throws: only the sequential strategy runs the segment. Over `ParRepr` and `ParPod` it throws whenever its segment is not empty: its lambda, exempt from the onlyImmCapture flag, can capture a `mut Repr` that is also an element.
 
 ### Deceptive shape exceptions
 
 A deceptive shape exception is the misuse exception of a sequence of stages/terminals in which a stage is pointless: in that shape, what the stage computes is discarded or overridden by the stages/terminals after it, and removing or moving the stage changes the result only when some call throws or does not terminate; or in which a stage is used in the variant whose extra, the `mut` elements it sends downstream, the stages/terminals after it discard; or which computes what a cheaper sequence computes, as a whole sort to read one element. The shape deceives the reader about what the flow expression does or costs. Such sequences are written by mistake, so the terminal throws a deceptive shape exception: a non deterministic exception naming the shape to write instead, as for the other misuse exceptions. The terminal sees the whole flow expression however it was built, so the check needs nothing from the compiler; a linter can report many of the same deceptive shape exceptions statically.
-A deceptive shape exception is decided by the shape and the mode alone, together with the number type of the argument of `.sum`. It never depends on the values of the arguments: not on whether two `by` or two `p` are the same object or structurally equivalent, not on whether the list passed to `++` is empty, not on the number passed to `limit`. It never looks into the lambdas: not at what a lambda computes, nor at whether it can throw or not terminate. It never depends on the algorithm implementing a stage either: which calls of `.cmp` and `.hash` a stage makes stays under-specified. The optimiser is a separate matter: where the lambdas are simple enough, as `{::>3}` over a `Nat`, which can not throw, the backend may perform a rewrite that is not legal in general, but whether a sequence throws a deceptive shape exception never depends on it: `.sort by .filter{::>3}.list` throws a deceptive shape exception at every stage of the plan.
+A deceptive shape exception is decided by the shape and the mode alone, together with the number type of the argument of `.sum`. It never depends on the values of the arguments: not on whether two `by` or two `p` are the same object or structurally equivalent, not on whether the list passed to `++` is empty, not on the number passed to `limit`. It never looks into the lambdas: not at what a lambda computes, nor at whether it can throw or not terminate. It never depends on the calls of `by` either, nor on how simple the lambdas are: `.sort by .filter{::>3}.list` throws a deceptive shape exception at every stage of the plan.
 <HELP ME WITH WORDING> Example message: ``The flow expression sorts with `.sort by` and then drops elements with `.filter p`: the sort also orders the elements the filter drops. Write `.filter p .sort by`. To keep this order, call `.suppressDeceptiveShapesException` on the flow.``
 
 `.suppressDeceptiveShapesException` works like a hint: it can be called anywhere in the flow expression, conventionally at its beginning with the hints, and it suppresses every deceptive shape exception of the whole flow expression. It can not say which deceptive shape exception it is meant for: that imprecision is accepted, since asking for it at the exact place of each one would make the flow expressions hard to write and to rearrange.
@@ -614,9 +566,15 @@ Close calls that throw no deceptive shape exception:
 - `.max by .first`, `.distinct by .last`, `.distinct by .size`, `.distinct by .getOpt`: the first of the elements `max` keeps depends on the order, and `distinct` changes the last element, the count and whether the terminal receives at most one element.
 - `.flatMapMut f .map g`, `.flatMapMut f .list`, `.distinctMut by .first`, `.actorMut(s, f) .distinct by`: the elements are passed to a lambda or are returned, or the variant is not interchangeable.
 
-### Negative speculation calls over `ParRepr` and `ParPod`
+## Why
 
-Once the exception is caught, every element is garbage collectable: every try has a `read` body, so the `Repr`s and `IsoPod`s the flow mutates were created inside the body or came in through its `iso` argument, which the `Action` does not give back. A task still inside `mutate` on one of them after the whole flow expression has returned mutates an object nothing else can reach, so negative speculation calls are unobservable.
+Predictability comes first. A programmer who reads **Current design** can predict everything a flow expression returns, down to which calls of the lambdas are made, and so which exception propagates, and the prediction holds under every strategy, at every stage of the implementation and on every machine. Where predictability and simplicity pull apart, predictability wins: two `for`s, five modes, `distinct` next to `distinctMut`, fixed algorithms for `sort`, `max` and `distinct`, and the misuse exceptions are each there so that what a flow returns never depends on the strategy.
+
+Performance comes second, bought only where it costs no predictability. The sequential strategy is a plain loop, with no allocation per element and no materialisation except at fences; the parallel strategies, data parallelism and pipeline parallelism, are picked by the terminal and never show in the result. Where a faster design would make the strategy observable, such as the exception first in time, a sorting algorithm picked per strategy, `limit 0` as the empty flow or a `forEach` with no fence, the design takes the slower path or throws a misuse exception.
+
+Compilation cost stays low. Stages 1 to 3 of **Plan** are a library: nothing needs the compiler but the onlyImmCapture flag, a mark on lambda objects. Stage 4 only makes the same semantics faster, and a flow expression not written in one place still runs through the library.
+
+Simplicity is what is left: a few core methods, and every other method a few lines of Fearless over them.
 
 ## Design decisions
 
@@ -638,6 +596,18 @@ Single use means the chain is checked once, and no lambda is ever called again o
 A mistake in a stage, other than `.limit 0` and reuse, is reported by the terminal, not by the stage. Without the backend integration of Stage 4 the chain is recorded as data, one object per stage. A chain can not be kept and used as the common beginning of two whole flow expressions: a method returning a fresh flow does that.
 
 ### Flows trickle, except at fences
+
+Observably, the flow must behave as if it trickled the elements through the stages one at a time.
+It must not be observable whether a flow runs the stages one at a time or sends the elements one at a time through all the stages, whether it does internal materialisations, etc.
+
+Fences are the only deviation: a fence sends nothing downstream until every stage before it has finished with every element.
+An exception of a stage before the fence propagates before any exception caused by any stage after and included the fence.
+A fence restricts what is observable, not when code runs: with `read` and `imm` elements the stages after a fence may run before it opens, as positive speculation calls, provided their exceptions are held until it opens.
+
+Apart from `for` and `let`, the consuming terminals are not fences: they trickle like the stages. The work of the terminal on the element at flow order `j` comes before any stage runs on the element at flow order `j+1`, as far as it can be observed.
+So a terminal with work of its own that can throw or not terminate is not `.list` followed by a loop. With `f` not terminating on `e1`, and `h` throwing on the first call,
+`l.flow.map f .fold({0}, h)` throws: the sequential strategy calls `h` on `f#e0` and never processes `e1`. `.list` followed by a fold calls `f#e1` first, and never returns.
+The same holds for `foldAcc`, `mapping` (a repeated key throws), `set` and `eSet` (the calls of `by`), `sum` (the checked `+` throws on overflow) and `join`.
 
 A stronger property, that how the lambdas are run is not observable at all, is out of reach: when two calls throw, the exception that propagates is the one at the smallest index, so the order of the calls is observable through it. The property above is worded to keep that window as small as it is.
 
@@ -683,7 +653,7 @@ A Java parallel stream runs `forEach` in any order and `findAny` returns any ele
 The terminal can pick the sequential strategy whenever it is cheaper, as when every worker is busy; testing under the sequential strategy tests the result of every strategy; programs are deterministic without the user reasoning about the schedule.
 
 **Disadvantages:**\
-No cheaper nondeterministic variant, such as `findAny` or an unordered `forEach`, exists. The parallel strategies hold exceptions, restore the flow order, and make the under-specified choices, such as the calls of `by`, the same way as the sequential strategy.
+No cheaper nondeterministic variant, such as `findAny` or an unordered `forEach`, exists. The parallel strategies hold exceptions, restore the flow order, and make the calls of `by` of the fixed algorithms, as the sequential strategy does.
 
 ### The exception of the sequential strategy, and no other
 
@@ -861,7 +831,104 @@ es.flow //examples, of course it does not make sense to use those together
   .map{..}.list
 ```
 Then we could have unchecked exceptions on inapplicable hints etc.
-A hint never changes what a flow expression returns, so hints that never throw can be added at Stage 3 with no change of semantics; a hint whose misuse throws is part of the semantics, and must be named, with its exception, before Stage 1 starts. Open decision: which hints throw, if any (item 4 of **Before Stage 1: decisions to take and things to fix**). `.suppressDeceptiveShapesException` works like a hint.
+A hint never changes what a flow expression returns, so hints that never throw can be added at Stage 3 with no change of semantics; a hint whose misuse throws is part of the semantics, and must be named, with its exception, before Stage 1 starts. No hint throws: `.suppressDeceptiveShapesException`, which works like a hint, is the only one before Stage 3, and every later hint never throws.
+
+## How: the parallel strategies
+
+This section explains how the parallel strategies return what the sequential strategy returns.
+
+### Every strategy returns what the sequential strategy returns
+
+It must not be observable whether a potentially parallel flow actually runs in parallel or sequentially: every strategy must be observably equal to the sequential strategy.
+
+The calls of `by` are fixed by `Sort`, `Max`, `Collapse` and `KeepNew`, and every strategy makes the same calls: a different winner under a parallel strategy and the sequential strategy would make the strategy observable.
+
+**Holding:**\
+In every parallel strategy, an exception thrown by a call is held until two things are known: whether the sequential strategy makes that call at all, and whether every call the sequential strategy makes before it completes successfully. The exception propagates only if the sequential strategy makes that call and every call it makes before that call completes successfully. Otherwise the exception is discarded: for a positive speculation call when the sequential strategy never makes that call, for a negative speculation call when a call it makes before that call throws. If a call the sequential strategy makes before that call does not terminate, the exception is held forever. Speculative calls that can no longer affect the result can be cancelled only if they use `Yield#` correctly.
+
+**Decision points:**\
+A decision point is a call of an `actor` or `actorMut` lambda returning `Break#`: after it, the actor receives no other element. The call of the stage before it that sent the element downstream completes (see **A `Break#` while the call before it is still running**). `limit` desugars to such an `actorMut`, and the short-circuit terminals desugar to `.limit 1`, so they are the most common decision points, but not the only ones.
+A call executed as part of a stage on an element is a positive speculation call when it runs before every decision point after that stage has decided whether that element is processed.
+
+**Termination:**\
+The whole flow expression returns as soon as the sequential strategy would return: no terminal waits for a call the sequential strategy does not make, or makes after a call that throws. A speculative call that does not terminate and never reaches a `Yield#` keeps its worker for the life of the process, but never delays the result. The output of a task is received by the terminal element by element, as the mailboxes of the pseudocode send it.
+
+**Non deterministic exceptions of speculative calls:**\
+Non deterministic exceptions are discarded exactly as the deterministic ones: a stack overflow or an out of memory error thrown by a call the sequential strategy does not make never propagates, and one thrown at a greater index than a deterministic exception never replaces it.
+A worker may have a smaller stack than the calling worker, so a call may throw a stack overflow on one and complete successfully on the other: this is non determinism, allowed, but a cache of results (such as a memo) must never store a non deterministic exception, or every call through that cache from then on throws it.
+
+### A `Break#` while the call before it is still running
+
+A stage after an `actor` or `actorMut` may return `Break#` on an element the actor sent downstream while the actor call that sent it is still running: the elements of a `flatMapMut` expansion after the one that fills a `limit`, or the code between two calls of `down.push#`. That call is one the sequential strategy makes, and it completes: an element sent downstream after the break is dropped, the rest of the call runs, and what it throws or whether it terminates is part of what the whole flow expression returns; no element is processed once it has returned. With the actor ``{down, s, e -> Block#(down.push#(down, e), Error.msg`after`, Continue#)}`` before `.limit 1 .list`, the whole flow expression throws `after`. A code generator inlining the actor body lets the call finish and drops the elements sent downstream after the break; a `return` inside the loops of the pseudocode is legal where nothing the sequential strategy runs follows the `down.push#` in the same call, as in the finished list of a `flatMap` expansion and in the actor of `limit` itself. Under pipeline parallelism the actor node may already be running the calls on the elements after it when the break is received: those calls are positive speculation calls, cancelled as speculative calls are over `ParImm` and `ParRead`, with the usual holding, and not allowed over `ParRepr` and `ParPod`, so an actor whose stage after may break runs in lockstep with it.
+
+### Cancellation: `Yield#`
+
+`Yield: Sealed { #: Void }`. `Yield#` is a cancellation point: in a speculative call whose result can no longer affect what the whole flow expression returns, it stops that call, and nothing the call computed is used; in every other call, under every strategy, it returns `Void` and does nothing. So it is not observable, and it can sit in any loop or recursion that may run for long, in the lambdas of a flow or in the methods they call. A speculative call that does not terminate releases its worker only through `Yield#`.
+`Yield#` can stop a call anywhere, inside `Repr.mutate` and `IsoPod.mutate` as elsewhere: a call whose result can no longer affect what the whole flow expression returns mutates only objects the flow created for elements whose results are discarded, or, when the flow throws, objects that are garbage collectable once the exception is caught, since every try has a `read` body; everything else it reads as `read` or `imm`. So nothing can observe what it leaves half done.
+
+### The calls of `by`
+
+**Placement:**\
+`distinct`, `distinctMut`, `mapping`, `set` and `eSet` place each key among the keys already present with the calls of `KeepNew`. The placement can not be split, since it is where a repeated key is found; it makes its calls one at a time, in flow order, in every strategy.
+
+**One merge tree for every strategy:**\
+Inserting each element as it is received suits pipeline parallelism, merging sorted chunks suits data parallelism, and sorting the whole list suits the sequential strategy; the three make different calls, so picking one per strategy would make the strategy observable whenever a call of `by` throws or does not terminate.
+
+One choice serves every strategy: a stable merge sort over a tree fixed by the indices alone, the merge tree. Blocks `(0,1)`, `(2,3)`, `(4,5)`, `(6,7)` are merged, then `(0..1,2..3)` and `(4..5,6..7)`, then `(0..3,4..7)`; when the size is not a power of two, the blocks left over when the sort receives its last element are merged from the right. The tree depends on the size alone, not on chunk sizes or on the number of workers.
+The merges have a fixed order: each runs as soon as both its blocks are finished, as in a binary counter, so when the sort receives the element at index `7` the merges `(6,7)`, `(4..5,6..7)` and `(0..3,4..7)` run in this order.
+- Sequential strategy: the merges run in this order once every element has been received.
+- Pipeline parallelism: the sort node places each element as it receives it, running each merge as a task of its own, so that a call of `by` that does not terminate does not stop the node from receiving an exception thrown by a stage before it.
+- Data parallelism: a merge depends only on its two blocks, so a task can run any merge whose blocks are finished, on any worker. An exception thrown by a call of `by` is held until every stage before the sort and every call the sequential strategy makes before it have returned.
+- Every merge compares an element of its left block with one of its right block, so in every `.cmp(a, b)` call `a` is before `b` in flow order.
+
+The same tree serves `max` and `min` as the max tree: a merge compares the front elements of its two blocks and keeps the leading run of the winner, or both runs in order on a tie: one call per merge, seven over `l`. `sortDistinct` is the merge tree of `Sort`, keeping the elements ranked together, then `Collapse`.
+
+The pseudocode below writes `by.cmp(a, b)` for the comparison of the keys of `a` and `b`, computed once per element as `Tree` does.
+`Sort#(vs, by, k)` calls `sort`, the merge tree under the sequential strategy, each merge keeping at most `k` elements:
+```
+List[Nat] sort(List[Nat] vs, OrderBy[Nat] by, Nat k){
+  if(vs.isEmpty){ return vs; }
+  EList[List[Nat]] blocks= EList#;
+  for(Nat j: vs.indexes){
+    List[Nat] b= Lists#(vs.get(j));
+    for(Nat n= j; n % 2 == 1; n= n / 2){ b= merge(blocks.pop, b, by, k); }
+    blocks.push(b);
+    }
+  while(blocks.size > 1){
+    List[Nat] b= blocks.pop;
+    blocks.push(merge(blocks.pop, b, by, k));
+    }
+  return blocks.pop;
+  }
+List[Nat] merge(List[Nat] a, List[Nat] b, OrderBy[Nat] by, Nat k){
+  EList[Nat] res= EList#;
+  Nat i= 0;
+  Nat j= 0;
+  while(res.size < k && i < a.size && j < b.size){
+    if(by.cmp(a.get(i), b.get(j)).isGt){ res.add(b.get(j)); j= j + 1; continue; }
+    res.add(a.get(i));
+    i= i + 1;
+    }
+  while(res.size < k && i < a.size){ res.add(a.get(i)); i= i + 1; }
+  while(res.size < k && j < b.size){ res.add(b.get(j)); j= j + 1; }
+  return res.list;
+  }
+```
+Adding the element at index `j` runs one merge per trailing `1` in the binary digits of `j`: the binary counter. The left block is popped after the right one, so `a` is before `b` in flow order.
+`Max#(vs, by)` is the same tree with this merge in place of `merge`:
+```
+List[Nat] maxMerge(List[Nat] a, List[Nat] b, OrderBy[Nat] by){
+  Ord o= by.cmp(a.get(0), b.get(0));
+  if(o.isGt){ return a; }
+  if(o.isLt){ return b; }
+  return a ++ b;
+  }
+```
+`MergeTree#(by, k)` makes the calls of `Sort#`, with each merge running as a task of its own as soon as its two blocks are complete. `s.add(x)` adds `x` as the element at the next index; it never waits for a call of `by` and never throws. `s.list` merges the blocks left over from the right, waits for the merges in the order `Sort#` makes them, and returns the result: if some calls of `by` throw or do not terminate, it returns what the one `Sort#` makes before the others returns. `MaxTree#by` is the same for `Max#`.
+
+### Negative speculation calls over `ParRepr` and `ParPod`
+
+Once the exception is caught, every element is garbage collectable: every try has a `read` body, so the `Repr`s and `IsoPod`s the flow mutates were created inside the body or came in through its `iso` argument, which the `Action` does not give back. A task still inside `mutate` on one of them after the whole flow expression has returned mutates an object nothing else can reach, so negative speculation calls are unobservable.
 
 ## Stages and terminals
 
@@ -1034,7 +1101,7 @@ and nothing in it can store one into the other.
 ### max and min keep every tie
 
 `max` and `min` send downstream every element tied for the maximum (minimum), in flow order, where other approaches return one element.
-`Maxes` makes the calls of a linear scan, one comparison per element after the first, where `Max#` makes those of the max tree. Thus, if some of those calls throw or do not terminate, `Maxes` is not fully semantically accurate (while the desugaring of min is). The choice is under-specified, and `max` runs `Max#`, as `sort` runs `Sort#`; `Maxes` stays as the readable semantics.
+`Maxes` makes the calls of a linear scan, one comparison per element after the first, where `Max#` makes those of the max tree. Thus, if some of those calls throw or do not terminate, `Maxes` is not fully semantically accurate (while the desugaring of min is). `max` runs `Max#`, as `sort` runs `Sort#`; `Maxes` stays as the readable version.
 
 `Maxes` is the readable version of `Max#`: the same elements when every call of `by` completes successfully, with the calls of a linear scan, one comparison per element after the first, instead of those of the max tree:
 ```
@@ -1058,7 +1125,7 @@ MaxesStep: { #[E:*,K](best: mut Var[mut Opt[read Order[K]]], run: mut Var[mut EL
 
 Both make `n-1` calls of `by` on `n` elements: the linear scan compares each element after the first with the current maximum, and the max tree makes one call per merge, over `n-1` merges. `n-1` comparisons is the least any algorithm finding the maximum makes, and the tournament method reaches it (Knuth, The Art of Computer Programming, vol. 3, 5.3.3), so running the max tree under the sequential strategy costs no extra call. It keeps at most about `log2 n` pending blocks, as the binary counter of `Sort#` does, where the linear scan keeps one; when many elements tie, each merge concatenates two runs, where the linear scan appends each tied element once.
 The two differ in which pairs they compare. The linear scan compares each element with the current maximum, so every call depends on the answer of the call before it, and the calls can not be split between workers. The max tree compares pairs fixed by the indexes alone, so the merges of different blocks run on different workers. The difference is observable only when a call of `by` throws, does not terminate, or breaks the contract of an order.
-`Maxes` also computes `by#e` once per element, where the pseudocode of `Max#` computes both keys at every comparison (item 1 of **Before Stage 1: decisions to take and things to fix**).
+`Maxes` computes `by#e` once per element, as `Max#` does.
 
 `Rev` swaps the outcome, not the arguments: `by#t0 <=> (by#t1, m')` computes the key of `t0` before the key of `t1`, as `by` itself does, so every call `by` receives is the same call, in the same order, in both. Ties stay ties, so the same elements are sent downstream in the same flow order, and if a call of `by` throws or does not terminate, it is the same call.
 
@@ -1068,8 +1135,8 @@ sortDistinct desugars to `.sort by` followed by collapsing each run of tied elem
 The other candidates, `.distinct by .sort by` and `.sort by .distinct by`, do not typecheck when `by` is only an `OrderBy`: `.distinct` needs an `OrderHashBy`. With an `OrderHashBy`, a subtype of `OrderBy`, both typecheck, and return the elements `.sortDistinct by` returns, as `read` or `imm`, when every call of `by` completes successfully.
 Sorting before collapsing is what makes the hash unnecessary.
 Since the sort is stable, the element kept for each class is the one with the smallest index, the same one `.distinct` keeps.
-The desugaring sorts the duplicates too; a direct implementation can drop an element as soon as it compares equal to one already placed, for example while inserting into an ordered tree. That changes which calls to `by` are made, which is left under-specified as for `.sort`, provided the same choice is made in every strategy.
-`Collapse` keeps, of each run of tied elements, the element with the smallest index; after a stable sort the elements `by` ranks together are adjacent, so each element is compared only with the kept element before it in flow order, and the state is a single key rather than a set of all kept keys. `Distinct` compares each element with every kept key and never calls `.hash`. Both keep each key as the `read Order[K]` that `by#e` returns, in a plain `mut Var`, and compare with `<=>`: nothing needs the key as a `K`. Everything happens inside the one call over the list, so no key outlives the call and nothing is hygienic.
+The desugaring sorts the duplicates too; dropping an element as soon as it compares equal to one already placed, for example while inserting into an ordered tree, would make other calls of `by` than `Sort` then `Collapse`, so no strategy does it.
+`Collapse` keeps, of each run of tied elements, the element with the smallest index; after a stable sort the elements `by` ranks together are adjacent, so each element is compared only with the kept element before it in flow order, and the state is a single key rather than a set of all kept keys. `Distinct` compares each element only with the kept keys of equal hash, through `KeepNew`. Both keep each key as the `read Order[K]` that `by#e` returns, in a plain `mut Var`, and compare with `<=>`: nothing needs the key as a `K`. Everything happens inside the one call over the list, so no key outlives the call and nothing is hygienic.
 
 ### distinct and distinctMut
 
@@ -1079,8 +1146,7 @@ The difference is observable: `.distinct by .filter p .first` runs the stages be
 
 A stage sends an element downstream or keeps it, never both. `distinct` keeps the key `by#e .close`, a `read K` that with `by` an identity, as `{::}`, is the element itself seen through `read`; so it sends its elements downstream as `read` or `imm`, as `flatMap` does: no stage after it can mutate what a kept key aliases, the stages before it are finished with it, and nothing else in the flow reaches it. After a `distinct` the elements are `read` or `imm` for every rule that cares. `distinctMut` keeps the elements `mut`, so it may send none of them downstream while it still compares with their keys: it decides everything inside the one call of `allToAll`, as `max` and `sortDistinct` do, and no key outlives the call.
 
-`Distinct` compares each element with every kept key and never calls `.hash`; a direct implementation keeps the keys in a hash set, calling `.hash` on each element and `.cmp` only on keys with the same hash. The hash is what `OrderHashBy` adds over the `OrderBy` of sortDistinct.
-The result is the same when every call of `by` completes successfully; which calls to `by` are made is left under-specified as for `.sort`, provided the same choice is made in every strategy.
+`Distinct` places each key with `KeepNew`: `.hash` once per element, then `==` only with the kept keys of equal hash, in the order they were kept. The hash is what `OrderHashBy` adds over the `OrderBy` of sortDistinct.
 
 ### ++ is a fence, and sends read or imm elements downstream
 
@@ -1211,7 +1277,7 @@ Composing `f` with `.not` changes no call and no order, so `.none f` throws the 
 Each example states what the whole flow expression returns, then shows its strategies as pseudocode.
 In the pseudocode below, `Sort#(vs, by, k)` sorts `vs` with the merge tree of **The calls of `by`**, and `MergeTree#(by, n)` makes the same calls of `by` while receiving the elements one at a time.
 In the pseudocode below, `IdentityCheck#rs` throws a non deterministic exception when two elements of `rs` are identity equal.
-In the pseudocode below, `KeySet#by` is a hash set placing its keys with `by.hash` and `by.cmp`; `s.add(x)` returns whether `x` was new.
+In the pseudocode below, `KeySet#by` is a hash set placing its keys with the calls of `KeepNew`; `s.add(x)` returns whether `x` was new.
 
 **example with a fence**\
 ```
@@ -1227,7 +1293,7 @@ Otherwise, let `v0,...,vn` be the `f#ej` in `by` order, ties ordered by smallest
 When no such `k` exists, the whole flow expression returns the empty `Opt`. When `{::>3}` applied to `vk` throws or does not terminate, the whole flow expression returns what that call returns.\
 Otherwise the whole flow expression returns `Opts#(vk)`.
 
-Which calls to `by.cmp(...)` the sorting process makes, and in which order, is intentionally under-specified; the sorting process is under the control of the terminal.
+The calls of `by` the sorting process makes, and their order, are those of `Sort`.
 
 Data parallel:
 
@@ -1274,7 +1340,7 @@ return Opt#;
 Here the merges run while `f` runs, each as a task of its own, so they can not stop the calls of `f`.
 Pipeline parallelism is the same code, with `Mailbox[Nat] m= node(Nat e: l){ out.send(f#e); };`.
 
-Merging sort and filter picks a different sorting algorithm, used then by every strategy; under the sequential strategy:
+Merging sort and filter would sort fewer elements, and so make other calls of `by` than `Sort`: no strategy does it. Under the sequential strategy it would be:
 ```
 EList[Nat] ps= EList#;
 for(Nat e: l){
@@ -1796,7 +1862,7 @@ Lists#(1, 1, 2).flow.map f
 ```
 with `by` an `OrderHashBy[Nat]`.
 
-If there is a smallest index `i` such that `f#ei |> {e -> ...}` throws or does not terminate, the whole flow expression returns what `f#ei |> {e -> ...}` returns. The body of that pipe `|>` places `e` among the values already kept and, when `e` is kept, applies `{::>3}` to `e`; the body makes calls like `by.hash(e)` and `by.cmp(e, f#ej)` with `j < i`, and which of them it makes is left under-specified, as under `.sort`.\
+If there is a smallest index `i` such that `f#ei |> {e -> ...}` throws or does not terminate, the whole flow expression returns what `f#ei |> {e -> ...}` returns. The body of that pipe `|>` places `e` among the values already kept and, when `e` is kept, applies `{::>3}` to `e`; the body makes the calls of `KeepNew`: the key of `e` and its `.hash`, then `==` with the kept values of equal hash, in the order they were kept.\
 Otherwise the whole flow expression returns, in flow order, those of the kept values greater than `3`, where the kept values are decided only by the calls of `by`:
 - `f#1` at index `0` is kept;
 - `f#1` at index `1` is kept when `by` ranks it apart from the `f#1` at index `0`;
@@ -1887,7 +1953,7 @@ Pipeline parallelism is the same code, with `Mailbox[Nat] m= node(Nat e: l){ out
 
 ## Plan
 
-The implementation proceeds in four stages. Every stage has the same semantics, including every exception, every misuse exception and every under-specified choice: a program can not tell which stage runs it, except by its speed and by the non deterministic exceptions it can observe through `mut CapTry`. Each stage keeps the one before it as the oracle for its tests.
+The implementation proceeds in four stages. Every stage has the same semantics, including every exception, every misuse exception and every call of `by`: a program can not tell which stage runs it, except by its speed and by the non deterministic exceptions it can observe through `mut CapTry`. Each stage keeps the one before it as the oracle for its tests.
 Each stage lands as a sequence of small PRs, each checkable against this document line by line: a signature change and the implementation behind it are separate PRs, and no PR introduces a runtime, a cancellation model and an API at once.
 
 ### Stage 1: Naive
@@ -1897,13 +1963,13 @@ The implementation uses the desugarings of **Signatures** as much as possible, w
 This stage is the `Flow` of `base` until Stage 2 replaces it; from then on it lives in the tests, as the oracle.
 `Yield#` gets its meaning at Stage 3, the first stage that can cancel anything.
 
-The flow object records its chain: the source, its mode, each stage/terminal with its lambdas and the numbers known before any element is processed; the terminal reads the shape of the chain. The terminal first runs the checks over the whole chain, then runs the desugared chain. The checks can not be done stage by stage, since whether positive speculation calls are needed depends on the stages/terminals after a stage. Open decision: whether the chain and the checks are written in Fearless, next to the desugarings, or in the runtime (Java), where the identity check and the onlyImmCapture check live in any case (item 5 below).
+The flow object records its chain: the source, its mode, each stage/terminal with its lambdas and the numbers known before any element is processed; the terminal reads the shape of the chain. The terminal first runs the checks over the whole chain, then runs the desugared chain. The checks can not be done stage by stage, since whether positive speculation calls are needed depends on the stages/terminals after a stage. Open decision: whether the chain and the checks are written in Fearless, next to the desugarings, or in the runtime (Java), where the identity check and the onlyImmCapture check live in any case (item 1 below).
 
-The core methods of **Core methods** have a direct implementation; `distinct`, and the placement of `mapping`, `set` and `eSet`, place keys into one hash set, with one fixed placement algorithm, in the runtime. Everything else desugars; `max` and `min` run `Max#`, not `Maxes`: the calls of `by` fixed here must be those of Stage 3, which runs the max tree.
+The core methods of **Core methods** have a direct implementation; `distinct`, and the placement of `mapping`, `set` and `eSet`, place keys with the calls of `KeepNew`, in the runtime. Everything else desugars; `max` and `min` run `Max#`, not `Maxes`: the calls of `by` fixed here must be those of Stage 3, which runs the max tree.
 
 What the Naive stage fixes once, for every stage after it:
-- the under-specified calls of `by`: the merge tree, the max tree, the placement algorithm of `distinct`, `distinctMut`, `mapping`, `set` and `eSet` (which `.hash` and `.cmp` calls, in which order), whether the key `by#e` is computed once per element or once per comparison, and which answers of a `by` breaking its contract make them throw. Changing any of them later is a change of semantics.
-- the rule for the misuse exception of positive speculation calls over `ParRepr` and `ParPod`, stated stage by stage over the chain.
+- the calls of `by` of `Sort`, `Max`, `Collapse` and `KeepNew`: changing any of them later is a change of semantics.
+- the rules of **Misuse exceptions**, as stated there.
 - the misuse exception texts, following the style of the messages of the Frontend.
 
 Tests: every example of this document, as **Tests** under **Implementation pitfalls** describes; each deceptive shape exception and misuse exception, through `checkNonDetErr`; the integration projects on what a parallel flow promises (order, the exception at the smallest index, nothing run after a decision, termination).
@@ -1911,43 +1977,28 @@ Speed is not a goal: `sort` may be slow and `limit` may run through an actor.
 
 ### Before Stage 1: decisions to take and things to fix
 
-Each item is one session of work: it names what is open, where in this document the answer goes, the options with the one recommended, and when it is done. Items 1 to 4, and 12, are semantics that Stage 1 fixes for every later stage, so they come first; 5 to 8 are what the implementation needs and this document does not describe yet; 9 to 11 can run alongside the implementation. Nothing here changes what a flow expression returns when every call completes.
+Each item is one session of work: it names what is open, where in this document the answer goes, the options with the one recommended, and when it is done. Items 1 to 4 are what the implementation needs and this document does not describe yet; 5 to 7 can run alongside the implementation. Nothing here changes what a flow expression returns when every call completes.
 
-1. **The key `by#e`: once per element or once per comparison.**\
-Open in the list of what the Naive stage fixes once. The desugarings `Maxes`, `Collapse` and `Distinct` call `by#e` once per element and compare the `read Order[K]`s with `<=>`; the pseudocode `Sort#` and `Max#` calls `by.cmp(a.get(0), b.get(0))`, which through `OrderBy[T,K]` computes both keys again at every comparison. The two make different calls, so they differ when a call of `by` throws or does not terminate. Options: (a) once per element, in flow order, before any comparison, the key kept next to the element; (b) once per comparison. Recommended: (a), the fewest calls, the desugarings as they stand, and one rule for where an exception of `by#e` propagates: at the index of `e`, before any `.cmp`. Goes in **The calls of `by`**; `Sort#`, `Max#` and their merges then compare stored keys. Done when the rule is stated once and every desugaring and pseudocode follows it.
-
-2. **The placement algorithm of `distinct`, `distinctMut`, `mapping`, `set` and `eSet`.**\
-Open in the list of what the Naive stage fixes once; `KeySet#by` is only named. To fix: `.hash` once per element, in flow order; `.cmp` between the new key and the kept keys with the same hash, in the order they were kept, stopping at the first `eq`; which answers throw (an `eq` between keys of different hashes is never seen, so never thrown; a `.cmp` that is not antisymmetric is seen only if both directions are called, which this algorithm never does). Also whether `distinctMut` runs the `Distinct` loop, which never calls `.hash`, or the same placement as `distinct`. Recommended: one placement in the runtime for all five, `Distinct` kept as the readable semantics as `Maxes` is for `max`. Goes in **The calls of `by`** and **Stage 1: Naive**. Done when the calls of `.hash` and `.cmp` of the five methods are stated and `Distinct` is marked like `Maxes`.
-
-3. **Positive speculation calls over `ParRepr` and `ParPod`, stage by stage.**\
-Stage 1 throws its misuse exception from the shape and the mode alone, and **Positive speculation calls over `ParRepr` and `ParPod`** states the rule in general: such a shape throws, whatever fence comes before it. To write: for each stage and terminal, whether a parallel strategy needs positive speculation calls to run it after the stages before it (a short-circuit terminal or a `limit` after a fence, an `actor` whose stage after may break, `first` with chunks, ...), over `ParRepr` or `ParPod`, and before or after a `++`, `flatMap`, `distinct`, `actor` or `scan`. Goes next to **Deceptive shape exceptions**, as a list in the same style, with the shape and the message; the message suggests ending the flow expression with `.list` before that stage/terminal and continuing with `.seqFlow`. Done when the list covers every stage and terminal of `Flow` and the Stage 1 checks can be written from it.
-
-4. **Hints.**\
-Open in **Hints**: a hint whose misuse throws is semantics. Options: (a) no hint at Stage 1 but `.suppressDeceptiveShapesException`, and every later hint never throws; (b) name the throwing hints now, with their exceptions. Recommended: (a). Goes in **Hints**. Done when it says so and the open decision line is gone.
-
-5. **Where the shape and the checks live.**\
+1. **Where the shape and the checks live.**\
 Open in **Stage 1: Naive**. Options: (a) the flow object keeps the chain as Fearless data (the mode, one step per stage/terminal with its lambdas and the `limit` numbers) and the checks are Fearless over it, with two magic predicates: whether a lambda carries the onlyImmCapture flag (the backend marks such lambdas with the `OnlyImmCapture` marker interface of the runtime) and whether two elements of the source are identity equal; (b) chain and checks in the runtime. Recommended: (a). Goes in **Stage 1: Naive**. Done when the step data type and the two predicates are named there.
 
-6. **How `.sum` reaches the shape.**\
-**Deceptive shape exceptions** keys **Discarded order** on the argument of `.sum` being a `Nat`, `Byte` or `Num`, but `.sum(sn)` is `sn.sumNumber this`, and the flow object sees an object of unknown type. Options: (a) the base `SumNumber`s of the number types fold through an internal method that records an order blind step, user `SumNumber`s through the plain `fold`; (b) `SumNumber` gets a method declaring order blindness, which user code may claim. Recommended: (a). Goes in **What the signatures do not show** and **Deceptive shape exceptions**. Done when the shape of `.sum` is defined by construction.
+2. **How `.sum` reaches the shape.**\
+**Deceptive shape exceptions** keys **Discarded order** on the argument of `.sum` being a `Nat`, `Byte` or `Num`, but `.sum(sn)` is `sn.sumNumber this`, and the flow object sees an object of unknown type. Options: (a) the base `SumNumber`s of the number types fold through an internal method that records an order blind step, user `SumNumber`s through the plain `fold`; (b) `SumNumber` gets a method declaring order blindness, which user code may claim. Recommended: (a). Goes in **Signatures** and **Deceptive shape exceptions**. Done when the shape of `.sum` is defined by construction.
 
-7. **The execution skeleton of Stage 1.**\
-Not described. To write, in **Stage 1: Naive**: a stage returns a new flow object capturing the consumed one and its lambda; the terminal runs the checks over the chain, then drives a `Block.loop` over the source, sending each element into the first `ActorSink`, each sink running its stage and sending on to the next; a `Break#` sets a flag the loop reads, so `.first` over `0~~10000000` processes one element; `fold`, `allToAll`, `for` and `forEach` are the four ways the loop ends. Sources: a list with its mode, a counting loop for the ranges, `Flows#` as a list; `Set`, `ESet` and `Map` through their lists. Single use: a flag on the flow object set by the call that consumes it, with a deterministic exception. What stays magic: the sink helper, the two predicates of item 5, and nothing else of the current `Flow` runtime class, which goes. Done when the paragraph exists and names the Fearless types.
+3. **The execution skeleton of Stage 1.**\
+Not described. To write, in **Stage 1: Naive**: a stage returns a new flow object capturing the consumed one and its lambda; the terminal runs the checks over the chain, then drives a `Block.loop` over the source, sending each element into the first `ActorSink`, each sink running its stage and sending on to the next; a `Break#` sets a flag the loop reads, so `.first` over `0~~10000000` processes one element; `fold`, `allToAll`, `for` and `forEach` are the four ways the loop ends. Sources: a list with its mode, a counting loop for the ranges, `Flows#` as a list; `Set`, `ESet` and `Map` through their lists. Single use: a flag on the flow object set by the call that consumes it, with a deterministic exception. What stays magic: the sink helper, the two predicates of item 1, and nothing else of the current `Flow` runtime class, which goes. Done when the paragraph exists and names the Fearless types.
 
-8. **Tests as the oracle.**\
+4. **Tests as the oracle.**\
 **Stage 1: Naive** lists them; to define: the harness for a lambda that does not terminate (a loop with no exit, and the test declaring a timeout, as `testFlowTermination` does), the harness for a `by` breaking its contract, and the list of the examples of this document as test names, each with the indexes at which its lambdas throw. Done when every example has a test name and the two harnesses exist in `testing.fear` or the integration projects.
 
-9. **Message texts.**\
-Every `<HELP ME WITH WORDING>` of this document: **Lazy and single use**, the deceptive shape exceptions, the misuse exceptions of item 3. Written in the style of the messages of the Frontend: the shape verbatim, what is wrong, the shape to write instead. Can be done one message at a time as the checks are implemented.
+5. **Message texts.**\
+Every `<HELP ME WITH WORDING>` of this document: **What a flow expression returns**, the deceptive shape exceptions, the misuse exceptions of **Misuse exceptions**. Written in the style of the messages of the Frontend: the shape verbatim, what is wrong, the shape to write instead. Can be done one message at a time as the checks are implemented.
 
-10. **`let`: keep or drop.**\
+6. **`let`: keep or drop.**\
 Open in **let**. `let` is `.list |> cont` with `x#xs` folded into `cont`. Recommended: drop, and keep `allToAll` for the in chain case. Done when **let** says one or the other and `Flow` matches.
 
-11. **Deferred to Stage 3, not needed before.**\
+7. **Deferred to Stage 3, not needed before.**\
 The sink of `actor` as `mut` or `mutH` (a `down.push#` inside `Repr.mutate` after a `Break#`; under the sequential strategy **A `Break#` while the call before it is still running** already decides: the rest of the call runs); `Yield#` and the catch points of **Cancellation** under **Implementation pitfalls**; the hints that never throw. Listed so that no session spends time on them before Stage 2 exists.
-
-12. **`.forEach` over `ParRepr` and `ParPod`.**\
-Open under **Misuse exceptions**, in the condition of `.forEach`. The lambda of `.for` and `.forEach` is exempt from the onlyImmCapture flag, so it can capture a `mut Repr` that is also an element, and use it while a task mutates it. Options: (a) `.forEach` over `ParRepr` and `ParPod` throws whenever its segment is not empty; (b) it also needs the flag on its own lambda, which then reaches no `Repr` or `IsoPod` but its own element. Recommended: (a): under (b) the lambda can not capture any `mut` capability, so it can not even print. Done when the condition of `.forEach` states it and the open decision line is gone.
 
 ### Stage 2: Sequential
 
@@ -1995,7 +2046,7 @@ So a `limit` after only 1-1 stages is no decision point for them: `rs.flow(ParRe
 ### Rewrites of combinations of stages and terminals
 
 Each entry below is a combination of stages and terminals with a rewrite that is legal, or that looks legal and is not.
-A rewrite is legal when the whole flow expression returns the same for every lambda, including those that throw or do not terminate, and makes only calls that the under-specified choices allow, the same choices in every strategy.
+A rewrite is legal when the whole flow expression returns the same for every lambda, including those that throw or do not terminate, and makes the calls of `by` of `Sort`, `Max`, `Collapse` and `KeepNew`.
 
 **scan then limit**\
 `l.flow.scan(0, h).limit 3 .list`\
@@ -2064,7 +2115,7 @@ List[Nat] lastMerge(List[Nat] a, List[Nat] b, OrderBy[Nat] by){
   return b;
   }
 ```
-Legal as a choice of sorting algorithm, as the truncated merges of `sort` then `limit`: it makes different calls than `Sort#`, and for a `by` not respecting its contract it may return a different element, so every strategy must make this choice. The data parallel version is `MergeTree#` with this merge.
+Not legal: it makes other calls of `by` than `Sort`, and for a `by` not respecting its contract it may return a different element. Under `.suppressDeceptiveShapesException`, `.sort by .last` runs the whole `Sort`.
 
 **distinct then first**\
 `l.flow.map f .distinct by .first`\
@@ -2072,7 +2123,7 @@ with `by` an `OrderHashBy[Nat]`.
 
 If `l` is empty, the whole flow expression returns `Opt#`. Otherwise, if `f#e0` throws or does not terminate, it returns what `f#e0` returns. Otherwise the distinct stage keeps `f#e0`, since no value was kept before it, and `.first` stops the flow: it returns `Opts#(f#e0)`.
 
-Legal: which calls of `by` the distinct stage makes is under-specified. The first element is kept whatever `by` answers, and its hash is needed only to find it again for the elements after it, which `.first` never processes: the choice of making no call on it serves every strategy. `f` runs only on `e0`, since `.first` breaks right after it.
+The distinct stage makes the calls of `KeepNew` on `f#e0`: its key and its `.hash`, with no `==`, since no key is kept yet. `f` runs only on `e0`, since `.first` breaks right after it; skipping the calls of `by` on `f#e0` would not be legal, since one of them may throw or not terminate.
 ```
 for(Nat e: l){ return Opts#(f#e); }
 return Opt#;
@@ -2096,12 +2147,12 @@ for(Nat v: Sort#(vs, by, vs.size)){
   }
 return res.list;
 ```
-Looks legal, is not in general: `.filter p .sort by` sorts fewer elements, and the calls of `by` are under-specified, but the calls of `p` move:
+Looks legal, is not: `.filter p .sort by` sorts fewer elements, so it makes other calls of `by` than `Sort`, and the calls of `p` move:
 - they run before the calls of `by`, so an exception of `p` would come before one of `by`: this alone could be fixed by holding it;
 - the flow order after the sort decides which exception of `p` propagates, so an element whose `p` call throws would still have to be sorted;
 - a call of `p` that does not terminate stops the sequential strategy at the smallest index, while the result is decided by the smallest `k` in `by` order: if `p` does not terminate on `f#e0` and throws on an element sorted before `f#e0`, the sequential strategy of the rewrite never returns, while the whole flow expression throws. A parallel strategy could run the calls of `p` as tasks and wait only for those it needs, but the sequential strategy can not, and the choice of which elements are sorted must be the same in every strategy.
 
-So, under `.suppressDeceptiveShapesException`, the rewrite is legal only when `p` can neither throw nor fail to terminate, which the backend knows only from inlined code such as `{::>3}` over a `Nat`; then the backend performs it:
+So the rewrite is not legal, even when `p` can neither throw nor fail to terminate, as `{::>3}` over a `Nat`: the calls of `by` still differ. The rewritten loop would be:
 ```
 EList[Nat] vs= EList#;
 for(Nat e: l){
@@ -2155,7 +2206,7 @@ Opt[Nat] res= Opt#;
 for(Nat e: l){ res= Opts#(f#e); }
 return res;
 ```
-What is legal is a cheaper choice of algorithm: a sort that first compares the adjacent pairs of its input makes only `7` calls on an already sorted input, and every strategy can make those calls.
+A cheaper algorithm, as a sort first comparing the adjacent pairs of its input, would make other calls of `by` than `Sort`, so it is not legal either.
 
 **flatMap then flatMap**\
 `l.flow.flatMap f .flatMap g .limit 3 .list`\
@@ -2246,7 +2297,7 @@ The `max by2` stage runs only on the leading run `s.list` returns, so no call of
 
 **Choosing by cost:**\
 Where several strategies are correct, which one is faster depends on the cost of each stage, and the flow expression does not state it. The two data parallel versions of **example with distinct, on a repeated element** are an instance: running the filter in the loop of the stage before it, or in tasks of its own, depends on the cost of the filter compared with the cost of sending elements to a task.
-Every strategy is observably equal, so a backend may decide with any information, even information that changes between runs or during one run, provided the under-specified choices, such as which calls of `by` are made, stay the same:
+Every strategy is observably equal, so a backend may decide with any information, even information that changes between runs or during one run, provided the calls of `by` stay those of `Sort`, `Max`, `Collapse` and `KeepNew`:
 - Static estimate: after inlining, the body of each stage is visible code. `v > 3` is one comparison, with no call to unknown code, no loop and no allocation: it costs less than sending the element to a task, so it runs in the loop of the stage before it. A body calling an abstract lambda such as `f`, or a method with loops or recursion, has an unknown cost.
 - Hints: the user states the cost.
 - Measurement: the generated code holds both versions, and the runtime times the first elements of each stage, then picks a version and adapts the chunk sizes as it goes. `allTheCoresBusy` is the extreme case of this.
@@ -2308,7 +2359,7 @@ No JDK stream, sequential or parallel, can be the implementation of a flow, nor 
 - A parallel `forEach`, or a collector writing into one `LinkedHashMap`, runs the consumer on several workers: the order is lost, and elements too.
 - The iterator of a stream buffers whole `flatMap` expansions.
 - `min` and `max` return one element, not every element tied for the maximum; `distinct` uses `equals` and `hashCode`, not an `OrderHashBy`; `limit(0)` returns the empty stream; `Stream.concat` is not a fence.
-- `List.sort` (TimSort, also behind `EList.sortAnd`) compares an element with one before it in flow order, in its own order of calls, which no parallel sort can reproduce, and whether it throws `IllegalArgumentException` for a comparator breaking its contract depends on those calls: a parallel strategy would detect a different set of broken comparators. Sorting uses the merge tree in every strategy, with its detection, if any, part of the tree.
+- `List.sort` (TimSort, also behind `EList.sortAnd`) compares an element with one before it in flow order, in its own order of calls, which no parallel sort can reproduce, and whether it throws `IllegalArgumentException` for a comparator breaking its contract depends on those calls: a parallel strategy would detect a different set of broken comparators. Sorting uses the merge tree in every strategy, with no detection.
 - `Collectors.toMap` and `Map.put` keep one value for a repeated key, where `mapping` throws.
 
 **Waiting and buffering:**
