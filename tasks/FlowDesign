@@ -336,7 +336,7 @@ Flow[E:*]: {
   mut .actorMut[S:*,R:*](state: iso S, f: read ActorImplMut[S,E,R]): mut Flow[R];
   mut .allToAll[R:*](f: read F[mut List[E], mut List[R]]): mut Flow[R];
   mut .distinct[K](by: OrderHashBy[imm E,K]): mut Flow[read/imm E];
-  mut .suppressDeceptiveShapesException: mut Flow[E];
+  mut .suppressMisuseExceptions: mut Flow[E];
   //desugared stages
   mut .flatMapMut[R:*](f: read F[E, mut ToFlow[R]]): mut Flow[R] ->
     this.actorMut[Void, R](Void, {down, _, e ->
@@ -444,7 +444,7 @@ for(R r: f#xs){ out.send(r); }
 Var[List[_HashedKey[K]]] keys= {};
 for(E e: in){ if(_KeepNew#(keys, by#e)){ out.send(e); } }
 ```
-**`suppressDeceptiveShapesException`** records a flag in the chain:
+**`suppressMisuseExceptions`** records a flag in the chain:
 ```
 for(E e: in){ out.send(e); }
 ```
@@ -485,7 +485,7 @@ ShortCircuit= {first, findFirst, findMap, any, all, none}
 mutReach(i)=  c.stages.subList(0, i).none(ToRead)
 
 Void checkMisuse(Chain c){
-  if(c.stages.contains(suppressDeceptiveShapesException)){ return; }
+  if(c.stages.contains(suppressMisuseExceptions)){ return; }
   if(c.mode in {ParRepr, ParPod}){ checkPar(c); }
   checkForEach(c);
   checkShape(c);
@@ -571,7 +571,7 @@ Void checkShape(Chain c){
     }
   }
 ```
-Every message of `checkMisuse` ends with: "To keep this shape, call `.suppressDeceptiveShapesException` on the flow."
+Every message of `checkMisuse` ends with: "To keep this shape, call `.suppressMisuseExceptions` on the flow."
 <HELP ME WITH WORDING> for every message above.
 
 
@@ -830,7 +830,7 @@ The inspections of some IDEs suggest simpler Java stream chains statically; no s
 The check sees every whole flow expression however it was built, including flows passed through methods, and catches the shapes whose cost or result differs from what the reader expects.
 
 **Disadvantages:**\
-Correct code that happens to have such a shape throws. `.suppressDeceptiveShapesException` covers the whole flow expression, not one shape. The exception is non deterministic, so a program can not rely on catching it.
+Correct code that happens to have such a shape throws. `.suppressMisuseExceptions` covers the whole flow expression, not one shape. The exception is non deterministic, so a program can not rely on catching it.
 
 ### Cooperative cancellation
 
@@ -857,7 +857,7 @@ es.flow //examples, of course it does not make sense to use those together
   .map{..}.list
 ```
 Then we could have unchecked exceptions on inapplicable hints etc.
-A hint never changes what a flow expression returns, so hints that never throw can be added at Stage 3 with no change of semantics; a hint whose misuse throws is part of the semantics, and must be named, with its exception, before Stage 1 starts. No hint throws: `.suppressDeceptiveShapesException`, which works like a hint, is the only one before Stage 3, and every later hint never throws.
+A hint never changes what a flow expression returns, so hints that never throw can be added at Stage 3 with no change of semantics; a hint whose misuse throws is part of the semantics, and must be named, with its exception, before Stage 1 starts. No hint throws: `.suppressMisuseExceptions`, which works like a hint, is the only one before Stage 3, and every later hint never throws.
 
 ## How: the parallel strategies
 
@@ -1670,7 +1670,7 @@ return fork(Range c: Chunks#(rs.size)){
 `` l.flow.map{x -> Error.msg`boom`}.size ``
 
 This code throws. In other approaches this may return the size without running the lambda, since the size is known.
-`l.flow` records mode `ParImm`, so this throws a deceptive shape exception; the pseudocode below is what runs under `.suppressDeceptiveShapesException`.
+`l.flow` records mode `ParImm`, so this throws a deceptive shape exception; the pseudocode below is what runs under `.suppressMisuseExceptions`.
 
 Sequential strategy:
 ```
@@ -1705,7 +1705,7 @@ If there is a smallest index `j` among `0`, `1` and `2` so that the expression `
 The result does not depend on `f#ej` for any `j` above `2`, so an exception thrown by `f#e5` or `g#(f#e5)` is discarded.\
 In other approaches a parallel strategy may non deterministically let that exception propagate.
 
-The canonical form of this example is `l.flow.limit 3 .map{x -> g#(f#x)}.list`: the limit becomes part of the source, and the pseudocode is generated from what is left. `l.flow.map f .limit 3 .map g .list` throws a deceptive shape exception, and under `.suppressDeceptiveShapesException` has the same canonical form. `l.take(3)` is the list of the first `3` elements of `l`, or all of them when `l` is shorter.
+The canonical form of this example is `l.flow.limit 3 .map{x -> g#(f#x)}.list`: the limit becomes part of the source, and the pseudocode is generated from what is left. `l.flow.map f .limit 3 .map g .list` throws a deceptive shape exception, and under `.suppressMisuseExceptions` has the same canonical form. `l.take(3)` is the list of the first `3` elements of `l`, or all of them when `l` is shorter.
 
 Sequential strategy:
 ```
@@ -2020,7 +2020,7 @@ Each stage lands as a sequence of small PRs, each checkable against this documen
 
 ### Stage 1: Naive
 
-No parallelism ever, and the exact semantics of the full design, including every misuse exception about parallelism that can not apply here: the identity check, the onlyImmCapture check, positive speculation calls over `ParRepr` and `ParPod`, the condition of `.forEach`, the deceptive shape exceptions and `.suppressDeceptiveShapesException`, `.limit 0`, single use.
+No parallelism ever, and the exact semantics of the full design, including every misuse exception about parallelism that can not apply here: the identity check, the onlyImmCapture check, positive speculation calls over `ParRepr` and `ParPod`, the condition of `.forEach`, the deceptive shape exceptions and `.suppressMisuseExceptions`, `.limit 0`, single use.
 The implementation uses the desugarings of **Signatures** as much as possible, written in Fearless.
 This stage is the `Flow` of `base` until Stage 2 replaces it; from then on it lives in the tests, as the oracle.
 `Yield#` gets its meaning at Stage 3, the first stage that can cancel anything.
@@ -2113,7 +2113,7 @@ with `h` of type `read F[Nat,Nat,Nat]`.
 
 Let `s0` be `h#(0, e0)` and `sj` be `h#(s(j-1), ej)`. If there is a smallest index `j` among `0`, `1` and `2` such that computing `sj` throws or does not terminate, the whole flow expression returns what that call returns. Otherwise it returns `Lists#(s0, s1, s2)`.
 
-Legal: `scan` is a 1-1 stage, so `.scan(acc, h) .limit n` is `.limit n .scan(acc, h)`, the limit moves on to the source, and the element at index `3` is never processed in either order. Written as `.scan(acc, h) .limit n`, the shape throws a deceptive shape exception: this rewrite applies under `.suppressDeceptiveShapesException`.
+Legal: `scan` is a 1-1 stage, so `.scan(acc, h) .limit n` is `.limit n .scan(acc, h)`, the limit moves on to the source, and the element at index `3` is never processed in either order. Written as `.scan(acc, h) .limit n`, the shape throws a deceptive shape exception: this rewrite applies under `.suppressMisuseExceptions`.
 
 Sequential strategy:
 ```
@@ -2167,14 +2167,14 @@ return _Max#(vs, by, 2);
 ```
 where `_Max#(vs, by, k)` is the tree of `_Max#` with this merge.
 
-`.sort by .last` throws a deceptive shape exception, suggesting `.max by .last`. Under `.suppressDeceptiveShapesException` it is the greatest element under `by`, the one with the greatest index among ties, since the sort is stable. A merge tree keeping only the last element of each block makes one call per merge:
+`.sort by .last` throws a deceptive shape exception, suggesting `.max by .last`. Under `.suppressMisuseExceptions` it is the greatest element under `by`, the one with the greatest index among ties, since the sort is stable. A merge tree keeping only the last element of each block makes one call per merge:
 ```
 List[Nat] lastMerge(List[Nat] a, List[Nat] b, OrderBy[Nat] by){
   if(by.cmp(a.get(0), b.get(0)).isGt){ return a; }
   return b;
   }
 ```
-Not legal: it makes other calls of `by` than `_Sort`, and for a `by` not respecting its contract it may return a different element. Under `.suppressDeceptiveShapesException`, `.sort by .last` runs the whole `_Sort`.
+Not legal: it makes other calls of `by` than `_Sort`, and for a `by` not respecting its contract it may return a different element. Under `.suppressMisuseExceptions`, `.sort by .last` runs the whole `_Sort`.
 
 **distinct then first**\
 `l.flow.map f .distinct by .first`\
@@ -2193,7 +2193,7 @@ With `.limit 2` in place of `.first`, the second element has to be compared with
 `l.flow.map f .sort by .filter p .list`\
 with `by` an `OrderBy[Nat]` and `p` a `read F[Nat,Bool]`.
 
-Throws a deceptive shape exception; the results and the first pseudocode below are what runs under `.suppressDeceptiveShapesException`.
+Throws a deceptive shape exception; the results and the first pseudocode below are what runs under `.suppressMisuseExceptions`.
 
 If there is a smallest index `j` such that `f#ej` throws or does not terminate, the whole flow expression returns what `f#ej` returns. Otherwise, if some calls of `by` made by the sorting process throw or do not terminate, it returns what the one the sorting process makes before the others returns. Otherwise let `v0,...,v7` be the `f#ej` in `by` order, ties ordered by smallest index: if there is a smallest `k` such that `p#vk` throws or does not terminate, it returns what `p#vk` returns; otherwise it returns, in that order, the `vk` for which `p#vk` completes successfully with `True`.
 ```
@@ -2221,7 +2221,7 @@ for(Nat e: l){
 return _Sort#(vs, by, vs.size);
 ```
 The pseudocode of `.filter p .sort by` is the loop above with `p#v` in place of `v > 3`.
-Under `.suppressDeceptiveShapesException`, running `p` early without changing the calls of `by` is still possible, as in **example with elementwise work after a fence**.
+Under `.suppressMisuseExceptions`, running `p` early without changing the calls of `by` is still possible, as in **example with elementwise work after a fence**.
 
 **sort then sort**\
 `l.flow.map f .sort by1 .sort by2 .list`\
@@ -2233,7 +2233,7 @@ EList[Nat] vs= EList#;
 for(Nat e: l){ vs.add(f#e); }
 return _Sort#(_Sort#(vs, by1, vs.size), by2, vs.size);
 ```
-Throws a deceptive shape exception; the result and the pseudocode above are what runs under `.suppressDeceptiveShapesException`.
+Throws a deceptive shape exception; the result and the pseudocode above are what runs under `.suppressMisuseExceptions`.
 Looks legal, is not: the second sort is stable, so for comparators respecting their contract the result is ordered by `by2`, with ties ordered by `by1`, as one `.sort(by2.then by1)`; but the calls of `by1` differ, and a comparator not respecting its contract gives a different order.
 The pseudocode of `.sort(by2.then by1)`:
 ```
@@ -2246,7 +2246,7 @@ return _Sort#(vs, by2.then by1, vs.size);
 `l.flow.map f .sort by .sort by .list`, `l.flow.map f .sort by .size`, `l.flow.map f .last`, and `l.flow.map f .size`\
 with `by` an `OrderBy[Nat]`.
 
-`.sort by .sort by`, `.sort by .size` and `.map f .size` throw deceptive shape exceptions, `.map f .last` does not; the pseudocode below is what runs under `.suppressDeceptiveShapesException`.
+`.sort by .sort by`, `.sort by .size` and `.map f .size` throw deceptive shape exceptions, `.map f .last` does not; the pseudocode below is what runs under `.suppressMisuseExceptions`.
 
 In each, a stage runs although, for well behaved lambdas, the result would be the same without it: the second sort receives a list already sorted by `by`, `.size` depends neither on the order nor on the results of `f`, and `.last` reads only the last result of `f`.
 None of those stages can be dropped: its calls may throw or not terminate, and `by` is user code that nothing forces to be consistent between the two sorts. This is the reasoning of **example with size**.
