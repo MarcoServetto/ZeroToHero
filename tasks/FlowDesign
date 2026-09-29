@@ -482,7 +482,7 @@ ElemLambda=   OneToOne + {filter, flatMap, flatMapMut, mapFilter, actor, actorMu
 ToRead=       {++, flatMap, distinct, actor, scan}
 Decision=     {limit, actor, actorMut}
 ShortCircuit= {first, findFirst, findMap, any, all, none}
-mutReach(i)=  c.mode in {Seq, ParRepr, ParPod} && c.stages.subList(0, i).none(ToRead)
+mutReach(i)=  c.stages.subList(0, i).none(ToRead)
 
 Void checkMisuse(Chain c){
   if(c.mode in {ParRepr, ParPod}){ checkPar(c); }
@@ -531,12 +531,11 @@ ReadsElems=  ({map, ++, sort, max, min} + Elementwise)* (
              | Elementwise ReadsEmpty )
 ReadsFirst=  {map, ++, scan, distinct, distinctMut, limit}* .first
 ```
-In `ReadsEmpty`, `ReadsCount`, `ReadsElems` and `ReadsFirst`, every `map`, `scan` or `Elementwise` stage `s[j]` also needs `!mutReach(j)`.
 ```
 Void checkShape(Chain c){
   match c.shape{
     .. s[i] rest with s in {sort}, rest in ReadsEmpty | ReadsCount | ReadsElems
-    .. s[i] rest with s in {map, scan}, !mutReach(i), rest in ReadsEmpty | ReadsCount
+    .. s[i] rest with s in {map, scan}, rest in ReadsEmpty | ReadsCount
     .. s[i] rest with s in {distinct, distinctMut}, rest in ReadsEmpty | ReadsFirst
     .. s[i] rest with s in {sortDistinct, max, min}, rest in ReadsEmpty
       -> throw "`<s>` is pointless: `<rest>` reads only "+match rest{
@@ -564,8 +563,8 @@ Void checkShape(Chain c){
         (sort, first), (sortDistinct, first) -> "`.min <by> .first`";
         (sort, last) -> "`.max <by> .last`";
         (sortDistinct, last) -> "`.max <by> .first`" }+".";
-    .. .sort by .filter[i] p X* t ..
-      with !mutReach(i), X.none(Fence + Decision), t in Fence or t the terminal, t not in ShortCircuit -> throw
+    .. .sort by .filter p X* t ..
+      with X.none(Fence + Decision), t in Fence or t the terminal, t not in ShortCircuit -> throw
       "Wasted sorting: `.sort <by> .filter <p>` also sorts the elements `.filter <p>` drops. Write `.filter <p> .sort <by>`.";
     _ -> {}
     }
@@ -2243,10 +2242,10 @@ return _Sort#(vs, by2.then by1, vs.size);
 ```
 
 **a stage whose result nothing reads**\
-`l.flow.map f .sort by .sort by .list`, `l.flow.map f .sort by .size`, `l.flow.map f .last`, and `l.flow.map f .size` in mode `ParImm`\
+`l.flow.map f .sort by .sort by .list`, `l.flow.map f .sort by .size`, `l.flow.map f .last`, and `l.flow.map f .size`\
 with `by` an `OrderBy[Nat]`.
 
-`.sort by .sort by`, `.sort by .size` and `.map f .size` in mode `ParImm` throw deceptive shape exceptions, `.map f .last` does not; the pseudocode below is what runs under `.suppressDeceptiveShapesException`.
+`.sort by .sort by`, `.sort by .size` and `.map f .size` throw deceptive shape exceptions, `.map f .last` does not; the pseudocode below is what runs under `.suppressDeceptiveShapesException`.
 
 In each, a stage runs although, for well behaved lambdas, the result would be the same without it: the second sort receives a list already sorted by `by`, `.size` depends neither on the order nor on the results of `f`, and `.last` reads only the last result of `f`.
 None of those stages can be dropped: its calls may throw or not terminate, and `by` is user code that nothing forces to be consistent between the two sorts. This is the reasoning of **example with size**.
@@ -2456,7 +2455,6 @@ Shapes that throw no deceptive shape exception:
 .sortDistinct by1 .sort by2              //the first also drops repeated elements
 .distinct by .filter p | .sortDistinct by .filter p
 .map f .last
-.map f .size                             //over `mut` elements of the source: f may mutate them
 .peek f .size | .map(ctx, g) .size | .peek(ctx, f) .size
 .distinct by1 .distinct by2 | .max by1 .sort by2  //pointless only for equal arguments, not part of the shape
 .limit n .isEmpty | .limit n .first | .++ b .isEmpty | .++ b .first  //pointless only for n >= 1 or a non empty b
