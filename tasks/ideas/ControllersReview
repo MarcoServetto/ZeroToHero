@@ -1,0 +1,93 @@
+Ideas for Controllers (src and test), checked against the code of FearlessLang/Controllers#61 and not applied there.
+
+= Decisions for the user: the code and ControllersDesign disagree =
+
+- An idle project with a problem (a file name Fearless rejects, a missing folder) is badged "data: invalid content"; ManagerTest asserts it. The design lists idle as its own state and gives invalid states only to code and data.
+- Names.free adds a leading "p" to any invalid base: a folder named con becomes pcon (NamesTest asserts it). The design gives the "p" only to a name starting with a digit, then takes the first free valid name, which gives con2. The 64 character cut of long folder names is not in the design.
+- Edit project metadata can change a kind outside idle (code to data directly) and can change the kind or path of a busy project; the kind request refuses both. Either commit refuses them, or the design exempts the editor.
+- A kind request to the same kind (code to code) is silently accepted; the design refuses a change that is not from idle or back to idle.
+- Content assist proposes the methods right after a closing bracket (foo()| and (x)|), inserted with no space; the design says after a dot, or after a space following an expression.
+- The Panel's "Open docs" button duplicates Project > View documentation and is not in the design's panel list; the status bar is not in it either.
+- Delete log removes the file on the Swing thread, outside the request queue; the design says everything the manager does for a project is a request.
+- The design text should say: a tagged text on a one line spot (activity.txt, a register message) is never Str: when it holds a newline; a metadata commit whose base is no longer what projects.info holds is refused; names are the first valid one of name, name2...; methods of a type the last compile does not know come without documentation; Info values nest at most 100 deep.
+
+= Manager GUI, from the full manual suite (allTests.txt) =
+
+- The split divider does not resize the panes while dragged (the JSplitPane is not continuous layout); a drag toward the right edge once stopped at about a quarter of the screen.
+- A second launch showing the window again moves the divider (about 390 to 1140 pixels).
+- The mains list shows about three rows even with a large empty window, and its scroll arrow moves a few pixels per click.
+- allTests.txt is stale: an added non empty project starts idle (Become code before Compile); Compile, Run, Run selected and Terminate are one button; a single main has no check box; TEST 1 needs a file manager refresh (F5) before the icon changes; TEST 9 "Compile enabled again, Run selected enabled" can not hold with one button; TEST 5 step 3 proves little with one project.
+
+= Bugs and robustness not yet fixed =
+
+- Windows, to check there: Deployed.compile passes the project folder as a command line argument; a name outside the ANSI code page, or a Base16: folder with an unpaired surrogate, likely reaches ChildMain mangled. A TaggedText.line argument is ASCII. Coordinator.runData has the same shape for runs.
+- Windows, to check there: a Base16: path with an unpaired surrogate can reach tell or output inside a message, and writing console.txt then fails to encode it.
+- File errors writing the eclipse folder (Eclipse.append, replace, publish, the console resets in Manager.load, open and clear) crash unclassified; a couldNotWriteEclipseFolder message would classify them as projects.info failures are.
+- Eclipse.report lists the logs, then JUnitReport.suite lists them again: a log vanishing in between replaces the last good report.xml with an empty one. In Coordinator, JUnitReport.write and JUnitReport.file have no callers; one JUnitReport.report(folder,name,since) would serve Eclipse.report and remove them.
+- Manager.commitNow reads the old console.txt with Fs.readUtf8; a console.txt deleted by hand, then a rename through metadata, crashes the manager.
+- Manager.apply: a lone path message with a trailing newline ("path\n") is read as a request whose verb is the path.
+- Manager.rotate can land on the selected project, so with two projects the other is checked every 6 seconds instead of 3.
+- Manager.scan re-reads the mains whenever Facts changes, including a new log or an edited readme; only pkgs, hasCache, upToDate and problem matter.
+- suggest.Api.Json.str never checks that it starts at a quote, so a malformed _map.json value like out" is read as ut.
+- The plugin names its messages currentTimeMillis plus a UUID: two in the same millisecond are applied in UUID order, not in arrival order.
+- Registry.real catches every IOException; only NoSuchFileException is a missing folder.
+- Panel.fillMains shows an empty box for a compiled code project with no main.
+- Tiles: arrow keys move the highlight without sending select; the next render snaps it back.
+- Tiles.images caches icons keyed on the whole Project, so any job or time change misses the cache.
+- Info.join prints an object inside a list at indent 0 (not reached today: lists hold only strings).
+- Tokens.Kind.hidden() relies on ordinal() < 3: reordering the enum silently changes which tokens are hidden.
+- Messages.unknownKind names the folder, while every other request refusal names the project; the clean request refuses as "clear cache refused", while every other refusal is named after its verb.
+- The Facts icon cache (decoded images by file and stamp) is never pruned.
+- Paths are written with '/' in projects.info but with the native separator in state.info, manager.info and activity.txt (a Windows only difference; the design shows both forms).
+
+= Better automated tests =
+
+- suggest.Tokens against Frontend's fearlessParser.TokenKind: the same names, order and regular expressions (BlockComment excepted), and the same tokens over every StandardLibrary .fear file.
+- Api and Docs against the real compiled base: every public type and every method found in base.txt; content assist at every .m call site of the base sources offers m with that arity when the receiver is known.
+- Round trip properties over random strings of ", `, |, ^, newlines, e acute and astral characters: TaggedText.read(of(s)) and read(line(s)) give s; Info.parse(Info.print(x)) gives x.
+- ManagerTest after every test: console.txt equals what the View was shown; state.info and projects.info parse with Info.parse; state.info equals Eclipse.state of the state.
+- One table test of the design's refusal list (every verb against unknown name, each kind, busy, a third line), each asserting a note, an Output line, or applied, and projects.info and activity.txt byte identical after a refusal.
+- A seeded fuzz of messages in ManagerTest asserting no request is fatal.
+- A ProjectTest table over state(), action(), selectedMains() and information(), which are pure.
+- A package private rotateNow, so a test checks "the selected project, and in turn one other" without the 3 second timer.
+- An injectable clock (InstantSource) for the "after Ns" lines, the report's since and the stored times.
+- Window takes the concrete Main; passing the Manager and quit/fail callbacks lets WindowTest check that Clear cache, Forget project, a tile click, a Running item and Add folder make exactly the design's requests.
+- A test that src/suggest imports only java.* and suggest.* (the plugin compiles it without Commons).
+- ManagerTest still uses assertTrue(...endsWith(...)) where the guide asks for utils.Err.
+
+= Smaller code =
+
+- Info.print through Join.of (one recursive show) instead of write, join and writeObj: about -24 lines.
+- Info factories (obj, field, str, lst) shared by Eclipse and Registry instead of spelled out new Field(k,Info.noSpan,new Info.Str(x,Info.noSpan)).
+- Fs.list(Path, Walk<T>) in Commons, next to Fs.walk, for the Files.list lambdas left (needs a new Commons.jar).
+- Registry.writeText and Eclipse.replace are two versions of write a tmp file then atomic move; Main.leave is a third.
+- Manager.publish renders the old state.info text again on every change, and load publishes it itself; a String published field removes both.
+- Registry.problemIn repeats named(alias).
+- The kinds list is written in Registry.kinds and Messages.unknownKind ("or" and "and"); the project name rules in Registry.fromInfo and Messages.projectNamed; derive or share them.
+- A Manager line(f,text) helper for the "--- ... ---\n" Output frames.
+- Lenient kind parsing with a sink for reset aliases could replace Registry.badKinds and both idle methods (about -6 lines).
+- Registry's reader methods pass source through seven methods only to build errors; a private record holding it removes about 25 arguments.
+- Project.running() returns Optional<String> only to be turned into "" by its one caller.
+- new State(List.of(),Optional.empty()) appears in Manager, Window and Tiles.
+- ChildMain and Main.main repeat the same exit code ladder (1, 2, 3).
+- Main.run: catch(OverlappingFileLockException){ throw Bug.unreachable(); } adds nothing to the crash path.
+
+= Separation of concerns =
+
+- The design asks for a Report/Violation classification inside Controllers: Messages is split only by comments, Registry.Refused lives in Registry, and refusal texts are written inline in Manager, Registry, Names.markerProblem, Facts.of, Window and Panel.
+- The projects.info schema (fromInfo, entryOf, pathOf, kindOf, names, aliasMap, toInfo, entryToInfo) as its own class, apart from the in memory registry and persistence.
+- Manager.Live mixes project long fields and per job fields; a Job object, null when idle, would simplify busy, exited, terminate, drop and refused.
+- A Verb enum (takes a third line, selects) instead of the parallel lists verbs, thirdLine and the inline select list.
+- Compile and run times live in Registry.Entry although the design says they are not metadata, so every compile start and main start rewrites projects.info.
+- Facts.of sets the global UserError.root as a side effect, and Deployed.mains relies on it; set it where the compiler is called.
+- Manager.State and Project.State are unrelated types with the same name, both used in Tiles.
+
+= Style =
+
+- for( / while( / switch( and for ( / while ( / switch ( are mixed; suggest writes f(a, b) where controller and gui write f(a,b); Sni and Pilot use i++ and C style loops.
+- Long inline lambdas: Registry.badKinds, Manager.commitNow's renamed map, Eclipse.report, Resolver.params, Resolver.declaration, Tray.install's gone listener.
+- Pilot.pause throws new RuntimeException(e) where Pilot.robot uses Bug.of(e); ChildMain is not final; Collapsible calls toLowerCase() without Locale.ROOT; Panel.shown is typed Object; two methods named Eclipse.report do different things.
+
+= Refused =
+
+- Checking the launcher name in Association.identity (design: File associations): FearlessLang/Controllers#55 deliberately does not check it. Related and still open: the console launcher and its windowed "w" twin are two association identities, so starting them alternately rewrites the associations each time.
