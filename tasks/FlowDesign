@@ -187,7 +187,7 @@ KeyElemMapper[A:*,K,E:*]: { .key(A): K; .elem(A): E; }
 ToIso[R]: { mut .iso: iso ToIso[R]; mut .close: mut R; }
 JoinStr[E:*]: { .joinStr(mut Flow[E]): E }//the string types fold with `+`
 SumNumber[E:*]: { .sumNumber(mut Flow[E]): E }//the number types fold with the checked `+`
-FlowContinuation[E:*,T:*,R:*]: { mut #(x: T, self: mut EList[E]): R }
+FlowContinuation[E:*,T:*,R:*]: { mut #(x: T, self: mut List[E]): R }
 IfSome: { 
   #[E:*](b: Bool, e: E): mut Opt[E] -> b ?[mut Opt[E]]{
     .then -> Opts#e; .else -> {} 
@@ -329,7 +329,6 @@ Flows: { #[R:*](r1: R, .., rn: R): mut Flow[R]; }//from 0 to 16 elements, in mod
 Flow[E:*]: {
   //core terminals
   mut .fold[R:*](acc: iso MF[R], f: read F[R,E,R]): R;
-  mut .for[A](a: mutH A, f: mut ForEachBody[A,E]): Void;
   mut .forEach[A](a: mutH A, f: mut ForEachBody[A,E]): Void;
   //core stages
   mut .actor[S:*,R](state: iso S, f: read ActorImpl[S,E,R]): mut Flow[imm R];
@@ -367,7 +366,9 @@ Flow[E:*]: {
   mut .sortDistinct[K](by: OrderBy[imm E,K]): mut Flow[E] -> this.sort by .allToAll{xs -> _Collapse#(xs, by)};
   mut .distinctMut[K](by: OrderHashBy[imm E,K]): mut Flow[E] -> this.allToAll{xs -> _Distinct#(xs, by)};
   mut ++ (b: read ToFlow[E]): mut Flow[read/imm E] -> this.allToAll{xs -> _Append#(xs, b)};
+  mut .readOnly: mut Flow[read/imm E] -> this.flatMap{e -> Lists#e};
   //desugared terminals
+  mut .for[A](a: mutH A, f: mut ForEachBody[A,E]): Void -> this.allToAll{xs -> xs}.forEach(a, f);
   mut .for(f: mut MF[E,Void]): Void -> this.for(Void, {_, e -> f#e});
   mut .forEach(f: mut MF[E,Void]): Void -> this.forEach(Void, {_, e -> f#e});
   mut .eList: mut EList[E] -> this.fold({ELists#[E]}, {acc, e -> Block#(acc.add e, acc)});
@@ -391,8 +392,8 @@ Flow[E:*]: {
     .then -> Actions.ok(xs.first);
     .else -> Actions.msg("Flow.getOpt: the flow has "+(xs.size)+" elements, but .getOpt needs at most one")}};
   mut .getOpt: mut Opt[E] -> this.tryGetOpt!;
-  mut .let[DR:*,R:*](x: read F[mut EList[E],DR], cont: mut FlowContinuation[E,DR,R]): R ->
-    this.eList |> {xs -> cont#(x#xs, xs)};
+  mut .let[DR:*,R:*](x: read F[mut List[E],DR], cont: mut FlowContinuation[E,DR,R]): R ->
+    this.list |> {xs -> cont#(x#xs, xs)};
   mut .first: mut Opt[E] -> this.limit 1 .getOpt;
   mut .findFirst(f: read F[E, Bool]): mut Opt[E] -> this.filter f .first;
   mut .findMap[R:*](f: read F[E, mut Opt[R]]): mut Opt[R] -> this.mapFilter f .first;
@@ -416,12 +417,6 @@ The core methods have a direct implementation, given here as pseudocode.
 R r= acc#;
 for(E e: in){ r= f#(r, e); }
 return r;
-```
-**`for(a, f)`**:
-```
-List[E] xs= in.list;
-for(E e: xs){ f#(a, e); }
-return Void;
 ```
 **`forEach(a, f)`**:
 ```
@@ -464,6 +459,12 @@ for(K k, E e: <the entries of the map, in its order>){ out.send(f#(k, e)); }
 
 **Consumed:** A flow is consumed by the call that adds the next stage or the terminal: calling a stage or a terminal on a flow that is already consumed throws a deterministic exception.
 
+### From the desugarings to the misuse exceptions
+
+The signatures and the core methods above are the whole semantics of `Base:Defensive` (see `BaseOffensiveDefensiveNaive`). A desugared method runs its desugaring when it is called, so a flow expression is a chain of core methods, and no misuse exception is ever thrown: where `Base:Offensive` throws one, `Base:Defensive` runs the flow expression as the desugarings say.
+
+The misuse exceptions of `Base:Offensive` are decided on the chain as the user wrote it, such as `.map f .limit n`, not on the core methods it desugars to, such as two `actorMut`. So in `Base:Offensive` every source, stage and terminal also records itself, as written, and every terminal runs `checkMisuse` on that record before any element is sent downstream.
+
 ### Misuse exceptions
 
 A misuse exception is a non deterministic exception a flow expression throws to warn the user that they may have done some mistake in their code.
@@ -492,9 +493,9 @@ Str showArg(Object a)= match a{
 So `.sort by .filter p .size` shows as `.sort{..} .filter{..} .size`, `.limit 5 .limit 3` as `.limit 5 .limit 3`, and `.join ", "` as `.join ", "`.
 ```
 Fence=        {allToAll, sort, sortDistinct, max, min, distinctMut, ++}
-OneToOne=     {map, peek, scan, map(ctx, _), peek(ctx, _)}
+OneToOne=     {map, peek, scan, readOnly, map(ctx, _), peek(ctx, _)}
 ElemLambda=   OneToOne + {filter, flatMap, flatMapMut, mapFilter, actor, actorMut}
-ToRead=       {++, flatMap, distinct, actor, scan}
+ToRead=       {++, flatMap, distinct, actor, scan, readOnly}
 Decision=     {limit, actor, actorMut}
 ShortCircuit= {first, findFirst, findMap, any, all, none}
 mutReach(i)=  c.stages.subList(0, i).none(ToRead)
@@ -539,13 +540,13 @@ Void checkForEach(Chain c){
 Deceptive shape exceptions:
 ```
 Elementwise= {filter, flatMap, flatMapMut, mapFilter}
-ReadsEmpty=  {map, ++, scan, sort, distinct, distinctMut, sortDistinct, max, min, limit}* .isEmpty
-ReadsCount=  {map, ++, scan, sort, limit}* .size
-ReadsElems=  ({map, ++, sort, max, min} + Elementwise)* (
+ReadsEmpty=  {map, readOnly, ++, scan, sort, distinct, distinctMut, sortDistinct, max, min, limit}* .isEmpty
+ReadsCount=  {map, readOnly, ++, scan, sort, limit}* .size
+ReadsElems=  ({map, readOnly, ++, sort, max, min} + Elementwise)* (
                {.get, .getOpt, .sum(sn)} with sn the SumNumber of Nat, Byte or Num
              | (Elementwise + {distinct, distinctMut, sortDistinct, max, min}) ReadsCount
              | Elementwise ReadsEmpty )
-ReadsFirst=  {map, ++, scan, distinct, distinctMut, limit}* .first
+ReadsFirst=  {map, readOnly, ++, scan, distinct, distinctMut, limit}* .first
 ```
 ```
 Void checkShape(Chain c){
@@ -894,7 +895,7 @@ The source records the mode:
 
 A mode is what the chain records, not a Fearless type: `ParImm`, `ParRead`, `ParRepr` and `ParPod` are also the types of the argument of `.flow(mode)`, while `Seq` has no type and is recorded by `.seqFlow` and `Flows#`.
 
-`ToFlow` is the finished collections: `List`, `EList`, `Set`, `ESet`, `Map`, `Opt`, the ranges and `UStr`. `.seqFlow` on a `ToFlow` runs no user code: it always terminates, never throws, and gives the same elements in the same order for structurally equivalent receivers. `ToFlow` is sealed so that no user type can break this, and `Flow` is not a `ToFlow`. The lambdas of `flatMap` and `flatMapMut` return a `ToFlow`, and `++` takes one, so a `Set` or an `Opt` needs no `.list` first; the runtime can iterate a `ToFlow` it receives directly, with no flow object and no copy. `Map` is a `ToFlow[mut KeyElem[K,E]]`: through a `read` map the entries are `read KeyElem`s, whose `.elem` is `read/imm E`; a `KeyElem[K,E]` written with no capability is `imm`, so as a `ToFlow[KeyElem[K,E]]`, or with `Flow[KeyElem[K,read/imm E]]` from `read .flow(mode)`, a `read` map would give `imm` entries whose `imm .elem` is an `imm` view of an element others may mutate; the `read` and `mut` variants of `.flow(mode)` give `read KeyElem` and `mut KeyElem` for the same reason.
+`ToFlow` is the finished collections: `List`, `EList`, `Set`, `ESet`, `Map`, `Opt`, the ranges and `UStr`. `ToFlow` is sealed, and `Flow` is not a `ToFlow`. So `{}` is never an empty `ToFlow`: `++ List[E]` is a fence appending nothing, and `.readOnly` sends the elements downstream as `read` or `imm` with no fence. The lambdas of `flatMap` and `flatMapMut` return a `ToFlow`, and `++` takes one, so a `Set` or an `Opt` needs no `.list` first; the runtime can iterate a `ToFlow` it receives directly, with no flow object and no copy. `Map` is a `ToFlow[mut KeyElem[K,E]]`: through a `read` map the entries are `read KeyElem`s, whose `.elem` is `read/imm E`; a `KeyElem[K,E]` written with no capability is `imm`, so as a `ToFlow[KeyElem[K,E]]`, or with `Flow[KeyElem[K,read/imm E]]` from `read .flow(mode)`, a `read` map would give `imm` entries whose `imm .elem` is an `imm` view of an element others may mutate; the `read` and `mut` variants of `.flow(mode)` give `read KeyElem` and `mut KeyElem` for the same reason.
 
 Whether an element is `imm` or only `read` is known to the type system alone: the runtime can not tell them apart. So `ParImm` is never discovered from the elements: it comes from `.flow` with no argument, where the type of the receiver shows it, or from `ParImm#`, where the type of `mode` checks it.
 
@@ -2030,58 +2031,54 @@ Merges keeping only `3` elements would skip calls of `by`, and so skip their exc
 
 ## Plan
 
-The implementation proceeds in four stages. Every stage has the same semantics, including every exception, every misuse exception and every call of `by`: a program can not tell which stage runs it, except by its speed and by the non deterministic exceptions it can observe through `mut CapTry`. Each stage keeps the one before it as the oracle for its tests.
+The implementation proceeds in four stages. Stage 1 has the semantics of `Base:Defensive`, with no misuse exceptions; from Stage 2 on, every stage has the same semantics, including every exception, every misuse exception and every call of `by`: a program can not tell which stage runs it, except by its speed and by the non deterministic exceptions it can observe through `mut CapTry`. Each stage keeps the one before it as the oracle for its tests.
 Each stage lands as a sequence of small PRs, each checkable against this document line by line: a signature change and the implementation behind it are separate PRs, and no PR introduces a runtime, a cancellation model and an API at once.
 
 ### Stage 1: Naive
 
-No parallelism ever, and the exact semantics of the full design, including every misuse exception about parallelism that can not apply here: the identity check, the onlyImmCapture check, positive speculation calls over `ParRepr` and `ParPod`, the condition of `.forEach`, the deceptive shape exceptions and `.suppressMisuseExceptions`, `.limit 0`, single use.
-The implementation uses the desugarings of **Signatures** as much as possible, written in Fearless.
+No parallelism and no misuse exceptions: the semantics of `Base:Defensive`, implemented as `Base:DefensiveNaive`. The desugarings of **Signatures** are the implementation, written in Fearless; the core methods are magic following their pseudocode. `.limit 0` and single use still throw their deterministic exceptions.
 This stage is the `Flow` of `base` until Stage 2 replaces it; from then on it lives in the tests, as the oracle.
 `Yield#` gets its meaning at Stage 3, the first stage that can cancel anything.
 
-The flow object records its chain: the source, its mode, each stage/terminal with its lambdas and the numbers known before any element is processed; the terminal reads the shape of the chain. The terminal first runs the checks over the whole chain, then runs the desugared chain. The checks can not be done stage by stage, since whether positive speculation calls are needed depends on the stages/terminals after a stage. Open decision: whether the chain and the checks are written in Fearless, next to the desugarings, or in the runtime (Java), where the identity check and the onlyImmCapture check live in any case (item 1 below).
+The flow object records only the core methods of its chain. The terminal sends each element of the source through one sink per core stage, in flow order; a `Break#` stops the source, and what is sent downstream after it is dropped. Single use is a flag on the flow object, set by the call that consumes it.
 
 The core methods of **Core methods** have a direct implementation; `distinct`, and the placement of `mapping`, `set` and `eSet`, place keys with the calls of `_KeepNew`, in the runtime. Everything else desugars; `max` and `min` run `_Max#`, not `Maxes`: the calls of `by` fixed here must be those of Stage 3, which runs the max tree.
 
 What the Naive stage fixes once, for every stage after it:
 - the calls of `by` of `_Sort`, `_Max`, `_Collapse` and `_KeepNew`: changing any of them later is a change of semantics.
-- the rules of **Misuse exceptions**, as stated there.
-- the misuse exception texts, following the style of the messages of the Frontend.
 
-Tests: every example of this document, as **Tests** under **Implementation pitfalls** describes; each deceptive shape exception and misuse exception, through `checkNonDetErr`; the integration projects on what a parallel flow promises (order, the exception at the smallest index, nothing run after a decision, termination).
+Tests: every example of this document, as **Tests** under **Implementation pitfalls** describes, under `.suppressMisuseExceptions` where the example throws a misuse exception; the integration projects on what a parallel flow promises (order, the exception at the smallest index, nothing run after a decision, termination).
 Speed is not a goal: `sort` may be slow and `limit` may run through an actor.
 
 ### Before Stage 1: decisions to take and things to fix
 
-Each item is one session of work: it names what is open, where in this document the answer goes, the options with the one recommended, and when it is done. Items 1 to 3 are what the implementation needs and this document does not describe yet; 4 to 6 can run alongside the implementation. Nothing here changes what a flow expression returns when every call completes.
+Each item is one session of work: it names what is open, where in this document the answer goes, the options with the one recommended, and when it is done. Items 1 and 2 are what the implementation needs and this document does not describe yet; 3 to 5 can run alongside the implementation. Nothing here changes what a flow expression returns when every call completes.
 
 1. **Where the shape and the checks live.**\
-Open in **Stage 1: Naive**. Options: (a) the flow object keeps the chain as Fearless data (the mode, one step per stage/terminal with its lambdas and the `limit` numbers) and the checks are Fearless over it, with two magic predicates: whether a lambda carries the onlyImmCapture flag (the backend marks such lambdas with the `OnlyImmCapture` marker interface of the runtime) and whether two elements of the source are identity equal; (b) chain and checks in the runtime. Recommended: (a). Goes in **Stage 1: Naive**. Done when the step data type and the two predicates are named there.
+Open in **Stage 2: Sequential**. Options: (a) the flow object keeps the chain as Fearless data (the mode, one step per stage/terminal with its lambdas and the `limit` numbers) and the checks are Fearless over it, with two magic predicates: whether a lambda carries the onlyImmCapture flag (the backend marks such lambdas with the `OnlyImmCapture` marker interface of the runtime) and whether two elements of the source are identity equal; (b) chain and checks in the runtime. Recommended: (a). Goes in **Stage 2: Sequential**. Done when the step data type and the two predicates are named there.
 
-2. **The execution skeleton of Stage 1.**\
-Not described. To write, in **Stage 1: Naive**: a stage returns a new flow object capturing the consumed one and its lambda; the terminal runs the checks over the chain, then drives a `Block.loop` over the source, sending each element into the first `ActorSink`, each sink running its stage and sending on to the next; a `Break#` sets a flag the loop reads, so `.first` over `0~~10000000` processes one element; `fold`, `allToAll`, `for` and `forEach` are the four ways the loop ends. Sources: a list with its mode, a counting loop for the ranges, `Flows#` as a list; `Set`, `ESet` and `Map` through their lists. Single use: a flag on the flow object set by the call that consumes it, with a deterministic exception. What stays magic: the sink helper, the two predicates of item 1, and nothing else of the current `Flow` runtime class, which goes. Done when the paragraph exists and names the Fearless types.
-
-3. **Tests as the oracle.**\
+2. **Tests as the oracle.**\
 **Stage 1: Naive** lists them; to define: the harness for a lambda that does not terminate (a loop with no exit, and the test declaring a timeout, as `testFlowTermination` does), the harness for a `by` breaking its contract, and the list of the examples of this document as test names, each with the indexes at which its lambdas throw. Done when every example has a test name and the two harnesses exist in `testing.fear` or the integration projects.
 
-4. **Message texts.**\
+3. **Message texts.**\
 Every `<HELP ME WITH WORDING>` of this document: the messages of **Misuse exceptions**. Written in the style of the messages of the Frontend: the shape verbatim, what is wrong, the shape to write instead. Can be done one message at a time as the checks are implemented.
 
-5. **`let`: keep or drop.**\
+4. **`let`: keep or drop.**\
 Open in **let**. `let` is `.list |> cont` with `x#xs` folded into `cont`. Recommended: drop, and keep `allToAll` for the in chain case. Done when **let** says one or the other and `Flow` matches.
 
-6. **Deferred to Stage 3, not needed before.**\
+5. **Deferred to Stage 3, not needed before.**\
 The sink of `actor` as `mut` or `mutH` (a `down.push#` inside `Repr.mutate` after a `Break#`; under the sequential strategy **A `Break#` while the call before it is still running** already decides: the rest of the call runs); `Yield#` and the catch points of **Cancellation** under **Implementation pitfalls**; the hints that never throw. Listed so that no session spends time on them before Stage 2 exists.
 
 ### Stage 2: Sequential
 
-The same semantics, with optimised implementations of the sequential strategy.
+The misuse exceptions of **Misuse exceptions** on top of the semantics of Stage 1, in each of `Base:Offensive`, `Base:Defensive` and `Base:Naive` as `BaseOffensiveDefensiveNaive` says, and optimised implementations of the sequential strategy.
+- Every source, stage and terminal records itself as written; every terminal runs `checkMisuse`.
+- The misuse exception texts, following the style of the messages of the Frontend.
 - One loop per chain, sending each element through the stages with no allocation per element and no JDK stream, as the pseudocode of the sequential strategy; only fences materialise.
 - The rewrites of **Canonical form**: `limit` moves towards the source, a known size cuts the source, consecutive `map`s and `filter`s become one.
 - The legal rewrites of **Rewrites of combinations of stages and terminals**, such as the capped blocks of `max` then `limit`.
 - The checks run once per terminal, not once per element; the identity check is one `IdentityHashMap` pass over the source.
-Tests: every test of the Naive stage, plus differential tests running random chains, random lambdas (some throwing, some not respecting `by`'s contract) and random sources under both stages and comparing what they return.
+Tests: every test of the Naive stage, each misuse exception through `checkNonDetErr`, plus differential tests running random chains, random lambdas (some throwing, some not respecting `by`'s contract) and random sources under both stages and comparing what they return.
 Speed goal: close to a plain Java loop over the same work, and never slower than a JDK sequential stream.
 
 ### Stage 3: Parallel dynamic
