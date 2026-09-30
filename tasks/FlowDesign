@@ -304,13 +304,13 @@ List[E]: ToFlow[E] {
   read .flow(mode: FlowMode[read/imm E]): mut Flow[read/imm E];
   mut  .flow(mode: FlowMode[E]): mut Flow[E];
   }
-EList[E]: ToFlow[E] {//mut .seqFlow consumes the EList
+EList[E]: {
+  mut  .seqFlow: mut Flow[E];//consumes the EList
   imm  .flow: mut Flow[imm E];
-  read .flow(mode: FlowMode[read/imm E]): mut Flow[read/imm E];
   mut  .flow(mode: FlowMode[E]): mut Flow[E];//consumes the EList
   }
 Set[E]:  ToFlow[E] { .flow: mut Flow[E]; }
-ESet[E]: ToFlow[E] { mut .flow: mut Flow[E]; }//mut .seqFlow and mut .flow consume the ESet
+ESet[E]: { mut .flow: mut Flow[E]; mut .seqFlow: mut Flow[E]; }//mut .seqFlow and mut .flow consume the ESet
 Map[K,E]: ToFlow[mut KeyElem[K,E]] {
   mut  .flow(mode: FlowMode[mut KeyElem[K,E]]): mut Flow[mut KeyElem[K,E]];
   read .flow(mode: FlowMode[read KeyElem[K,E]]): mut Flow[read KeyElem[K,E]];
@@ -342,7 +342,7 @@ Flow[E:*]: {
       Block#(f#e .seqFlow.for(down, {d, x -> d.push#(d, x)}), Continue#)});
   mut .map[R:*](f: read F[E, R]): mut Flow[R] -> this.flatMapMut{e -> Lists#(f#e)};
   mut .filter(f: read F[E, Bool]): mut Flow[E] -> this.flatMapMut{e -> f#e ?[mut List[E]]{ .then -> Lists#e; .else -> {} }};
-  mut .flatMap[R:*](f: read F[E, read ToFlow[R]]): mut Flow[read/imm R] -> this.flatMapMut{e -> f#e .seqFlow.eList};
+  mut .flatMap[R:*](f: read F[E, read ToFlow[R]]): mut Flow[read/imm R] -> this.flatMapMut{e -> f#e .seqFlow.list};
   mut .peek(f: read F[E, Void]): mut Flow[E] -> this.map{e -> Block#(f#e, e)};
   mut .mapFilter[R:*](f: read F[E, mut Opt[R]]): mut Flow[R] -> this.map f .filter{o -> o.isSome}.map{o -> o!};
   mut .limit(n: Nat): mut Flow[E] -> n == 0 ? {
@@ -895,7 +895,7 @@ The source records the mode:
 
 A mode is what the chain records, not a Fearless type: `ParImm`, `ParRead`, `ParRepr` and `ParPod` are also the types of the argument of `.flow(mode)`, while `Seq` has no type and is recorded by `.seqFlow` and `Flows#`.
 
-`ToFlow` is the finished collections: `List`, `EList`, `Set`, `ESet`, `Map`, `Opt`, the ranges and `UStr`. `ToFlow` is sealed, and `Flow` is not a `ToFlow`. So `{}` is never an empty `ToFlow`: `++ List[E]` is a fence appending nothing, and `.readOnly` sends the elements downstream as `read` or `imm` with no fence. The lambdas of `flatMap` and `flatMapMut` return a `ToFlow`, and `++` takes one, so a `Set` or an `Opt` needs no `.list` first; the runtime can iterate a `ToFlow` it receives directly, with no flow object and no copy. `Map` is a `ToFlow[mut KeyElem[K,E]]`: through a `read` map the entries are `read KeyElem`s, whose `.elem` is `read/imm E`; a `KeyElem[K,E]` written with no capability is `imm`, so as a `ToFlow[KeyElem[K,E]]`, or with `Flow[KeyElem[K,read/imm E]]` from `read .flow(mode)`, a `read` map would give `imm` entries whose `imm .elem` is an `imm` view of an element others may mutate; the `read` and `mut` variants of `.flow(mode)` give `read KeyElem` and `mut KeyElem` for the same reason.
+`ToFlow` is the finished collections: `List`, `Set`, `Map`, `Opt`, the ranges and `UStr`. `EList` and `ESet` are not: their `mut .seqFlow` consumes them, and a `ToFlow` never does. `ToFlow` is sealed, and `Flow` is not a `ToFlow`. So `{}` is never an empty `ToFlow`: `++ List[E]` is a fence appending nothing, and `.readOnly` sends the elements downstream as `read` or `imm` with no fence. The lambdas of `flatMap` and `flatMapMut` return a `ToFlow`, and `++` takes one, so a `Set` or an `Opt` needs no `.list` first; the runtime can iterate a `ToFlow` it receives directly, with no flow object and no copy. `Map` is a `ToFlow[mut KeyElem[K,E]]`: through a `read` map the entries are `read KeyElem`s, whose `.elem` is `read/imm E`; a `KeyElem[K,E]` written with no capability is `imm`, so as a `ToFlow[KeyElem[K,E]]`, or with `Flow[KeyElem[K,read/imm E]]` from `read .flow(mode)`, a `read` map would give `imm` entries whose `imm .elem` is an `imm` view of an element others may mutate; the `read` and `mut` variants of `.flow(mode)` give `read KeyElem` and `mut KeyElem` for the same reason.
 
 Whether an element is `imm` or only `read` is known to the type system alone: the runtime can not tell them apart. So `ParImm` is never discovered from the elements: it comes from `.flow` with no argument, where the type of the receiver shows it, or from `ParImm#`, where the type of `mode` checks it.
 
