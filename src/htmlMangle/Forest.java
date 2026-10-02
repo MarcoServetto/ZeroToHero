@@ -108,7 +108,7 @@ public class Forest {
         double mx= control[0];
         double my= control[1];
         
-        pathsHtml.append(drawPath(c.code(), from, to, mx, my, id));
+        pathsHtml.append(drawPath(from, to, mx, my, id));
         pathCodeBoxesHtml.append(drawPathCodeBox(c.code(), c.x(), c.y(), from, to, mx, my, id, c.w(), c.h()));
         id++;
         }
@@ -167,7 +167,16 @@ public class Forest {
     double my= (y1 + y2) / 2 + ny * offset;
     return new double[]{mx, my};
     }
-  private String drawPath(String code, Node from, Node to, double mx, double my, int id) {
+  /**
+   * Get the HTML String for a path, taking into account the curve.
+   * @param from node
+   * @param to node
+   * @param mx curve midpoint x
+   * @param my curve midpoint y
+   * @param id of the path
+   * @return
+   */
+  private String drawPath(Node from, Node to, double mx, double my, int id) {
     int x1= from.position().x();
     int y1= from.position().y();
     int x2= to.position().x();
@@ -181,6 +190,20 @@ public class Forest {
       </g>""", x1, y1, mx, my, x2, y2, id
       );
     }
+  /**
+   * Get the HTML String for a path's code box.
+   * @param code
+   * @param x
+   * @param y
+   * @param from
+   * @param to
+   * @param mx
+   * @param my
+   * @param id
+   * @param boxWidth
+   * @param boxHeight
+   * @return
+   */
   private String drawPathCodeBox(String code, int x, int y, Node from, Node to, double mx, double my, int id, int boxWidth, int boxHeight) {
     int x1= from.position().x();
     int y1= from.position().y();
