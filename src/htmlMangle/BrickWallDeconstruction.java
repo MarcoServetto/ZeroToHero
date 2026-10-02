@@ -15,6 +15,11 @@ public class BrickWallDeconstruction extends BrickWall {
   public BrickWallDeconstruction(Days.LevelName name) {
     super(name, "");
     }
+  /**
+   * Create a new hard-coded custom checkpoint.
+   * @param checkpoint
+   * @return
+   */
   public BrickWallDeconstruction checkpoint(String checkpoint) {
     checkpoints.add(checkpoint);
     return this;
@@ -41,6 +46,14 @@ public class BrickWallDeconstruction extends BrickWall {
     super.addImmovable(indexSkip, s);
     return this;
     }
+  /**
+   * Create a movable brick that can be swapped with another brick(s).
+   * Creates a new checkpoint for each permutation.
+   * @param indexSkip
+   * @param from - the brick's text
+   * @param to - the list of text this text can become.
+   * @return
+   */
   public BrickWallDeconstruction addReplaceable(int indexSkip, String from, String... to) {
     super.addBrick(indexSkip, true, from);
     String[] permutations= new String[to.length + 1];
@@ -49,6 +62,13 @@ public class BrickWallDeconstruction extends BrickWall {
     wallPermutations.add(permutations);
     return this;
     }
+  /**
+   * Makes the last group of bricks replaceable.
+   * Not safe to use on bricks that are already replaceable.
+   * @param lastBricks - the last amount of bricks to target
+   * @param to - the list of text the group of bricks can become.
+   * @return
+   */
   public BrickWallDeconstruction makeReplaceable(int lastBricks, String... to) {
     String[] newPermutation = new String[to.length + 1];
     newPermutation[0] = "";
@@ -73,7 +93,10 @@ public class BrickWallDeconstruction extends BrickWall {
       .replace("[###PILE###]", pileString)
       .replace("[###CHECKPOINTS###]", checkpointsString);
     }
-  
+  /**
+   * The full list of permutations. Each is a checkpoint.
+   * @return String[] containing each permutation.
+   */
   private String[] wallPermutations() {
     List<String> results= new ArrayList<>();
     results.add("");
