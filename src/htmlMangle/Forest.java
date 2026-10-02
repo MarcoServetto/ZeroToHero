@@ -195,8 +195,8 @@ public class Forest {
    * @param code
    * @param x
    * @param y
-   * @param from
-   * @param to
+   * @param from node
+   * @param to node
    * @param mx
    * @param my
    * @param id
