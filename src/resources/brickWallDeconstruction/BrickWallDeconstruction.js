@@ -1,4 +1,5 @@
 let checkpoints= globalThis.checkpoints;
+const nextLevelBtn = Utils.getElementById("nextLevelBtn");
 
 for (let i= 0; i < checkpoints.length; i++) {
   checkpoints[i] = Utils.normalize(checkpoints[i]);
@@ -79,10 +80,14 @@ const checkCheckpoint= () => {
 
 const onComplete= () => {
   Utils.flashImage("rgba(0, 250, 0, 0.5)","levelEndCharacter","translateY(-5%)");
+  nextLevelBtn.removeAttribute("hidden");
+  };
+
+const goToNextLevel= () => {
   const nextLevelUrl= MetaData.str(document.body, "next");
   Utils.checkExists(nextLevelUrl);
-  setTimeout(() => window.location.href = nextLevelUrl, 5000);
-  };
+  window.location.href = nextLevelUrl;
+};
 
 const checkpointReturn= () => {
   if (currentCheckpointStack.length === 0) { return; }
@@ -112,7 +117,7 @@ const checkpointReturn= () => {
 
 const buttonActions= {
   checkpointReturnBtn: checkpointReturn,
-  //hintBtn: () => {},
+  nextLevelBtn: goToNextLevel,
   };
 const Buttons= initButtons(() => {}, buttonActions);
 

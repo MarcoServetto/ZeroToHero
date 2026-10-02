@@ -37,11 +37,22 @@ public class BrickWall {
     wallRows.add(currentWallRowBricks);
     pileRows.add(currentPileRowBricks);
     }
+  /**
+   * Add a brick to the pile.
+   * @param indexSkip - number of spaces to skip along the wall
+   * @param movable - whether the brick can be moved around
+   * @param s - the text on this brick
+   * @return
+   */
   public BrickWall addToPile(int indexSkip, boolean movable, String s) {
     currentIndexAlongPileRow += indexSkip;
     currentPileRowBricks.add(new Brick(s, movable, currentIndexAlongPileRow));
     return this;
     }
+  /**
+   * Create a new row in both the pile and wall.
+   * @return
+   */
   public BrickWall newRow() {
     currentWallRowBricks = new ArrayList<>();
     currentPileRowBricks = new ArrayList<>();
@@ -51,13 +62,32 @@ public class BrickWall {
     currentIndexAlongPileRow = 0;
     return this;
     }
+  /**
+   * Add a brick to the wall. See {@link #addToPile(int, boolean, String)}.
+   * @param indexSkip
+   * @param movable
+   * @param s
+   * @return
+   */
   public BrickWall addBrick(int indexSkip, boolean movable, String s) {
     currentIndexAlongWallRow += indexSkip;
     currentWallRowBricks.add(new Brick(s, movable, currentIndexAlongWallRow));
     currentIndexAlongWallRow += s.length();
     return this;
     }
+  /**
+   * Equivalent to {@link #addBrick(indexSkip, false, s)}.
+   * @param indexSkip
+   * @param s
+   * @return
+   */
   public BrickWall addImmovable(int indexSkip, String s) { return addBrick(indexSkip, false, s); }
+  /**
+   * Equivalent to {@link #addBrick(indexSkip, true, s)}.
+   * @param indexSkip
+   * @param s
+   * @return
+   */
   public BrickWall addMovable(int indexSkip, String s) { return addBrick(indexSkip, true, s); }
   public String build() {
     return name.htmlNextLevel(File.BrickWall_html.text)
