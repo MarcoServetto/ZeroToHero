@@ -7,7 +7,7 @@ import mainZeroToHero.Days;
 public class ForestCollectTrunk2 implements Function<Days.LevelName, String>{
   public String apply(Days.LevelName name) {
     return new htmlMangle.Forest(name, """
-//The last tree broke, but not a clean break, 
+//The last tree broke, but not a clean break,
 //the trunk is ruined and not good for the palisade.
 //Panic: "Rotating the tree just 90 degrees sometimes does not work."
 

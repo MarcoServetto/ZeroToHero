@@ -3,17 +3,9 @@
 const InitColorQuestions= (isFrozen)=>
  _postColorInit(Deck.list('question').map(q=>ColorQuestion(q,isFrozen)));
 
-let colorCount= 0;
 const _postColorInit= Log.tagAsync('postColorInit',(questions)=>{
  setTimeout(()=>_postColorInit(questions),100);
- colorCount = (colorCount + 1) % 7;
  questions.forEach(q=>q.keepFocus());
- questions
-  .filter(q=>q.isBlinking())
-  .forEach(q=>{
-   colorCount!==0?q.toSolution():q.toSingle();
-   q.selectionEvent();
-  });
  return questions;
 });
 
@@ -23,6 +15,8 @@ const ColorQuestion= (q,isFrozen)=>{
  const startOk= MetaData.int(q,'selectionstart');
  const endOk= MetaData.int(q,'selectionend');
  const originalText= MetaData.str(q,'original');
+ const frameIcon= MetaData.str(q,'frameicon');
+ const frameTooltip= MetaData.str(q,'frametooltip');
  const pane= document.createElement('div');
  q.value = originalText;
  q.after(pane);
@@ -33,8 +27,6 @@ const ColorQuestion= (q,isFrozen)=>{
  let selected= new Set();
  let focusStart= redChar;
  let focusEnd= redChar + 1;
- let blinking= false;
- let hintBlink= on=>{};
  let postSelect= ()=>{};
  let onTextPress= ()=>{};
  let mousePressed= false;
@@ -43,7 +35,6 @@ const ColorQuestion= (q,isFrozen)=>{
  const trimMe= i=>i >= 0 && i < originalText.length
   && (originalText[i] === '\n' || originalText[i] === ' ');
  const explicit= i=>originalText[i] !== '\n';
- const setHintBlink= cb=>hintBlink = cb;
  const setPostSelect= cb=>postSelect = cb;
  const setOnTextPress= cb=>onTextPress = cb;
  const addClass= str=>pane.classList.add(str);
@@ -151,6 +142,13 @@ const ColorQuestion= (q,isFrozen)=>{
  const build= ()=>{
   pane.textContent = '';
   cells.length = 0;
+  if (frameIcon){
+   const icon= document.createElement('div');
+   icon.className = 'frameIcon';
+   icon.textContent = frameIcon;
+   icon.dataset.tooltip = frameTooltip;
+   pane.append(icon);
+  }
   for (let i=0;i<originalText.length;i += 1){
    const ch= originalText[i];
    if (ch === '\n'){
@@ -166,25 +164,17 @@ const ColorQuestion= (q,isFrozen)=>{
    pane.append(span);
   }
  };
- const toSolution= ()=>{
-  focusStart = startOk;
-  focusEnd = endOk;
-  blinking = true;
-  selected = new Set();
-  addRawRange(startOk,endOk - 1);
-  hintBlink(true);
-  refresh();
- };
  const toSingle= ()=>{
   focusStart = redChar;
   focusEnd = redChar + 1;
   resetToRed();
-  hintBlink(false);
  };
  const currentSelection= ()=>{
   const r= currentSelectionRange();
   return originalText.slice(r.start,r.end);
  };
+ const clearSelection= ()=>{ selected = new Set(); refresh(); };
+ const cellAt= i=>cells[i] || null;
  const includesRed= ()=>{
   const r= selectedBounds();
   return noRedChar() || (r.start <= redChar && r.end > redChar && selected.has(redChar));
@@ -199,15 +189,24 @@ const ColorQuestion= (q,isFrozen)=>{
   const r= currentSelectionRange();
   return r.start === startOk && r.end === endOk && allExplicitSelected(startOk,endOk);
  };
+ const isOverSelection= ()=>{
+  const r= currentSelectionRange();
+  return r.start <= startOk && r.end >= endOk && (r.start < startOk || r.end > endOk);
+ };
  const isCorrectAnswer= option=>{
   const isErrorType= requiredOption === 8;
   return option === requiredOption && (isErrorType || isCorrectSelection());
  };
+ const isDefaultSelection= ()=>{
+  const r= currentSelectionRange();
+  return !noRedChar() && r.start === redChar && r.end === redChar + 1;
+ };
+ const needsSelectionPrompt= ()=>
+  requiredOption !== 8 && isDefaultSelection() && (endOk - startOk) !== 1;
  const active= Log.tag('colorActive',flag=>{
   q.hidden = true;
   pane.hidden = !flag;
-  if (!flag){ hintBlink(false); return; }
-  blinking = false;
+  if (!flag){ return; }
   toSingle();
  });
  const selectionEvent= ()=>{
@@ -226,26 +225,81 @@ const ColorQuestion= (q,isFrozen)=>{
  window.addEventListener('pointercancel',pointerUp);
  q.addEventListener('keydown',e=>e.preventDefault());
  return {
-  toSolution,toSingle,currentSelection,
-  isCorrectAnswer,isCorrectSelection,
+  toSingle,currentSelection,
+  isCorrectAnswer,isCorrectSelection,isOverSelection,needsSelectionPrompt,
   active,keepFocus,selectionEvent,
   extractStr,extractInt,
-  addClass,removeClass,setPostSelect,setHintBlink,setOnTextPress,
-  isBlinking:()=>blinking,
-  solved:false,requiredOption,inner:()=>q
+  addClass,removeClass,setPostSelect,setOnTextPress,
+  solved:false,requiredOption,inner:()=>q,visible:()=>pane,
+  startOk,endOk,cellAt,selectAt:selectIndex,clearSelection
  };
 };
 
 const Walking= (score) => {
  const optBtns= [1,2,3,4,5,6,7,8].map(i=>Utils.getElementById('btn'+i));
- const hintClear= ()=>optBtns.forEach(b=>b.classList.remove('hintDim','hintCorrect'));
- const hintStart= (q,opt)=>{
-  const b= optBtns[opt-1] || Utils.error('bad opt '+opt);
-  optBtns.forEach(x=>x.classList.add('hintDim'));
-  q.setHintBlink(on=>b.classList.toggle('hintCorrect',on));
-  b.classList.add('hintCorrect');
+ const hintChar= Utils.getElementById('hintCharacter');
+ let panicToHideId= null;
+ const displayPanicMessage= (msg,duration) => {
+  clearTimeout(panicToHideId);
+  hintChar.querySelector('.speechBubble').textContent = msg;
+  hintChar.hidden = false;
+  panicToHideId= setTimeout(()=>{ hintChar.hidden = true; },duration);
  };
- const hintStop= q=>{ q.setHintBlink(on=>{}); hintClear(); };
+ const hidePanicMessage= () => {
+  clearTimeout(panicToHideId);
+  hintChar.hidden = true;
+ };
+ const gameArea= Utils.getElementById('gameArea');
+ const exampleCursor= Utils.getElementById('exampleCursor');
+ const moveCursorTo= el=>{
+  const g= gameArea.getBoundingClientRect();
+  const r= el.getBoundingClientRect();
+  exampleCursor.style.left= (r.left + r.width / 2 - g.left) + 'px';
+  exampleCursor.style.top= (r.top + r.height / 2 - g.top) + 'px';
+ };
+ const sweepMs= 1400;
+ const sweepFrames= 20;
+ const moveWaitMs= 500;
+ const pressHoldMs= 600;
+ const playExample= q=>{
+  const btn= optBtns[q.requiredOption-1];
+  const token= Buttons.freezeToken();
+  const steps= Math.min(q.endOk - q.startOk,sweepFrames);
+  const timers= [];
+  let done= false;
+  const later= (f,t)=>timers.push(setTimeout(f,t));
+  const stop= ()=>{
+   if (done){ return; }
+   done = true;
+   timers.forEach(clearTimeout);
+   exampleCursor.classList.remove('pressing');
+   exampleCursor.hidden = true;
+   token.unfreeze();
+  };
+  const mimePress= ()=>{
+   exampleCursor.classList.add('pressing');
+   later(stop,pressHoldMs);
+  };
+  const moveToButton= ()=>{
+   moveCursorTo(btn);
+   later(mimePress,moveWaitMs);
+  };
+  const selectFrame= k=>{
+   const i= q.startOk + Math.round((q.endOk - 1 - q.startOk) * k / steps);
+   const cell= q.cellAt(i);
+   if (cell){ moveCursorTo(cell); }
+   q.selectAt(i);
+   if (k === steps){ later(moveToButton,moveWaitMs); return; }
+   later(()=>selectFrame(k + 1),sweepMs / steps);
+  };
+  q.toSingle();
+  q.clearSelection();
+  const firstCell= q.cellAt(q.startOk);
+  if (firstCell){ moveCursorTo(firstCell); }
+  exampleCursor.hidden = false;
+  later(()=>selectFrame(0),moveWaitMs);
+  return { stop };
+ };
  const nextQuestion= () => {
   const completed= questions.every(q => q.solved);
   if (completed){ questions.forEach(q => q.solved = false); }
@@ -254,6 +308,7 @@ const Walking= (score) => {
   currentQuestionIndex = i;
   questions.forEach(q => q.active(false));
   questions[currentQuestionIndex].active(true);
+  hidePanicMessage();
   updateContent();
  };
  const updateContent= () => {
@@ -292,30 +347,35 @@ const Walking= (score) => {
   if (score.score() >= requiredPoints){ showNextLevelButton(); rightAfterPass += 1; }
   if (rightAfterPass > 5){ rightAfterPass = 3; setTimeout(Utils.flashGreen, 900); }
  };
- const handleIncorrectAnswer= (currentQuestion) => {
+ const failWaitMs= longW=>longW ? 10000 : 5000;
+ const overSelectionHint= 'remember, select the smallest syntactically self-contained unit';
+ const handleIncorrectAnswer= (currentQuestion,option) => {
   const longW= score.streak() > 1;
+  const overSelected= option === currentQuestion.requiredOption && currentQuestion.isOverSelection();
   score.doFailure();
   currentBonusElem.textContent = 0;
   const opt= currentQuestion.requiredOption;
   const motivation= currentQuestion.extractStr('motivation');
-
-  currentQuestion.toSolution();
-  currentQuestion.selectionEvent();
-  hintStart(currentQuestion,opt);
+  if (opt === 8){
+   displayPanicMessage(currentQuestion.extractStr('errorexplanation'),failWaitMs(longW));
+  } else if (overSelected && Math.random() < 1 / 3){
+   displayPanicMessage(overSelectionHint,failWaitMs(longW));
+  }
 
   let fall= null;
-  currentQuestion.setOnTextPress(()=>{ if (fall){ fall.stop(); } });
+  const demo= playExample(currentQuestion);
+  currentQuestion.setOnTextPress(()=>{ demo.stop(); if (fall){ fall.stop(); } });
 
   fall = playFallAnimation(longW,opt,motivation,()=>{
+   demo.stop();
    currentQuestion.setOnTextPress(()=>{});
-   hintStop(currentQuestion);
    questions.forEach(q => q.active(false));
    questions[currentQuestionIndex].active(true);
    updateContent();
   });
  };
  const playFallAnimation= (longW,requiredOption,motivation,onDone)=>{//we should find an elegant way to still display the motivation
-  const waitT= longW ? 10000 : 5000;
+  const waitT= failWaitMs(longW);
   const freeze= Buttons.freezeFor(waitT+100);
   const timers= [];
   const flashers= [];
@@ -346,8 +406,12 @@ const Walking= (score) => {
  };
  const handleButtonClick = Log.tag('handleButtonClick', (option) => {
   const currentQuestion = questions[currentQuestionIndex];
+  if (currentQuestion.needsSelectionPrompt()){
+   displayPanicMessage('select text first\nthen press button',4000);
+   return;
+  }
   const nope= !currentQuestion.isCorrectAnswer(option);
-  if (nope){ handleIncorrectAnswer(currentQuestion); return; }
+  if (nope){ handleIncorrectAnswer(currentQuestion,option); return; }
   Buttons.freezeFor(500);
   handleCorrectAnswer();
   nextQuestion();

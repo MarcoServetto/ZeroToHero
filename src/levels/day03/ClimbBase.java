@@ -14,7 +14,7 @@ public class ClimbBase implements Function<Days.LevelName,String>{
       Then click on the first rock on the right of this text
                                                                              click      |➡️
                                                                              on the     |➡️
-          It works because North.turn reduces to East in one step            rock       |➡️      
+          It works because North.turn reduces to East in one step            rock       |➡️
       """,
       "@[North.turn]@",
       List.of("East","North",".turn","Direction"),
@@ -57,7 +57,7 @@ Archers: { #(heading: Direction, aiming:  Direction): Archer ->
     }
   }
 """;
-  
+
   public static final String directionsAimTo= """
 //Now with two more methods!
 Direction: {

@@ -16,7 +16,7 @@ West : Direction { North }
 
 Rotation:{
   .rotate(d: Direction): Direction -> d.turn;
-  +(r: Rotation): Rotation-> { d -> this.rotate(r.rotate(d)) }
+  +(r: Rotation): Rotation-> { .rotate(d)-> this.rotate(r.rotate(d)) }
   }
 """)
     .question("""

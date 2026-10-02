@@ -17,29 +17,40 @@ public class Walking {
   private void commit(WQuestion q){
     qs.add(q);
   }
-  public Walking question(String text, WalkingOption option){
-    return question(text,option,"");
+  public Walking questionTopLevel(String text, WalkingOption option){
+    return question(text,option,"",Frame.TopLevel);
   }
-  public Walking question(String text, WalkingOption option, String motivation){
+  public Walking questionMethodBody(String text, WalkingOption option){
+    return question(text,option,"",Frame.MethodBody);
+  }
+  private Walking question(String text, WalkingOption option, String motivation, Frame frame){
+    assert option != Option.Error:"error questions require an explanation: use error(text,explanation)";
+    commit(parse(text,option,motivation,"",frame));
+    return this;
+  }
+  public Walking errorTopLevel(String text, String explanation){
+    return error(text,explanation,Frame.TopLevel);
+  }
+  public Walking errorMethodBody(String text, String explanation){
+    return error(text,explanation,Frame.MethodBody);
+  }
+  private Walking error(String text, String explanation, Frame frame){
+    commit(parse(text,Option.Error,"",explanation,frame));
+    return this;
+  }
+  private WQuestion parse(String text, WalkingOption option, String motivation, String explanation, Frame frame){
     text = Escape.cleanUp(text);
     int start= text.indexOf("@[");
     assert start >= 0:text;
-    text = text.replace("@[","");    
+    text = text.replace("@[","");
     int sel=text.indexOf("@@");
     assert sel >= 0:text;
-    text = text.replace("@@","");    
+    text = text.replace("@@","");
     int end= text.indexOf("]@");
     assert end >= 0:text;
     text = text.replace("]@","");
-    commit(new WQuestion(Escape.escapeForHtmlAttribute(text), sel,start,end,option,motivation));
-    return this;
-  }
-  public Walking question(String text,int sel, int start, int end, WalkingOption option){
-    return question(text,sel,start,end,option,"");
-  }
-  public Walking question(String text,int sel, int start, int end, WalkingOption option,String motivation){
-    commit(new WQuestion(text, sel,start,end,option,motivation));
-    return this;
+    return new WQuestion(Escape.escapeForHtmlAttribute(text), sel,start,end,option,motivation,
+        Escape.escapeForHtmlAttribute(explanation),frame);
   }
   public String build(){    
     String body= IntStream.range(0, qs.size())
@@ -82,8 +93,18 @@ public class Walking {
     Comment,
     Error;
   }
+  public enum Frame{
+    TopLevel("🏛️","this code is to be understood as 'top level code'"),
+    MethodBody("⚙️","this code is to be understood as 'method body'");
+    public final String icon;
+    public final String tooltip;
+    Frame(String icon, String tooltip){
+      this.icon= icon;
+      this.tooltip= tooltip;
+    }
+  }
 }
-record WQuestion(String text, int sel, int start, int end, htmlMangle.Walking.WalkingOption option, String motivation){
+record WQuestion(String text, int sel, int start, int end, htmlMangle.Walking.WalkingOption option, String motivation, String errorExplanation, htmlMangle.Walking.Frame frame){
   String body(int index) {
       var option=(java.lang.Enum<?>)this.option();
       return "<textarea class=\"overlayTextarea\"\n"
@@ -95,6 +116,9 @@ record WQuestion(String text, int sel, int start, int end, htmlMangle.Walking.Wa
           + "    data-selectionend=\"" + end + "\"\n"
           + "    data-option=\"" + (option.ordinal()+1) + "\"\n"
           + "    data-motivation=\""+motivation+ "\"\n"
+          + "    data-frameicon=\""+frame.icon+ "\"\n"
+          + "    data-frametooltip=\""+frame.tooltip+ "\"\n"
+          + (errorExplanation.isEmpty() ? "" : "    data-errorexplanation=\""+errorExplanation+"\"\n")
           + "    autocomplete=\"off\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" readonly hidden></textarea>";
   }
 }

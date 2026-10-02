@@ -42,61 +42,74 @@
 <p>The <code>Direction</code> type we have seen before is an example of a general programming concept: An enumeration.</p>
 <p>Enumerations usually offer many common features, like ordering, <code>.str</code>, <code>.info</code> and <code>.fromInfo</code>.
 The standard library offers a simple way to add those common features to our enumerations: just implement the types <code>Enum</code> and <code>Enums</code> as shown below:</p>
-<pre><code>//Code we can write to declare our own enumerations
-Directions: Enums[Direction]{ List#(North,East,South,West) }
-Direction: Enum[Direction]{ Directions }
-North: Direction{`North`}
-East:  Direction{`East`}
-South: Direction{`South`}
-West:  Direction{`West`}
-</code></pre>
-<p>Or, if we want to also support our <code>.match</code> method:</p>
-<pre><code>Directions: Enums[Direction]{ List#(North,East,South,West) }
-Direction: Enum[Direction]{
-  Directions;
-  .match[R:**](m: mut DirectionMatch[R]): R;
+<pre><code>Directions: Enums[Direction]{
+  .list -&gt; Lists#(North,East,South,West);
+  .strBy -&gt; {::};
   }
-DirectionMatch[R:**]{ mut .north: R; mut .east: R; mut .south: R; mut .west: R }
-North: Direction{::.north; `North`}
-East:  Direction{::.east;  `East` }
-South: Direction{::.south; `South`}
-West:  Direction{::.west;  `West` }
+Direction: Enum[Direction]{
+  .enums-&gt;Directions;
+  .close-&gt;this; .close-&gt;::;
+  }
+North: Direction{.imm-&gt;North; `North`}
+East:  Direction{.imm-&gt;East;  `East` }
+South: Direction{.imm-&gt;South; `South`}
+West:  Direction{.imm-&gt;West;  `West` }
 </code></pre>
+<p>With this alone, <code>Directions.list</code> is the four directions in declaration order, <code>North.index</code> is <code>0</code>
+and <code>West.index</code> is <code>3</code>, <code>North &lt; East</code> is <code>True</code>, <code>Directions.map.get(</code>North<code>)</code> is <code>North</code>, and
+<code>Directions.fromInfo(North.info)</code> round-trips back to <code>North</code>:</p>
+<p>Or, if we want to also support our <code>.match</code> method:</p>
+<pre><code>DirectionMatch[R:**]: { mut .north: R; mut .east: R; mut .south: R; mut .west: R; }
+Direction: Enum[Direction]{
+  .enums-&gt;Directions;
+  read .match[R:**](m: mut DirectionMatch[R]): R;
+  .close-&gt;this; .close-&gt;::;
+  }
+North: Direction{::.north; .imm-&gt;North; `North`}
+East:  Direction{::.east;  .imm-&gt;East;  `East` }
+South: Direction{::.south; .imm-&gt;South; `South`}
+West:  Direction{::.west;  .imm-&gt;West;  `West` }
+</code></pre>
+<p>Now <code>North.match(DirectionMatch[Str]{ .north-&gt;</code>n<code>; .east-&gt;</code>e<code>; .south-&gt;</code>s<code>; .west-&gt;</code>w<code>; })</code> is <code>n</code>;
+every value still gets <code>.list</code>/<code>.map</code>/<code>.index</code>/<code>.info</code>/<code>.fromInfo</code> for free from <code>Enums</code>/<code>Enum</code>, on top
+of its own <code>.match</code>:</p>
 <p>As you can see, we list our directions and we define the matcher listing the direction in method form.
 Finally, we connect the direction-type with the direction-match-method and their string representation.</p>
 <p>Admittedly, many other languages require significantly less code for enumerations.
-However, in Fearless you can see how the whole mechanism works, and how simple method calls encode all the needed logic. In turn, this make it more natural to extend enumerations with other useful methods and features.</p>
+However, in Fearless you can see how the whole mechanism works, and how simple method calls encode all the needed logic. In turn, this makes it more natural to extend enumerations with other useful methods and features.</p>
 <p>The code of <code>Enum[E]</code> and <code>Enums[E]</code> is actually quite simple and educational:</p>
 <pre><code>//Code from the Fearless standard library
 FromInfo[E]: { .fromInfo(i: Info): E }
 
 Enums[E]: FromInfo[E]{
   .list: List[E];
-  .map: Map[Str,E] -&gt; this.list.flow.mapping({::},{ ::; .key  e -&gt; e.str; });
-  .fromInfo i -&gt; this.map.get(i.msg);
+  .strBy: ToStrBy[E];
+  .map: Map[Str,E] -&gt; this.list.flow.mapping({::},{.key e-&gt;(this.strBy#e).str; .elem e-&gt;e;}).as{::};
+  .indexMap: Map[Str,Nat] -&gt; this.list.flow.fold(
+    {Maps#[Str,Str,Nat]{::}.as{::}},
+    {acc,e-&gt;acc.with((this.strBy#e).str,acc.size).as{::}}
+    );
+  .fromInfo i -&gt; this.map.get(i.getMsg);
   }
 Enum[E]: DataType[E,E]{
-  .enums: Enums[E];
+  read .enums: Enums[E];
   .info -&gt; Infos.msg(this.str);
-   //enumerate gives pair index/element
-  .index:Nat-&gt;this.enums.list.flow
-    .enumerate.filter{{.e.str}-&gt;this.str == str}.get.i
-  //alternative: .flatMapIndex give index,e
-  .index:Nat-&gt;this.enums.list.flow
-    .flatMapIndex{i,e-&gt;this.str == (e.str)? {Flows#i; .else-&gt; Flows#}.get
-  .cmp {.index}1, {.index}2, m -&gt; index1 &lt;=&gt; (index2,m);
-  .hash-&gt; this.index;
+  read .index: Nat -&gt; this.enums.indexMap.get(this.str);
+  read .close(t: read E): read Enum[E];
+  .cmp t0,t1,m -&gt; this.close(t0).index&lt;=&gt;(this.close(t1).index,m);
+  .hash -&gt; this.index;
   }
 </code></pre>
 <p>Thanks to <code>Enums[Direction]</code> we get a <code>.map</code> method mapping names to directions.</p>
 <ul>
 <li>Method <code>.map</code> returns a <code>Map[Str,Direction]</code> linking the string names of directions
-(<code>North</code>, <code>East</code>, etc.) to their corresponding <code>Direction</code> objects. This allows us to look up a Direction by its name. This is computed by using the method <code>.mapping</code>; taking a literal with a <code>.key</code> method and an <code>.elem</code> method, converting the flow elements into the key and element values for the newly created map. We also need to provide the identity function to <em>confirm</em> that strings implement <code>OrderHash</code>.
+(<code>North</code>, <code>East</code>, etc.) to their corresponding <code>Direction</code> objects. This allows us to look up a Direction by its name. This is computed by using the method <code>.mapping</code>; taking a literal with a <code>.key</code> method and an <code>.elem</code> method, converting the flow elements into the key and element values for the newly created map.
+<code>E</code> is a bare generic parameter, so it carries no methods of its own - not even <code>.str</code> - which is why
+<code>Enums[E]</code> also needs a <code>.strBy: ToStrBy[E]</code> witness: a function turning any value of type <code>E</code> into
+something with a <code>.str</code>. <code>Directions.strBy -&gt; {::};</code> says that witness is just the identity, which is
+valid precisely because every concrete <code>Direction</code> value already has its own <code>.str</code>.
 That is, the result of <code>.map</code> will be equivalent to the result of <code>Maps#({::},`North`,North, `East`,East, `South`,South, `West`,West)</code>.</li>
 </ul>
-<blockquote>
-<p>Note: .enumerate and .flatMapIndex do not exist yet.</p>
-</blockquote>
 <p>Many enumeration types will have similar utility methods.
 Note how methods <code>.list</code> and <code>.map</code> are fully deterministic. They take no arguments: the receiver contains no information (since it is a singleton) and there are no other parameters. This means that every time that code is executed, it would produce the same result.
 Fearless will cache the result of such methods, so that the computation runs only one time.

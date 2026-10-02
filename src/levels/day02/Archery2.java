@@ -37,7 +37,7 @@ public class Archery2 implements Function<Days.LevelName,String>{
     .area(l, intro+"""
       Archers#(_____,_____)
       """,intro+"""
-      Archers#( North, South ) 
+      Archers#( North, South )
       """)
     .image(2).area(l, intro+"""
       Archers__(_____,_____)

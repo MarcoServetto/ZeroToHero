@@ -14,7 +14,7 @@ Mushroom: Food{ .fry: Mushroom -> this }
 Eggplant: Food{ .salted(s: Salt): Eggplant-> this }
 Tomato: Food  { .cut: CutTomato -> CutTomato }
 CutTomato: Tomato{}
-Recipe: { 
+Recipe: {
   .cook(m: Mushroom, e: Eggplant, t: CutTomato): Ratatouille
   -> Ratatouille: {
     .tomato:Tomato -> t;

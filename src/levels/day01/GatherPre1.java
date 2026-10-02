@@ -16,7 +16,7 @@ Direction:{.turn:Direction;}
 .card("""
 Yes Good
 East:Direction{.turn->South;}
-//This code is correct: 
+//This code is correct:
 //it says turning from East we get South
 //Put this code in any basket
 """,1,BrownMushroom,3)

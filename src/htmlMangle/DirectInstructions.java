@@ -29,23 +29,56 @@ public class DirectInstructions {
     current= i;
     images.add(i);
     }
-  public DirectInstructions image(){ commit(new Image(name, new ArrayList<>(), map)); return this; }
+  public DirectInstructions image(){ commit(new Image(name, new ArrayList<>(), map, false, false)); return this; }
   public DirectInstructions image(int size){
     assert size>0;
-    if(size==1){ return image(); } 
+    if(size==1){ return image(); }
     return image().image(size-1);
     }
+  public DirectInstructions unlockedImage(){ commit(new Image(name, new ArrayList<>(), map, true, false)); return this; }
+  public DirectInstructions exampleImage(){ commit(new Image(name, new ArrayList<>(), map, false, true)); return this; }
   public DirectInstructions area(double minX, double maxX, double minY, double maxY,String original, String solution){
     return area(minX,maxX,minY,maxY,original,solution,List.of());
     }
   public DirectInstructions area(double minX, double maxX, double minY, double maxY,String original, String solution,List<String> alternatives){
     if (Main.debug){ original= solution; }
     var alts=alternatives.stream().collect(Collectors.joining("|###|"));
-    current.areas().add(new TArea(original,solution,alts,new Range(minX,maxX,minY,maxY)));
+    var protectedOriginal= extractProtected(original);
+    current.areas().add(new TArea(protectedOriginal.text(),solution,alts,"",
+      protectedOriginal.ranges(),new Range(minX,maxX,minY,maxY)));
+    return this;
+    }
+  private static final String protectStart= "/*<*/";
+  private static final String protectEnd= "/*>*/";
+  private record Protected(String text, String ranges){}
+  private static Protected extractProtected(String s){
+    var ranges= new ArrayList<String>();
+    var sb= new StringBuilder();
+    int i= 0;
+    while (true){
+      int open= s.indexOf(protectStart, i);
+      if (open<0){ sb.append(s.substring(i)); break; }
+      int close= s.indexOf(protectEnd, open+protectStart.length());
+      assert close>=0;
+      sb.append(s, i, open);
+      int start= sb.length();
+      sb.append(s, open+protectStart.length(), close);
+      ranges.add(start+"-"+sb.length());
+      i= close+protectEnd.length();
+      }
+    return new Protected(sb.toString(), String.join(",", ranges));
+    }
+  public DirectInstructions orSolutions(String... orSolutions){
+    var areas= current.areas();
+    int last= areas.size()-1;
+    var a= areas.get(last);
+    areas.set(last, new TArea(a.original(),a.solution(),a.alternatives(),
+      String.join("|###|", orSolutions),a.protectedRanges(),a.r()));
     return this;
     }
   public static String intoSolution(String s){
-    return s.replace("/*[*/", "").replace("/*]*/", ""); 
+    return s.replace("/*[*/", "").replace("/*]*/", "")
+      .replace(protectStart, "").replace(protectEnd, "");
     }
   public record Location(double minX, double maxX, double minY, double maxY){}
   public DirectInstructions area(Location l, String annotatedOriginal){
@@ -90,13 +123,15 @@ public class DirectInstructions {
     return map;
   }
 }
-record Image(Days.LevelName name, List<TArea> areas, Map<Integer, String> map){
+record Image(Days.LevelName name, List<TArea> areas, Map<Integer, String> map, boolean unlocked, boolean example){
   String indexToName(int index){
     if(!map.containsKey(index)){ System.err.println("Image "+index+" is missing in "+name.directoryName()); }
     return map.getOrDefault(index,"ImageNotFound.jpg");
     }
   String div(int index){ return
-     "<div class=\"contentItem\" id=\"content"+index+"\" hidden>\n"
+     "<div class=\"contentItem\" id=\"content"+index+"\""
+    +(unlocked ? " data-unlocked=\"true\"" : "")
+    +(example ? " data-example=\"true\"" : "")+" hidden>\n"
     +"<img class=\"img_16_9\" src=\""+indexToName(index+1)+"\" draggable=\"false\"/>\n"
     + IntStream.range(0, areas.size())
         .mapToObj(i->areas.get(i).body(index,i))
@@ -110,7 +145,7 @@ record Image(Days.LevelName name, List<TArea> areas, Map<Integer, String> map){
     return "<template id=\"slide"+index+"\">\n"+div(index)+"\n</template>";
     }
   }
-record TArea(String original,String solution,String alternatives,Range r){
+record TArea(String original,String solution,String alternatives,String orSolutions,String protectedRanges,Range r){
   String lift(String s){ return s
     .replace("\r","")
     .replace("\n", "\\n");
@@ -122,6 +157,8 @@ record TArea(String original,String solution,String alternatives,Range r){
     +"data-solution=\""+Escape.escapeForHtmlAttribute(solution)+"\"\n"
     +"data-original=\""+Escape.escapeForHtmlAttribute(original)+"\"\n"
     +"data-alternative=\""+Escape.escapeForHtmlAttribute(alternatives)+"\"\n"
+    +"data-orsolution=\""+Escape.escapeForHtmlAttribute(orSolutions)+"\"\n"
+    +"data-protected=\""+Escape.escapeForHtmlAttribute(protectedRanges)+"\"\n"
     +"autocomplete=\"off\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\"></textarea>";
     }
   }

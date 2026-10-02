@@ -9,10 +9,10 @@ public class WalkingHomeAlive implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Walking(name, 18)
     // selected, start, end, option
-    .question("""
+    .questionTopLevel("""
 @[// ++ Ok, lets go home @@finally]@
 """, Comment)
-    .question("""
+    .questionTopLevel("""
 HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
 Comfortable:HungerLevel{Snacky}
@@ -22,9 +22,9 @@ Famished:HungerLevel{Starving}
 Starving:HungerLevel{Starving}
 
 //You said that at our home village we can fish.
-@[Hungry ++ @@++]@
+Check:{ #: HungerLevel -> @[Hungry ++ @@++]@; }
 """, MethodCall)
-    .question("""
+    .errorTopLevel("""
 @[HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
 Comfortable:HungerLevel{Snacky}
@@ -34,9 +34,10 @@ Famished:HungerLevel{Starving}
 Starving:HungerLevel{Starving}
 
 //Should we fish?
-Famished ++@@++]@
-""", Error)
-    .question("""
+Check:{ #: HungerLevel -> Famished ++@@++; }]@
+""",
+      "`++++` without spaces is not `++` twice")
+    .questionTopLevel("""
 HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
 Comfortable:HungerLevel{Snacky}
@@ -46,10 +47,10 @@ Famished:HungerLevel{Starving}
 Starving:HungerLevel{Starving}
 
 //Panic: You can fish if you want.
-@[Famished@@++]@ ++
+Check:{ #: HungerLevel -> @[Famished@@++]@ ++; }
 """, MethodCall)
 
-    .question("""
+    .errorTopLevel("""
 HungerLevel:{++:HungerLevel}
 Full:HungerLevel{Comfortable}
 Comfortable:HungerLevel{Snacky}
@@ -60,8 +61,9 @@ Starving:HungerLevel{Starving}
 
 //But I'm a rabbit. Vegetarian,
 //like all Rabbits.
-@[Starving++@@++]@
-""",Error)
+Check:{ #: HungerLevel -> @[Starving++@@++]@; }
+""",
+   "`++++` without spaces is not `++` twice")
 
     .build();
     }

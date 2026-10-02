@@ -1,0 +1,217 @@
+# Controllers design
+
+
+Controllers holds the Fearless manager: a desktop program that keeps a set of project folders, compiles them, runs their mains, and connects them to the desktop and to Eclipse.
+Next to it, and independent from it, Controllers also holds:
+- `fearlessPluginProject`: the Eclipse plugin showing the projects of a manager inside Eclipse, with the content assist of `suggest`.
+- `agentTools`: a library driving the real pointer and keyboard, for GUI tests of any program.
+- `benchmarks`: speed measures of Fearless programs against the runtime.
+
+This document describes what the manager does: what the user and the other programs can observe. It does not describe how.
+
+The manager behaves the same on every system: it does not adapt to the conventions of the system it runs on, and when the system does not offer what the manager needs, the manager stops with an error saying so.
+Everything the manager is asked to do either happens or is refused with a message naming what was refused and why; nothing is silently skipped.
+
+## Program, manager folder, owner
+
+A manager is one program folder, `fearlessManaged<version>` (`fearlessManaged<version>.app` on macOS), for example `fearlessManaged0_001`.
+Its manager folder is `fearless<version>`, next to the program folder, on every system. The manager folder holds everything the manager remembers; deleting it makes the manager start from nothing. A manager folder that can not be created is a fatal error naming it.
+
+Starting the program leaves one message (see **Requests and messages**) in the manager folder. Of all the running copies of one manager, exactly one is the owner: it shows the window, and applies the messages, its own and those left by any later start. A start that finds an owner already running leaves its message and ends at once.
+
+The program takes no argument, or one argument:
+- no argument: show the window;
+- a folder: register it (see **Registering a folder**);
+- a file: register the folder it is in.
+A relative path is relative to the working folder of that start, whichever copy is the owner. A blank argument, and a path the system can not represent, are fatal errors naming the argument.
+
+The owner runs until Quit, or until a fatal error. A fatal error is shown in a dialog listing the jobs that are running; closing the dialog ends the manager and every job it runs. The problems of one project (bad file names, a bad icon, a missing folder, a failing compile) are never fatal: they are shown on that project.
+
+Closing the window hides it. The manager keeps an icon in the system tray (on Linux, a StatusNotifierItem); clicking it shows the window. A system with no tray, or a tray removing the icon, is a fatal error. Quit ends the manager and every job it runs.
+
+## Requests and messages
+
+Everything the manager does for a project is a request, and every request is one of the requests below, whether it comes from a message or from the window. The owner applies the requests one at a time, in the order they arrive, each one completely before the next.
+
+A message is a file left in the `messages` folder of the manager folder: a start of the program, and every request from Eclipse. Folders added from the window (the Add folder menu, or folders and files dropped on the window) are the same request as a message holding their path.
+
+A message is one of:
+- empty: show the window;
+- one line, a path as a tagged text (see **Info files**): `register` that path;
+- a request, of two or three lines: a verb, then the argument of the verb, then for some verbs a third line.
+
+`register` takes a path as a tagged text; every other verb takes the name of a registered project:
+- `register <path>`: register the folder (see **Registering a folder**), or the folder a file is in, then select it; a folder already registered is only selected;
+- `select <name>`: show the window and select the project;
+- `run <name>`: select the project and run it (see **Jobs**); the third line, when present, is the one main to run;
+- `compile <name>`: select the project and compile it if it needs compiling;
+- `check <name>`: select the project and report why it is invalid, or that it is not;
+- `terminate <name>`: select the project and end its job, if any;
+- `clean <name>`: select the project and delete its compiled cache;
+- `kind <name>`: set the kind of the project to the third line (`idle`, `code`, `data:readOnly`, `data:readWrite`);
+- `forget <name>`: forget the project;
+- `mains <name>`: set the selected mains of the project to the third line, the mains separated by spaces;
+- `link <name>`: set a link of the code project to a data project to the third line: the name of the data project, then `read` or `write`, then the type names the code uses for it, separated by spaces; no type names removes that link;
+- `clear <name>`: empty the Output of the project.
+
+Refused with a message naming what is wrong, and changing nothing:
+- a message of more than three lines;
+- a verb that is not one of these;
+- a name that is not the name of a registered project (the message lists the registered projects);
+- a `register` whose path is blank, names nothing, is the root of a drive, or is the manager folder, anything inside it or a folder holding it;
+- a kind that is not one of the four, and a malformed link;
+- a request whose result would make `projects.info` invalid (the message is the error of `projects.info`).
+Refused with a line in the Output of the project:
+- `run` and `compile` of a project that is not code, naming its kind;
+- `link` of a project that is not code;
+- a job, `clean` or `kind` while the project has a job (see **Jobs**);
+- a `kind` change that is not from idle or back to idle.
+
+The window's buttons, menus and tiles make exactly these requests: the main button makes the request its text names (`compile` for Compile, `check` for Check, `run` for Run and Run selected, `terminate` for Terminate), the kind buttons make `kind`, a click on a tile or on a running job makes `select`, the main check boxes and All and None make `mains`, the read and write fields of a link row make `link`, Clear output makes `clear`, Clear cache makes `clean`, Forget project makes `forget`, and Add folder and dropping make `register`.
+
+## Registered projects
+
+The manager folder holds `projects.info`, the record of every registered project: where it is, its kind, the mains the user selected, and what the project may read and write. This record lives in the manager folder, outside every project folder: a project can neither see it nor change it, and its compiled cache (`.fearless_out`) never holds it.
+
+`projects.info` is an Info file (see **Info files**): an object mapping each project name to its metadata:
+```
+{
+  "hello_world": {
+    "path": "Str:C:/data/01_hello_world",
+    "kind": "code",
+    "mains": ["hello.Hello1", "hello.Hello3"],
+    "reads": {"pub": ["Pub"], "notes": ["OldNotes"]},
+    "edits": {"notes": ["Notes", "Diary"]}
+  },
+  "diary": {
+    "path": "UStr:\"C:/Users/Jos\".u\"00E9\"+(\"/da\".u\"1F600\")+(\"ta\".u)",
+    "kind": "data:readWrite"
+  }
+}
+```
+- `path`: the absolute path of the project folder, any path the system allows. Two projects never share a folder, and a project folder is never inside another one.
+- `kind`: `idle`, `code`, `data:readOnly` or `data:readWrite`.
+- `mains`: the mains the user selected to run, for a code project with several mains.
+- `reads` and `edits`: for a code project, the data projects it may read, and those it may read and write, each with the type names the code uses for it. A project in `reads` is `data:readOnly` or `data:readWrite`; a project in `edits` is `data:readWrite`. A data project may be in both: the type names in `edits` read and write, those in `reads` only read; a type name is not in both. A link names at least one type name.
+
+A code project whose links name a missing project, or a project of the wrong kind, or an invalid project, is invalid, and the message says which link and why.
+
+A `projects.info` that is not a valid Info file, or does not hold what is above, is a fatal error pointing at the offending text in the Frontend style. At start, a project whose `kind` is missing, or not one of the four, instead becomes idle: its compiled cache is deleted, `projects.info` is written again, and a message says so.
+
+The whole file can be edited by hand from the window (Edit project metadata); an edit is accepted only if the whole text is valid, and an error points at the offending text in the Frontend style. An accepted edit applies at once: projects it removes are forgotten, projects it adds are registered as they are, every project is checked again.
+
+The manager also remembers, per project, when it was last compiled and last run; this is not metadata and is not in `projects.info`.
+
+## Info files
+
+The files the manager writes for itself and for Eclipse (`projects.info`, `state.info`, `manager.info`) are Info files: text in the Fearless character set holding one value, where a value is a string `"..."`, a list `[a, b]`, or an object `{"key": value, ...}` whose keys are distinct strings; `//` starts a comment to the end of the line. Inside a string, `\"` is a quote, `\\` a backslash and `\n` a newline; any other escape is an error pointing at it.
+
+A text that may hold characters outside the Fearless character set is a tagged text: a path (`path` in `projects.info`, `folder` in `state.info`, `manager` and `baseCache` in `manager.info`, the path in `activity.txt`, and the path of a `register` message) and the `message` of a compile problem in `state.info`. A tagged text is one of:
+- `Str:` then the text, when every character is in the Fearless character set: `"path": "Str:C:\\data\\hello"`;
+- `UStr:` then the text as `UStr.escape` prints it, when it is Unicode: `C:/caf` followed by the character 00E9 is `"path": "UStr:\"C:/caf\".u\"00E9\""`;
+- `Base16:` then the bytes naming the path on this system, two uppercase hex digits each: on Windows its UTF-16 code units, little endian, for a name holding an unpaired surrogate: `C:/a` followed by the unit D800 is `"path": "Base16:43003A002F00610000D8"`.
+The manager writes the first of the three that fits; any of the three is read back as the same text. The `UStr:` text is read as the Fearless expression it is: literals `"..."` and `` `...` `` joined by `+`, `|` and `^` (between two strings, or closing one), parentheses, `.u`, and `.u"..."` adding the characters with those code points (uppercase hex of 1 to 6 digits, separated by single spaces, Unicode scalars only). A text with no tag, or malformed after its tag, is an error pointing at it.
+- `projects.info`: see **Registered projects**.
+- `state.info`, in the `eclipse` folder: see **Eclipse**.
+- `manager.info`, next to the plugin in Eclipse: an object with `manager`, the manager folder, and `baseCache`, the compiled standard library.
+
+## Registering a folder
+
+The name of a project is the name of its marker: the only file with the `.fearless` extension at the top of its folder, `<name>.fearless`. A project name follows the rules of a single file name segment of a Fearless project (lowercase letters, digits and `_`, not starting with a digit, not a reserved name such as `con`).
+
+Registering a folder that is not registered:
+1. A folder inside a registered one, or holding one, is refused, naming both.
+2. The name is the name of its marker, when it has exactly one, the name is valid, and no other project uses it. Otherwise the name is the folder name turned into a valid name: lowercased, every run of other characters turned into `_`, a leading `p` when it starts with a digit, then the first of `name`, `name2`, `name3`... not used by another project. The marker is renamed (or created) to match, and a name different from the one the folder gave (its marker, else its folder name) is reported.
+3. The compiled cache (`.fearless_out`) of the folder is deleted.
+4. An empty folder is filled with a hello world program, and becomes a code project. Any other folder starts idle.
+
+Forgetting a project removes it from `projects.info` and ends its job; nothing in the project folder changes.
+
+## Project states
+
+Each project is in one of these states, shown as a badge on its tile:
+- `code: invalid content`, `data: invalid content`: its folder is missing, its file names are not valid Fearless file names (for code, also its package structure), its marker is missing or not the only one, its links are broken, or its icon is broken;
+- `idle`;
+- `data: read only`, `data: read write`;
+- `code: not compiled (no cache)`;
+- `code: not compiled (cache out of date)`: a compiled cache that does not match the sources (see below);
+- `code: compiled`;
+- `code: busy`: a job runs.
+
+A code project is out of date exactly when compiling it would compile some package: when the compiled cache of a package does not list exactly the current files of that package, or is older than one of them. Files outside every package (a readme, the marker) never make a project out of date.
+
+The mains of a code project are known when it is not out of date: the concrete mains of the highest rank. When reading them finds a package that compiling would compile, the project is out of date; when reading them fails, the project is also invalid, with that error. A project whose files change while it is checked is checked again.
+
+While the window is shown, the manager notices changes made on disk by other programs: every three seconds it checks the selected project, and in turn one other project, and updates states, badges, buttons and the Eclipse files, including moving a project in and out of invalid. A project with a running job is checked when the job ends. Every request naming a project checks it.
+
+The icon of a project is the only PNG file in the folder `.config/icon` of the project, or, with no such folder, an icon generated from the project name. More than one PNG, or a PNG that can not be read, makes the project invalid.
+
+Kinds change only by request: from idle to any kind, from any kind back to idle. Changing kind keeps `mains`, `reads` and `edits`: they have no effect while the project is not code, and come back if it becomes code again.
+
+## Jobs
+
+A project does at most one job at a time: compiling, or running its mains. A request for a job while another one runs, and a `clean` or `kind` while a job runs, is refused with a line in the Output of the project naming the running job.
+
+Everything a job prints goes to the Output area of the project.
+
+- Compile (code projects): a code project with broken links is not compiled: the Output shows why. The compiler runs in its own JVM; its output goes to the Output. `--- compiling <folder> ---` starts it, `--- compile done ---` or `--- compile failed with <code> ---` ends it. A compile that ends with the mains known removes from the selected mains those that are no longer mains.
+- Run (code projects): a code project with broken links does not run: the Output shows why. When the project is out of date, the main button compiles; a `run` request compiles and then runs. The mains run are: the only main, when there is one; else the main named by the `run` request; else the selected mains, in the order of the mains. A named main that is not a main of the project is refused, listing the mains. Selected mains that are not all mains of the project are refused, naming those that are not, and are removed from the selected mains. A project with no main, or none selected, says so. Each main runs in its own JVM, one after the other, framed by `--- running <main> ---` and `--- <main> exited with <code> after <N>s ---`. While a main runs, its unit test log is published as a JUnit report every two seconds and when it ends. The report holds the complete records of the log: its lines up to the last newline, without a test case whose closing line is not written yet.
+- Terminate ends the job: `--- terminating <job> ---`, then the JVM of the running main or of the compile ends, and no further main of that run starts.
+
+## The window
+
+- Left: a tile for every registered project, with its icon, name and state badge, ordered by name, last modification, last compile or last run.
+- Right, when a project is selected: the panel of that project:
+  - the main button: Compile, Run, Run selected, Terminate, or Check (for a project that is not code);
+  - the kind buttons;
+  - for a code project, its mains; with several mains, each can be selected, or All, or None;
+  - Links: for a code project, a row for every data project, with the type names it reads and, for a `data:readWrite` project, those it reads and writes; for a data project, a row for every code project;
+  - Information: folder, name, kind, sizes, times, packages, selected mains, links, job, whether it has problems;
+  - Logs: the log files the mains wrote in `.out/logs`, to view, copy or delete;
+  - Output, with Clear output.
+- Menus: Manager (Edit project metadata, Show raw project state, Connect Eclipse, Forget association, Quit manager), Project (Add folder, Clear cache, Browse files, View documentation, View base documentation, Error report, Forget project), Running (every project with a job; choosing one selects it).
+- Add folder accepts a folder or a file; a file registers the folder it is in. Browse files opens the project folder in the file browser of the desktop.
+- Show raw project state shows the Information of every project.
+- Every message of the manager that is not a line in the Output of a project (a refused request, a name given to a registered folder, Eclipse connected) is shown in a dialog.
+
+## File associations
+
+On Windows and Linux, at every start, the owner makes its launcher the program opening `.fearless` files, with the Fearless icon, following `FileAssociations.reconcile` of Commons. A launcher not named `fearlessManaged<version>`, or `fearlessManaged<version>w` for the windowed launcher, is an error. An extension held by a program outside the Fearless family, or pinned by the user, is an error. Forget association removes what the manager registered, then ends the manager. macOS has no associations.
+
+## Eclipse
+
+Connect Eclipse asks for Eclipse: its program, a file next to it, its folder, or the folder Eclipse was unzipped into. The Eclipse installation is the one folder holding `.eclipseproduct` among the chosen folder (the folder of a chosen file), its folders `eclipse` and `Contents/Eclipse`, each folder in it, and their folders `eclipse` and `Contents/Eclipse`. None, or more than one, is refused with a message listing where it looked, or what it found. The manager puts the plugin in the `plugins` folder of the `dropins/fearless` folder of that installation, and next to it `manager.info`.
+
+The manager keeps its `eclipse` folder up to date whether an Eclipse is connected or not. A file the plugin reads whole is replaced at once, never rewritten in place.
+- `state.info`: an Info object mapping the name of every registered project to an object with its `folder`, its `kind`, the main `running` (empty when none), the number of `runs` started, the `lastRun` main and its `exit` code, its `mains` (every known main with the file declaring it) and its `problem`: the `file`, `line` and `message` of the error of the last compile, when that compile failed at a position in a source file; empty otherwise, and empty until the first compile since the manager started ends.
+- per project, in a folder named like the project: `console.txt` (exactly what the Output of the project shows; it grows at its end, or is emptied, and the plugin shows it up to its last newline) and, once a run of a project of that name wrote one, `report.xml` (the JUnit report of that run);
+- `console.txt`: every message of the manager that is not a line in the Output of a project, such as a request refused.
+Starting the manager empties every `console.txt`.
+
+A request from Eclipse is a message in the `messages` folder of the manager folder, naming the project.
+
+The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and never writes into a project folder; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. Every two seconds it reflects the manager's files: the problem in the Problems view, on its file at its line, or on the project while that file does not exist, and the report in the JUnit view. Every fifth of a second it shows the Output in the Console view, and every run as a process with a Terminate button. Build (`compile` for a code project, `check` for any other), Clean, Run, Terminate, the kind switches of the Fearless menu of a project, New Project (`register`), Show in manager and Forget project are messages to the manager. Content assist is described below.
+A missing or malformed file of the manager is an error shown in Eclipse, and the plugin stops following the manager until Eclipse starts again.
+
+## Content assist
+
+Content assist works in a Fearless file of a package folder of a mirrored project, after a dot and on request. It uses the compiled information of the last compile of the project and of the compiled standard library: the api json of every package, the map directives of the project as that compile resolved them, and the text documentation of the package of each proposal. A malformed api json or map, a missing documentation file, and a public type or a method of a type missing from the documentation are errors.
+
+It proposes:
+- nothing while the cursor is inside a comment or a string, or touches a name (`ps|`, `Perso|`);
+- after a dot, or after a space following an expression, the methods of the type of the expression before the cursor, dot methods and operators alike: dot methods first, then by name and number of parameters, one per name and number of parameters. A method name being typed (`.fl|`, `+|`) keeps the methods starting with it and is replaced by the choice; otherwise the choice replaces the dot, or is inserted at the cursor. An operator is inserted with a space on each side;
+- after a lowercase name and a dot (`base.|`), and inside a qualified type name being typed (`base.Li|`, in code or in a `use` directive), the public types of the compiled package that name stands for whose simple name starts with what follows the dot.
+
+Each proposal shows its signature, with simple type names and without reference capabilities, and its documentation.
+
+The text is read with the tokens of the compiler. The expression before the cursor is what follows the last `;`, `,`, `->`, `:` or `'` in the innermost bracket around the cursor, read with the grammar of the compiler: an atom, then posts left to right, where a post without parenthesis takes one atom, and `.m x = e rest` binds `x`. A bracket not closed yet runs to the end of the text. What the compiler would reject is unknown, and unknown has no methods. The type of:
+- a type name is that type: a simple name is the alias of a `use` directive of the head file of the package (its only `_rank_` file), else a type of the package; a name without `[..]` has no generics. A package name written in the package, in a qualified name or a `use` directive, stands for the package the `map` directives of the project give it there. A number or a string is a `base.Nat`, `base.Int`, `base.Float` or `base.Str`;
+- a name is the type of what binds it. The literals around the cursor bind their self name, or `this` for a top level declaration, the generics of a declaration and of the method holding the cursor, and the parameters of that method: to their written type, else to the type of the parameter of the method the literal implements (the method of that name, or, for a method without name, the only abstract method with that number of parameters not implemented by name in the literal). An earlier `x = e` of the same expression binds `x` to the first parameter of the continuation of its method; inside its own `e`, `x` is unknown;
+- a literal is the type it declares, or the type written before it, or else the type expected by the call it is an argument of, or the result type of the method it is the whole body of; the generics of that type still open are bound by the types of the bodies of its methods;
+- a call is the result type of the method of that name and number of arguments of the type of its receiver, with the generics of the method bound by the explicit type arguments, then by each argument meeting the type of its parameter, left to right, then by the type expected of the call.
+
+A type declared in the edited file that the last compile does not know has, for each name and number of parameters, the method of the first of its supertypes, in the order written, that has one.
+
+## Error management
+Errors are present in Coordinator (`Report`, `Violation`) when shared with portableFearless, and in Controllers when unique to the manager.
+Controllers must have a similar (`Report`, `Violation`) classification inside it.
