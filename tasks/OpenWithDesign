@@ -5,14 +5,14 @@ A main can ask the Fearless manager to make the desktop open it: on a double cli
 
 ```
 Foo: Main, OpenWith[IconsFoo, "foo"]{ s -> ... }
-Bar: Main, Shortcut[IconsBar, "bar"]{ s -> ... }
+Bar: Main, Shortcut[IconsBar, "fapp123"]{ s -> ... }
 Baz: Main, OpenWith[IconsBaz]{ s -> ... }
 Qux: Main, Shortcut[IconsQux]{ s -> ... }
 ```
 
 `IconsFoo` and the others are types the compiler generates for image files recognised as autoloaded assets (here `_pkg/icons/foo.png` becomes `IconsFoo`). They can come from any package the main can see, including `base` once `base` offers autoloaded icons.
 
-Informally: `Foo` wants every `.foo` file to show the `IconsFoo` image and to open `Foo` on a double click. `Bar` wants a file `bar.bar` in the top level of its project, showing the `IconsBar` image, that starts `Bar` on a double click; that file carries no information, it is only a handle to start the main, and it keeps working when moved anywhere else.
+Informally: `Foo` wants every `.foo` file to show the `IconsFoo` image and to open `Foo` on a double click. `Bar` wants a file `bar.fapp123` in the top level of its project, showing the `IconsBar` image, that starts `Bar` on a double click; that file carries no information, it is only a handle to start the main, and it keeps working when moved anywhere else.
 
 Mechanically `OpenWith` and `Shortcut` are the same: both claim an extension for a main. `Shortcut` additionally creates the shortcut file.
 
@@ -45,22 +45,13 @@ These checks live next to the `Sealed`, `WidenTo` and `BaseId` checks, in `injec
    `Only a main can open files: "Assoc" must also implement "base.Main", directly or through one of its supertypes.`
 2. The arguments are concrete: the first is a type name with no generic arguments, the second a `base` string literal type. No type variables, so every check below can be done on the declaration itself.
 3. The extension literal: the text between the delimiters, with `"txt"` and `` `txt` `` meaning the same extension `txt`. The two are different type names, so the rule compares the text, and a main claiming both `OpenWith[I,"txt"]` and `` OpenWith[I,`txt`] `` is claiming `txt` twice (rule 5).
-   The text follows the rule for a single extension segment of a file in a project (`BuildWithZip.checkExtSeg`): 1 to 16 characters, each `a-z` or `0-9`; no leading dot; no multi dot extensions such as `tar.gz`. That rule is in Coordinator, which Frontend does not depend on: it moves into Commons (`tools.Fs`, next to `allowed`) and both use it.
-
-Crucially, only `fearless` is reserved and can not be claimed.
-`fear` can be, and a fearles IDE written in fearless may want to claim it.
-Every text matching `fapp[0-9][0-9][0-9]` or `ffile[0-9][0-9][0-9]` can also be claimed.
-A `Shortcut` can not claim a well known extension. The shortcut file carries no information, so naming it `report.doc` would make it look like a document to the user and to every other program. The well known extensions are those of the freedesktop shared MIME database (more than 1000) plus the Windows ones it does not list (`lnk`, `bat`, `reg`, ...), kept as one list in Frontend. The list contains `fear` and `zip` too: a top level `bar.fear` would be a source file outside any package and a top level `bar.zip` would be read as a zip archive, both breaking the project. It also contains the extensions of the files Fearless itself writes (`info`, `built`, ...), and every `ffile[0-9][0-9][0-9]`: a shortcut file `bar.ffile042` would look like a document of the main claiming `ffile042`.
-`OpenWith` has no such list: claiming `doc` is legitimate, and it fails at reconcile wherever another program opens `.doc` (see **Reconciling**).
+   The text follows the rule for a single extension segment of a file in a project (`BuildWithZip.checkExtSeg`, shared through `tools.Fs`): 1 to 16 characters, each `a-z` or `0-9`; no leading dot; no multi dot extensions such as `tar.gz` (a project may hold `tar.gz` files, but Windows opens a file by the text after its last dot, so a claim of `tar.gz` would really be a claim of `gz`). `fearless` is reserved. A text breaking this rule is an invalid extension, refused here.
+   Every other text is one of two kinds:
+   - A Fearless extension: `fapp[0-9][0-9][0-9]` (shortcuts) or `ffile[0-9][0-9][0-9]` (files). The manager owns these outright: it takes them with no question asked (see **Reconciling**).
+   - A system extension: any other valid text, `htm`, `pdf`, `notes` alike. Only `OpenWith` can claim one, and only once the user allowed it in the manager (see **System extensions**).
+   A `Shortcut` claims only a Fearless extension: its extension, when written, is a `fapp[0-9][0-9][0-9]`. The shortcut file carries no information and lives in the project, so it must never look like a document of another program, and it must never name a kind of file the project reads itself (`bar.fear`, `bar.zip`). An `OpenWith` written with a `fapp[0-9][0-9][0-9]` is refused too: those name shortcut files.
 4. The icon is a type generated by the autoloading of an image file. `base.ImageFile` is not sealed, so a hand written `ImageFile` is refused here. Whether the image is a usable PNG is checked by the manager (see **Checking the icon**).
 5. One main claims each extension at most once, across all its `OpenWith` and `Shortcut`: `Foo: Main, OpenWith[I1,"a"], Shortcut[I2,"a"]` is refused, since one extension has one icon.
-6. Extension groups. Linux opens kinds of file (MIME types), not extensions, and several extensions can name one kind (`htm` and `html` are both `text/html`); Windows opens extensions. To make a claim mean the same on both systems, "this main opens all the files of this kind", Frontend keeps a table built from the freedesktop shared MIME database: for each extension, its group, the extensions of the same kind. An `OpenWith` claiming a member of a group must come with an `OpenWith` for every other member, on the same main and with the same icon:
-   `YamlEditor: Main, OpenWith[IconsYaml,"yml"], OpenWith[IconsYaml,"yaml"]{ s -> ... }`
-   On Windows the manager then registers every member; on Linux it claims the kind as a whole.
-   - Each extension belongs to the type its highest weight glob names (`asc` is `text/plain` at weight 50 and a PGP type only at weight 10, so `txt` and `asc` form a group).
-   - An extension whose highest weight is shared by types of the same family belongs to all of them, and the groups of those types merge (`ogg`, `oga`, `opus`, `spx`; `json`; `c` with `cc`, `cpp`, `cxx`).
-   - An extension whose highest weight is shared by unrelated types can not be claimed (`ts`: MPEG video and Qt translations; `dot`, `m`, `mo`, `obj`, ...): the desktop could hand the main either kind.
-   The table lists both cases explicitly; an extension not in it is its own group. `Shortcut` is not affected: every group member is a well known extension.
 
 Only mains the manager can run take part: the concrete mains of the highest rank of the project (`Helper.isMain`, `Helper.compile`). `OpenWith`/`Shortcut` on a main of a lower rank is legal and has no effect.
 
@@ -108,8 +99,9 @@ A `Shortcut` without extension gets `fappNNN`, an `OpenWith` without extension g
 1. If the previous `mains.info` of the project gives this claim an autoselected extension, keep it: a shortcut file dragged to the desktop keeps working across compiles.
 2. Else start from `Math.floorMod((alias+"::"+main+"::"+icon).hashCode(), 1000)`, with `alias` the project name in `projects.info` and `main` the qualified main name. `String.hashCode` is fixed by the Java specification, so the start is the same on every machine. The icon is part of the key so that `Shortcut[I1]` and `Shortcut[I2]` of one main start apart.
 3. The number is free if no other claim in the in memory map uses that extension; else try the next one, wrapping from 999 to 000.
-4. If all 1000 are taken:
-   `No free extension is left for "base.Shortcut[hello.IconsBar]" of main "hello.Bar": all the 1000 extensions "fapp000" to "fapp999" are used by the projects of this manager. Give this Shortcut an explicit extension, for example "base.Shortcut[hello.IconsBar,\"bar\"]". 
+4. If all 1000 are taken, the compile fails:
+   `No free extension is left for "base.Shortcut[hello.IconsBar]" of main "hello.Bar": all the 1000 extensions "fapp000" to "fapp999" are used by the projects of this manager.`
+   For an `OpenWith`, the message adds that a system extension can be claimed instead, for example `"base.OpenWith[hello.IconsFoo,\"foo\"]"`.
 
 Which project compiles first can decide who gets a number. This is accepted.
 
@@ -128,22 +120,32 @@ The shortcut file is a visible file of the project: it follows the project file 
 
 The checks of `reconcile` change nothing when they fail, so the previous associations stay in place. A failing `reconcile` after a compile makes that compile fail, and the in memory map goes back to the previous `mains.info` of that project (the manager keeps it until reconcile succeeded). To name the failing extension, the main claiming it and the program holding it, `reconcile` reports which extension failed which check instead of one text; the messages are those of `Violation.association*`, completed with the main.
 
-The manager settles conflicts among the Fearless apps it manages; with the OS and every other program it needs a clear yes or no. An extension is either fully controlled by the manager or the compile fails loudly:
-- An extension claimed by a program outside the Fearless family (`notOurs`): Follow `FileAssociations.reconcile`. So `OpenWith[I,"txt"]` fails on every machine where another program already opens `.txt` in a way that `FileAssociations.reconcile` would not snatch away. There is no mode that merely adds the manager to the programs offered for an extension.
-- An extension with a Windows UserChoice (`userLocked`): 
-Follow `FileAssociations.reconcile`, even when the UserChoice names this manager, exactly as for `.fearless`: an association the user pinned is one the manager could not take away later.
+The manager settles conflicts among the Fearless apps it manages; with the OS and every other program it needs a clear yes or no, and the two kinds of extension get different answers.
+- `.fearless` keeps exactly the behaviour it has today; it is the reference for the others.
+- A Fearless extension (`fappNNN`, `ffileNNN`) gets the very same setup as `.fearless`, and is checked like it: an extension held by a program outside the Fearless family (`notOurs`), a Windows UserChoice (`userLocked`, even when it names this manager), or another Fearless identity, all refuse it. These extensions are invented by Fearless, so on a machine where one of them is set up in any other way than the manager's own, the setup was tampered with: at start up the manager refuses to start, exactly as when `.fearless` is locked; after a compile, the compile fails.
+- A system extension gets the same setup as `.fearless` too, but the manager takes it over from whatever program opens it today: the user allowed it on purpose, so other programs registered for it (`notOurs`) do not refuse it. A Windows UserChoice still does (`userLocked`), with the same message as for `.fearless`: the user pinned that extension to a program, and the manager does not undo the user's own choice. When the manager stops claiming a system extension, it removes its own setup only, and the previous program opens those files again.
 - An extension held by another Fearless identity (an older manager, the portable Fearless): Follow `FileAssociations.reconcile`, as for `.fearless`.
 
 The portable Fearless reconciles `.fearless` under its own identity at every start, removing the manager's associations. That is accepted: at its next start the manager takes back every extension it manages.
 
 ### Extensions on Linux
 
-On Linux a program opens MIME types, not extensions; the shared MIME database maps file names to types through globs. For each claimed extension `ext`, `reconcile` looks for the types having the glob `*.ext` in the database (the `globs2` of `$XDG_DATA_HOME/mime` and of every `$XDG_DATA_DIRS` entry), ignoring the types declared by the packages of the Fearless family itself.
-- No such type: the manager defines `application/x-ext` with the glob `*.ext`, as for `.fearless`.
-- Some types: the manager defines no type. Its `.desktop` lists those types, its package gives them the icon, and the `notOurs` check looks at the programs opening those types. A new `application/x-txt` would instead retype every `.txt` file of the machine and silently take them away from every program opening `text/plain`.
-- The programs opening a type are those whose `.desktop` lists it, and those named for it in `mimeapps.list`. A program opening a supertype (`text/plain` above `text/x-yaml`) holds the extension only when `mimeapps.list` names it as the default for that supertype: the desktop prefers a program listing the exact type over one listing a supertype, but a user's default for a supertype comes first. Windows has nothing like supertypes, and this keeps both systems answering alike.
-- One of those types also has globs not claimed in the wanted set (a machine whose database adds `*.yamlx` to `application/yaml`): claiming it would make the desktop hand the manager those other extensions too. Only the globs whose extension belongs to that type alone count: a glob whose highest weight is shared with an unrelated type (`*.ts` of `video/mp2t`) and the globs of subtypes (`*.geojson` below `application/json`) do not, so claiming the `m2ts` group or `json` works; such files may still reach the manager on Linux, which then shows the note of **Opening a file**. Such an extension is refused (`sharedType`): `reconcile` reports the extension, the type and its other globs, and changes nothing. The group rule of Frontend makes this rare: it only happens for kinds of file the table does not know.
+On Linux a program opens MIME types, not extensions; the shared MIME database turns a file name into a type through name patterns (globs). Several extensions can share one type (`*.htm` and `*.html` are both `text/html`), so taking over a type would take over all its extensions. The manager never does that: it gives each claimed extension a type of its own, in its own MIME package (the file `$XDG_DATA_HOME/mime/packages/<identity>.xml`, which only the manager writes):
+```
+<mime-type type="application/x-fearless-htm">
+  <glob pattern="*.htm" weight="100"/>
+  <sub-class-of type="text/html"/>
+  <sub-class-of type="application/xhtml+xml"/>
+</mime-type>
+```
+- The glob weight is 100, above every glob shipped by the systems we target (at most 80), so the name `x.htm` turns into the manager's type and `x.html` stays `text/html`.
+- When a system glob also matches the name, GIO and Qt look at the file content to choose, and text content would go to the system type. The `sub-class-of` entries, one for each type the system database gives to `*.htm`, make the content of those types count as the manager's type. A file whose content is unmistakably another format (a `.htm` file starting with `<?php`) still gets that other type; this is accepted.
+- The manager's `.desktop` lists the manager's types; no other program lists them, so a double click on a `.htm` file reaches the manager, and every other program opening `text/html` stays in the "open with" choices.
+- `.fearless` keeps its type `application/x-fearless`. A Fearless extension gets `application/x-fearless-<ext>` like a system extension; no system glob can match it.
+- Nothing outside the manager's own files changes. Releasing an extension rewrites the manager's package without it, and the system types are back as they were.
+- The Linux counterpart of the Windows UserChoice is a `[Default Applications]` entry, in any `mimeapps.list`, naming another program for the manager's type: it refuses the extension (`userLocked`).
 
+### Icons on the desktop
 ### Icons on the desktop
 
 On Windows the registry names an icon by its path, so the desktop reads the `.ico` straight from `.fearless_out/icons/`. On Linux a MIME type names its icon, and the desktop looks names up only in icon theme folders: the user's `$XDG_DATA_HOME/icons`, the system's `$XDG_DATA_DIRS/icons` (root only) and the legacy `~/.icons`. `reconcile` installs each icon as `$XDG_DATA_HOME/icons/hicolor/256x256/mimetypes/<identity>-<hash>.png`; the hash gives a changed image a new name, past the icon cache of the desktop. Every file there named `<identity>-<hash>.png` belongs to that identity: each `reconcile` deletes those not in the wanted set, and removing an identity deletes all of them together with its `apps/<identity>.png`, its `.desktop` file and its MIME package.
@@ -157,7 +159,15 @@ The desktop starts the manager with the file path as its only argument. Today su
 3. The main is already running: the manager shows the project and runs nothing more; a `Session` runs one job per project.
 In the future, the manage will have to signal to the process to 'wake it up', for example its gui could come front, but we will design this API later.
 
-A file with the `.fearless` extension, and a folder, keep today's meaning. Any other regular file is never registered: its extension is claimed by nobody (the desktop can still hand it to the manager, for example a `.geojson` file on Linux through its supertype `application/json`), so the manager shows its window with a note naming the file and saying that no main opens its extension, and runs nothing.
+A file with the `.fearless` extension, or with an extension nobody claims, keeps today's meaning.
+
+An empty file runs nothing: the manager shows a note naming the file. GNOME types every empty file as `application/x-zerosize` whatever its name and never hands it to the manager; refusing empty files everywhere makes Windows and the other desktops behave the same.
+
+## System extensions
+
+The manager keeps the list of the system extensions the user allowed, in its own folder, and shows it in its window, where the user can add and remove extensions. Removing an extension makes every claim of it inactive: the manager stops claiming it, and the projects claiming it show a problem until they are compiled again.
+
+When a compile wants a system extension that is not in the list, the compile waits on a dialog naming the main, the claim and the extension, with two choices: allow the extension (it is added to the list and the compile goes on) or fail the compile. Closing the dialog fails the compile. Allowing an extension does not bypass the other checks: a Windows UserChoice still refuses it (see **Reconciling**).
 
 ## Delivering the file
 
@@ -171,6 +181,8 @@ For each project, per main:
 - `Extensions this main opens`: icon and extension, for each claim that no other main claims.
 - `Conflicting extensions`: icon, extension, and one other claimant with its icon and `project::pkg.Main`: the first in alphabetical order of `project::pkg.Main`, followed by `and N more` when there are more.
 - The shortcut mains are shown by their icons; a double click on one runs that main.
+
+A separate view lists the allowed system extensions, each with the mains claiming it, and lets the user add and remove them.
 
 ## Conflict icon
 
