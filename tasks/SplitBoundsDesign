@@ -1,0 +1,92 @@
+# Typing method bodies under single capability bounds
+
+A method body is type checked once for each way of giving every type variable in scope a single capability of its bound. Every instantiation of the type variables gives each of them exactly one capability, so it is covered by one of those typings.
+
+```
+body-ok:  forall XBs1 in split(XBs XBs'),  XBs1, G G' |- e : T     (plus the usual kinding and affinity premises)
+split(X1:RCs1 ... Xn:RCsn) = { X1:RC1 ... Xn:RCn | RC1 in RCs1 ... RCn in RCsn }
+```
+
+Only this rule changes. Everything typed inside a method body (subtyping, promotions, calls) then sees each type variable bounded by one capability.
+
+Implementation: branch `split-bounds` of https://github.com/marcoautomation2/Frontend/tree/split-bounds, on top of Frontend#151. Paper: version `proposed` of the paper repository, built on version `current`.
+
+## Why nested literals are checked once
+
+A literal inside a method body is typed by `Lit-t`. The outer bounds appear only in the premise kinding the literal's own type `D[Ts]`; the literal itself is checked by `G|FTV(Ts) |- RC L : OK`, which does not mention the outer bounds: the literal redeclares the type variables it funnels, with its own bounds, and those are all its methods know.
+
+The funnelled bounds always contain the outer declared bound: kinding `D[Ts]` in every element of the split requires every capability of the outer bound to be in the funnelled one.
+
+`G` does not depend on the split either: the capture adaptation `G[XBs,RC]` is applied by `Lit-ok` under the literal's own declared bounds, before any split. So the premise checking a nested literal is the same in every element of the split, and each literal is checked once. The implementation keeps a set of the literals already checked, by identity.
+
+## What becomes simpler
+
+- `RC-sub` compares one capability on each side, so it relates two types built on the same type variable exactly when they are related under every instantiation. `ri-sub` (`X <= read/imm X`) is derived by `RC-sub` and is removed.
+- Type arguments are compared after writing the capability of each type variable explicitly (`X` becomes `RC X`, `read/imm X` becomes `readImm(RC) X`). `Box[read X]` and `Box[read/imm X]` are the same type under `X:mut,read`.
+- Promotions apply the mode to the single capability of a type variable. The `lub`/`glb` of the promoted bound and the `noChange` cases disappear.
+- In the proof, a lemma (Semantic Split) combines the typings of the split: a ground substitution compatible with the declared bounds picks one capability per type variable, so it is compatible with exactly one element of the split.
+
+Still reasoning on bounds with several capabilities: kinding (signatures, supertypes, the capture filter, the affinity premise). These are inclusions of capability sets, exact for every instantiation.
+
+## Behaviour
+
+Newly accepted, each rejected by `main`:
+
+```
+A:{ .m[Z:imm,readH](a: read/imm Z): Z -> a }
+K[Y:iso,mut]:{ imm .m(a: Y): mut Y }
+C:{ .c[Z:iso,mut](k: imm K[Z], a: Z): Z -> k.m(a) }
+Box[T:*]:{}
+Sub:{ .m[X:mut,read](x: Box[read X]): Box[read/imm X] -> x }
+```
+
+No program accepted by `main` is rejected.
+
+Errors inside a body name the element of the split they come from when some other element types: `While inspecting ".m(_)" line 3, when Y is imm`. When every element fails the same frame as on `main` is shown.
+
+`onlyImmCapture`, used by code generation, is computed under the literal's own bounds, the same in every element of the split.
+
+## Code (FearlessFrontend/src, compared with Frontend#151)
+
+| File | + | - |
+|---|---|---|
+| `typeSystem/RCLubGlb.java` (deleted) | 0 | 117 |
+| `typeSystem/MultiMeth.java` | 14 | 18 |
+| `typeSystem/TypeSystem.java` | 26 | 14 |
+| `typeSystem/CallTyping.java` | 2 | 2 |
+| `message/TypeSystemErrors.java` | 4 | 2 |
+| total | 46 | 153 |
+
+Tests: `LubGlbTest` removed, two acceptance tests added, one rejection test turned into an acceptance test, seven expected messages gain the `when ...` frame (one of them also lists the promotions of that element only).
+`TestAllFrontendCoordinatorIntegration`: 1282 Frontend tests and 321 Coordinator tests, all successful.
+
+## Cost
+
+Compiling `base` (the frontend only; `-ea`). Six JVMs per version, alternating, each with 3 warm-up runs and 10 measured runs; type checking (`TypeSystem.allOk`) is timed apart from the other phases.
+
+| | other phases, warm | type checking, warm | type checking, first run of a JVM |
+|---|---|---|---|
+| Frontend#151 | 1.69 s | 368 ms (sd 51) | 1.26 s |
+| `split-bounds` | 1.69 s | 837 ms (sd 62) | 2.24 s |
+
+Type checking costs 2.3 times more; a whole warm frontend run goes from about 2.06 s to 2.53 s.
+
+`base` has 2610 method bodies and 16893 typings. Number of typings per body and number of bodies:
+
+```
+1:1812  2:2  3:607  4:2  5:3  6:81  9:45  12:1  18:19  27:18  36:3  81:8  216:1  243:6  1296:1  7776:1
+```
+
+The largest are the `Block#` overloads, `#[A:**, B:**, C:**, D:**, R:**](A, B, C, D, res: R): R -> res`: 6^3, 6^4 and 6^5 typings of the body `res`, more than half of all typings but cheap ones. Most of the cost comes from bodies using several `*` type variables, for example the `QuadFlow` methods (3^5 = 243 typings each).
+
+## Variants measured
+
+- Without the set of checked literals, each nested literal is checked again for every element of the split of every enclosing body: 90396 typings instead of 16893, and a warm frontend run of 8.3 s instead of 2.1 s (measured together with the per-split adaptation below, which does not change the number of typings). The set is an identity set over the literal as written (`_l` in `checkLiteral`); the copy promoted to `iso` (`withRC(iso)`) is a new object at every check and cannot be the key.
+- Splitting only the type variables a body mentions (in its signature, its captured bindings or its expression) leaves the time unchanged: parameter types mention every type variable of the method, `Block#` included.
+- Adapting the captured bindings in each element of the split (`G[XBs1,RC]` in `body-ok`) instead of once in `Lit-ok` gains no precision and breaks nested literals. In the element `X:imm` a captured `x: X` becomes `imm X`; a nested literal funnelling `X` with a wider bound (`Fresh[X:imm,mut,read]`) then cannot use it as an `X`. Every use of a captured binding has to type in every element of the split, so the precision per element is never usable; `read/imm X` for a bare `X` that may be `iso`, captured by a `mut` method (Frontend#151), already gives the precise capability of each instantiation.
+
+## Not attempted
+
+Caching the typing of each call across the elements of the split, reusing a result when the elements differ only on type variables not free in the call. The key would have to include the type variables of the expected types passed down (they come from the enclosing call's promoted signatures, which depend on the split) and of the bindings the call reads; the free type variables of every expression would have to be computed once per body and stored by identity. In the bodies that cost time almost every subexpression goes through a parameter whose type mentions the type variables being split, so few typings would be shared. The possible gain is at most the 470 ms warm (about 1 s on a first run) measured above.
+
+An implementation could also type the body under the declared bounds first and split only when that fails. That accepts exactly the same programs only if every typing under the declared bounds also holds under each element of the split (narrowing); `split-bounds` always splits and does not need it.
