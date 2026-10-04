@@ -2494,3 +2494,100 @@ Design points to decide (details in Controllers#68):
 - On linux reconcile sees claimants of an extension only through application/x-<ext>, so OpenWith[I,"txt"] does not see the text/plain handler.
 - Old per hash icons accumulate in XDG_DATA_HOME/icons/hicolor; .fearless_out/icons keeps unclaimed icons; windows reconcile compares only the icon path.
 - Messages not worded in the design (shortcut file names, icon not PNG/unreadable, "also claimed by", "Shortcuts (double click to run):") are for review.
+
+Task:
+Use Opus 5.5 high subagents to handle those tasks.
+This is a single long task. The structure of the tasks ask you (linux3) to be the outer agent that summon the inner agent when needed.
+You can assume that linux1,2,coordinator will be idle; thus there should be only two active agents and only one agent running in any moment of time, you/linux3/outer or inner.
+
+This instructions can be sightly twisted to avoid repeated problems.
+
+This task is a single tasks with many rounds.
+Do not start a sub agent for this task, the task itself asks you to start sub agents for the inner tasks.
+Since linux1,2,coordinator will be idle, at any given moment in time, there should be two agents active: you (outer) and the inner agent.
+Only one of you should be actually running in any given moment of time.
+
+This machine now has 8 different VMs with different distros.
+
+1. xubuntu-xfce: Ubuntu 26.04, Xfce 4.20, X11, Thunar
+2. kubuntu-plasma: Ubuntu 26.04, KDE Plasma 6.6, Dolphin
+3. fedora-gnome: Fedora 44, GNOME 50, Wayland only, SELinux on
+4. debian-gnome-x11: Debian 13, GNOME 48, X11 session, Nautilus
+5. debian-cinnamon: Debian 13, Cinnamon 6.4, X11, Nemo
+6. debian-mate: Debian 13, MATE 1.26, X11, Caja
+7. lubuntu-lxqt: Ubuntu 26.04, LXQt, pcmanfm-qt
+8. arch-sway: Arch Linux (rolling), no desktop environment, Thunar
+
+I'm not really sure if this is a good selection. Most of them are variants of Ubuntu, the current distro.
+
+Please install also Omarchy Quattro and a few other non ubuntu or debian based versions, to reach a total between 12 and 16.
+
+You should use an inner agent to install each of the new VMs you will chose to install.
+
+Align branches.
+
+Run all the tests including the automated GUI ones.
+
+Record what pass and what fails.
+
+Then build the manager and put it somewhere the inner agents can get it.
+
+One of the main recurring issue is the tray. Another is that in some distros Java SWING itself does not seem to work out of the box.
+
+For each of the VMS, instruct an inner agent to:
+-start the vm 'as a user' actually get the screen of the VM to display
+-copy the manager inside the VM disk
+-copy the needed files to run the automated GUI tests in the VM
+-Run all the GUI automated tests in agent mode, adjust the coordinates, save those coordinates in some file and report it to you.
+On some distro, this will simply fail to start.
+On those, the agent should try to find a way to fix those problems, first just focusing on making it work following those steps:
+-find a programmatic way to identify from the manager on what distro we are.
+-if swing simply do not display, find a way to set the right flags etc to make it display on that distro; NativeLocaleForcer already makes FFM downcalls into libc, we may have to use the same technique again.
+-if the tray is not available, but that distro offers standard solution to show the feature we need the tray for, adapt to those features, in particular:
+on a few distro the task bar basically does what the tray was doing, so just setting the X to minimize instead of kill could be enough.
+
+Finally, collate all the results and make PRs.
+Crucially we will need some way for the automated gui tests to store way more then 2 sets of coordinates, we should get a proper map from "distroName" (including win and in the future mac) to coordinates, and then impose a mandatory command line parameter with the current distroName.
+
+Then use a single inner agent to 'use this new set up, test all the automated GUI tests on all the distros' and see if the agent can do it from a fresh context.
+
+Amend PRs if this discover some open issue.
+
+Report:
+Night 2026-10-04/05 (23:00 to 07:00 NZDT), linux3 as the outer agent; 20 Opus inner agent rounds, one running at a time. Every round has a log in /data/fearlessBranch3/overnightLogs/distros/NN-*.txt (outer.txt is the outer agent's summary).
+
+Baseline (round 01): branches aligned; TestAllFrontendCoordinatorIntegration all pass; TestAllController 371 ok; TestAgentTools 60/68, the 7 manager-menu failures caused by the new "System extensions..." item (Controllers #68), re-walked in round 02, then 68/68.
+
+New guests (rounds 03..06), 12 in total now:
+- omarchy-hyprland: Omarchy 4.0.4 ("Quattro"), from its signed ISO (omarchy.org/install is 404 for v4), Hyprland 0.56, omarchy-shell tray.
+- opensuse-plasma: Tumbleweed 20261002 cloud image + kde_plasma, Plasma 6.7.5 wayland only (needs plasma6-branding-openSUSE or the session is black).
+- fedora-cosmic: Fedora 44 + COSMIC 1.8.0.
+- void-i3: Void glibc rootfs, runit + elogind, i3 on X11, XEmbed tray only, no session D-Bus.
+Each has a section in /data/gym/gui_vms_gym.txt.
+
+Code (PRs, all host tests pass: FC all, Controller 372 ok, TestAgentTools ubuntu-gnome 68/68):
+- https://github.com/FearlessLang/Coordinator/pull/201 TestAgentTools.java <desk> [<Test> [agent]], desk mandatory.
+- https://github.com/FearlessLang/Controllers/pull/71 recordings keyed by desk name: on("<desk>",numbers...); recordings for ubuntu-gnome, windows and 8 guests. Conflicts with open #70 (windows(...) -> on("windows",...)).
+- https://github.com/FearlessLang/Coordinator/pull/202 NativeLocaleForcer.setEnv (libc setenv by FFM).
+- https://github.com/FearlessLang/Controllers/pull/72 no StatusNotifierWatcher or no session bus: no tray icon, window close iconifies (was: the manager stopped); SWAYSOCK set: setenv _JAVA_AWT_WM_NONREPARENTING=1 (sway draws grey/partial otherwise).
+
+Per guest (manager / GUI tests):
+- debian-mate (no watcher): was stopping, now iconifies; 6 tests recorded.
+- void-i3 (no bus): was stopping, now works; i3 ignores iconify, window stays; 5 recorded.
+- arch-sway: grey window, fixed by the setenv; Robot captures are black under sway: no recordings.
+- omarchy-hyprland: works, tray ok; GDK_SCALE=2 doubles the Java UI (open question); Robot works with an xdph picker setup; 7 recorded.
+- fedora-gnome (no watcher): iconifies, back via overview/relaunch; portal dialog on every capture: no recordings.
+- debian-gnome-x11 (no watcher): iconifies; 11 recorded.
+- kubuntu-plasma: works like the host; wayland Robot blocked by portal dialogs, recorded on its X11 session: 7.
+- xubuntu-xfce, debian-cinnamon: tray works; 11 recorded each.
+- lubuntu-lxqt: tray works; 2 walked recordings kept (derived ones dropped as against the measured-never-derived rule).
+- opensuse-plasma, fedora-cosmic: manager works like the host; Robot blocked (portal dialog each capture; COSMIC also RGBA vs JDK BGRx, black): no recordings.
+
+Fresh-context verification (round 20, docs only): every recorded walk passes on all 8 recorded guests; DropFolderTest flaky once on xubuntu; FearlessGuiTest fails on void-i3 (1 case, tiling) and omarchy (16 cases, likely scaling). Results commented on Controllers #71. README and gym fixed where a fresh reader got stuck.
+
+Open questions for Marco (listed in Controllers #71): the Tray doc comment still says no tray stops the manager; GDK_SCALE on omarchy; unattended Robot on GNOME/KDE/COSMIC wayland; ManagerTest.clean needs ~/.local/share/applications and mime/packages to exist; openSUSE may lack update-desktop-database; a watcher appearing after start is never used; only sway is detected among non reparenting wayland compositors; ForgetProjectTest/SortByCompiledTest fail in agent mode on guests.
+
+Not done: most of the 51 walks are recorded on each guest only for the core 5..11 tests; the rest still abort there. To continue, walk more tests per desk (/data/vms/share/README.txt says how).
+
+Machine: /data/vms/share holds the final manager build, JDK and source tarball for guests; /data/vms/coords/<guest>.txt the measured coordinates. All guests shut off at their "ready" snapshots. Usage: weekly from 39% to about 50%.
+
