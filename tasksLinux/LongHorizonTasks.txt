@@ -1,0 +1,62 @@
+Use Opus 5.5 high subagents to handle those tasks.
+This is a single long task. The structure of the tasks asks you (linux3) to be the outer agent that summons the inner agents when needed.
+You can assume that linux1,2,coordinator will be idle; thus there should be only two active agents and only one agent running in any moment of time: you (outer) or one inner agent.
+Do not start a sub agent for the task as a whole; start one inner agent per round, as described below, and wait for it before starting the next.
+Each inner agent writes a log of its actions and conclusions in /data/fearlessBranch3/overnightLogs/guiHuman/NN-<name>.txt, ending with a "= Result =" section of at most 30 lines, and replies with only that section.
+These instructions can be slightly twisted to avoid repeated problems.
+
+= Goal =
+
+The automated GUI tests of the Fearless manager (Controllers/test/agentTools, run by Coordinator/Build/src/scripts/TestAgentTools.java) must emulate a human user, on this host and on every libvirt guest.
+Every ACTION of a test is something a person does through the screen: clicking, double clicking, dragging, typing, using menus, logging in. No test starts, stops or inspects a process, writes a file the program under test has already read, or reads an exit code.
+A test may still OBSERVE: the screen, and the files the manager writes (projects.info, state.info, console.txt...).
+If a person cannot do something on a desk, that is a finding about the desk or about the manager, reported as such; never work around it with a non-human shortcut.
+
+= Where things stand =
+
+Read first: /data/fearlessBranch3/overnightLogs/distros/outer.txt, the "= Result =" sections of /data/fearlessBranch3/overnightLogs/distros/*.txt (the previous night: 12 guests installed and tried, tests run inside the guests, which hit wayland portals and black captures), then 21-hostDriven.txt and 22-oneGuest.txt there. Then /data/gym/gui_gym.txt, /data/gym/gui_vms_gym.txt, /data/gym/gui_fearless_manager_gym.txt, /data/vms/share/README.txt, and Controllers/test/agentTools (package-info.java, PilotTest.java, ManagerTest.java, WindowCloseTest.java).
+
+Open PRs (check their state; amend them, never duplicate them):
+- FearlessLang/Commons #67 (branch desktopLauncher): every Linux image carries <app>/<app>.desktop next to bin, executable; Exec=sh -c 'exec "$(dirname "$(readlink -f "$0")")/bin/<app>" "$@"' %k %F. A LINK to it placed on a desk starts the manager on double click and passes dropped folders as arguments; a COPY of it does not work. Tested on GNOME 50 (desktop icons by DING, launcher marked metadata::trusted) and Xfce 4.20. The strictly spec form with double quotes and \\$ escapes breaks on Xfce; desktop-file-validate rejects the single quoted form.
+- FearlessLang/Coordinator #201 (deskNames) and #202 (distroSupport, stacked): TestAgentTools.java <desk> [<Test> [agent]], mandatory desk name; NativeLocaleForcer.setEnv.
+- FearlessLang/Controllers #71 (deskRecordings) and #72 (distroDesks, stacked): recordings keyed by desk name on("<desk>",...), only ubuntu-gnome and windows recordings; no tray watcher or no session bus -> no tray icon and close iconifies; SWAYSOCK -> _JAVA_AWT_WM_NONREPARENTING. Controllers #70 (windowsPilotTests) still writes windows(...): whichever merges second changes it to on("windows",...).
+Unmerged, no PR yet: branch hostDriven of Controllers (95df338) and Coordinator (ca675a9) on the marcoautomation2 fork, stacked on distroDesks / distroSupport.
+
+The host driven set up (branch hostDriven):
+- The test JVM runs on THIS host (desk ubuntu-gnome: GNOME 50 wayland, 3840x2160). A guest is shown full screen in virt-viewer (--attach --full-screen --kiosk --kiosk-quit=never --auto-resize=never --reconnect), so 1920x1080 guest pixels are 3840x2160 host pixels at exactly 2x. The host's Pilot (java.awt.Robot) acts through the viewer like a person sitting at the host. This avoids every wayland problem inside the guests (portal dialogs, black captures, sway, COSMIC).
+- Desk names: ubuntu-gnome for the host itself; <guest>@ubuntu-gnome for a guest through the viewer (PilotTest.guest).
+- Host and guest share /data/fearlessBranch3 by 9p at the same path (virtiofs breaks memory snapshots). Measured: a file or folder the host creates is visible in the guest at once; a file the guest has already read keeps its old content in the guest even after the host rewrites it (until a fresh mount); what the guest writes is visible on the host at once. So: the host prepares fixtures BEFORE the guest session starts; edits during a test are done by a person inside the guest (open the file from the file manager, type in the editor, save); the host only reads what the guest wrote.
+- The guest's ~/Desktop is a link to a folder in the share (PilotTest.deskFolder); on the host it is ~/Desktop. ManagerTest.lay() puts on it, before the person sits down: copies of helloWorld, helloStackTraces, testGui1, and the launcher. Fixtures a test needs go on the desk too.
+- Clean state of a guest = libvirt snapshot "greeter" (memory included, at the login screen, autologin disabled, share not mounted). PilotTest.sitDown() reverts to it, sets the clock (virsh domtime --now, needs qemu-guest-agent), and logs in by typing the password (tester) like a person. The session then reads the prepared desk fresh. On the host sitDown() does nothing. Every test calls sitDown() after its fixtures are laid and before its first look.
+- ManagerTest: launch() double clicks the launcher icon; launch(Click item) carries an item onto the launcher icon. The running manager is seen by a sign on the screen (the tray icon area, Area runningSign), not by its process. clean() powers the guest off; on the host it removes the association files as before.
+- Only WindowCloseTest is converted and recorded (xubuntu-xfce@ubuntu-gnome, passes from its recording). Every other test still calls start(...) (the old ProcessBuilder launch, host only) and aborts on every desk until converted. ManagerTest's desk launcher is still a link to the bare binary: switch it to a link to the image's .desktop launcher (Commons #67), marked trusted on GNOME (gio set <link> metadata::trusted true is part of laying the desk, as "the person trusted it once").
+- Only xubuntu-xfce is converted as a guest (9p share, qcow2 nvram, ~/Desktop link, autologin off, snapshot greeter). fedora-cosmic and debian-gnome-x11 have the share and an older snapshot "running" from an earlier attempt; redo them the greeter way.
+
+Facts learned (do not rediscover them):
+- The GNOME desktop (DING) does not run a bare executable on double click ("Failed to find default application for content type application/x-executable") and does not accept drops on it; GNOME Files runs it on double click but treats a drop onto it as a drop into the folder shown (it COPIES the dropped folder there: never do that to the deployed image). Hence the .desktop launcher.
+- Xfce runs a bare executable on desk double click and passes dropped folders to it.
+- Xfce's first start of the manager from a freshly mounted share takes many seconds: wait for the screen, never for a fixed short time.
+- Robot VK_WINDOWS (Super) did not reach a guest; no test needs it.
+- An aim read inside until(...) is asked again at every iteration in agent mode: read aims once before the loop.
+- A field initialised with a lambda creating an inner class in the public PilotTest trips javac's this-escape warning (-Werror): create such objects lazily.
+- DeployManagedFearless.java empties StandardLibrary/fearlessManagedArtefact, which currently holds the guest desk folder: move the desk folder somewhere no build deletes (and update the guests' ~/Desktop link) or re-create it in lay().
+- Over ssh, pkill -f / pgrep -f match the ssh shell itself when the pattern is in the command line; date +%s%3N is not milliseconds here, use $(( $(date +%s%N)/1000000 )).
+- Clicks through xdotool inside a guest did not reach the Java window; drive guests only from the host through the viewer.
+- FearlessGuiTest is not a desk test: it starts a Fearless program by ProcessBuilder to test Pilot itself. It stays a host test and must not run on guest desks.
+- Tiling guests without desktop icons (arch-sway, void-i3, omarchy-hyprland) cannot do "double click the launcher icon": what a person does there instead is a question for Marco; record which tests apply and stop there.
+
+= Rounds =
+
+Start every round with the check-claude-usage skill and the time, as the overnight rules say.
+
+Round 1 (inner agent): align-branches, then check out the working branches in /data/fearlessBranch3: Commons desktopLauncher (unless #67 is merged), Coordinator and Controllers hostDriven; merge upstream main into them if it moved (merge, never force push). Rebuild Commons.jar from Commons if needed and deploy the manager (DeployManagedFearless.java). Switch the desk launcher to the .desktop link. Then convert, walk in agent mode on BOTH ubuntu-gnome and xubuntu-xfce@ubuntu-gnome, record, and run from the recordings, as many tests as the round allows, starting with WindowCloseTest, AddFolderTest, AllMainsRunTest, RunSelectedTest, CompileFailsTest, KeyboardMenusTest, DropFolderTest, FileAssociationTest. Converting a test means: its action lines in the doc say what a person does, its body does only that, its process checks become screen or file observations. Change the doc of a test only where its actions really change, and keep its style. Commit and push hostDriven after every test that passes on both desks.
+Rounds 2..N (one inner agent each): continue converting until every agentTools test passes on ubuntu-gnome and on xubuntu-xfce@ubuntu-gnome, or is recorded as not applicable with the reason. Each round reads the previous round's log first. This is the priority of the night: one guest fully working before the others.
+Then one round per remaining guest, one at a time (kubuntu-plasma, debian-gnome-x11, fedora-gnome, debian-cinnamon, debian-mate, lubuntu-lxqt, opensuse-plasma, fedora-cosmic, then arch-sway, void-i3, omarchy-hyprland): convert the guest to the greeter set up (document every step in gui_vms_gym.txt so the next guest is quicker), walk and record as many tests as the round allows, and fix in Controllers (branch distroDesks / hostDriven as fits) what is the manager's job on that desk. The trust step of a .desktop launcher differs per desk (GNOME metadata::trusted, Xfce/KDE executable bit and a first-run confirmation, ...): it belongs to laying the desk, document it per guest.
+Last round: run TestAllController.java and the whole TestAgentTools.java ubuntu-gnome on the host, then open the PRs from hostDriven (Controllers, Coordinator) to FearlessLang, stacked on #72 / #202 and cross-linked, with a per-desk, per-test table; amend #67, #71, #72, #201, #202 where the night changed what they say.
+
+= Rules =
+
+CLAUDE.md applies: minimal code, offensive programming, no comments in code, no history in code or docs, the character set, Java only via /opt/jdk-26.0.2/bin/java -ea.
+Only one guest runs at a time; leave every guest shut off at the end. The tests take the host's screen, pointer and keyboard.
+Never ask the user anything during the night. Decisions that are Marco's go in the report as questions.
+When done, open a PR to ZeroToHero moving this task into DoneTasks.txt with the report of the night as its text.
