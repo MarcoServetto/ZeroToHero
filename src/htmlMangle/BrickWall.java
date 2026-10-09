@@ -30,11 +30,12 @@ public class BrickWall {
   private final String solution;
   private int currentIndexAlongWallRow= 0;
   private int currentIndexAlongPileRow= 0;
-  private String background= Background.Prairie.loc+"/"+Background.Prairie.loc+"1.png";
+  private String background;
   
   public BrickWall(Days.LevelName name, String solution) {
     this.name= name;
     this.solution= solution;
+    background(Background.Prairie, 1);
     wallRows.add(currentWallRowBricks);
     pileRows.add(currentPileRowBricks);
     }
