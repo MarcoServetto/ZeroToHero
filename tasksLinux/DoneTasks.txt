@@ -2591,3 +2591,86 @@ Not done: most of the 51 walks are recorded on each guest only for the core 5..1
 
 Machine: /data/vms/share holds the final manager build, JDK and source tarball for guests; /data/vms/coords/<guest>.txt the measured coordinates. All guests shut off at their "ready" snapshots. Usage: weekly from 39% to about 50%.
 
+
+Task:
+Use Opus 5.5 high subagents to handle those tasks.
+Do not stop at the time limit, just keep going until completed or until I interrupt you. This may take several days, ignore the further automatic message about 'running new overnight tasks' that will just come and go every 24 hours. There will be no new task until this is actually over.
+
+The structure of the tasks asks you (linux3) to be the outer agent that summons the inner agents when needed.
+You can assume that linux1,2,coordinator will be idle; thus there should be only two active agents and only one agent running in any moment of time: you (outer) or one inner agent.
+Do not start a sub agent for the task as a whole; start one inner agent per round, as described below, and wait for it before starting the next.
+
+These instructions can be slightly twisted to avoid repeated problems.
+
+Open a Controllers PR; the inner agents will amend it with their changes.
+
+There are 12 VMs plus with different Linux distros plus the host Ubuntu.
+This means 13*number of tests inside TestAgentTools rounds.
+Ordering:
+For each test, run all of the 13 cases. In this way we can learn the issues of a specific test and apply them to all the cases.
+
+Check that those have been handled, or handle them before starting. It is all about configuring the VMs.
+---
+The manager’s inotify watch then stays on the old inode and never sees the second launch’s message. projects.info ends up with only the first project, and the test fails at checkContent.
+The void_i3 and opensuse_plasma agents reproduced this by hand. It happens when the manager changes messages/ after registering its watch.
+void_i3 can’t pass reliably until the manager stops modifying that directory after setting the watch, or the watch is registered differently.
+opensuse_plasma only passes because its agent added a systemd service in the guest that pins that directory.
+Share mount option: inotify on the 9p /data/pilotio share never fires in a guest unless the fstab line has cache=loose. Nine guests needed that edit, with the original saved as /etc/fstab.orig. The arch_sway agent worked it out and the other agents applied it.
+Why are we using the 'super key'?
+```Super key: Robot never delivers it to a guest. Ctrl+Alt chords are probably swallowed by virt-viewer; one agent suspected this but didn’t confirm it. Working ways to open a terminal were:
+Alt+Enter on sway, hyprland and i3, after adding a binding in arch_sway and omarchy_hyprland; void_i3 reused the same key without an edit.
+A panel or dock click on cinnamon, fedora_cosmic, kubuntu and lubuntu.
+Alt+F2 plus the terminal name on gnome-x11, mate and opensuse.
+A custom Alt+T binding added in fedora_gnome.```
+
+Focus and timing: a click on an empty desktop spot is needed first so the full-screen viewer has the keyboard. Several guests also need much longer waits, up to 96 s on opensuse_plasma.
+----
+
+
+Detailed round instructions:
+- Open the VM of this round (or nothing if this is the host Ubuntu round)
+- Start an inner agent, ask it
+""" 
+run  Coordinator\Build\src\scripts\TestAgentTools.java
+in the following way: for text name <TestName> with parameters <..> 
+(1)- run the test <TestName> it in isolation;
+(2)- if it works; done, terminate successfully
+(3)- if it fails run it under agent control and update the numbers accordingly. The numbers do not need to replicate exactly what the inner agent did, they should instead focus on making a reliable automatic execution possible.
+Note that the inner agent (you) can use its normal tooling (screenshots, mouse control etc) to explore what is going on before deciding to commit new input to the file commanding the continuation of the script.
+(4)- go back to step (1).
+If a test can not be made to pass after 15 attempts at tweaking and fixing stuff, report it to the outer agent and terminate.
+You (inner) are allowed to change the test to make it actually test what it should test in case you think the test is currently broken.
+In particular, the way the tests are running has changed. If a test need to check that an area of the screen stays the same, this should be implemented by the test (can be in some utility to be reused, but is not part of the 'testing framework' in the same way checking file content is what we expect is not part of the testing framework)
+
+It may be that you need to make so that the Action/On for this particular step+distro need to be different, not just the numbers. This would require to update the test source accordingly before running the next attempt.
+
+If you find a test that seems to be 'flaky', that is running it identical multiple times may randomly pass/fail you should investigate to discover what is that is making it flaky.
+
+When you do screenshots, always capture the full screen of the host, that in turn will contain the screen of the VM. All the pixel coordinates need to be in the host coordinates, since that is where the test runner lives.
+
+At the end, amend PR<Name/number/address> with the new code for test <TestName> it you changed it.
+"""
+- Close the VM.
+Yes, this does open and close the VM for each individual test. This is intended.
+
+Finally, Amend the PR to make a clear list of all the tests*distro that could not be made to pass.
+Report:
+Runs from 2026-10-08 23:00 to 2026-10-09 17:00, then stopped: handed to the next round through Controllers todo_next.txt.
+PR: https://github.com/FearlessLang/Controllers/pull/76 (recordings for the guests, test changes, todo_next.txt).
+
+VM setup before the rounds (machine only, not in a repository):
+- Shared folder: all 12 guests mount /data/pilotio with virtiofs instead of 9p. On 9p, after drop_caches a new lookup of the manager's messages/ folder made a new inode once the folder changed on the host side, so the inotify watch went deaf to the second launch. The opensuse_plasma pin service is removed. The original domain XMLs are in /data/overnight_logs/agent_tools_vms/vm_xml.
+- Super key: not used anywhere. Every guest opens a terminal with Ctrl+Alt+T; a click on an empty spot gives the viewer the keyboard. Tiling guests close windows with Alt+Shift+Q.
+- Every guest's /etc/hosts maps its hostname (without it each JVM start waited 15 s on DNS, seen on opensuse_plasma).
+- Lock screens, blanking and idle actions off; arch_sway exports _JAVA_AWT_WM_NONREPARENTING=1.
+
+Rounds: one inner agent (Opus, high) per test x desk, one VM alive at a time. 9 tests done on all 13 desks (TooManyArgumentsTest, SecondLaunchOnFolderTest, WindowCloseTest, LaunchOnFileTest, ForgetProjectTest, QuitWhileRunningTest, OpenFearlessFileTest, KindResetTest, ClearOutputTest) and ForgetRunningProjectTest on ubuntu_gnome: 118 rounds, every one ended in a pass, none given up.
+Test changes: QuitWhileRunningTest allows extra console lines ("repaint frame(s) lost"); OpenFearlessFileTest checks by screen comparison that the file manager window opened and closed.
+
+Findings, now the next round's input (Controllers todo_next.txt):
+- Manager bug: on a fresh fedora_gnome boot Xwayland starts cold, the window misses the 2 s surfaced check, and the manager wipes its folder and associations although the desk is healthy.
+- WindowCloseTest and ForgetRunningProjectTest pass even when some clicks miss; all tests need a review for this pattern.
+- void_i3 has neither tray nor minimization: proposal of a Swing corner window acting as a tray.
+- 44 tests remain to record on the guests, then a regression run per desk.
+
+Stopped at weekly usage 95% (from 66% at start). Logs: /data/overnight_logs/agent_tools_vms (progress.txt, one log per round); per desk facts in /data/gym/gui_vms_gym.txt.
