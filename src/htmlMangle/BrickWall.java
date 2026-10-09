@@ -35,7 +35,6 @@ public class BrickWall {
   public BrickWall(Days.LevelName name, String solution) {
     this.name= name;
     this.solution= solution;
-    background(Background.Prairie, 1);
     wallRows.add(currentWallRowBricks);
     pileRows.add(currentPileRowBricks);
     }
