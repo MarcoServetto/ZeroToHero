@@ -10,7 +10,7 @@ import mainZeroToHero.Days;
 public class BrickWallDeconTutorial implements Function<Days.LevelName, String>{
   public String apply(Days.LevelName name) {
     BrickWallDeconstruction bw= new BrickWallDeconstruction(name)
-      .background(Prairie, 1)
+      .background(Tutorial, 1)
       .addImmovable(0, "Direction:{.turn:Direction")
       .addReplaceable(0, ";", "")
       .addImmovable(0, "}")

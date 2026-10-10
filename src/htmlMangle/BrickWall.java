@@ -96,7 +96,7 @@ public class BrickWall {
     }
   protected void setBackground(String loc, int limit, int num) {
     if (num <= 0 || num > limit) { throw new Error(loc+" num must be in the 1.."+limit+" range"); }
-    background= loc+"/"+loc+num+".png";
+    background= loc+"/"+loc+num+".jpg";
     }
   public String build() {
     return name.htmlNextLevel(File.BrickWall_html.text)

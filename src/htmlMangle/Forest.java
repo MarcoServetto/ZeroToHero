@@ -88,7 +88,7 @@ public class Forest {
     }
   public Forest background(Background kind, int num) {
     if (num <= 0 || num > kind.limit) { throw new Error(kind+" num must be in the 1.."+kind.limit+" range"); }
-    background= kind.loc+"/"+kind.loc+num+".png";
+    background= kind.loc+"/"+kind.loc+num+".jpg";
     return this;
     }
   public String build() {
