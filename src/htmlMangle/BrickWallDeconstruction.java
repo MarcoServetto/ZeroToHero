@@ -24,6 +24,16 @@ public class BrickWallDeconstruction extends BrickWall {
     checkpoints.add(checkpoint);
     return this;
     }
+  public BrickWallDeconstruction background(Background kind, int num) {
+    setBackground(kind.loc, kind.limit, num);
+    return this;
+    }
+  public enum Background {
+    Prairie("Prairie",1);
+    String loc;
+    int limit; // Images are resources/brickWallDeconstruction/images/LOC/LOC1.png .. LOC<limit>.png
+    Background(String loc, int limit) { this.loc= loc; this.limit= limit; }
+    }
   public BrickWallDeconstruction newRow() {
     super.newRow();
     return this;
@@ -89,6 +99,7 @@ public class BrickWallDeconstruction extends BrickWall {
       .map(Escape::escapeForHtmlScripts)
       .collect(Collectors.joining("\", \"", "<script>globalThis.checkpoints = [\"", "\"];</script>"));
     return name.htmlNextLevel(File.BrickWallDeconstruction_html.text)
+      .replace("[###BACKGROUNDFILE###]", background())
       .replace("[###WALL###]", wallString)
       .replace("[###PILE###]", pileString)
       .replace("[###CHECKPOINTS###]", checkpointsString);

@@ -1,5 +1,7 @@
 package levels.day06;
 
+import static htmlMangle.BrickWall.Background.*;
+
 import java.util.function.Function;
 
 import htmlMangle.BrickWall;
@@ -11,6 +13,7 @@ public class BrickWallTest implements Function<Days.LevelName, String>{
 Direction: {
   .turn: Direction;
 }""")
+      .background(Prairie, 1)
       .addMovable(0, "Direc")
       .addMovable(0, "tion")
       .addImmovable(9, ": ")

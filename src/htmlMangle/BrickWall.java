@@ -30,6 +30,7 @@ public class BrickWall {
   private final String solution;
   private int currentIndexAlongWallRow= 0;
   private int currentIndexAlongPileRow= 0;
+  private String background;
   
   public BrickWall(Days.LevelName name, String solution) {
     this.name= name;
@@ -89,8 +90,17 @@ public class BrickWall {
    * @return
    */
   public BrickWall addMovable(int indexSkip, String s) { return addBrick(indexSkip, true, s); }
+  public BrickWall background(Background kind, int num) {
+    setBackground(kind.loc, kind.limit, num);
+    return this;
+    }
+  protected void setBackground(String loc, int limit, int num) {
+    if (num <= 0 || num > limit) { throw new Error(loc+" num must be in the 1.."+limit+" range"); }
+    background= loc+"/"+loc+num+".png";
+    }
   public String build() {
     return name.htmlNextLevel(File.BrickWall_html.text)
+      .replace("[###BACKGROUNDFILE###]", background)
       .replace("[###WALL###]", renderWall(wallRows, wallLength, true))
       .replace("[###PILE###]", renderWall(pileRows, pileLength, false))
       .replace("[###ANSWERWALL###]", renderAnswerWall());
@@ -122,6 +132,13 @@ public class BrickWall {
     return "<pre id=\"answerWall\" class=\"wall answer hidden\">" + Escape.escapeForHtmlText(solution) + "</pre>";
     }
 
+  protected String background() { return background; }
+  public enum Background {
+    Prairie("Prairie",1);
+    String loc;
+    int limit; // Images are resources/brickWall/images/LOC/LOC1.png .. LOC<limit>.png
+    Background(String loc, int limit) { this.loc= loc; this.limit= limit; }
+    }
   private record Brick(String code, boolean movable, int index) {
     public int length() { return code.length(); }
     public Brick {

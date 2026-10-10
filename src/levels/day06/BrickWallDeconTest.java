@@ -1,5 +1,7 @@
 package levels.day06;
 
+import static htmlMangle.BrickWallDeconstruction.Background.*;
+
 import java.util.function.Function;
 
 import htmlMangle.BrickWallDeconstruction;
@@ -9,6 +11,7 @@ public class BrickWallDeconTest implements Function<Days.LevelName, String>{
   public String apply(Days.LevelName name) {
     //Wood[]:Material{ imm .mass(length: Nat): imm Nat -> length+length+length; }
     BrickWallDeconstruction bw= new BrickWallDeconstruction(name)
+      .background(Prairie, 1)
       .addMovable(0, "Wood")
       .addReplaceable(0, "[]", "")
       .addMovable(0, ":")
