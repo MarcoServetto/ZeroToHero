@@ -1,5 +1,7 @@
 package levels.day04;
 
+import static htmlMangle.Forest.Background.*;
+
 import java.util.function.Function;
 
 import mainZeroToHero.Days;
@@ -23,6 +25,7 @@ Rotation3600:{
     Rotation720#(Rotation720#(Rotation720#(Rotation720#(Rotation720#(d)))))
   }
 """)
+      .background(Dawn, 1)
       .addNode(5, 94)
       .addNode(3, 60)
       .addNode(13, 30)
