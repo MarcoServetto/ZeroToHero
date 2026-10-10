@@ -31,10 +31,12 @@ Substantial association related failures are also fatal errors (that is, we can 
 ## Starting the 'single' manager.
 Starting the manager program leaves one message in the manager folder. There could be multiple parallel attempts to start the manager, and the 'single' manager could be already running. The manager that is recognized as the 'single' manager handle the messages, while the other manager processes terminate just after leaving their message in the manager folder.
 
-The program takes no argument, or one argument:
-- no argument: message to show the window;
-- a folder: message to register it;
-- a file: message to register the folder it is in.
+The manager program takes zero arguments or one argument:
+- zero arguments: the message is empty: show the window, starting the single manager when none runs;
+- one argument starting with `FearlessCommandBase16:`: the message is the text whose UTF-8 bytes are the hex digits after `FearlessCommandBase16:`;
+- one argument not starting with `FearlessCommandBase16:`: the path of a `.fearless` file, as the system passes the path when the file is opened (for example by a double click); the message registers the folder holding the file.
+An argument starting with `FearlessCommandBase16:` is always a message, never a path.
+Every run of the manager program writes its message file. A run that is not the single manager then ends; a run that becomes the single manager applies its own message file like every other message file.
 If a manager is called with bad arguments, it will leave a message "invalid call xxx" where xxx represents the details, and when the single manager take that message up, it will show the error in a dialog as for all the other dialogs and continue running.
 If a manager encounter some (fatal) error but in a set up where the single manager is likely to either be active or become active soon, it just leaves a message "fatal error xxx" about it and end normally. When possible, the single manager is the only thing taking actual actions.
 When the single manager handles "fatal error xxx" it does treat it as a fatal error.
@@ -57,11 +59,12 @@ When the manager is 'shown again', the simulated tray icon jframe is removed and
 Everything the manager does for a project is a request, and every request is one of the requests below, whether it comes from a message or from GUI interactions.
 The single manager applies the requests one at a time, in the order they arrive, each one completely before the next.
 
-A message is a file left in the `messages` folder of the manager folder: a start of the program, and every request from Eclipse.
-Gui operations are thus just another way to command the manager,
-Every gui operation should have an equivalent command that can be run via the command line on the manager program.
-Every command that can be run via the command line on the manager program is either ill formed or has an equivalent gui operaiton.
-Since all errors are caused by messages and all messages go via the single manager, this means that if we send the message by terminal calling the manager program with the right command, we will get the potential error via the manager GUI. If the manager gui is not displaied, it will be displaied first.
+A message is the file `messages/<time>-<id>.msg` in the manager folder: `<time>` is the 20 digit count of milliseconds since 1970 when the message was written, and `<id>` is a random UUID. The single manager applies the message files in the order of their names, and deletes each message file after reading it.
+Only the manager program writes message files: the manager program writes `messages/<time>-<id>.tmp`, then renames `messages/<time>-<id>.tmp` to `messages/<time>-<id>.msg`, so the single manager never reads a partial message. The single manager deletes every `.tmp` file older than 60 seconds.
+Every other program commanding the manager (the Eclipse plugin, a script, a test) runs the manager program with one `FearlessCommandBase16:` argument holding the message.
+Gui operations are just another way to command the manager, and they all go via the FearlessCommandBase16 fearless manager parameter route:
+every gui operation has an equivalent message, and every message is either ill formed or has an equivalent gui operation.
+Since all errors are caused by messages and all messages go via the single manager, a program that sends a message gets the potential error via the manager GUI. If the manager gui is not displayed, it is displayed first.
 
 A message is one of:
 - empty: show the window;
@@ -81,7 +84,7 @@ A message is one of:
 - `mains <name>`: set the selected mains of the project to the third line, the mains separated by spaces;
 - `link <name>`: set a link of the code project to a data project to the third line: the name of the data project, then `read` or `write`, then the type names the code uses for it, separated by spaces; no type names removes that link;
 - `clear <name>`: empty the Output of the project.
-- the error messages seen before. Those do not have dedicated commands to give the manager to produce them.
+- `invalid call <details>` and `fatal error <details>`: written by a run of the manager program that is not the single manager. These two messages have no equivalent gui operation.
 
 Ill formed messages:
 - a message of more than three lines;
@@ -144,7 +147,7 @@ A code project whose links name a missing project, or a project of the wrong kin
 A `projects.info` that is not a valid Info file, or does not hold what is above, is a fatal error pointing at the offending text in the Frontend error message style. 
 A manager initiated action should never edit a project info file in a way that is invalid, thus the fatal error above shows either a manager bug or OS/user interference in the manager folder.
 
-The whole file can be edited by hand as GUI or via a manager command pointing to a file (outside of the manager folder) with the intended new content.
+The whole file can be edited by hand from the GUI, or via a message naming a file (outside of the manager folder) with the intended new content.
 An edit is accepted only if the whole text is valid, and an error points at the offending text in the Frontend error message style.
 An accepted edit applies at once: projects it removes are forgotten, projects it adds are registered as they are, every project is checked again.
 
@@ -263,8 +266,7 @@ The manager will need some cooperation to ship to eclipse the running output and
 Ther manager should be able to open a connection of some sort with the running eclipse and communicate there those fast changing informations.
 The compile error/output text should contain some end marker so that eclipse (and the human) knows when it is over.
 
-Eclipse ask info to the manager via the messages. If a message end up in error, the manager will show the error as usual.
-Eclipse does not write messages directly, goes via the command line call of a manager process with arguments.
+Eclipse commands the manager by running the manager program with one `FearlessCommandBase16:` argument holding the message. If a message ends up in error, the manager shows the error as usual.
 
 The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and never writes into a project folder; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. Every two seconds it reflects the manager's files: the problem in the Problems view, on its file at its line, or on the project while that file does not exist, and the report in the JUnit view. It shows the Output in the Console view, and every run as a process with a Terminate button. Build (`compile` for a code project, `check` for any other), Clean, Run, Terminate, the kind switches of the Fearless menu of a project, New Project (`register`), Show in manager and Forget project are messages to the manager. Content assist is described below.
 A missing or malformed file of the manager is an error shown in Eclipse, and the plugin stops following the manager until Eclipse starts again.
