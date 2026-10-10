@@ -1,5 +1,7 @@
 package levels.day04;
 
+import static htmlMangle.Forest.Background.*;
+
 import java.util.function.Function;
 
 import htmlMangle.Forest;
@@ -20,7 +22,7 @@ remember your directions!
 */
 
 Direction:""", "{ .turn: Direction; }")
-      .background(Forest.Background.Dawn)
+      .background(Dawn, 1)
       .addNode(34, 20)
       .addNode(26, 56)
       .addFinishNode(82, 60)

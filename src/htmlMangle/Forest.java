@@ -29,7 +29,7 @@ public class Forest {
   private final String initialCode;
   private final String solution;
   private final Days.LevelName name;
-  private Background background= Background.Dawn;
+  private String background;
   
   public Forest(Days.LevelName name, String initialCode, String solution) {
     this.name= name;
@@ -86,8 +86,9 @@ public class Forest {
   public Forest connect(int n1, int n2, String code, int bx, int by) {
     return connect(n1, n2, code, bx, by, (int)defaultCodeBoxWidth);
     }
-  public Forest background(Background background) {
-    this.background = background;
+  public Forest background(Background kind, int num) {
+    if (num <= 0 || num > kind.limit) { throw new Error(kind+" num must be in the 1.."+kind.limit+" range"); }
+    background= kind.loc+"/"+kind.loc+num+".png";
     return this;
     }
   public String build() {
@@ -114,7 +115,7 @@ public class Forest {
         }
       }
     return name.htmlNextLevel(File.Forest_html.text)
-      .replace("[###BACKGROUNDFILE###]", background.filename())
+      .replace("[###BACKGROUNDFILE###]", background)
       .replace("[###PATH_EDGES###]", pathsHtml.toString())
       .replace("[###PATH_CODE_BOX###]", pathCodeBoxesHtml.toString())
       .replace("[###BODY###]", nodesHtml())
@@ -238,10 +239,10 @@ public class Forest {
       }
     }
   public enum Background {
-    Dawn("forestDawn.png");
-    String filename; // Located in resources/forest/FILENAME
-    Background(String filename) { this.filename= filename; }
-    String filename() { return filename; }
+    Dawn("Dawn",1);
+    String loc;
+    int limit; // Images are resources/forest/images/LOC/LOC1.png .. LOC<limit>.png
+    Background(String loc, int limit) { this.loc= loc; this.limit= limit; }
     }
   }
 record ForestNodeConnection(int fromIndex, int toIndex, String code, int x, int y, int w, int h) {}
