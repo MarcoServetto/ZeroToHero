@@ -77,8 +77,10 @@ public class Main {
     d.add(new BrickWallDeconTutorial());
     d.add(new BrickWallDeconTutorial2());
     d.add(new BrickWallDeconTutorial3());
-    d.add(new BrickWallTest());
-    d.add(new BrickWallDeconTest());
+    d.add(new BrickWallTutorial1());
+    d.add(new BrickWallTutorial2());
+    d.add(new BrickWallTutorial3());
+    d.add(new WalkingHomeTired());
   }
   public static void leoLevels(){
     Days d= new Days("assetsLeo");

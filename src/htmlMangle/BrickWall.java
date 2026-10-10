@@ -134,7 +134,8 @@ public class BrickWall {
 
   protected String background() { return background; }
   public enum Background {
-    Prairie("Prairie",1);
+    Prairie("Prairie",1),
+    Tutorial("Tutorial",3);
     String loc;
     int limit; // Images are resources/brickWall/images/LOC/LOC1.png .. LOC<limit>.png
     Background(String loc, int limit) { this.loc= loc; this.limit= limit; }
