@@ -7,15 +7,16 @@ import java.util.function.Function;
 import htmlMangle.BrickWallDeconstruction;
 import mainZeroToHero.Days;
 
-public class BrickWallDeconTutorial implements Function<Days.LevelName, String>{
+public class BrickWallDeconTutorial3 implements Function<Days.LevelName, String>{
   public String apply(Days.LevelName name) {
     return new BrickWallDeconstruction(name)
-      .background(Tutorial, 1)
-      .addImmovable(0, "Direction:{.turn:Direction")
-      .addReplaceable(0, ";", "")
-      .addImmovable(0, "}")
+      .background(Tutorial, 3)
+      .addMovable(0, "Direction:")
+      .addImmovable(0, "{.turn:Direction}")
       .newRow()
-      .addImmovable(0, "North:Direction{East}")
+      .addImmovable(0, "North:Direction{")
+      .addReplaceable(0, ".turn:Direction->East","East")
+      .addMovable(0, "}")
       .newRow()
       .addImmovable(0, "South:Direction{")
       .addReplaceable(0, ".turn:Direction->","")
@@ -23,12 +24,11 @@ public class BrickWallDeconTutorial implements Function<Days.LevelName, String>{
       .newRow()
       .addImmovable(0, "West:Direction{North}")
       .newRow()
-      .addImmovable(0, "East:Direction{South")
-      .addReplaceable(0, ";", "")
-      .addImmovable(0, "}")
-      .addToPile(0, false, "//This is the space for the code we collect")
+      .addImmovable(0, "East:Direction{South}")
+      .addToPile(0, true, "Ea")
+      .addToPile(5, true, "st")
       .newRow()
-      .addToPile(0, false, "//drag and drop redundant code on top of this text")
+      .addToPile(0, false, "//the two bricks above can be pushed into the wall")
       .build();
     }
   }

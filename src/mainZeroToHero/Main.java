@@ -75,6 +75,8 @@ public class Main {
     d.add(new BookAbstraction2());
     d.add(new StartDay6Fire());
     d.add(new BrickWallDeconTutorial());
+    d.add(new BrickWallDeconTutorial2());
+    d.add(new BrickWallDeconTutorial3());
     d.add(new BrickWallTest());
     d.add(new BrickWallDeconTest());
   }

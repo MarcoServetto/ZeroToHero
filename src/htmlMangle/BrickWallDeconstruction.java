@@ -29,7 +29,7 @@ public class BrickWallDeconstruction extends BrickWall {
     return this;
     }
   public enum Background {
-    Tutorial("Tutorial",1),
+    Tutorial("Tutorial",3),
     Prairie("Prairie",1);
     String loc;
     int limit; // Images are resources/brickWallDeconstruction/images/LOC/LOC1.png .. LOC<limit>.png
