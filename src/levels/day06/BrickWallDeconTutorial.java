@@ -1,6 +1,6 @@
 package levels.day06;
 
-import static htmlMangle.BrickWall.Background.*;
+import static htmlMangle.BrickWallDeconstruction.Background.*;
 
 import java.util.function.Function;
 

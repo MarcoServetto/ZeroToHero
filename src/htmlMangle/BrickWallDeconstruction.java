@@ -25,8 +25,14 @@ public class BrickWallDeconstruction extends BrickWall {
     return this;
     }
   public BrickWallDeconstruction background(Background kind, int num) {
-    super.background(kind, num);
+    setBackground(kind.loc, kind.limit, num);
     return this;
+    }
+  public enum Background {
+    Prairie("Prairie",1);
+    String loc;
+    int limit; // Images are resources/brickWallDeconstruction/images/LOC/LOC1.png .. LOC<limit>.png
+    Background(String loc, int limit) { this.loc= loc; this.limit= limit; }
     }
   public BrickWallDeconstruction newRow() {
     super.newRow();

@@ -91,9 +91,12 @@ public class BrickWall {
    */
   public BrickWall addMovable(int indexSkip, String s) { return addBrick(indexSkip, true, s); }
   public BrickWall background(Background kind, int num) {
-    if (num <= 0 || num > kind.limit) { throw new Error(kind+" num must be in the 1.."+kind.limit+" range"); }
-    this.background= kind.loc+"/"+kind.loc+num+".png";
+    setBackground(kind.loc, kind.limit, num);
     return this;
+    }
+  protected void setBackground(String loc, int limit, int num) {
+    if (num <= 0 || num > limit) { throw new Error(loc+" num must be in the 1.."+limit+" range"); }
+    background= loc+"/"+loc+num+".png";
     }
   public String build() {
     return name.htmlNextLevel(File.BrickWall_html.text)
@@ -133,7 +136,7 @@ public class BrickWall {
   public enum Background {
     Prairie("Prairie",1);
     String loc;
-    int limit; // Images are resources/brickWallBackgrounds/LOC/LOC1.png .. LOC<limit>.png
+    int limit; // Images are resources/brickWall/images/LOC/LOC1.png .. LOC<limit>.png
     Background(String loc, int limit) { this.loc= loc; this.limit= limit; }
     }
   private record Brick(String code, boolean movable, int index) {
