@@ -54,7 +54,7 @@ Flow expressions:
 - 'stage': a flow method returning another flow.
 - 'terminal': a flow method ending the flow and returning something that is not a flow.
 - 'whole flow expression': a source, its stages and its terminal. Not: this flow.
-- 'chain': what the flow object records of the whole flow expression: the source, its mode and each stage/terminal with its arguments. Not: pipeline; pipeline is only pipeline parallelism.
+- 'chain': what the flow object records of the whole flow expression: the source, its mode, its hints and each stage/terminal with its arguments. Not: pipeline; pipeline is only pipeline parallelism.
 - 'shape': the chain without the values of its arguments: the sequence of the stages/terminals.
 - 'executed as part of the xxx stage' (for example the map stage): user code, provided via a lambda passed to that stage. Do not use general terms like "earlier", "first", "later" etc.
 - 'core method': a method with a direct implementation; every other flow method desugars to core methods.
@@ -85,6 +85,7 @@ Strategies:
 - 'mode': `Seq`, `ParImm`, `ParRead`, `ParRepr` or `ParPod`, recorded by the source. Not: execution mode, par mode.
 - 'strategy': how the terminal runs the whole flow expression: the sequential strategy, data parallelism, pipeline parallelism, or a mix of them. Not: mode, shape, parallel shape.
 - 'sequential strategy': runs the elements through the stages one at a time. Not: sequential execution, sequential run, sequential mode.
+- 'hint': `.hintSequential` or `.hintParallel`, called on a flow to record in the chain which strategy the user prefers, for the whole flow expression. A hint changes nothing a flow expression returns. Not: annotation, option.
 - 'data parallelism/fork-join': the elements are split into chunks; a task runs one chunk through a sequence of stages; workers execute tasks.
 - 'worker'. Not: thread, core.
 - 'data parallel region': consecutive stages (could be a single one) running with data parallelism. Not: parallel region, section.
@@ -336,6 +337,8 @@ Flow[E:*]: {
   mut .allToAll[R:*](f: read F[mut List[E], mut List[R]]): mut Flow[R];
   mut .distinct[K](by: OrderHashBy[imm E,K]): mut Flow[read/imm E];
   mut .suppressMisuseExceptions: mut Flow[E];
+  mut .hintSequential: mut Flow[E];
+  mut .hintParallel: mut Flow[E];
   //desugared stages
   mut .flatMapMut[R:*](f: read F[E, mut ToFlow[R]]): mut Flow[R] ->
     this.actorMut[Void, R](Void, {down, _, e ->
@@ -406,6 +409,7 @@ Flow[E:*]: {
 ### Modes
 
 Every source records a mode: `.seqFlow` and `Flows#` record `Seq`, `.flow` with no argument records `ParImm`, and `.flow(mode)` records the mode passed. The mode changes nothing a flow expression returns: it only selects which misuse exceptions of **Misuse exceptions** apply.
+A source also records a hint or none: `.seqFlow` starts as if `.hintSequential` was called, and `.flow`, `.flow(mode)` and `Flows#` start with no hint (see **Hints**).
 
 ### Core methods
 
@@ -446,6 +450,12 @@ for(E e: in){ out.send(e); }
 It can be called anywhere in the flow expression and tells the terminal to ignore the misuse exceptions checks. 
 It is a global flag, it can not say which misuse exceptions it is meant for.
 
+**`hintSequential`** and **`hintParallel`** record a hint in the chain:
+```
+for(E e: in){ out.send(e); }
+```
+They can be called anywhere in the flow expression and apply to all of it; they change no strategy before Stage 3 (see **Hints**).
+
 **sources**:
 ```
 for(E e: <the elements of the receiver, in its order>){ out.send(e); }
@@ -472,6 +482,7 @@ Misuse exceptions are thrown by the terminals, so the code implementing the term
 
 Every terminal starts with `checkMisuse(c)`, where `c` is its chain:
 - `c.mode`, `c.source` (the elements of the source), `c.stages` (in order, indexed from `0`), `c.terminal`;
+- `c.hints`: the hints of the chain, `hintSequential` and `hintParallel`: those called on the flow, and `hintSequential` when the source is a `.seqFlow`; a hint is not in `c.stages`;
 - `c.lambdas`: every lambda of the chain; `l.owner` is the stage/terminal `l` is an argument of;
 - `l.onlyImmCapture`: `l` captures only `imm` values; a top level declaration used as a value and every `imm` lambda carry it.
 
@@ -550,6 +561,8 @@ ReadsFirst=  {map, readOnly, ++, scan, distinct, distinctMut, limit}* .first
 ```
 ```
 Void checkShape(Chain c){
+  if(c.hints.containsAll({hintSequential, hintParallel})){ throw
+    "`.hintParallel` asks for a parallel strategy, but the flow also asks for the sequential strategy, with `.hintSequential` or by starting with `.seqFlow`. Remove `.hintParallel`, or the request for the sequential strategy."; }
   match c.shape{
     .. s[i] rest with s in {sort}, rest in ReadsEmpty | ReadsCount | ReadsElems
     .. s[i] rest with s in {map, scan}, rest in ReadsEmpty | ReadsCount
@@ -744,7 +757,7 @@ The static type of the source collection enables one or more modes. They crystal
 
 The modes are not about the type of the elements between the stages. A stage of a flow in mode `ParImm` may create mutable objects, and another stage may mutate them: over an `imm List[imm Nat]`, `l.flow.map{i -> Persons#i}.map{p -> ...}` runs in parallel and every (mut) `Person` it builds is reachable from nowhere else, so the stages after it can mutate it safely, as long as no stage keeps a reference to an element it has sent downstream.
 
-Where the elements are always `read` or `imm`, as in `Set` and `ESet`, running in parallel or sequentially is not observable, so a preference for the sequential strategy is only a hint.
+Where the elements are always `read` or `imm`, as in `Set` and `ESet`, running in parallel or sequentially is not observable, so a preference for the sequential strategy is only a hint: `.seqFlow` starts the flow as if `.hintSequential` was called.
 
 Calling `.flow` with calls suggesting that parallelism is possible, while passing parameters or calling methods that prevent any parallelism, is most likely a user mistake. When the type system can not check this statically, a non deterministic exception is thrown. A linter could catch more cases statically, but never all of them, since flows under construction are first class values that can travel freely through the code.
 
@@ -776,7 +789,7 @@ Java streams become parallel through `.parallel()`, with no check: any lambda ma
 Parallelism is available exactly where it is not observable, with no annotation beyond the choice of the source.
 
 **Disadvantages:**\
-`ParRepr` and `ParPod` need the identity check, the onlyImmCapture check and their misuse exceptions at run time. A `mut List` of plain `mut` elements flows in mode `Seq`, and runs with the sequential strategy until a `++`, `flatMap`, `distinct`, `actor` or `scan` makes its elements `read` or `imm`.
+`ParRepr` and `ParPod` need the identity check, the onlyImmCapture check and their misuse exceptions at run time. A `mut List` of plain `mut` elements flows in mode `Seq`, and runs with the sequential strategy until a `++`, `flatMap`, `distinct`, `actor` or `scan` makes its elements `read` or `imm`, and only in a flow with no `.hintSequential`; `.seqFlow` starts as if it was called, so a flow started with `.seqFlow` runs with the sequential strategy throughout.
 
 ### The identity check is non deterministic
 
@@ -865,7 +878,8 @@ The runtime can not know how expensive a lambda is, and element count alone is a
 Java streams offer only `.parallel()`, `.sequential()` and `.unordered()`; running a parallel stream inside a chosen `ForkJoinPool` is a known workaround, not part of the API. Rayon offers `with_min_len` and `with_max_len` on indexed parallel iterators, bounding the chunk sizes.
 ```
 es.flow //examples, of course it does not make sense to use those together
-  .hintSeq// to run sequential, like Java .sequential
+  .hintSequential// to run sequential, like Java .sequential
+  .hintParallel// to run parallel when possible, like Java .parallel
   .hintTaskSize 10
   .hintSpeculativeSize 25
   .hintPipeline //to prefer pipeline parallelism when possible
@@ -873,7 +887,13 @@ es.flow //examples, of course it does not make sense to use those together
   .map{..}.list
 ```
 Then we could have unchecked exceptions on inapplicable hints etc.
-A hint never changes what a flow expression returns, so hints that never throw can be added at Stage 3 with no change of semantics; a hint whose misuse throws is part of the semantics, and must be named, with its exception, before Stage 1 starts. No hint throws: `.suppressMisuseExceptions`, which works like a hint, is the only one before Stage 3, and every later hint never throws.
+
+`.hintSequential` and `.hintParallel` are the first hints. Both can be called anywhere in the flow expression and apply to all of it. `.hintSequential` asks the terminal for the sequential strategy, `.hintParallel` for a parallel strategy whenever the mode allows one.
+A flow started with `.seqFlow` starts as if `.hintSequential` was called, and no later call undoes it; a flow started with `.flow` or `Flows#` starts with no hint, and the terminal picks the strategy as it sees fit.
+A flow asking for both strategies, as `.hintSequential .hintParallel`, `.hintParallel .hintSequential` or `.seqFlow .hintParallel`, has a deceptive shape: the terminal throws the exception of `checkShape` under **Misuse exceptions**.
+Before Stage 3 they change no strategy, and no other misuse exception depends on them: the checks of **Misuse exceptions** depend on the mode and the shape.
+
+A hint never changes what a flow expression returns, so hints that never throw can be added at Stage 3 with no change of semantics; a hint whose misuse throws is part of the semantics, and must be named, with its exception, before Stage 1 starts. The hints before Stage 3 are `.suppressMisuseExceptions`, which works like a hint, and `.hintSequential` with `.hintParallel`, which throw only for the two together; every later hint never throws.
 
 ## How: the parallel strategies
 
@@ -881,17 +901,19 @@ This section explains how the parallel strategies return what the sequential str
 
 ### Sources and modes
 
-The mode decides which strategies the terminal may pick:
-- `Seq`: only the sequential strategy, over any elements.
+The mode decides which strategies the terminal may pick, and the hints (see **Hints**) which of them it prefers:
+- `Seq`: only the sequential strategy, over any elements. The one exception is the stages after a `++`, which run over `read` or `imm` elements and may use the parallel strategies in a flow with no `.hintSequential` (see **++ is a fence, and sends read or imm elements downstream**).
 - `ParRead`: the parallel strategies too, over `read` or `imm` elements.
 - `ParImm`: as `ParRead`, and the source elements are `imm`, as the condition of `.forEach` and the speculative strategy of `.for` need (see **for and forEach**).
 - `ParRepr` over `mut Repr[T]` and `ParPod` over `mut IsoPod[T]`: the parallel strategies too, over elements each owning its mutable state.
 
 The source records the mode:
 - `.flow` with no argument exists only where the type of the receiver shows that every element is `imm`, and records `ParImm`: `.flow` on an imm `List`, `EList`, `Map` or `Opt`, on a `Set` and an `ESet`, `.keys` of a `Map`, `UStr`, and the ranges (`0 =~~= 199`, `.flow(step)`).
-- `.seqFlow`, on every `ToFlow`, records `Seq`.
+- `.seqFlow`, on every `ToFlow`, records `Seq` and starts as if `.hintSequential` was called.
 - `xs.flow(mode)` on a read or mut `List`, `EList`, `Map` or `Opt` records the mode passed; the type of `mode` checks the elements: `ParImm[T:imm]`, `ParRead[T:imm,read]`, `ParRepr[T]` over `mut Repr[T]`, `ParPod[T]` over `mut IsoPod[T]`. The flow object keeps the mode passed, and the checks tell the modes apart by its type.
 - `Flows#` records `Seq`.
+
+`.flow`, `.flow(mode)` and `Flows#` start with no hint. So the stages after a `++` of a flow started with `.seqFlow` run with the sequential strategy, and only a flow of mode `Seq` with no hint, as `Flows#` starts, can run them in parallel.
 
 A mode is what the chain records, not a Fearless type: `ParImm`, `ParRead`, `ParRepr` and `ParPod` are also the types of the argument of `.flow(mode)`, while `Seq` has no type and is recorded by `.seqFlow` and `Flows#`.
 
@@ -1229,14 +1251,15 @@ A stage sends an element downstream or keeps it, never both. `distinct` keeps th
 
 `++` is a fence: every element of the receiver goes through the stages before the `++` before `++` sends any element downstream, the elements of `b` follow those of the receiver, and every element it sends downstream is `read` or `imm`. `++` reads `b` when it sends its elements downstream, after the stages before it have finished with every element: a stage before it may reach `b` through a `mut` element and change what `++` sends downstream, the same in every strategy.
 It is useful both in the modes and to start data parallelism after the fact.
-After the `++` every element is `read` or `imm` and the stages before it have finished, so nothing the stages after it can reach is still being mutated: even if the receiver is in mode `Seq`, the stages after the `++` can run data parallel on all the elements, of the receiver and of `b`.
-This starts data parallelism after a stage run with the sequential strategy:
-`persons.seqFlow.map{p->p.computeDNA}++{}.map{..}.list`
+After the `++` every element is `read` or `imm` and the stages before it have finished, so nothing the stages after it can reach is still being mutated: even if the receiver is in mode `Seq`, the stages after the `++` can run data parallel on all the elements, of the receiver and of `b`. This happens only to a flow with no `.hintSequential`: a flow started with `.seqFlow` starts as if it was called, so it runs the stages after the `++` with the sequential strategy.
+This starts data parallelism after a stage run with the sequential strategy, in a flow of mode `Seq` with no hint:
+`Flows#(p0, p1, p2, p3).map{p->p.computeDNA}++{}.map{..}.list`
 This is arguably not the most readable code, but appending the empty list gives type safe knowledge that the second map can be data parallel.
+With `persons.seqFlow` in place of `Flows#(p0, p1, p2, p3)` the hint keeps the second map sequential.
 
-It is the fence, not the types alone, that makes this sound. Two persons of `persons` can share one `mut Address`, and in
+It is the fence, not the types alone, that makes this sound. Two persons `p0` and `p1` can share one `mut Address`, and in
 ```
-persons.seqFlow.map{p -> Block#(p.moveTo(p.name), p)} ++ {} .map{q -> q.address.street}.list
+Flows#(p0, p1).map{p -> Block#(p.moveTo(p.name), p)} ++ {} .map{q -> q.address.street}.list
 ```
 trickling without the fence would read the street of the person at index 0 before the person at index 1 moves, while a parallel strategy could read it after that move. With the fence, both streets are read after every move, in every strategy.
 
@@ -2052,7 +2075,7 @@ Speed is not a goal: `sort` may be slow and `limit` may run through an actor.
 
 ### Before Stage 1: decisions to take and things to fix
 
-Each item is one session of work: it names what is open, where in this document the answer goes, the options with the one recommended, and when it is done. Items 1 and 2 are what the implementation needs and this document does not describe yet; 3 to 5 can run alongside the implementation. Nothing here changes what a flow expression returns when every call completes.
+Each item is one session of work: it names what is open, where in this document the answer goes, the options with the one recommended, and when it is done. Items 1 and 2 are what the implementation needs and this document does not describe yet; 3 to 6 can run alongside the implementation. Nothing here changes what a flow expression returns when every call completes.
 
 1. **Where the shape and the checks live.**\
 Open in **Stage 2: Sequential**. Options: (a) the flow object keeps the chain as Fearless data (the mode, one step per stage/terminal with its lambdas and the `limit` numbers) and the checks are Fearless over it, with two magic predicates: whether a lambda carries the onlyImmCapture flag (the backend marks such lambdas with the `OnlyImmCapture` marker interface of the runtime) and whether two elements of the source are identity equal; (b) chain and checks in the runtime. Recommended: (a). Goes in **Stage 2: Sequential**. Done when the step data type and the two predicates are named there.
@@ -2068,6 +2091,9 @@ Open in **let**. `let` is `.list |> cont` with `x#xs` folded into `cont`. Recomm
 
 5. **Deferred to Stage 3, not needed before.**\
 The sink of `actor` as `mut` or `mutH` (a `down.push#` inside `Repr.mutate` after a `Break#`; under the sequential strategy **A `Break#` while the call before it is still running** already decides: the rest of the call runs); `Yield#` and the catch points of **Cancellation** under **Implementation pitfalls**; the hints that never throw. Listed so that no session spends time on them before Stage 2 exists.
+
+6. **Opt sources.**\
+Open in **Sources and modes**. An `Opt` has at most one element, so a flow directly over it has nothing to run in parallel, and `.seqFlow` starts hinted sequential for good; but `flatMap`, `flatMapMut` and `++` can expand that element into many, and the stages after the expansion are where data parallelism pays. Options: (a) `Opt` offers only `.seqFlow`, and the parallelism after an expansion is asked for by flowing a list: `opt.match{.some x -> f#x; .empty -> {}}.flow.map g .list`, or `opt.seqFlow.flatMap f .list.flow.map g .list`, which builds again the list the lambda of `flatMap` has just built; (b) `Opt` keeps `.flow` and `.flow(mode)`, and `opt.flow.flatMap f .map g .list` runs the `map` as a data parallel region, with `opt.flow.map g .list` pointless but legal. Recommended: (a), since the `.list` round trip returns the same as the single chain for `flatMap`, `flatMapMut` and `++`, where the expansion is built whole before any of it is sent downstream; it is not the same for an `actor` or `actorMut` that sends elements downstream during a call. Goes in **Sources and modes**. Done when it says one or the other and `Opt` matches.
 
 ### Stage 2: Sequential
 
@@ -2306,7 +2332,7 @@ with `ps` a `mut List[mut Person]`.
 
 If `ps` is empty, the whole flow expression returns `Opt#`. Otherwise, if there is a smallest index `j` such that `pj.birthday` throws or does not terminate, it returns what that call returns. Otherwise every person in `ps` is one year older, and it returns `Opts#p0`, as `read`.
 
-Looks like a limit that can move towards the source, and is not: `.first` is `.limit 1 .getOpt`, but `++` is a fence, and every element goes through the stages before it before `++` sends any element downstream. A limit never moves before a fence, and the `++ {}` written to start a data parallel region also runs the stages before it on every element.
+Looks like a limit that can move towards the source, and is not: `.first` is `.limit 1 .getOpt`, but `++` is a fence, and every element goes through the stages before it before `++` sends any element downstream. A limit never moves before a fence, and the `++ {}` runs the stages before it on every element, whether or not it starts a data parallel region.
 ```
 for(mut Person p: ps){ p.birthday; }
 for(mut Person p: ps){ return Opts#p; }
