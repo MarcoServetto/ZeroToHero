@@ -119,7 +119,7 @@ This includes both display elements and buttons and menus allowing to send the m
 
 ## Info files
 
-The files the manager writes for itself and for Eclipse (`projects.info`, `manager.info`) are Info files: text in the Fearless Str allowed character set.
+The files the manager and the compiler write for the manager and for Eclipse (`projects.info`, `manager.info`, `mains.info`) are Info files: text in the Fearless Str allowed character set.
 The Info format is a simplified Json format. 
 Infos are strings `"..."`, lists `[a, b]`, or objects `{"key": value, ...}` whose keys are distinct strings;
 Comments are not supported.
@@ -206,7 +206,7 @@ A code project is out of date exactly when compiling it would compile some packa
 The mains of a code project are known when it is not out of date: the concrete mains of the highest rank (could be more than one package).
 When reading them finds a package that compiling would compile, or reading them fails, the project state becomes out of date. A project whose files change while it is checked is checked again.
 
-While the window is shown, the manager notices changes made on disk by other programs: every three seconds it checks the selected project, and in turn one other project, and updates states, badges, buttons and the Eclipse files, including moving a project in and out of invalid. A project with a running job is checked when the job ends. Every request naming a project checks it.
+While the window is shown, the manager notices changes made on disk by other programs: every three seconds it checks the selected project, and in turn one other project, and updates states, badges and buttons, including moving a project in and out of invalid. A project with a running job is checked when the job ends. Every request naming a project checks it.
 The manager does not check for changes when the window is not shown. This include the tray, true or emulated, and minimization.
 
 The icon of a project is the only PNG file in the folder `.config/icon` of the project, or, with no such folder, an icon generated from the project name. More than one PNG, or a PNG that can not be read, makes the project invalid.
@@ -330,16 +330,14 @@ Only mains the manager can run take part: the concrete mains of the highest rank
 
 The portable Fearless does nothing with `OpenWith`/`Shortcut`; the compiler is shared, so it records them in either case, and only the manager reads them.
 
-The compiler writes `.fearless_out/mains.info`, an Info file:
- {
-"hello.Bar":["_hello/bar.fear",["_hello/icons/shortcut.png","bar"],["_hello/icons/icon3.png","fapp342"],
-"hello.Beer":["_hello/beer.fear",[],[]],
+The compiler writes `.fearless_out/mains.info`, an Info file mapping each main to its declaring file, the list of its `Shortcut` claims, then the list of its `OpenWith` claims. A claim is the icon type, where its image is (the `.diskPath`, `.zipSteps` and `.zipEntry` of the asset, relative to the root of the project owning the icon's package, the stdLib folder for `base`), then the extension, `""` when the main wrote none:
+```
+{
+  "hello.Bar": ["_hello/bar.fear", [["hello.IconsShortcut", "_hello/icons/shortcut.png", "", "", ""]], [["hello.IconsDoc", "_hello/icons/doc.png", "", "", "htm"]]],
+  "hello.Beer": ["_hello/beer.fear", [], []]
 }
-Where each Main is associated to the list of all extensions; first the list of Shortcuts then the list of OpenWith. Those lists can be empty no problem.
-Each compiled package records its own part in `.fearless_out/<pkg>.mains.info` (same format), a cache like `<pkg>.json`; after every compile, `mains.info` is assembled from the parts of the top rank packages, so a package becoming top rank needs no recompilation. The manager reads only `mains.info`.
-The manager running program should then construct the opposite map (extension->list of mains claiming it) but not save it on disk; keep it in memory and reconstruct it from the managed .fearless_outs on manager restart.)
-
-The address of the icon in the example may be too simplistic. For each icon type the compiler also records where the image is: the `.diskPath`, `.zipSteps` and `.zipEntry` of the asset, relative to the root of the project owning the icon's package (the stdLib folder for `base`). An icon from another package of the project is resolved from that package's autoloaded assets, not from the current package's `CapabilityEnvironment`, which only knows its own.
+```
+Each compiled package records its own part in `.fearless_out/<pkg>.mains.info` (same format), a cache like `<pkg>.json`; after every compile, `mains.info` is assembled from the parts of the top rank packages, so a package becoming top rank needs no recompilation. The manager reads only `mains.info`. An icon from another package of the project is resolved from the autoloaded assets of that package.
 
 ### What the manager does after a compile
 
@@ -350,9 +348,9 @@ The compile runs in the child JVM (`ChildMain`); everything below runs in the ma
    `The icon "hello.IconsBar" in "base.Shortcut[hello.IconsBar,\"bar\"]" of main "hello.Bar" is 300x200 pixels (from "_hello/icons/bar.png"): an icon must be a square PNG image with a side from 64 to 1024 pixels.`
    The portable Fearless ignores icons, so it does not run this check: a project with such an icon compiles there and fails only in the manager.
 3. Choose the missing extensions.
-The main.info would contain "" for a 'missing extension' and the main.info file is edited to contain the autoselected extension.
+The manager writes each chosen extension into `mains.info`, in place of `""`.
 4. Materialise every icon in `.fearless_out/icons/`: the PNG copied out (it may be inside a zip, and the desktop needs a plain file), and on Windows the `.ico` made from it by `fileAssociations.Ico` in Commons. Two claims with the same icon type share the files. Every compile also removes from `.fearless_out/icons/` the files of icons no longer claimed.
-Since the path in /icon is fully determined from the path of the autoloaded image; knowing one we can recover the other; keeping both would be redundant.
+The name of an icon in `.fearless_out/icons/` follows from the path of its image, so `mains.info` does not record it.
 
 5. Rebuild the in memory map and reconcile.
 6. Create the missing shortcut files.
@@ -438,7 +436,7 @@ When a compile wants a system extension that is not in `systemExtensions`, the c
 
 ### Conflict icon
 
-The Fearless icon with a purple `?` on top of it, stored as a PNG in the standard library at `base/icons/conflict.png`. The manager reads it from the stdLib folder of its application image and materialises it like any other icon (step 4 of **What the manager does after a compile**), making its `.ico` there.
+The Fearless icon with a purple `?` on top of it, stored as a PNG in the standard library at `base/icons/conflict.png`. The manager reads it from the stdLib folder of its application image and materialises it like any other icon, the PNG and its `.ico`, in the `icons` folder of the manager folder.
 
 It is the autoloaded type `base.IconsConflict`. `base` autoloads its assets as if its files were under a `_base` folder: `.path` is `fear:/_base/icons/conflict.png` and `.diskPath` is `icons/conflict.png`, relative to the stdLib `base` folder, which a running main receives as `fearlessBase.dir`.
 
@@ -458,7 +456,7 @@ The Output of a running program has no bound on its size, so the manager does no
 
 Eclipse commands the manager by running the manager program with the arguments `FearlessCommand<Verb>` and the arguments of the verb. If a message ends up in error, the manager shows the error as usual.
 
-The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and never writes into a project folder; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. Every two seconds it reflects the manager's files: the problem in the Problems view, on its file at its line, or on the project while that file does not exist, and in the JUnit view the unit test log the running main writes in `.out/logs`: its complete records, its lines up to the last newline, without a test case whose closing line is not written yet. It shows the Output in the Console view, and every run as a process with a Terminate button. Build (`Compile` for a code project, `Check` for any other), Clean, Run, Terminate, the kind switches of the Fearless menu of a project, New Project (`Register`), Show in manager and Forget project are messages to the manager. Content assist is described below.
+The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and never writes into a project folder; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. Every two seconds it reflects `projects.info` and the `.fearless_out` folders: the error of the last compile (`compile_error.txt`) in the Problems view, on its file at its line, or on the project while that file does not exist, and in the JUnit view the unit test log the running main writes in `.out/logs`: its complete records, its lines up to the last newline, without a test case whose closing line is not written yet. It shows the Output in the Console view, and every run as a process with a Terminate button. Build (`Compile` for a code project, `Check` for any other), Clean, Run, Terminate, the kind switches of the Fearless menu of a project, New Project (`Register`), Show in manager and Forget project are messages to the manager.
 A missing or malformed file of the manager is an error shown in Eclipse, and the plugin stops following the manager until Eclipse starts again.
 
 ## Content assist
