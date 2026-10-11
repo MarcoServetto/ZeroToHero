@@ -21,7 +21,7 @@ When the manager ends for the fatal error, this happens in order:
 
 Everything the manager is asked to do either happens or is refused with a message naming what was refused and why; nothing is silently skipped.
 
-## Program, manager folder, owner
+## Program and manager folder
 
 A manager is one program folder, `fearlessManaged<version>`, for example `fearlessManaged0_001`.
 Its manager folder is `fearless<version>`, next to the program folder, on every system. The manager folder holds everything the manager remembers; deleting it makes the manager start from nothing. That is, a starting manager detecting no manager folder should do the needed clean up, including icons and files associations.
@@ -57,10 +57,10 @@ If an OS supports system tray/StatusNotifierItem, this is what we use.
 Clicking it shows the window, and its menu holds Show manager and Quit manager.
 
 On a system with no tray, the manager shows the icon itself.
-The jframe is closed and replaced with another jframe: a window of the size of a tray icon, with no title bar and no border, holding only the Fearless icon.
+The manager window is closed and replaced with another window: a window of the size of a tray icon, with no title bar and no border, holding only the Fearless icon.
 Left click on that window shows the manager as for left click on the tray icon.
 Right click on that window shows the menu the tray icon would have if supported.
-When the manager is 'shown again', the simulated tray icon jframe is removed and the manager jframe is started again.
+When the manager is 'shown again', the simulated tray icon window is removed and the manager window is shown again.
 
 ## Requests and messages
 
@@ -490,3 +490,20 @@ What the design will cover later; nothing in this section is current behaviour.
 - A double click for a main already running signals the running main to wake up, for example bringing its window to the front.
 - A captured extension that no main claims gets its own icon, showing that the manager holds it, instead of the conflict icon.
 - A main learns the extensions it claims, for example through a `System` method. A main with `OpenWith[I]` gets an extension such as `ffile042`, chosen by the manager and varying between machines and compile orders; to save a document the user can later double click, the program must name it `<something>.ffile042`.
+
+## Implementation notes
+
+How the parts of this design map onto the other repositories; what someone writing the manager from scratch needs beyond the design.
+
+- Module and packaging: the manager is the Java module `Controller` (`requires transitive Coordinator`, `java.desktop`), entry point `controller.Main`. `DeployManagedFearless.java` in `Coordinator/Build/src/scripts` builds the application image `fearlessManaged<version>` with jlink and jpackage; next to the modules the image holds `icon.png` (the Fearless icon), `stdLib/base`, `stdLib/baseCache` (the compiled standard library), `stdLib/rt` and `eclipsePlugin`. The launcher sets `jpackage.app-path`; `JavacTool` (Commons) gives the application folder (`reqAppDir`), the version (`reqVersionId`) and the manager folder name (`dataDirNameFor`). A manager started without its launcher stops (`Violation.mustUseLauncher`).
+- The single manager: a start writes its message, then tries `FileChannel.tryLock` on `instance.lock` in the manager folder; holding the lock makes it the single manager. It watches `messages` with a `WatchService` (file creation) and drains every `.msg` in name order on each event and once at start. Requests run one at a time on one thread; the window only asks.
+- Compile: a child JVM on the modules of the image, `-m Controller/controller.ChildMain <project folder>`, headless, with the application folder, launcher and version passed as the `JavacTool` system properties and `--enable-native-access=Commons,Coordinator`. The child runs `Coordinator.compile` with a `Coordinator` whose base cache is `stdLib/baseCache` and whose runtime is `stdLib/rt`; its exit code is 0 (done), 1 (a user error), 2 (a JVM or linkage failure), 3 (a crash). `ChildJvm.watchParent` ends the child when the manager ends.
+- Run: `Coordinator.startMain(project, stdLib/base, main, sharedClasspath, out)`, one child JVM per main. The known mains are `Coordinator.mains(project, sourceOracle(base))`, read in the manager process; out of date is `Coordinator.pkgsBuilt(project)` holding a package not built.
+- Project facts: `RealSourceOracleWithZip` (Coordinator) checks the file names of a data project, `Coordinator.pkgsBuilt` those of a code project; the logs are the files of `.out/logs` (`fileSupport.LogFiles`, Coordinator); the JUnit view of Eclipse reads the report `fileSupport.JUnitReport` makes of the unit test log.
+- Info files: `fileSupport.Info` (Coordinator) parses and prints them, keeping the positions an error in the Frontend style points at. `Base16:` is, on Windows, the UTF-16 code units of the path little endian, elsewhere the bytes of `sun.jnu.encoding`.
+- Associations: `FileAssociations.reconcile` and `FileAssociations.eradicateAll` (Commons) with the identity the launcher file name without extension, the family the names containing `earless`, the launcher as command, `icon.png` as program icon; `Ico` (Commons) makes the Windows `.ico` files. `Reset` is `eradicateAll`.
+- Tray: on Linux the AWT tray works only where an XEmbed tray exists (not on GNOME), so the manager serves a StatusNotifierItem itself: a small D-Bus client on the session bus socket (`DBUS_SESSION_BUS_ADDRESS`, `unix:path=`), registering with `org.kde.StatusNotifierWatcher`, answering the item properties, Activate and the menu (Show manager, Quit manager). No owner of the watcher name means no tray. On Windows, `java.awt.SystemTray`.
+- Window: Swing. The project icons are a `JList` wrapping horizontally; a generated project icon is four coloured quarters chosen by the name (a `Random` seeded by its hash) under the first two letters of the name. Dropping on the window accepts a file list and `text/uri-list` (only `file:` URIs). `NativeLocaleForcer.forceEnglish` (Coordinator) makes the texts of the JDK the same on every system.
+- Eclipse plugin: an OSGi bundle (`fearlessPluginProject`), compiled to a class path for the older Java the Eclipse runs on, together with the sources of the `suggest` package (content assist), since it can not load the `Controller` module. Connect Eclipse copies it into `dropins/fearless/plugins` of the Eclipse folder, which Eclipse loads at its next start. It needs `org.eclipse.tm4e` (syntax highlighting from a TextMate grammar), the generic editor (content assist) and `org.eclipse.jdt.junit.core` (the JUnit view), and carries its own small Info parser.
+- Content assist: `suggest` reads the api json, the map directives and the text documentation the compile leaves in `.fearless_out`, and in `stdLib/baseCache` for `base`. Its tokens copy the regular expressions of `fearlessParser.TokenKind` (Frontend), since the plugin can not use Frontend.
+- Tests: the manager core runs without a window behind an interface of the operations touching the system (compile, run, mains, associate), so unit tests drive it with a fake. The GUI is tested on the real desk by `agentTools` (`TestAgentTools.java`, following `agent_tools_protocol.txt`).
