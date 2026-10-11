@@ -31,11 +31,20 @@ Substantial association related failures are also fatal errors (that is, we can 
 ## Starting the 'single' manager.
 Starting the manager program leaves one message in the manager folder. There could be multiple parallel attempts to start the manager, and the 'single' manager could be already running. The manager that is recognized as the 'single' manager handle the messages, while the other manager processes terminate just after leaving their message in the manager folder.
 
-The manager program takes zero arguments or one argument:
+The manager program takes:
 - zero arguments: the message is `Show`: show the window, starting the single manager when none runs;
-- one argument `FearlessCommand<Verb>Base16:<hex>`: the message is the verb `<Verb>`, then the text whose UTF-8 bytes are the hex digits `<hex>`: the arguments of the verb, one per line. For example `FearlessCommandCompileBase16:68656c6c6f5f776f726c64` is the message `Compile` with the argument `hello_world`, and `FearlessCommandQuitBase16:` is the message `Quit`;
+- a first argument `FearlessCommand<Verb>`, then the arguments of the verb: the message is the verb `<Verb>` with those arguments. A project name, a main, a kind and a type name are written as they are. A path is written as a tagged text in its `Base16:` form (see **Info files**), so every argument is plain ASCII on every system. The words after the project name of `Mains` and `Link` form their second argument, separated by single spaces;
 - one argument not starting with `FearlessCommand`: the path of a `.fearless` file, as the system passes the path when the file is opened (for example by a double click); the message is `Register` with that path.
-An argument starting with `FearlessCommand` is always a message, never a path.
+For example:
+```
+FearlessCommandQuit
+FearlessCommandSelect hello_world
+FearlessCommandRun hello_world hello.Hello1
+FearlessCommandMains hello_world hello.Hello1 hello.Hello3
+FearlessCommandRegister Base16:2F646174612F68656C6C6F
+```
+(the last one registers `/data/hello` on Linux).
+A first argument starting with `FearlessCommand` is always a verb, never a path.
 Every run of the manager program writes its message file. A run that is not the single manager then ends; a run that becomes the single manager applies its own message file like every other message file.
 If a manager is called with bad arguments, it will leave the message `InvalidCall` with the details, and when the single manager take that message up, it will show the error in a dialog as for all the other dialogs and continue running.
 If a manager encounter some (fatal) error but in a set up where the single manager is likely to either be active or become active soon, it just leaves the message `FatalError` with the details and end normally. When possible, the single manager is the only thing taking actual actions.
@@ -61,8 +70,8 @@ The single manager applies the requests one at a time, in the order they arrive,
 
 A message is the file `messages/<time>-<id>.msg` in the manager folder: `<time>` is the 20 digit count of milliseconds since 1970 when the message was written, and `<id>` is a random UUID. The single manager applies the message files in the order of their names, and deletes each message file after reading it.
 Only the manager program writes message files: the manager program writes `messages/<time>-<id>.tmp`, then renames `messages/<time>-<id>.tmp` to `messages/<time>-<id>.msg`, so the single manager never reads a partial message. The single manager deletes every `.tmp` file older than 60 seconds.
-Every other program commanding the manager (the Eclipse plugin, a script, a test) runs the manager program with one `FearlessCommand<Verb>Base16:<hex>` argument holding the message.
-Gui operations are just another way to command the manager, and they all go via the `FearlessCommand<Verb>Base16:<hex>` fearless manager parameter route:
+Every other program commanding the manager (the Eclipse plugin, a script, a test) runs the manager program with the arguments `FearlessCommand<Verb>` and the arguments of the verb.
+Gui operations are just another way to command the manager, and they all go via the `FearlessCommand<Verb>` fearless manager parameter route:
 every gui operation has an equivalent message, and every message is either ill formed or has an equivalent gui operation.
 Since all errors are caused by messages and all messages go via the single manager, a program that sends a message gets the potential error via the manager GUI. If the manager gui is not displayed, it is displayed first.
 
@@ -90,7 +99,7 @@ Verbs about one project, taking the name of a registered project:
 - `Docs <name>`: open the documentation of the project in the browser;
 - `Browse <name>`: open the project folder in the file explorer;
 - `Logs <name>`: open the `.out/logs` folder of the project in the file explorer.
-Two more message files exist, `InvalidCall <details>` and `FatalError <details>`, written only by a run of the manager program that is not the single manager, about its own failure. They are not verbs: no argument of the manager program and no gui operation produces them, and the argument `FearlessCommandInvalidCallBase16:<hex>` or `FearlessCommandFatalErrorBase16:<hex>` is an invalid call.
+Two more message files exist, `InvalidCall <details>` and `FatalError <details>`, written only by a run of the manager program that is not the single manager, about its own failure. They are not verbs: no argument of the manager program and no gui operation produces them, and the argument `FearlessCommandInvalidCall` or `FearlessCommandFatalError` is an invalid call.
 
 Ill formed messages:
 - a message of more than three lines;
@@ -277,7 +286,7 @@ The manager will need some cooperation to ship to eclipse the running output and
 Ther manager should be able to open a connection of some sort with the running eclipse and communicate there those fast changing informations.
 The compile error/output text should contain some end marker so that eclipse (and the human) knows when it is over.
 
-Eclipse commands the manager by running the manager program with one `FearlessCommand<Verb>Base16:<hex>` argument holding the message. If a message ends up in error, the manager shows the error as usual.
+Eclipse commands the manager by running the manager program with the arguments `FearlessCommand<Verb>` and the arguments of the verb. If a message ends up in error, the manager shows the error as usual.
 
 The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and never writes into a project folder; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. Every two seconds it reflects the manager's files: the problem in the Problems view, on its file at its line, or on the project while that file does not exist, and the report in the JUnit view. It shows the Output in the Console view, and every run as a process with a Terminate button. Build (`Compile` for a code project, `Check` for any other), Clean, Run, Terminate, the kind switches of the Fearless menu of a project, New Project (`Register`), Show in manager and Forget project are messages to the manager. Content assist is described below.
 A missing or malformed file of the manager is an error shown in Eclipse, and the plugin stops following the manager until Eclipse starts again.
