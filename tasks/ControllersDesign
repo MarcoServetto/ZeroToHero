@@ -157,7 +157,7 @@ The manager folder holds `projects.info`, the record of every registered project
   "systemExtensions": ["htm"]
 }
 ```
-- `systemExtensions`: the system extensions the mains of this manager may open. A system extension is an extension a main names in its `OpenWith`, like `htm` in `base.OpenWith[icon,"htm"]`; every other `OpenWith` and `Shortcut` gets an extension the manager makes (`ffile000` to `ffile999`, `fapp000` to `fapp999`); see **OpenWith and Shortcut**. A compile whose mains name a system extension missing from `systemExtensions` fails, naming the extension. The GUI may offer to add the extension to `systemExtensions` (an `EditMetadata`), and the project is then compiled again.
+- `systemExtensions`: the system extensions this manager captures, whether or not a main opens them (see **File associations**). A system extension is an extension a main names in its `OpenWith`, like `htm` in `base.OpenWith[icon,"htm"]`; every other `OpenWith` and `Shortcut` gets an extension the manager makes (`ffile000` to `ffile999`, `fapp000` to `fapp999`); see **OpenWith and Shortcut**. A compile whose mains name a system extension missing from `systemExtensions` fails, naming the extension. The GUI may offer to add the extension to `systemExtensions` (an `EditMetadata`), and the project is then compiled again.
 Each project has:
 - `path`: the absolute path of the project folder, any path the system allows. Two projects never share a folder, and a project folder is never inside another one.
 - `kind`: `idle`, `code`, `data:readOnly` or `data:readWrite`.
@@ -269,7 +269,9 @@ Everything a job prints goes to the Output area of the project. The Output marks
 
 ## File associations
 
-On Windows and Linux, at every start, the owner makes its launcher the program opening `.fearless` files, with the Fearless icon, following `FileAssociations.reconcile` of Commons. If reconcile does not work, is a fatal error.
+On Windows and Linux the single manager makes its launcher the program opening every captured extension, following `FileAssociations.reconcile` of Commons. The captured extensions are `.fearless`, every extension in `systemExtensions`, and the Fearless extensions the mains of the projects open (see **OpenWith and Shortcut**).
+- Extending the captured extensions (an `EditMetadata` adding to `systemExtensions`, a compile giving a main a new Fearless extension) is refused when reconcile refuses a new extension: the edit is invalid, or the compile fails, naming the extension and the program holding it, and nothing changes.
+- Losing a captured extension (another program, or another Fearless such as the portable one, took it) is a fatal error when the manager can not take it back. At every start the manager takes back all its captured extensions; `.fearless` is captured from the first start.
 
 ## OpenWith and Shortcut
 
@@ -388,14 +390,14 @@ The shortcut file is a visible file of the project: it follows the project file 
 
 ### Reconciling
 
-`FileAssociations.reconcile` (in Commons) takes the whole wanted set at once, so after each change of the in memory map the manager calls it with every extension: `.fearless` and every claimed extension, each as a `fileAssociations.Icon(extension with dot, ico, png)`. An extension claimed by one main uses its icon; an extension claimed by several mains uses the conflict icon. On Linux the `ico` field is not read; the manager passes the PNG there too. Step 5 of `reconcile` makes an unchanged set cost nothing, and it also runs at manager start up, as it does today for `.fearless`.
+`FileAssociations.reconcile` (in Commons) takes the whole wanted set at once, so after each change of the captured extensions the manager calls it with all of them: `.fearless`, every extension in `systemExtensions` and every claimed Fearless extension, each as a `fileAssociations.Icon(extension with dot, ico, png)`. An extension claimed by one main uses its icon; an extension claimed by several mains uses the conflict icon. On Linux the `ico` field is not read; the manager passes the PNG there too. Step 5 of `reconcile` makes an unchanged set cost nothing, and it also runs at manager start up, as it does today for `.fearless`.
 
 The checks of `reconcile` change nothing when they fail, so the previous associations stay in place. A failing `reconcile` after a compile makes that compile fail, and the in memory map goes back to the previous `mains.info` of that project (the manager keeps it until reconcile succeeded). To name the failing extension, the main claiming it and the program holding it, `reconcile` reports which extension failed which check instead of one text; the messages are those of `Violation.association*`, completed with the main.
 
 The manager settles conflicts among the Fearless apps it manages; with the OS and every other program it needs a clear yes or no, and the two kinds of extension get different answers.
 - `.fearless` keeps exactly the behaviour it has today; it is the reference for the others.
-- A Fearless extension (`fappNNN`, `ffileNNN`) gets the very same setup as `.fearless`, and is checked like it: an extension held by a program outside the Fearless family (`notOurs`), a Windows UserChoice (`userLocked`, even when it names this manager), or another Fearless identity, all refuse it. These extensions are invented by Fearless, so on a machine where one of them is set up in any other way than the manager's own, the setup was tampered with: at start up the manager refuses to start, exactly as when `.fearless` is locked; after a compile, the compile fails.
-- A system extension gets the same setup as `.fearless` too, but the manager takes it over from whatever program opens it today: the user allowed it on purpose, so other programs registered for it (`notOurs`) do not refuse it. A Windows UserChoice still does (`userLocked`), with the same message as for `.fearless`: the user pinned that extension to a program, and the manager does not undo the user's own choice. When the manager stops claiming a system extension, it removes its own setup only, and the previous program opens those files again.
+- A Fearless extension (`fappNNN`, `ffileNNN`) gets the very same setup as `.fearless`, and is checked like it: an extension held by a program outside the Fearless family (`notOurs`), a Windows UserChoice (`userLocked`, even when it names this manager), or another Fearless identity, all refuse it. These extensions are invented by Fearless, so on a machine where one of them is set up in any other way than the manager's own, the setup was tampered with: a captured one lost is a fatal error, and a new one refused fails the compile (see **File associations**).
+- A system extension gets the same setup as `.fearless` too, but the manager takes it over from whatever program opens it today: the user allowed it on purpose, so other programs registered for it (`notOurs`) do not refuse it. A Windows UserChoice still does (`userLocked`), with the same message as for `.fearless`: the user pinned that extension to a program, and the manager does not undo the user's own choice. When an extension leaves `systemExtensions`, the manager removes its own setup only, and the previous program opens those files again.
 - An extension held by another Fearless identity (an older manager, the portable Fearless): Follow `FileAssociations.reconcile`, as for `.fearless`.
 
 The portable Fearless reconciles `.fearless` under its own identity at every start, removing the manager's associations. That is accepted: at its next start the manager takes back every extension it manages.
@@ -428,15 +430,15 @@ The desktop starts the manager program with the path of the double clicked file 
 1. One main claims the extension: run that main, as `Run <name> <main>` does: the project is selected, only that main runs, and it becomes the selected main of the project.
 2. Several mains claim it: a small window lists them with their icons as `project::pkg.Main`, sorted, and runs the one picked, as in 1; closing it runs nothing.
 3. The main is already running: the manager shows the project and runs nothing more; a project runs one job at a time. In the future, the manage will have to signal to the process to 'wake it up', for example its gui could come front, but we will design this API later.
-4. No main claims the extension: register the folder holding the file, as `Register` does.
+4. No main claims the extension (an extension of `systemExtensions` that no main opens): the message is refused, saying that no main opens files with that extension.
 
 An empty file runs nothing: the manager shows a note naming the file. GNOME types every empty file as `application/x-zerosize` whatever its name and never hands it to the manager; refusing empty files everywhere makes Windows and the other desktops behave the same.
 
 ### System extensions
 
-The system extensions the user allowed are `systemExtensions` in `projects.info` (see **Registered projects**), changed like the rest of `projects.info`. Removing an extension makes every claim of it inactive: the manager stops claiming it, and the projects claiming it show a problem until they are compiled again.
+The system extensions the user allowed are `systemExtensions` in `projects.info` (see **Registered projects**), changed like the rest of `projects.info`. Removing an extension makes every claim of it inactive: the manager stops capturing it, and the projects claiming it show a problem until they are compiled again.
 
-When a compile wants a system extension that is not in `systemExtensions`, the compile fails, naming the main, the claim and the extension; the GUI may offer to add the extension to `systemExtensions`, and the project is then compiled again. Allowing an extension does not bypass the other checks: a Windows UserChoice still refuses it (see **Reconciling**).
+When a compile wants a system extension that is not in `systemExtensions`, the compile fails, naming the main, the claim and the extension; the GUI may offer to add the extension to `systemExtensions`, and the project is then compiled again. Adding an extension to `systemExtensions` captures it at once; when reconcile refuses it (a Windows UserChoice, for example), the edit is invalid (see **File associations**).
 
 ### Delivering the file
 
