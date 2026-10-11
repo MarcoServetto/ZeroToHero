@@ -72,6 +72,7 @@ Only the manager program writes message files: the manager program writes `messa
 Every other program commanding the manager (the Eclipse plugin, a script, a test) runs the manager program with the arguments `FearlessCommand<Verb>` and the arguments of the verb.
 Gui operations are just another way to command the manager, and they all go via the `FearlessCommand<Verb>` fearless manager parameter route:
 every gui operation has an equivalent message, and every message is either ill formed or has an equivalent gui operation.
+The only exceptions are the window actions that just open another program on a file: Open docs, Base documentation, Browse and Logs. They are not requests and have no message; one that finds nothing to open says so in a dialog.
 Since all errors are caused by messages and all messages go via the single manager, a program that sends a message gets the potential error via the manager GUI. If the manager gui is not displayed, it is displayed first.
 
 A message is a verb, then the arguments of the verb, one per line.
@@ -82,7 +83,6 @@ A verb is one of the following, written in upper camel case. Verbs about the who
 - `Reset`: end the manager and every job it runs, remove every association the manager took, and delete the manager folder;
 - `ConnectEclipse <path>`, the path as a tagged text: connect the Eclipse found from the path;
 - `EditMetadata <path>`, the path as a tagged text: replace `projects.info` with the content of the file at the path;
-- `BaseDocs`: open the documentation of `base` in the browser;
 - `OpenWithOrShortcut <path>`, the path as a tagged text: open the file with the main whose `OpenWith` or `Shortcut` gives its extension. Double clicking the file on the desktop is its gui operation.
 Verbs about one project, taking the name of a registered project:
 - `Select <name>`: show the window and select the project;
@@ -92,12 +92,8 @@ Verbs about one project, taking the name of a registered project:
 - `Terminate <name>`: select the project and end its job, if any;
 - `Clean <name>`: select the project and delete its compiled cache;
 - `Kind <name>`: set the kind of the project to the second argument (`idle`, `code`, `data:readOnly`, `data:readWrite`);
-- `Forget <name>`: forget the project;
+- `Forget <name>`: forget the project.
 - `Link <name>`: set a link of the code project to a data project to the second argument: the name of the data project, then `read` or `write`, then the type names the code uses for it, separated by spaces; no type names removes that link;
-- `Clear <name>`: empty the Output of the project;
-- `Docs <name>`: open the documentation of the project in the browser;
-- `Browse <name>`: open the project folder in the file explorer;
-- `Logs <name>`: open the `.out/logs` folder of the project in the file explorer.
 A port of `Run` and `Compile` is where the Output of the job goes, also: before the job starts, the manager connects to that port of this machine, and sends there what the job prints, from its start and then as it prints it, with its marks of where the job and each main start and end; the connection ends with the job, at once when there is no job. This is how another program (Eclipse, for example) follows a job it asked for.
 Two more message files exist, `InvalidCall <details>` and `FatalError <details>`, written only by a run of the manager program that is not the single manager, about its own failure. They are not verbs: no argument of the manager program and no gui operation produces them, and the argument `FearlessCommandInvalidCall` or `FearlessCommandFatalError` is an invalid call.
 The details of `InvalidCall` and `FatalError` are every line after the verb, any number of lines.
@@ -115,7 +111,6 @@ Ill formed messages:
 - `Run` and `Compile` of a project that is not code, naming its kind;
 - `Run` and `Compile` of a project with invalid content, saying why (for a broken link, naming the link and why);
 - `Run` of a project that is not compiled, naming its state; `Run` naming no main, or a main that is not a main of the project (the message lists the mains);
-- `Docs` of a project that is not compiled, `Browse` of a project whose folder is missing, and `Logs` of a project with no `.out/logs` folder;
 - `Link` of a project that is not code;
 - a job, `Clean`, `Kind` or `Forget` while the project has a job;
 - a `Kind` change that is not from idle or back to idle.
@@ -166,7 +161,7 @@ The manager is the only program writing `projects.info`: it writes the new conte
   "systemExtensions": ["htm"]
 }
 ```
-- `systemExtensions`: the system extensions this manager captures, whether or not a main opens them. A system extension is an extension a main names in its `OpenWith`, like `htm` in `base.OpenWith[icon,"htm"]`; every other `OpenWith` and `Shortcut` gets an extension the manager makes (`ffile000` to `ffile999`, `fapp000` to `fapp999`). A compile whose mains name a system extension missing from `systemExtensions` fails, naming the extension. The GUI may offer to add the extension to `systemExtensions` (an `EditMetadata`), and the project is then compiled again.
+- `systemExtensions`: the system extensions this manager captures, whether or not a main opens them. A system extension is an extension a main names in its `OpenWith`, like `htm` in `base.OpenWith[icon,"htm"]`; every other `OpenWith` and `Shortcut` gets an extension the manager makes (`ffile000` to `ffile999`, `fapp000` to `fapp999`). A compile whose mains name a system extension missing from `systemExtensions` fails, naming the extension.
 Each project has:
 - `path`: the absolute path of the project folder, any path the system allows. Two projects never share a folder, and a project folder is never inside another one.
 - `kind`: `idle`, `code`, `data:readOnly` or `data:readWrite`.
@@ -182,7 +177,6 @@ The whole file can be edited by hand from the GUI, or via a message naming a fil
 An edit is accepted only if the whole text is valid, and an error points at the offending text in the Frontend error message style.
 An accepted edit applies at once: projects it removes are forgotten, projects it adds are registered as they are, every project is checked again.
 
-The manager can deduce from metadata inside the relevant .fearless_out, per project, when it was last compiled.
 
 
 ## Registering a folder
@@ -223,25 +217,25 @@ The icon of a project is the only PNG file in the folder `.config/icon` of the p
 Kinds change request: from idle to any kind, from any kind back to idle. Changing kind keeps `mains`, `reads` and `edits`: they have no effect while the project is not code, and come back if it becomes code again.
 
 ## General Gui shape:
-A menu bar at the top, holding every request with no other place in the window:
-- Manager: Add folder (`Register`, through a file picker), Edit project metadata (`EditMetadata`), Connect Eclipse (`ConnectEclipse`), Base documentation (`BaseDocs`), Reset (`Reset`), Quit (`Quit`);
-- Order by, sorting the icons below by Name, last Modified (the last change of a file of the project, outside `.fearless_out` and `.out`) or last Compiled.
+A menu bar at the top, with the Manager menu: Add folder (`Register`, through a file picker), Edit project metadata (`EditMetadata`), Connect Eclipse (`ConnectEclipse`), Base documentation, Reset (`Reset`), Quit (`Quit`).
 
 A simplified 'desktop with icons' either taking the whole space or taking the left space of a vertical divider.
-Icons represent registered folders: each shows the project icon with its state badge, and the project name under it.
+Icons represent registered folders, sorted by name: each shows the project icon with its state badge, and the project name under it.
 A busy project (compiling or running) shows an animated badge.
 When an Icon is selected, the divider opens and on the right we see the project area.
 
 ## Project area contains, top to bottom:
 
 A header: the project icon, the project name, and the following buttons:
-- The main button; it changes depending on the state of the project to one of those options:
-Compile, Run, Run V, Terminate, or Check (for a project that is not code);
-It is greyed out when its request would be refused (compiling a project with invalid names)
+- The main button, by the state of the project:
+  - Check, for a project that is not code, and for a code project with invalid content;
+  - Compile, for a code project that is not compiled;
+  - Run, for a compiled code project with one main; Run V, for one with several mains; Run greyed out, for one with no main;
+  - Terminate, while the project has a job.
 - The Open docs button (enabled once the mains are known). It opens the docs in the favourite browser.
 - The kind buttons: Only "Back to idle" for a project that is not idle;
 for an idle project "Become data", "Become editable data" and "Become code". They are greyed out while the project has a job.
-- Browse, opening the project folder in the file explorer, Forget, and for a code project Check and Clean.
+- Browse, opening the project folder in the file explorer, Forget, and for a code project Clean.
 
 For a code project, if there is more than one main
 we see "Run 'V'" where V is some arrow down signalling that there is more than just running.
@@ -251,7 +245,7 @@ For a code project whose mains have a `Shortcut`, after the header we see the ic
 Double clicking on it is `OpenWithOrShortcut` with the path of its shortcut file: the very message a double click on that file on the desktop sends.
 
 
-For every project, we have an Output collapsible area with vertical scroll bars and max size of 1/2 of the gui height, with a Clear button. What the main button produces always goes there.
+For every project, we have an Output collapsible area with vertical scroll bars and max size of 1/2 of the gui height. What the main button produces always goes there.
 
 For a code project whose mains open extensions (`OpenWith`), after the Output we see a collapsible area with vertical scroll bars and max size of 1/2 of the gui height, one block per main opening extensions:
   "Extensions this main opens:" (each extension with its icon),
@@ -269,7 +263,7 @@ For a code project we have Logs; collapsible area with vertical scroll bars and 
 ## Jobs
 
 A project does at most one job at a time: compiling, or running its mains.
-Everything a job prints goes to the Output area of the project. The Output marks where each job, and each main of a run, starts and ends, and how it ended, so that Eclipse and the user know when it is over.
+Every job, and every `Check`, starts with an empty Output area. Everything a job prints goes there, and the Output marks where the job, and each main of a run, starts and ends, and how it ended, so that Eclipse and the user know when it is over.
 
 - Compile (code projects): a code project with broken links is not compiled. The compiler runs in its own JVM; its output goes to the Output. A compile that ends with the mains known removes from the selected mains those that are no longer mains. A compile that fails leaves the project out of date: the packages it did not compile stay out of date, and a compile that fails after compiling the packages (on an icon, an extension or a shortcut file) deletes `mains.info`, so reading the mains fails. A compile that fails writes its error text to `.fearless_out/compile_error.txt`, and a compile that succeeds deletes `.fearless_out/compile_error.txt`: the error of the last compile stays readable by the manager and by Eclipse after the manager restarts.
 - Run (code projects): a code project with broken links does not run. When the project is out of date, the main button compiles. A `Run` runs the mains it names, in the order of the mains of the project. Each main runs in its own JVM, one after the other.
@@ -376,10 +370,9 @@ The manager keeps `extension -> list of (project, main, icon)` in memory only. I
 
 A `Shortcut` without extension gets `fappNNN`, an `OpenWith` without extension gets `ffileNNN`, where `NNN` are three digits.
 
-1. If the previous `mains.info` of the project gives this claim an autoselected extension, keep it: a shortcut file dragged to the desktop keeps working across compiles. Deleting the compiled cache (Clean, registering again, removing a system extension) loses the previous choice: the next compile starts again from step 2, which gives the same extension unless another claim took it meanwhile.
-2. Else start from a number from 000 to 999 computed from the project name in `projects.info`, the qualified main name and the icon, the same on every machine. The icon is part of it so that `Shortcut[I1]` and `Shortcut[I2]` of one main start apart.
-3. The number is free if no other claim in the in memory map uses that extension; else try the next one, wrapping from 999 to 000.
-4. If all 1000 are taken, the compile fails:
+1. Start from a number from 000 to 999 computed from the project name in `projects.info`, the qualified main name and the icon, the same on every machine. The icon is part of it so that `Shortcut[I1]` and `Shortcut[I2]` of one main start apart.
+2. The number is free if no other claim in the in memory map uses that extension; else try the next one, wrapping from 999 to 000.
+3. If all 1000 are taken, the compile fails:
    `No free extension is left for "base.Shortcut[hello.IconsBar]" of main "hello.Bar": all the 1000 extensions "fapp000" to "fapp999" are used by the projects of this manager.`
    For an `OpenWith`, the message adds that a system extension can be claimed instead, for example `"base.OpenWith[hello.IconsFoo,\"foo\"]"`.
 
@@ -434,8 +427,7 @@ The desktop starts the manager program with the path of the double clicked file 
 
 1. One main claims the extension: run that main, as `Run <name> <main>` does: the project is selected, only that main runs, and it becomes the selected main of the project.
 2. Several mains claim it: a small window lists them with their icons as `project::pkg.Main`, sorted, and runs the one picked, as in 1; closing it runs nothing.
-3. The main is already running: the manager shows the project and runs nothing more; a project runs one job at a time.
-4. No main claims the extension (an extension of `systemExtensions` that no main opens): the message is refused, saying that no main opens files with that extension.
+3. No main claims the extension (an extension of `systemExtensions` that no main opens): the message is refused, saying that no main opens files with that extension.
 
 An empty file runs nothing: the manager shows a note naming the file. GNOME types every empty file as `application/x-zerosize` whatever its name and never hands it to the manager; refusing empty files everywhere makes Windows and the other desktops behave the same.
 
@@ -443,7 +435,7 @@ An empty file runs nothing: the manager shows a note naming the file. GNOME type
 
 The system extensions the user allowed are `systemExtensions` in `projects.info`, changed like the rest of `projects.info`. Removing an extension from `systemExtensions` makes the manager stop capturing it, and deletes the compiled cache of every project whose mains open it: those projects need compiling again.
 
-When a compile wants a system extension that is not in `systemExtensions`, the compile fails, naming the main, the claim and the extension; the GUI may offer to add the extension to `systemExtensions`, and the project is then compiled again. Adding an extension to `systemExtensions` captures it at once; when reconcile refuses it (a Windows UserChoice, for example), the edit is invalid.
+When a compile wants a system extension that is not in `systemExtensions`, the compile fails, naming the main, the claim and the extension. The window then asks in a dialog whether to add the extension to `systemExtensions`: yes is an `EditMetadata` adding it, and the project needs compiling again. Adding an extension to `systemExtensions` captures it at once; when reconcile refuses it (a Windows UserChoice, for example), the edit is invalid.
 
 ### Conflict icon
 
@@ -468,7 +460,7 @@ Eclipse follows exactly one job: the job of its last `Run` or `Compile`; Eclipse
 
 Eclipse commands the manager by running the manager program with the arguments `FearlessCommand<Verb>` and the arguments of the verb. If a message ends up in error, the manager shows the error as usual.
 
-The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and never writes into a project folder; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. Every two seconds it reflects `projects.info` and the `.fearless_out` folders: the error of the last compile (`compile_error.txt`) in the Problems view, on its file at its line, or on the project while that file does not exist, and in the JUnit view the unit test log the running main writes in `.out/logs`: its complete records, its lines up to the last newline, without a test case whose closing line is not written yet. It shows the followed job in the Console view as a process, where a stack frame and the header of a compile error are links opening that file at that line; its Terminate button is `Terminate` of the project of that job. Fearless files show with syntax highlighting. Build (`Compile` for a code project, `Check` for any other), Clean, Run (what the main button does: `Compile` when the project is out of date, else `Run` naming the only main or the selected mains), Terminate, the kind switches of the Fearless menu of a project, New Project (`Register`), Show in manager and Forget project are messages to the manager.
+The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and never writes into a project folder; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. Every two seconds it reflects `projects.info` and the `.fearless_out` folders: the error of the last compile (`compile_error.txt`) in the Problems view, on its file at its line, or on the project while that file does not exist, and in the JUnit view the unit test log the running main writes in `.out/logs`: its complete records, its lines up to the last newline, without a test case whose closing line is not written yet. It shows the followed job in the Console view as a process, where a stack frame and the header of a compile error are links opening that file at that line; its Terminate button is `Terminate` of the project of that job. Fearless files show with syntax highlighting. Build (`Compile` for a code project with valid content, `Check` for any other), Clean, Run (what the main button does: `Compile` when the project is out of date, else `Run` naming the only main or the selected mains), Terminate, the kind switches of the Fearless menu of a project, New Project (`Register`), Show in manager and Forget project are messages to the manager.
 A missing or malformed file of the manager is an error shown in Eclipse, and the plugin stops following the manager until Eclipse starts again.
 
 ## Content assist
