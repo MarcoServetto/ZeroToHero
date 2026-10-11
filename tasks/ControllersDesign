@@ -32,7 +32,7 @@ Starting the manager program leaves one message in the manager folder. There cou
 
 The manager program takes:
 - zero arguments: the message is `Show`: show the window, starting the single manager when none runs;
-- a first argument `FearlessCommand<Verb>`, then the arguments of the verb: the message is the verb `<Verb>` with those arguments. A project name, a main, a kind and a type name are written as they are. A path is written as a tagged text in its `Base16:` form, `Base16:` then the bytes naming the path, so every argument is plain ASCII on every system. The words after the project name of `Mains` and `Link` form their second argument, separated by single spaces;
+- a first argument `FearlessCommand<Verb>`, then the arguments of the verb: the message is the verb `<Verb>` with those arguments. A project name, a main, a kind and a type name are written as they are. A path is written as a tagged text in its `Base16:` form, `Base16:` then the bytes naming the path, so every argument is plain ASCII on every system. A port is written `Port:` then its number. The words after the project name of `Run`, `Mains` and `Link` form their second argument, separated by single spaces, except a last `Port:` word, the port of `Run`;
 - one argument not starting with `FearlessCommand`: the path of a file, as the system passes the path when the file is opened (for example by a double click); the message is `Register` with that path for a `.fearless` file, and `OpenWithOrShortcut` with that path for any other file.
 For example:
 ```
@@ -40,6 +40,7 @@ FearlessCommandQuit
 FearlessCommandSelect hello_world
 FearlessCommandRun hello_world hello.Hello1
 FearlessCommandMains hello_world hello.Hello1 hello.Hello3
+FearlessCommandRun hello_world hello.Hello1 hello.Hello3 Port:51234
 FearlessCommandRegister Base16:2F646174612F68656C6C6F
 ```
 (the last one registers `/data/hello` on Linux).
@@ -86,8 +87,8 @@ A verb is one of the following, written in upper camel case. Verbs about the who
 - `OpenWithOrShortcut <path>`, the path as a tagged text: open the file with the main whose `OpenWith` or `Shortcut` gives its extension. Double clicking the file on the desktop is its gui operation.
 Verbs about one project, taking the name of a registered project:
 - `Select <name>`: show the window and select the project;
-- `Run <name>`: select the project and run it; the second argument, when present, is the one main to run, and it becomes the only selected main: the last main started takes the lead;
-- `Compile <name>`: select the project and compile it if it needs compiling;
+- `Run <name>`: select the project and run the mains of the second argument, separated by spaces, in the order of the mains of the project; they become the selected mains: the last mains started take the lead; a third argument, when present, is a port;
+- `Compile <name>`: select the project and compile it if it needs compiling; a second argument, when present, is a port;
 - `Check <name>`: select the project and report in its Output why it is invalid or out of date, or that it is neither;
 - `Terminate <name>`: select the project and end its job, if any;
 - `Clean <name>`: select the project and delete its compiled cache;
@@ -99,20 +100,30 @@ Verbs about one project, taking the name of a registered project:
 - `Docs <name>`: open the documentation of the project in the browser;
 - `Browse <name>`: open the project folder in the file explorer;
 - `Logs <name>`: open the `.out/logs` folder of the project in the file explorer.
+A port of `Run` and `Compile` is where the Output of the job goes, also: before the job starts, the manager connects to that port of this machine, and sends there what the job prints, from its start and then as it prints it, with its marks of where the job and each main start and end; the connection ends with the job, at once when there is no job. This is how another program (Eclipse, for example) follows a job it asked for.
 Two more message files exist, `InvalidCall <details>` and `FatalError <details>`, written only by a run of the manager program that is not the single manager, about its own failure. They are not verbs: no argument of the manager program and no gui operation produces them, and the argument `FearlessCommandInvalidCall` or `FearlessCommandFatalError` is an invalid call.
 The details of `InvalidCall` and `FatalError` are every line after the verb, any number of lines.
 
 Ill formed messages:
-- a message of more than three lines;
+- a message with more lines than its verb takes;
+- a port where no program of this machine accepts the connection;
 - a verb that is not one of these;
 - a name that is not the name of a registered project (the message lists the registered projects);
 - a `Register` whose path is blank, names nothing, is the root of a drive, or is the manager folder, anything inside it or a folder holding it;
+- a `ConnectEclipse` whose path leads to no Eclipse folder, and an `EditMetadata` whose path names no file;
+- an `OpenWithOrShortcut` whose path names no file, names an empty file, or names a file whose extension no main claims;
 - a kind that is not one of the four, and a malformed link;
 - a request whose result would make `projects.info` invalid (the message is the error of `projects.info`).
 - `Run` and `Compile` of a project that is not code, naming its kind;
+- `Run` and `Compile` of a project with invalid content, saying why (for a broken link, naming the link and why);
+- `Run` of a project that is not compiled, naming its state; `Run` naming no main, or a main that is not a main of the project (the message lists the mains);
+- `Docs` of a project that is not compiled, `Browse` of a project whose folder is missing, and `Logs` of a project with no `.out/logs` folder;
 - `Link` of a project that is not code;
 - a job, `Clean`, `Kind` or `Forget` while the project has a job;
 - a `Kind` change that is not from idle or back to idle.
+
+Whether a message is ill formed is decided when it arrives, from the message and the current state, before anything is compiled, run or written to the Output.
+An ill formed message is shown in a dialog, never in the Output: the Output of a project holds only the results of well formed requests. A failing compile is such a result: the request is right, the code is broken.
 
 The window's GUI elements should be designed with good GUI design with the principle of 'discoverability' in mind.
 This includes both display elements and buttons and menus allowing to send the messages described above.
@@ -233,10 +244,10 @@ for an idle project "Become data", "Become editable data" and "Become code". The
 
 For a code project, if there is more than one main
 we see "Run 'V'" where V is some arrow down signalling that there is more than just running.
-When Run V is pressed, it behaves like a drop-down menu showing the available mains, with a checkbox near their names and a 'Run' button at the end of the checkbox list, disabled if nothing is selected.
+When Run V is pressed, it behaves like a drop-down menu showing the available mains, with a checkbox near their names and a 'Run' button at the end of the checkbox list, disabled if nothing is selected. That 'Run' button is `Run` naming the checked mains; the Run button of a project with one main is `Run` naming that main.
   
 For a code project whose mains have a `Shortcut`, after the header we see the icon of each `Shortcut`.
-Clicking on it runs that main (`Run <name> <main>`), and that main becomes the only selected main in the "Run V", as for every main started alone.
+Double clicking on it is `OpenWithOrShortcut` with the path of its shortcut file: the very message a double click on that file on the desktop sends.
 
 
 For a data project we see, after the header, a button opening the files in the OS favourite file explorer program.
@@ -262,7 +273,7 @@ A project does at most one job at a time: compiling, or running its mains.
 Everything a job prints goes to the Output area of the project. The Output marks where each job, and each main of a run, starts and ends, and how it ended, so that Eclipse and the user know when it is over.
 
 - Compile (code projects): a code project with broken links is not compiled. The compiler runs in its own JVM; its output goes to the Output. A compile that ends with the mains known removes from the selected mains those that are no longer mains. A compile that fails leaves the project out of date: the packages it did not compile stay out of date, and a compile that fails after compiling the packages (on an icon, an extension or a shortcut file) deletes `mains.info`, so reading the mains fails. A compile that fails writes its error text to `.fearless_out/compile_error.txt`, and a compile that succeeds deletes `.fearless_out/compile_error.txt`: the error of the last compile stays readable by the manager and by Eclipse after the manager restarts.
-- Run (code projects): a code project with broken links does not run. When the project is out of date, the main button compiles; a `Run` request compiles and then runs. The mains run are: the only main, when there is one; else the main named by the `Run` request; else the selected mains, in the order of the mains. A named main that is not a main of the project is refused, listing the mains. Selected mains that are not all mains of the project are refused, naming those that are not, and are removed from the selected mains. A project with no main, or none selected, is refused. Each main runs in its own JVM, one after the other.
+- Run (code projects): a code project with broken links does not run. When the project is out of date, the main button compiles. A `Run` runs the mains it names, in the order of the mains of the project. Each main runs in its own JVM, one after the other.
 - Terminate ends the job: the JVM of the running main or of the compile ends, and no further main of that run starts.
 
 
@@ -270,7 +281,8 @@ Everything a job prints goes to the Output area of the project. The Output marks
 
 On Windows and Linux the single manager makes its launcher the program opening every captured extension, following `FileAssociations.reconcile` of Commons. The captured extensions are `.fearless`, every extension in `systemExtensions`, and the Fearless extensions the mains of the projects open.
 - Extending the captured extensions (an `EditMetadata` adding to `systemExtensions`, a compile giving a main a new Fearless extension) is refused when reconcile refuses a new extension: the edit is invalid, or the compile fails, naming the extension and the program holding it, and nothing changes.
-- Losing a captured extension (another program, or another Fearless such as the portable one, took it) is a fatal error when the manager can not take it back. At every start the manager takes back all its captured extensions; `.fearless` is captured from the first start.
+- Losing a captured extension to a program outside the Fearless family is a fatal error when the manager can not take it back. At every start the manager takes back all its captured extensions; `.fearless` is captured from the first start.
+- Only one member of the Fearless family at a time opens `.fearless`: a starting manager of any version, or a starting portable Fearless, takes `.fearless` together with every extension of the Fearless program that held it. The single manager notices, whether its window is shown or not, when another member of the Fearless family took `.fearless`: it shows a dialog naming that program, and when the dialog is closed it quits. This is not a fatal error: the manager folder stays, and the next start of this manager takes every extension back.
 
 ## OpenWith and Shortcut
 
@@ -394,7 +406,7 @@ The manager settles conflicts among the Fearless apps it manages; with the OS an
 - A Fearless extension (`fappNNN`, `ffileNNN`) gets the very same setup as `.fearless`, and is checked like it. These extensions are invented by Fearless, so on a machine where one of them is set up in any other way than the manager's own, the setup was tampered with: a captured one lost is a fatal error, and a new one refused fails the compile.
 - A system extension gets the same setup as `.fearless` too, but the manager takes it over from whatever program opens it: the user allowed it on purpose, so other programs registered for it do not refuse it. A Windows UserChoice still does, as for `.fearless`: the user pinned that extension to a program, and the manager does not undo the user's own choice. When an extension leaves `systemExtensions`, the manager removes its own setup only, and the previous program opens those files again.
 
-The portable Fearless reconciles `.fearless` under its own identity at every start, removing the manager's associations. That is accepted: at its next start the manager takes back every extension it manages.
+The portable Fearless reconciles `.fearless` under its own identity at every start, removing the manager's associations, and a running manager quits. That is accepted: at its next start the manager takes back every extension it manages.
 
 #### Extensions on Linux
 
@@ -452,11 +464,12 @@ The accepted cases are as follows:
 Connect Eclipse puts the plugin in the Eclipse folder, with `manager.info` next to it: the path of the manager program folder. From that path the plugin finds the manager program, the manager folder and the compiled standard library.
 
 Plugin design: Eclipse reads `projects.info` and follows up into the `.fearless_out` files when needed to recover information and display the state.
-The Output of a running program has no bound on its size, so the manager does not pass it through files: the manager opens a connection of some sort with the running Eclipse and sends there the Output and the error messages as they change.
+The Output of a running program has no bound on its size, so the manager does not pass it through files: Eclipse listens on a port, and its `Run` and `Compile` carry that port.
+Eclipse follows exactly one job: the job of its last `Run` or `Compile`; a new one replaces the job it followed. Everything else Eclipse shows (the error of the last compile, the unit test log) is read from files.
 
 Eclipse commands the manager by running the manager program with the arguments `FearlessCommand<Verb>` and the arguments of the verb. If a message ends up in error, the manager shows the error as usual.
 
-The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and never writes into a project folder; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. Every two seconds it reflects `projects.info` and the `.fearless_out` folders: the error of the last compile (`compile_error.txt`) in the Problems view, on its file at its line, or on the project while that file does not exist, and in the JUnit view the unit test log the running main writes in `.out/logs`: its complete records, its lines up to the last newline, without a test case whose closing line is not written yet. It shows the Output in the Console view, where a stack frame and the header of a compile error are links opening that file at that line, and every run as a process with a Terminate button. Fearless files show with syntax highlighting. Build (`Compile` for a code project, `Check` for any other), Clean, Run, Terminate, the kind switches of the Fearless menu of a project, New Project (`Register`), Show in manager and Forget project are messages to the manager.
+The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and never writes into a project folder; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. Every two seconds it reflects `projects.info` and the `.fearless_out` folders: the error of the last compile (`compile_error.txt`) in the Problems view, on its file at its line, or on the project while that file does not exist, and in the JUnit view the unit test log the running main writes in `.out/logs`: its complete records, its lines up to the last newline, without a test case whose closing line is not written yet. It shows the followed job in the Console view as a process, where a stack frame and the header of a compile error are links opening that file at that line; its Terminate button is `Terminate` of the project of that job. Fearless files show with syntax highlighting. Build (`Compile` for a code project, `Check` for any other), Clean, Run (what the main button does: `Compile` when the project is out of date, else `Run` naming the only main or the selected mains), Terminate, the kind switches of the Fearless menu of a project, New Project (`Register`), Show in manager and Forget project are messages to the manager.
 A missing or malformed file of the manager is an error shown in Eclipse, and the plugin stops following the manager until Eclipse starts again.
 
 ## Content assist
@@ -495,8 +508,13 @@ What the design will cover later; nothing in this section is current behaviour.
 
 What a rewrite needs that neither this design nor the other repositories say.
 
+An implementation decides alone every detail the design leaves open below its concepts: wire formats, encodings, intervals, the library calls, the content of the files the design names (information for Eclipse can be added to `manager.info`). It never adds what the user or another program can observe and the design does not describe: a file in the manager folder or in a project, a verb, a GUI element, a message, a fallback. Those go into the design first.
+
+- The single manager: the process holding the lock (`FileChannel.tryLock`) of the file `instance.lock` in the manager folder. The operating system releases the lock when the process ends, however it ends, so a manager that was killed leaves no stale lock.
+
 - Tray on Linux: `java.awt.SystemTray` needs an XEmbed tray, which GNOME and most Wayland desktops do not have; what they show is a StatusNotifierItem on the session bus, registered with `org.kde.StatusNotifierWatcher`, its menu served as `com.canonical.dbusmenu`. A desktop with no owner of the watcher name has no tray. The JDK has no D-Bus client, so the manager speaks the D-Bus wire protocol itself on the `unix:path=` socket of `DBUS_SESSION_BUS_ADDRESS`.
 - The bytes of a `Base16:` path: on Windows the UTF-16 code units of the name, little endian (a name may hold an unpaired surrogate); elsewhere the bytes `sun.jnu.encoding` gives, the bytes the JVM turns names into.
 - Console links in Eclipse: a stack frame of the runtime reads `error line: N in file F`; a compile error reads `In file: fear:/F` and, on a later line, the numbered source line `N| `. `F` is relative to the project folder. The Console view fills in by pieces, so the line of a compile error is looked up when the link is used. Eclipse links text through `org.eclipse.ui.console.consolePatternMatchListeners`.
 - Syntax highlighting in Eclipse: `org.eclipse.tm4e` colours a file from a TextMate grammar. The only grammar of Fearless is `syntaxes/fearless.tmLanguage.json` of the plugin, with the themes `fearless-light.css` and `fearless-dark.css`; a rewrite keeps those files, or writes the grammar again from the tokens of the Frontend.
 - JUnit view in Eclipse: `JUnitCore.importTestRunSession` of `org.eclipse.jdt.junit.core` shows a JUnit XML report file.
+- Port of `Run` and `Compile`: a TCP port on the loopback address. The manager connects and sends the Output as UTF-8 text, then closes the connection. Eclipse listens on a port the system picks.
