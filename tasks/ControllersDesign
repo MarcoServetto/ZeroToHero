@@ -32,14 +32,14 @@ Substantial association related failures are also fatal errors (that is, we can 
 Starting the manager program leaves one message in the manager folder. There could be multiple parallel attempts to start the manager, and the 'single' manager could be already running. The manager that is recognized as the 'single' manager handle the messages, while the other manager processes terminate just after leaving their message in the manager folder.
 
 The manager program takes zero arguments or one argument:
-- zero arguments: the message is empty: show the window, starting the single manager when none runs;
-- one argument starting with `FearlessCommandBase16:`: the message is the text whose UTF-8 bytes are the hex digits after `FearlessCommandBase16:`;
-- one argument not starting with `FearlessCommandBase16:`: the path of a `.fearless` file, as the system passes the path when the file is opened (for example by a double click); the message registers the folder holding the file.
-An argument starting with `FearlessCommandBase16:` is always a message, never a path.
+- zero arguments: the message is `Show`: show the window, starting the single manager when none runs;
+- one argument `FearlessCommand<Verb>Base16:<hex>`: the message is the verb `<Verb>`, then the text whose UTF-8 bytes are the hex digits `<hex>`: the arguments of the verb, one per line. For example `FearlessCommandCompileBase16:68656c6c6f5f776f726c64` is the message `Compile` with the argument `hello_world`, and `FearlessCommandQuitBase16:` is the message `Quit`;
+- one argument not starting with `FearlessCommand`: the path of a `.fearless` file, as the system passes the path when the file is opened (for example by a double click); the message is `Register` with that path.
+An argument starting with `FearlessCommand` is always a message, never a path.
 Every run of the manager program writes its message file. A run that is not the single manager then ends; a run that becomes the single manager applies its own message file like every other message file.
-If a manager is called with bad arguments, it will leave a message "invalid call xxx" where xxx represents the details, and when the single manager take that message up, it will show the error in a dialog as for all the other dialogs and continue running.
-If a manager encounter some (fatal) error but in a set up where the single manager is likely to either be active or become active soon, it just leaves a message "fatal error xxx" about it and end normally. When possible, the single manager is the only thing taking actual actions.
-When the single manager handles "fatal error xxx" it does treat it as a fatal error.
+If a manager is called with bad arguments, it will leave the message `InvalidCall` with the details, and when the single manager take that message up, it will show the error in a dialog as for all the other dialogs and continue running.
+If a manager encounter some (fatal) error but in a set up where the single manager is likely to either be active or become active soon, it just leaves the message `FatalError` with the details and end normally. When possible, the single manager is the only thing taking actual actions.
+When the single manager handles `FatalError` it does treat it as a fatal error.
 If a manager encouter fatal errors likely to prevent a 'single' manager to emerge, it will delete the manager folder and remove all the associations the manager took. By definition there are no running fearless processes to terminate in this case.
 
 The single manager runs until Quit, or until a fatal error. Quit ends the manager and every job it runs.
@@ -61,42 +61,48 @@ The single manager applies the requests one at a time, in the order they arrive,
 
 A message is the file `messages/<time>-<id>.msg` in the manager folder: `<time>` is the 20 digit count of milliseconds since 1970 when the message was written, and `<id>` is a random UUID. The single manager applies the message files in the order of their names, and deletes each message file after reading it.
 Only the manager program writes message files: the manager program writes `messages/<time>-<id>.tmp`, then renames `messages/<time>-<id>.tmp` to `messages/<time>-<id>.msg`, so the single manager never reads a partial message. The single manager deletes every `.tmp` file older than 60 seconds.
-Every other program commanding the manager (the Eclipse plugin, a script, a test) runs the manager program with one `FearlessCommandBase16:` argument holding the message.
-Gui operations are just another way to command the manager, and they all go via the FearlessCommandBase16 fearless manager parameter route:
+Every other program commanding the manager (the Eclipse plugin, a script, a test) runs the manager program with one `FearlessCommand<Verb>Base16:<hex>` argument holding the message.
+Gui operations are just another way to command the manager, and they all go via the `FearlessCommand<Verb>Base16:<hex>` fearless manager parameter route:
 every gui operation has an equivalent message, and every message is either ill formed or has an equivalent gui operation.
 Since all errors are caused by messages and all messages go via the single manager, a program that sends a message gets the potential error via the manager GUI. If the manager gui is not displayed, it is displayed first.
 
-A message is one of:
-- empty: show the window;
-- one line, a path as a tagged text (see **Info files**): `register` that path;
-- a request, of two or three lines: a verb, then the argument of the verb, then for some verbs a third line.
-
-`register` takes a path as a tagged text; every other verb takes the name of a registered project:
-- `register <path>`: register the folder (see **Registering a folder**), or the folder a file is in, then select it; a folder already registered is only selected;
-- `select <name>`: show the window and select the project;
-- `run <name>`: select the project and run it (see **Jobs**); the third line, when present, is the one main to run;
-- `compile <name>`: select the project and compile it if it needs compiling;
-- `check <name>`: select the project and report why it is invalid, or that it is not;
-- `terminate <name>`: select the project and end its job, if any;
-- `clean <name>`: select the project and delete its compiled cache;
-- `kind <name>`: set the kind of the project to the third line (`idle`, `code`, `data:readOnly`, `data:readWrite`);
-- `forget <name>`: forget the project;
-- `mains <name>`: set the selected mains of the project to the third line, the mains separated by spaces;
-- `link <name>`: set a link of the code project to a data project to the third line: the name of the data project, then `read` or `write`, then the type names the code uses for it, separated by spaces; no type names removes that link;
-- `clear <name>`: empty the Output of the project.
-- `invalid call <details>` and `fatal error <details>`: written by a run of the manager program that is not the single manager. These two messages have no equivalent gui operation.
+A message is a verb, then the arguments of the verb, one per line.
+A verb is one of the following, written in upper camel case. Verbs about the whole manager:
+- `Show`: show the window;
+- `Register <path>`, the path as a tagged text (see **Info files**): register the folder (see **Registering a folder**), or the folder a file is in, then select it; a folder already registered is only selected;
+- `Quit`: end the manager and every job it runs;
+- `Reset`: end the manager and every job it runs, remove every association the manager took, and delete the manager folder;
+- `ConnectEclipse <path>`, the path as a tagged text: connect Eclipse, found from the path (see **Eclipse**);
+- `EditMetadata <path>`, the path as a tagged text: replace `projects.info` with the content of the file at the path (see **Registered projects**);
+- `BaseDocs`: open the documentation of `base` in the browser;
+- `InvalidCall <details>` and `FatalError <details>`: written by a run of the manager program that is not the single manager. These two messages have no equivalent gui operation.
+Verbs about one project, taking the name of a registered project:
+- `Select <name>`: show the window and select the project;
+- `Run <name>`: select the project and run it (see **Jobs**); the second argument, when present, is the one main to run;
+- `Compile <name>`: select the project and compile it if it needs compiling;
+- `Check <name>`: select the project and report why it is invalid, or that it is not;
+- `Terminate <name>`: select the project and end its job, if any;
+- `Clean <name>`: select the project and delete its compiled cache;
+- `Kind <name>`: set the kind of the project to the second argument (`idle`, `code`, `data:readOnly`, `data:readWrite`);
+- `Forget <name>`: forget the project;
+- `Mains <name>`: set the selected mains of the project to the second argument, the mains separated by spaces;
+- `Link <name>`: set a link of the code project to a data project to the second argument: the name of the data project, then `read` or `write`, then the type names the code uses for it, separated by spaces; no type names removes that link;
+- `Clear <name>`: empty the Output of the project;
+- `Docs <name>`: open the documentation of the project in the browser;
+- `Browse <name>`: open the project folder in the file explorer;
+- `Logs <name>`: open the `.out/logs` folder of the project in the file explorer.
 
 Ill formed messages:
 - a message of more than three lines;
 - a verb that is not one of these;
 - a name that is not the name of a registered project (the message lists the registered projects);
-- a `register` whose path is blank, names nothing, is the root of a drive, or is the manager folder, anything inside it or a folder holding it;
+- a `Register` whose path is blank, names nothing, is the root of a drive, or is the manager folder, anything inside it or a folder holding it;
 - a kind that is not one of the four, and a malformed link;
 - a request whose result would make `projects.info` invalid (the message is the error of `projects.info`).
-- `run` and `compile` of a project that is not code, naming its kind;
-- `link` of a project that is not code;
-- a job, `clean` or `kind` while the project has a job (see **Jobs**);
-- a `kind` change that is not from idle or back to idle.
+- `Run` and `Compile` of a project that is not code, naming its kind;
+- `Link` of a project that is not code;
+- a job, `Clean` or `Kind` while the project has a job (see **Jobs**);
+- a `Kind` change that is not from idle or back to idle.
 
 The window's GUI elements should be designed with good GUI design with the principle of 'discoverability' in mind.
 This includes both display elements and buttons and menus allowing to send the messages described above.
@@ -121,22 +127,27 @@ For example the string `Hello\nWorld` is produced from the fearless code `"Hello
 
 The manager folder holds `projects.info`, the record of every registered project: where it is, its kind, the mains the user selected, and what the project may read and write.
 
-`projects.info` is an Info file: an object mapping each project name to its metadata:
+`projects.info` is an Info file: an object with `projects`, mapping each project name to its metadata, and `systemExtensions`:
 ```
 {
-  "hello_world": {
-    "path": "Str:C:/data/01_hello_world",
-    "kind": "code",
-    "mains": ["hello.Hello1", "hello.Hello3"],
-    "reads": {"pub": ["Pub"], "notes": ["OldNotes"]},
-    "edits": {"notes": ["Notes", "Diary"]}
+  "projects": {
+    "hello_world": {
+      "path": "Str:\"C:/data/01_hello_world\"",
+      "kind": "code",
+      "mains": ["hello.Hello1", "hello.Hello3"],
+      "reads": {"pub": ["Pub"], "notes": ["OldNotes"]},
+      "edits": {"notes": ["Notes", "Diary"]}
+    },
+    "diary": {
+      "path": "UStr:\"C:/Users/Jos\".u\"00E9\"+(\"/da\".u\"1F600\")+(\"ta\".u)",
+      "kind": "data:readWrite"
+    }
   },
-  "diary": {
-    "path": "UStr:\"C:/Users/Jos\".u\"00E9\"+(\"/da\".u\"1F600\")+(\"ta\".u)",
-    "kind": "data:readWrite"
-  }
+  "systemExtensions": ["htm"]
 }
 ```
+- `systemExtensions`: the system extensions the projects of this manager may claim. A system extension is an extension a main claims by name, like `htm` in `base.OpenWith[icon,"htm"]`; every other claim gets an extension the manager makes (`ffile000` to `ffile999`, `fapp000` to `fapp999`). A compile whose mains claim a system extension missing from `systemExtensions` fails, naming the extension. The GUI may offer to add the extension to `systemExtensions` (an `EditMetadata`), and the project is then compiled again.
+Each project has:
 - `path`: the absolute path of the project folder, any path the system allows. Two projects never share a folder, and a project folder is never inside another one.
 - `kind`: `idle`, `code`, `data:readOnly` or `data:readWrite`.
 - `mains`: the mains the user selected to run, for a code project with several mains.
@@ -238,11 +249,11 @@ For a code project we have Logs; collapsible area with vertical scroll bars and 
 
 ## Jobs
 
-A project does at most one job at a time: compiling, or running its mains. A request for a job while another one runs, and a `clean` or `kind` while a job runs, is refused with an error dialog as for other user errors.
+A project does at most one job at a time: compiling, or running its mains. A request for a job while another one runs, and a `Clean` or `Kind` while a job runs, is refused with an error dialog as for other user errors.
 Everything a job prints goes to the Output area of the project.
 
-- Compile (code projects): a code project with broken links is not compiled: the Output shows why. The compiler runs in its own JVM; its output goes to the Output. `--- compiling <folder> ---` starts it, `--- compile done ---` or `--- compile failed with <code> ---` ends it. A compile that ends with the mains known removes from the selected mains those that are no longer mains.
-- Run (code projects): a code project with broken links does not run: the Output shows why. When the project is out of date, the main button compiles; a `run` request compiles and then runs. The mains run are: the only main, when there is one; else the main named by the `run` request; else the selected mains, in the order of the mains. A named main that is not a main of the project is refused, listing the mains. Selected mains that are not all mains of the project are refused, naming those that are not, and are removed from the selected mains. A project with no main, or none selected, says so. Each main runs in its own JVM, one after the other, framed by `--- running <main> ---` and `--- <main> exited with <code> after <N>s ---`. While a main runs, its unit test log is published as a JUnit report every two seconds and when it ends. The report holds the complete records of the log: its lines up to the last newline, without a test case whose closing line is not written yet.
+- Compile (code projects): a code project with broken links is not compiled: the Output shows why. The compiler runs in its own JVM; its output goes to the Output. `--- compiling <folder> ---` starts it, `--- compile done ---` or `--- compile failed with <code> ---` ends it. A compile that ends with the mains known removes from the selected mains those that are no longer mains. A compile that fails writes its error text to `.fearless_out/compile_error.txt`, and a compile that succeeds deletes `.fearless_out/compile_error.txt`: the error of the last compile stays readable by the manager and by Eclipse after the manager restarts.
+- Run (code projects): a code project with broken links does not run: the Output shows why. When the project is out of date, the main button compiles; a `Run` request compiles and then runs. The mains run are: the only main, when there is one; else the main named by the `Run` request; else the selected mains, in the order of the mains. A named main that is not a main of the project is refused, listing the mains. Selected mains that are not all mains of the project are refused, naming those that are not, and are removed from the selected mains. A project with no main, or none selected, says so. Each main runs in its own JVM, one after the other, framed by `--- running <main> ---` and `--- <main> exited with <code> after <N>s ---`. While a main runs, its unit test log is published as a JUnit report every two seconds and when it ends. The report holds the complete records of the log: its lines up to the last newline, without a test case whose closing line is not written yet.
 - Terminate ends the job: `--- terminating <job> ---`, then the JVM of the running main or of the compile ends, and no further main of that run starts.
 
 
@@ -266,9 +277,9 @@ The manager will need some cooperation to ship to eclipse the running output and
 Ther manager should be able to open a connection of some sort with the running eclipse and communicate there those fast changing informations.
 The compile error/output text should contain some end marker so that eclipse (and the human) knows when it is over.
 
-Eclipse commands the manager by running the manager program with one `FearlessCommandBase16:` argument holding the message. If a message ends up in error, the manager shows the error as usual.
+Eclipse commands the manager by running the manager program with one `FearlessCommand<Verb>Base16:<hex>` argument holding the message. If a message ends up in error, the manager shows the error as usual.
 
-The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and never writes into a project folder; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. Every two seconds it reflects the manager's files: the problem in the Problems view, on its file at its line, or on the project while that file does not exist, and the report in the JUnit view. It shows the Output in the Console view, and every run as a process with a Terminate button. Build (`compile` for a code project, `check` for any other), Clean, Run, Terminate, the kind switches of the Fearless menu of a project, New Project (`register`), Show in manager and Forget project are messages to the manager. Content assist is described below.
+The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and never writes into a project folder; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. Every two seconds it reflects the manager's files: the problem in the Problems view, on its file at its line, or on the project while that file does not exist, and the report in the JUnit view. It shows the Output in the Console view, and every run as a process with a Terminate button. Build (`Compile` for a code project, `Check` for any other), Clean, Run, Terminate, the kind switches of the Fearless menu of a project, New Project (`Register`), Show in manager and Forget project are messages to the manager. Content assist is described below.
 A missing or malformed file of the manager is an error shown in Eclipse, and the plugin stops following the manager until Eclipse starts again.
 
 ## Content assist
