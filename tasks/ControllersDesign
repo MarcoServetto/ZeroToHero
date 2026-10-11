@@ -57,7 +57,7 @@ If an OS supports system tray/StatusNotifierItem, this is what we use.
 Clicking it shows the window, and its menu holds Show manager and Quit manager.
 
 On a system with no tray, the manager shows the icon itself.
-The manager window is closed and replaced with another window: a window of the size of a tray icon, with no title bar and no border, holding only the Fearless icon.
+The manager window is closed and replaced with another window: a window of the size of a tray icon, with no title bar and no border, holding only the Fearless icon, in the bottom right corner of the screen and always above the other windows.
 Left click on that window shows the manager as for left click on the tray icon.
 Right click on that window shows the menu the tray icon would have if supported.
 When the manager is 'shown again', the simulated tray icon window is removed and the manager window is shown again.
@@ -147,14 +147,14 @@ The manager is the only program writing `projects.info`: it writes the new conte
 {
   "projects": {
     "hello_world": {
-      "path": "Str:\"C:/data/01_hello_world\"",
+      "path": "Str:\"C:\\data\\01_hello_world\"",
       "kind": "code",
       "mains": ["hello.Hello1", "hello.Hello3"],
       "reads": {"pub": ["Pub"], "notes": ["OldNotes"]},
       "edits": {"notes": ["Notes", "Diary"]}
     },
     "diary": {
-      "path": "UStr:\"C:/Users/Jos\".u\"00E9\"+(\"/da\".u\"1F600\")+(\"ta\".u)",
+      "path": "UStr:\"C:\\Users\\Jos\".u\"00E9\"+(\"\\da\".u\"1F600\")+(\"ta\".u)",
       "kind": "data:readWrite"
     }
   },
@@ -163,7 +163,7 @@ The manager is the only program writing `projects.info`: it writes the new conte
 ```
 - `systemExtensions`: the system extensions this manager captures, whether or not a main opens them. A system extension is an extension a main names in its `OpenWith`, like `htm` in `base.OpenWith[icon,"htm"]`; every other `OpenWith` and `Shortcut` gets an extension the manager makes (`ffile000` to `ffile999`, `fapp000` to `fapp999`). A compile whose mains name a system extension missing from `systemExtensions` fails, naming the extension.
 Each project has:
-- `path`: the absolute path of the project folder, any path the system allows. Two projects never share a folder, and a project folder is never inside another one.
+- `path`: the absolute path of the project folder, any path the system allows, exactly as the current system and file system name it, separators included: the tagged text only picks the most readable form holding those exact bytes. Two projects never share a folder, and a project folder is never inside another one.
 - `kind`: `idle`, `code`, `data:readOnly` or `data:readWrite`.
 - `mains`: the selected mains: the mains the last `Run` ran, for a code project with several mains.
 - `reads` and `edits`: for a code project, the data projects it may read, and those it may read and write, each with the type names the code uses for it. A project in `reads` is `data:readOnly` or `data:readWrite`; a project in `edits` is `data:readWrite`. A data project may be in both: the type names in `edits` read and write, those in `reads` only read; a type name is not in both. A link names at least one type name.
@@ -174,6 +174,7 @@ A `projects.info` that is not a valid Info file, or does not hold what is above,
 A manager initiated action should never edit a project info file in a way that is invalid, thus the fatal error above shows either a manager bug or OS/user interference in the manager folder.
 
 The whole file can be edited by hand from the GUI, or via a message naming a file (outside of the manager folder) with the intended new content.
+The editor of the GUI remembers the content it opened; when the user commits, and `projects.info` no longer holds that content, the editor refuses the commit in a dialog, and the user edits the new content again; otherwise the commit is an `EditMetadata`.
 An edit is accepted only if the whole text is valid, and an error points at the offending text in the Frontend error message style.
 An accepted edit applies at once: projects it removes are forgotten, projects it adds are registered as they are, every project is checked again.
 
@@ -217,6 +218,8 @@ The icon of a project is the only PNG file in the folder `.config/icon` of the p
 Kinds change request: from idle to any kind, from any kind back to idle. Changing kind keeps `mains`, `reads` and `edits`: they have no effect while the project is not code, and come back if it becomes code again.
 
 ## General Gui shape:
+Dropping files or folders on the window is `Register` of each of them.
+
 A menu bar at the top, with the Manager menu: Add folder (`Register`, through a file picker), Edit project metadata (`EditMetadata`), Connect Eclipse (`ConnectEclipse`), Base documentation, Reset (`Reset`), Quit (`Quit`).
 
 A simplified 'desktop with icons' either taking the whole space or taking the left space of a vertical divider.
@@ -245,7 +248,7 @@ For a code project whose mains have a `Shortcut`, after the header we see the ic
 Double clicking on it is `OpenWithOrShortcut` with the path of its shortcut file: the very message a double click on that file on the desktop sends.
 
 
-For every project, we have an Output collapsible area with vertical scroll bars and max size of 1/2 of the gui height. What the main button produces always goes there.
+For every project, we have an Output collapsible area with vertical scroll bars and max size of 1/2 of the gui height. What the main button produces always goes there, and the Output keeps all of it.
 
 For a code project whose mains open extensions (`OpenWith`), after the Output we see a collapsible area with vertical scroll bars and max size of 1/2 of the gui height, one block per main opening extensions:
   "Extensions this main opens:" (each extension with its icon),
@@ -456,9 +459,13 @@ Connect Eclipse puts the plugin in the Eclipse folder, with `manager.info` next 
 
 Plugin design: Eclipse reads `projects.info` and follows up into the `.fearless_out` files when needed to recover information and display the state.
 The Output of a running program has no bound on its size, so the manager does not pass it through files: Eclipse listens on a port, and its `Run` and `Compile` carry that port.
-Eclipse follows exactly one job: the job of its last `Run` or `Compile`; Eclipse sends no other `Run` or `Compile` until that job ends. Everything else Eclipse shows (the error of the last compile, the unit test log) is read from files.
+Eclipse follows exactly one job: the job of its last `Run` or `Compile`; Eclipse sends no other `Run` or `Compile` until that job ends, except for a save. Everything else Eclipse shows (the error of the last compile, the unit test log) is read from files.
 
 Eclipse commands the manager by running the manager program with the arguments `FearlessCommand<Verb>` and the arguments of the verb. If a message ends up in error, the manager shows the error as usual.
+
+Saving a file of a code project in Eclipse compiles the project. Users save often, and a compile near its end should not be thrown away:
+- if the followed job is a compile of that project that started more than 15 seconds ago, the save is ignored: the files stay unsaved in their editors;
+- otherwise Eclipse sends `Terminate` of the project (a run is always ended, and so is a younger compile), saves every open file of the project together, and sends `Compile` of the project.
 
 The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and never writes into a project folder; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. Every two seconds it reflects `projects.info` and the `.fearless_out` folders: the error of the last compile (`compile_error.txt`) in the Problems view, on its file at its line, or on the project while that file does not exist, and in the JUnit view the unit test log the running main writes in `.out/logs`: its complete records, its lines up to the last newline, without a test case whose closing line is not written yet. It shows the followed job in the Console view as a process, where a stack frame and the header of a compile error are links opening that file at that line; its Terminate button is `Terminate` of the project of that job. Fearless files show with syntax highlighting. Build (`Compile` for a code project with valid content, `Check` for any other), Clean, Run (what the main button does: `Compile` when the project is out of date, else `Run` naming the only main or the selected mains), Terminate, the kind switches of the Fearless menu of a project, New Project (`Register`), Show in manager and Forget project are messages to the manager.
 A missing or malformed file of the manager is an error shown in Eclipse, and the plugin stops following the manager until Eclipse starts again.
@@ -489,6 +496,8 @@ Controllers must have a similar (`Report`, `Violation`) classification inside it
 ## Future design
 
 What the design will cover later; nothing in this section is current behaviour.
+- The Output keeps only the last part of what a job prints, so a program printing without end does not fill the memory.
+- `reads` and `edits` reach the running main through new APIs of the standard library.
 - The GUI becomes a separate program, as for many Linux daemons: the manager has no window, and the GUI commands the single manager through the manager program with `FearlessCommand<Verb>` arguments, as every other program does. The GUI could be a Fearless program with some extra permissions.
 - Delivering the opened file to the program, and feeding more files to a running main, through `System.inputCursor` of the standard library: a linked list that grows when new input files arrive, giving the running main the file of its double click, and the files of later double clicks on its extension. The text written inside a shortcut file could then be input for its main.
 - A double click for a main already running signals the running main to wake up, for example bringing its window to the front.
@@ -501,6 +510,7 @@ What a rewrite needs that neither this design nor the other repositories say.
 
 An implementation decides alone every detail the design leaves open below its concepts: wire formats, encodings, intervals, the library calls, the content of the files the design names (information for Eclipse can be added to `manager.info`). It never adds what the user or another program can observe and the design does not describe: a file in the manager folder or in a project, a verb, a GUI element, a message, a fallback. Those go into the design first.
 
+- The stand-in for the tray: under Wayland a program can not place its windows, but AWT on Linux is an X11 client (through XWayland under Wayland), so the manager places the window itself.
 - The single manager: the process holding the lock (`FileChannel.tryLock`) of the file `instance.lock` in the manager folder. The operating system releases the lock when the process ends, however it ends, so a manager that was killed leaves no stale lock.
 
 - Tray on Linux: `java.awt.SystemTray` needs an XEmbed tray, which GNOME and most Wayland desktops do not have; what they show is a StatusNotifierItem on the session bus, registered with `org.kde.StatusNotifierWatcher`, its menu served as `com.canonical.dbusmenu`. A desktop with no owner of the watcher name has no tray. The JDK has no D-Bus client, so the manager speaks the D-Bus wire protocol itself on the `unix:path=` socket of `DBUS_SESSION_BUS_ADDRESS`.
