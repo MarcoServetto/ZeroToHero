@@ -95,6 +95,8 @@ Strategies:
 - 'positive speculation calls': the calls that could be made by a flow expression that completes successfully in a parallel strategy, but that the same flow expression would not make in a sequential strategy.
 - 'speculation calls': the calls that could be made by a flow expression in a parallel strategy, but that the same flow expression would not make in a sequential strategy.
 - 'negative speculation calls': speculation calls that are not positive speculation calls. That is, calls that parallelism performs early that would be eventually executed if the flow expression completes successfully, but that could be prevented by an exception or non termination of a former call.
+- 'speculation driver': a stage or terminal that can decide that the elements after some element are never processed, so that running the stages before it ahead of that decision makes positive speculation calls: `limit`, an `actor` or `actorMut` returning `Break#`, and the short-circuit terminals. In `.map a .sort .map b .findFirst c`, `.findFirst c`.
+- 'speculating stage': a stage between the last fence and a speculation driver; running it in parallel makes positive speculation calls. In `.map a .sort .map b .findFirst c`, `.map b`, and `.findFirst c` itself for its own lambda; `.map a` is not one, since `.sort` is a fence.
 
 ### The two kinds of parallelism
 
@@ -544,7 +546,7 @@ Void checkDecisions(Chain c){
     }
   }
 Str decisionMsg(Stage s, Stage d)=
-  "`<s>` receives the elements of `<c.mode>` as `mut` and runs before the decision of `<d>`, with no fence between them: it can not run in parallel without mutating elements the flow may never process. End the flow expression with `.list` before `<d>`, and continue with `.seqFlow`."
+  "`<s>` is a speculating stage of the speculation driver `<d>` and receives its elements as `mut`: it can not run in parallel without mutating elements the flow may never process. End the flow expression with `.list` before `<d>`, and continue with `.seqFlow`."
 Void checkForEach(Chain c){
   match c.shape{
     .. f X+ .forEach with f in Fence + {source}, X.none(Fence) ->
@@ -847,7 +849,7 @@ A `flatMapMut` or an `actorMut` ends a data parallel region, even where its expa
 
 ### Positive speculation calls over `ParRepr` and `ParPod`
 
-A positive speculation call on a `mut Repr` or a `mut IsoPod` of the source is observable: it may mutate an element the sequential strategy never processes, the mutation stays visible after the result, and how many elements are mutated depends on chunk sizes and scheduling. So no strategy makes positive speculation calls on code that can reach an element of the source as `mut`. The same holds for the stages before a `.recoverFlow` in a flow of mode `Seq`, whose elements can be plain `mut`: in `persons.seqFlow.map{p -> Block#(p.birthday, p.dna)}.recoverFlow(ParImm#).first` the `map` would make `birthday` calls on persons that `.first` never reaches.
+A positive speculation call on a `mut Repr` or a `mut IsoPod` of the source is observable: it may mutate an element the sequential strategy never processes, the mutation stays visible after the result, and how many elements are mutated depends on chunk sizes and scheduling. So no strategy makes positive speculation calls on code that can reach an element of the source as `mut`. The same holds for the speculating stages before a `.recoverFlow` in a flow of mode `Seq`, whose elements can be plain `mut`. In `persons.seqFlow.map{p -> Block#(p.birthday, p.dna)}.recoverFlow(ParImm#).map{d -> d.analyse}.findFirst{a -> a.isMatch}`, with `dna` an `imm` value, `.findFirst` is the speculation driver. `.map{d -> d.analyse}` is a speculating stage over `imm` elements, and runs in parallel. `.map{p -> Block#(p.birthday, p.dna)}` is a speculating stage too, and receives `mut` persons, so the flow throws the misuse exception. With `++ {}` before the `.recoverFlow`, the `birthday` map runs on every person first.
 
 **Other approaches:**\
 Many other approaches make positive speculation calls over mutable elements, and the mutations on the elements after the decision survive the whole flow expression, in a number that depends on the schedule.
@@ -936,7 +938,7 @@ The identity check is not a consequence of racing: the sequential strategy runs 
 
 No `imm` value can reach a `mut Repr` or `mut IsoPod`, so with the flag each task reaches no `Repr` or `IsoPod` but its own element; the lambdas of `for` and `let` run once every stage has finished. The backend sets the flag on the lambda objects, visible to the runtime (in Java), not in Fearless; when the lambdas are written in place, the flag is checked when compiling and leaves no code.
 
-Over `ParRepr` and `ParPod`, and before a `.recoverFlow` in mode `Seq`, a lambda before a decision point, with no fence between them, could run in parallel only with positive speculation calls, which may mutate elements the sequential strategy never processes; so such a flow expression throws the misuse exception of `checkDecisions` under **Misuse exceptions**. Ending the flow expression before the decision point costs little: `.list` directly after a fence takes the list the fence has already materialised.
+Over `ParRepr` and `ParPod`, and before a `.recoverFlow` in mode `Seq`, a speculating stage receives its elements as `mut`, so it could run in parallel only with positive speculation calls, which may mutate elements the sequential strategy never processes; so such a flow expression throws the misuse exception of `checkDecisions` under **Misuse exceptions**. Ending the flow expression before the decision point costs little: `.list` directly after a fence takes the list the fence has already materialised.
 
 **Over `read` or `imm` elements:**\
 A stage runs over `read` or `imm` elements when the shape and the mode show that no element can lead to a `mut` object existing before the flow: in mode `ParImm` or `ParRead`, after a `.recoverFlow` to one of them, or after a `++`, a `flatMap`, a `distinct`, an `actor` or a `scan`, which send their elements downstream as `read` or `imm`. The chain records no other element type, so a `map` returning an `imm` value shows nothing. A `mut` object a stage creates after that point is reachable from nowhere else.
