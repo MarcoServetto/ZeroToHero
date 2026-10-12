@@ -54,7 +54,7 @@ Flow expressions:
 - 'stage': a flow method returning another flow.
 - 'terminal': a flow method ending the flow and returning something that is not a flow.
 - 'whole flow expression': a source, its stages and its terminal. Not: this flow.
-- 'chain': what the flow object records of the whole flow expression: the source, its mode and each stage/terminal with its arguments. Not: pipeline; pipeline is only pipeline parallelism.
+- 'chain': what the flow object records of the whole flow expression: the source, its mode, its hints and each stage/terminal with its arguments. Not: pipeline; pipeline is only pipeline parallelism.
 - 'shape': the chain without the values of its arguments: the sequence of the stages/terminals.
 - 'executed as part of the xxx stage' (for example the map stage): user code, provided via a lambda passed to that stage. Do not use general terms like "earlier", "first", "later" etc.
 - 'core method': a method with a direct implementation; every other flow method desugars to core methods.
@@ -85,6 +85,7 @@ Strategies:
 - 'mode': `Seq`, `ParImm`, `ParRead`, `ParRepr` or `ParPod`, recorded by the source. Not: execution mode, par mode.
 - 'strategy': how the terminal runs the whole flow expression: the sequential strategy, data parallelism, pipeline parallelism, or a mix of them. Not: mode, shape, parallel shape.
 - 'sequential strategy': runs the elements through the stages one at a time. Not: sequential execution, sequential run, sequential mode.
+- 'hint': `.hintSequential` or `.hintParallel`, recorded in the chain to say which strategy the user prefers for the whole flow expression. A hint changes nothing a flow expression returns. Not: annotation, option.
 - 'data parallelism/fork-join': the elements are split into chunks; a task runs one chunk through a sequence of stages; workers execute tasks.
 - 'worker'. Not: thread, core.
 - 'data parallel region': consecutive stages (could be a single one) running with data parallelism. Not: parallel region, section.
@@ -336,6 +337,8 @@ Flow[E:*]: {
   mut .allToAll[R:*](f: read F[mut List[E], mut List[R]]): mut Flow[R];
   mut .distinct[K](by: OrderHashBy[imm E,K]): mut Flow[read/imm E];
   mut .suppressMisuseExceptions: mut Flow[E];
+  mut .hintSequential: mut Flow[E];
+  mut .hintParallel: mut Flow[E];
   //desugared stages
   mut .flatMapMut[R:*](f: read F[E, mut ToFlow[R]]): mut Flow[R] ->
     this.actorMut[Void, R](Void, {down, _, e ->
@@ -446,6 +449,12 @@ for(E e: in){ out.send(e); }
 It can be called anywhere in the flow expression and tells the terminal to ignore the misuse exceptions checks. 
 It is a global flag, it can not say which misuse exceptions it is meant for.
 
+**`hintSequential`** and **`hintParallel`** record a hint in the chain:
+```
+for(E e: in){ out.send(e); }
+```
+They can be called anywhere in the flow expression and apply to all of it.
+
 **sources**:
 ```
 for(E e: <the elements of the receiver, in its order>){ out.send(e); }
@@ -472,6 +481,7 @@ Misuse exceptions are thrown by the terminals, so the code implementing the term
 
 Every terminal starts with `checkMisuse(c)`, where `c` is its chain:
 - `c.mode`, `c.source` (the elements of the source), `c.stages` (in order, indexed from `0`), `c.terminal`;
+- `c.hints`: the `.hintSequential` and `.hintParallel` calls of the chain, in order; a hint is not in `c.stages`;
 - `c.lambdas`: every lambda of the chain; `l.owner` is the stage/terminal `l` is an argument of;
 - `l.onlyImmCapture`: `l` captures only `imm` values; a top level declaration used as a value and every `imm` lambda carry it.
 
@@ -550,6 +560,8 @@ ReadsFirst=  {map, readOnly, ++, scan, distinct, distinctMut, limit}* .first
 ```
 ```
 Void checkShape(Chain c){
+  if(c.hints.size > 1){ throw
+    "A flow takes at most one of `.hintSequential` and `.hintParallel`, but this one has "+c.hints.size+". Keep only one."; }
   match c.shape{
     .. s[i] rest with s in {sort}, rest in ReadsEmpty | ReadsCount | ReadsElems
     .. s[i] rest with s in {map, scan}, rest in ReadsEmpty | ReadsCount
@@ -865,7 +877,8 @@ The runtime can not know how expensive a lambda is, and element count alone is a
 Java streams offer only `.parallel()`, `.sequential()` and `.unordered()`; running a parallel stream inside a chosen `ForkJoinPool` is a known workaround, not part of the API. Rayon offers `with_min_len` and `with_max_len` on indexed parallel iterators, bounding the chunk sizes.
 ```
 es.flow //examples, of course it does not make sense to use those together
-  .hintSeq// to run sequential, like Java .sequential
+  .hintSequential// to run sequential, like Java .sequential
+  .hintParallel// to run parallel when possible, like Java .parallel
   .hintTaskSize 10
   .hintSpeculativeSize 25
   .hintPipeline //to prefer pipeline parallelism when possible
@@ -873,7 +886,7 @@ es.flow //examples, of course it does not make sense to use those together
   .map{..}.list
 ```
 Then we could have unchecked exceptions on inapplicable hints etc.
-A hint never changes what a flow expression returns, so hints that never throw can be added at Stage 3 with no change of semantics; a hint whose misuse throws is part of the semantics, and must be named, with its exception, before Stage 1 starts. No hint throws: `.suppressMisuseExceptions`, which works like a hint, is the only one before Stage 3, and every later hint never throws.
+`.hintSequential` and `.hintParallel` are the first hints. The terminal may use a parallel strategy only where the mode allows it and the flow has no `.hintSequential`. `.hintParallel` asks the terminal to use a parallel strategy where the mode allows one.
 
 ## How: the parallel strategies
 
