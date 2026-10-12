@@ -88,9 +88,9 @@ A verb is one of the following, written in upper camel case. Verbs about the who
 Verbs about one project, taking the name of a registered project:
 - `Run <name>`: select the project and run the mains of the second argument, separated by spaces, in the order of the mains of the project; they become the selected mains: the last mains started take the lead; a third argument, when present, is a port;
 - `Compile <name>`: select the project and compile it if it needs compiling; a second argument, when present, is a port;
-- `Check <name>`: select the project and report in its Output why it is invalid or out of date, or that it is neither; the reason is also written to `.fearless_out/check_error.txt`, making `.fearless_out` if missing, and a project that is neither has its `check_error.txt` deleted;
+- `Check <name>`: select the project and report in its Output why it is invalid or out of date, or that it is neither; why it is invalid is also written to `.fearless_out/check_error.txt`, and a `Check` of a valid project deletes `.fearless_out/check_error.txt`;
 - `Terminate <name>`: select the project and end its job, if any;
-- `Clean <name>`: select the project and delete its compiled cache;
+- `DeleteCache <name>`: select the project and delete its compiled cache;
 - `Kind <name>`: set the kind of the project to the second argument (`idle`, `code`, `data:readOnly`, `data:readWrite`);
 - `Forget <name>`: forget the project.
 - `Link <name>`: set a link of the code project to a data project to the second argument: the name of the data project, then `read` or `write`, then the type names the code uses for it, separated by spaces; no type names removes that link;
@@ -112,7 +112,7 @@ Ill formed messages:
 - `Run` and `Compile` of a project with invalid content, saying why (for a broken link, naming the link and why);
 - `Run` of a project that is not compiled, naming its state; `Run` naming no main, or a main that is not a main of the project (the message lists the mains);
 - `Link` of a project that is not code;
-- a job, `Clean`, `Kind` or `Forget` while the project has a job;
+- a job, `DeleteCache`, `Kind` or `Forget` while the project has a job;
 - a `Kind` change that is not from idle or back to idle.
 
 Whether a message is ill formed is decided when it arrives, from the message and the current state, before anything is compiled, run or written to the Output.
@@ -230,7 +230,7 @@ Clicking an icon is `Show` with the name of its project. When an Icon is selecte
 
 ## Project area contains, top to bottom:
 
-A header on one line: the project icon, the project name, and the following buttons, all of the same height:
+A header on one line: the project icon, the project name, and the following buttons:
 - The main button, by the state of the project:
   - Check, for a project that is not code, and for a code project with invalid content;
   - Compile, for a code project that is not compiled;
@@ -239,7 +239,7 @@ A header on one line: the project icon, the project name, and the following butt
 - The Open docs button (enabled once the mains are known). It opens the docs in the favourite browser.
 - The kind buttons: Only "Back to idle" for a project that is not idle;
 for an idle project "Become data", "Become editable data" and "Become code". They are greyed out while the project has a job.
-- Browse, opening the project folder in the file explorer, Forget, and for a code project Delete cache (`Clean`).
+- Browse, opening the project folder in the file explorer, Forget, and for a code project Delete cache (`DeleteCache`).
 
 For a code project, if there is more than one main
 we see "Run 'V'" where V is some arrow down signalling that there is more than just running.
@@ -269,7 +269,7 @@ For a code project we have Logs; collapsible area with vertical scroll bars and 
 A project does at most one job at a time: compiling, or running its mains.
 Every job, and every `Check`, starts with an empty Output area. Everything a job prints goes there, and the Output marks where the job, and each main of a run, starts and ends, and how it ended, so that Eclipse and the user know when it is over.
 
-- Compile (code projects): a code project with broken links is not compiled. The compiler runs in its own JVM; its output goes to the Output. A compile that ends with the mains known removes from the selected mains those that are no longer mains. A compile that fails leaves the project out of date: the packages it did not compile stay out of date, and a compile that fails after compiling the packages (on an icon, an extension or a shortcut file) deletes `mains.info`, so reading the mains fails. A compile that fails writes its error text to `.fearless_out/compile_error.txt`, and a compile that succeeds deletes `.fearless_out/compile_error.txt`: the error of the last compile stays readable by Eclipse after the manager restarts.
+- Compile (code projects): a code project with broken links is not compiled. The compiler runs in its own JVM; its output goes to the Output. A compile that ends with the mains known removes from the selected mains those that are no longer mains. A compile that fails leaves the project out of date: the packages it did not compile stay out of date, and a compile that fails after compiling the packages (on an icon, an extension or a shortcut file) deletes `mains.info`, so reading the mains fails. A compile that fails writes its error text to `.fearless_out/compile_error.txt`, and a compile that succeeds deletes `.fearless_out/compile_error.txt`.
 - Run (code projects): a code project with broken links does not run. When the project is out of date, the main button compiles. A `Run` runs the mains it names, in the order of the mains of the project. Each main runs in its own JVM, one after the other.
 - Terminate ends the job: the JVM of the running main or of the compile ends, and no further main of that run starts.
 
@@ -370,7 +370,7 @@ The name of an icon in `.fearless_out/icons/` follows from the path of its image
 
 ### The in memory map
 
-The manager keeps `extension -> list of (project, main, icon)` in memory only. It builds it at start up from the `mains.info` of every registered `code` project, and rebuilds it after every compile, clean (the project's `.fearless_out` is gone, so it claims nothing), forget, and kind change away from `code`. A project whose `mains.info` is missing claims nothing.
+The manager keeps `extension -> list of (project, main, icon)` in memory only. It builds it at start up from the `mains.info` of every registered `code` project, and rebuilds it after every compile, `DeleteCache` (the project's `.fearless_out` is gone, so it claims nothing), forget, and kind change away from `code`. A project whose `mains.info` is missing claims nothing.
 
 ### Autoselected extensions
 
@@ -470,13 +470,13 @@ Saving a file of a code project in Eclipse compiles the project. Users save ofte
 - if the followed job is a compile of that project that started more than 15 seconds ago, the save is ignored: the files stay unsaved in their editors;
 - otherwise Eclipse sends `Terminate` of the project (a run is always ended, and so is a younger compile), saves every open file of the project together, and sends `Compile` of the project.
 
-The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and writes into a project folder only the files and folders the user saves or creates; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. Every two seconds it reflects `projects.info` and the `.fearless_out` folders: the error of the last compile (`compile_error.txt`) in the Problems view, on its file at its line, or on the project while that file does not exist, and the error of the last check (`check_error.txt`) on the project, each while it is not out of date, and in the JUnit view the unit test log the running main writes in `.out/logs`: its complete records, its lines up to the last newline, without a test case whose closing line is not written yet. It shows the followed job in the Output view, emptied when a job starts, like the Output area of the manager: a view with no buttons, where a stack frame and the header of a compile error are links opening that file at that line. Fearless files show with syntax highlighting. Build (`Compile` for a code project with valid content, `Check` for any other), Clean, the main button below, the kind switches of the Fearless menu of a project, New Project (`Register`), Show in manager (`Show` with the name of the project) and Forget project are messages to the manager.
+The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and writes into a project folder only the files and folders the user saves or creates; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. Every two seconds it reflects `projects.info` and the `.fearless_out` folders: the error of the last compile (`compile_error.txt`) in the Problems view, on its file at its line, or on the project while that file does not exist, and the error of the last check (`check_error.txt`) on the project, each while it is not out of date, and in the JUnit view the unit test log the running main writes in `.out/logs`: its complete records, its lines up to the last newline, without a test case whose closing line is not written yet. It shows the followed job in the Output view, emptied when a job starts, like the Output area of the manager: a view with no buttons, where a stack frame and the header of a compile error are links opening that file at that line. Fearless files show with syntax highlighting. Build (`Compile` for a code project with valid content, `Check` for any other), Clean (`DeleteCache`), the main button below, the kind switches of the Fearless menu of a project, New Project (`Register`), Show in manager (`Show` with the name of the project) and Forget project are messages to the manager.
 The toolbar of the Fearless perspective holds the main button of the manager for the project of the active editor or of the selection. It shows what pressing it does, each with an image of its own: Check, Compile, Run, Run V, or Terminate while Eclipse follows a job of that project. Run V asks which mains to run, with the selected mains checked. Besides it, the toolbar of the Fearless perspective holds only the buttons of text editing (Save, Undo, Redo, Search, the toggles of the editor and the navigation in the text); a button that does nothing for Fearless or repeats another is hidden, and so is the Run menu, in the Fearless perspective only. Eclipse finds the state from the files, as the manager does: the kind and the links in `projects.info`, the marker, the packages and their rank files, and whether compiling would compile some package. A project whose content is invalid in another way shows Compile, and the manager refuses that `Compile`, saying why.
 The toolbar of the Fearless perspective also holds New Package and New Type, for the project of the active editor or of the selection; each asks for a path inside the project folder and refuses a path that is not valid, saying why:
 - New Package takes a path like `lib/_beer`, and makes the package folder `_beer` with the folders holding it;
 - New Type takes a path like `lib/_beer/point`, and makes the file `point.fear` holding the type `Point`. Rank file makes the rank file of that package instead, `_rank_app.fear` or the rank chosen, holding the usual `use` lines of the standard library. Example tests adds a test suite checking some arithmetic: a project runs its tests more than a bare main.
 New Folder and New File of the Fearless perspective warn when the name is not a valid name of a Fearless project, saying why, and create it anyway.
-New Fearless Project registers a folder, made if missing (`Register`). It can first write a demo into a new or empty folder, then make the project code (`Kind`) once the manager lists it: Hello world; Simple GUI, a window with a button; Notes app, a main with a `Shortcut` and a main with an `OpenWith`, each with its icon.
+New Fearless Project registers a folder, made if missing (`Register`). It can first write a demo into a new or empty folder, then make the project code (`Kind`) once the manager lists it: Hello world; Simple GUI, a window with a button; Shortcut and OpenWith, a main started by its shortcut file and a main opening the files of its extension, each with its icon.
 A missing or malformed file of the manager is an error shown in Eclipse, and the plugin stops following the manager until Eclipse starts again.
 
 ## Content assist
