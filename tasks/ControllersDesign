@@ -6,7 +6,9 @@ Next to it, and independent from it, Controllers also holds:
 - `agentTools`: a library driving the real pointer and keyboard, for GUI tests of any program.
 - `benchmarks`: speed measures of Fearless programs against the runtime.
 
-The manager behaves the same on every system: it does not adapt to the conventions of the system it runs on, and when the system does not offer what the manager needs (a display, a file system feature the manager relies on), the manager stops with a fatal error saying so.
+The manager is an island: it behaves the same on every system, and this is its objective. A user moving from one system to another finds the very same manager.
+The manager never folds on the conventions of the system it runs on. When a part of the system (a tray, a dialog, a desktop shell) would make the manager behave differently than this design, the manager does not use that part that way: the design holds on every system.
+When the system does not offer what the manager needs (a display, a file system feature the manager relies on), the manager stops with a fatal error saying so.
 This is the only concept of 'fatal error'. The manager should attempt to discover if we are unsupported as early as possible, but may discover fatal errors while running. For example, the HD could stop working or the OS could start reporting we are headless from now on.
 Thus, the following are not fatal errors: calling the manager program with wrong arguments either wrong format or arguments pointing to non existing folders
 The problems of one project (bad file names, a bad icon, a missing folder, a failing compile) are not fatal errors, they are part of normally running the manager.
@@ -33,7 +35,7 @@ Starting the manager program leaves one message in the manager folder. There cou
 The manager program takes:
 - zero arguments: the message is `Show`: show the window, starting the single manager when none runs;
 - a first argument `FearlessCommand<Verb>`, then the arguments of the verb: the message is the verb `<Verb>` with those arguments. A project name, a main, a kind and a type name are written as they are. A path is written as a tagged text in its `Base16:` form, `Base16:` then the bytes naming the path, so every argument is plain ASCII on every system. A port is written `Port:` then its number. The words after the project name of `Run` and `Link` form their second argument, separated by single spaces, except a last `Port:` word, the port of `Run`;
-- one argument not starting with `FearlessCommand`: the path of a file, as the system passes the path when the file is opened (for example by a double click); the message is `Register` with that path for a `.fearless` file, and `OpenWithOrShortcut` with that path for any other file.
+- one argument not starting with `FearlessCommand`: the path of a file or a folder, as the system passes the path when the file is opened (for example by a double click); the message is `Register` with that path for a folder or a `.fearless` file, and `OpenWithOrShortcut` with that path for any other file.
 For example:
 ```
 FearlessCommandQuit
@@ -54,12 +56,11 @@ The single manager runs until Quit, or until a fatal error. Quit ends the manage
 
 Closing the window hides it, but we need to make sure something is left graphically to show the continued life of the `single` manager process.
 If an OS supports system tray/StatusNotifierItem, this is what we use.
-Clicking it shows the window, and its menu holds Show manager and Quit manager.
+Clicking it, with any button, opens its menu: Show manager and Quit manager.
 
 On a system with no tray, the manager shows the icon itself.
 The manager window is closed and replaced with another window: a window of the size of a tray icon, with no title bar and no border, holding only the Fearless icon, in the bottom right corner of the screen and always above the other windows.
-Left click on that window shows the manager as for left click on the tray icon.
-Right click on that window shows the menu the tray icon would have if supported.
+Clicking that window, with any button, opens the menu of the tray icon.
 When the manager is 'shown again', the simulated tray icon window is removed and the manager window is shown again.
 
 ## Requests and messages
@@ -221,12 +222,13 @@ Kinds change request: from idle to any kind, from any kind back to idle. Changin
 ## General Gui shape:
 Dropping files or folders on the window is `Register` of each of them.
 
-A menu bar at the top, with the Manager menu: Add folder (`Register`, through a file picker), Edit project metadata (`EditMetadata`), Connect Eclipse (`ConnectEclipse`), Base documentation, Reset (`Reset`), Quit (`Quit`).
+A menu bar at the top, with the Manager menu: Add folder (`Register`, through a file picker), Edit project metadata (`EditMetadata`), Connect Eclipse (`ConnectEclipse`), Base documentation, Reset (`Reset`, after a confirmation dialog saying what Reset does, with the buttons Reset and Cancel, Cancel preselected), Quit (`Quit`).
 
-A simplified 'desktop with icons' either taking the whole space or taking the left space of a vertical divider.
+A simplified 'desktop with icons' fills the window under the menu bar while no project is selected; while a project is selected, it takes the left side of a vertical divider, and the project area takes the right side.
 Icons represent registered folders, sorted by name: each shows the project icon with its state badge, and the project name under it.
 A busy project (compiling or running) shows an animated badge.
-Clicking an icon is `Show` with the name of its project. When an Icon is selected, the divider opens and on the right we see the project area.
+Clicking an icon is `Show` with the name of its project.
+Double clicking an icon of a project in the state `code: compiled` is `Run` of that project naming its only main, or, for a project with several mains, its selected mains (`mains` in `projects.info`). For any other project, and for a project with several mains and no selected main, a double click is a click.
 
 ## Project area contains, top to bottom:
 
@@ -238,14 +240,15 @@ A header on one line: the project icon, the project name, and the following butt
   - Terminate, while the project has a job.
 - The Open docs button (enabled once the mains are known). It opens the docs in the favourite browser.
 - The kind buttons: Only "Back to idle" for a project that is not idle;
-for an idle project "Become data", "Become editable data" and "Become code". They are greyed out while the project has a job.
+for an idle project "Become data", "Become editable data" and "Become code".
 - Browse, opening the project folder in the file explorer, Forget, and for a code project Delete cache (`DeleteCache`).
+The kind buttons, Forget and Delete cache are greyed out while the project has a job.
 
 For a code project, if there is more than one main
 we see "Run 'V'" where V is some arrow down signalling that there is more than just running.
 When Run V is pressed, it behaves like a drop-down menu showing the available mains, with a checkbox near their names, the selected mains checked, and a 'Run' button at the end of the checkbox list, disabled if nothing is checked. That 'Run' button is `Run` naming the checked mains; the Run button of a project with one main is `Run` naming that main.
   
-For a code project whose mains have a `Shortcut`, after the header we see the icon of each `Shortcut`.
+For a code project whose mains have a `Shortcut`, after the header we see each shortcut file as the simplified desktop shows a project: the icon of its `Shortcut`, with the name of the shortcut file under it.
 Double clicking on it is `OpenWithOrShortcut` with the path of its shortcut file: the very message a double click on that file on the desktop sends.
 
 
@@ -511,6 +514,7 @@ What the design will cover later; nothing in this section is current behaviour.
 - Delivering the opened file to the program, and feeding more files to a running main, through `System.inputCursor` of the standard library: a linked list that grows when new input files arrive, giving the running main the file of its double click, and the files of later double clicks on its extension. The text written inside a shortcut file could then be input for its main.
 - A double click for a main already running signals the running main to wake up, for example bringing its window to the front.
 - A captured extension that no main claims gets its own icon, showing that the manager holds it, instead of the conflict icon.
+- The fields of the Links area show what they take and complete what is typed: the type names the code uses for that data project, separated by spaces.
 - A main learns the extensions it claims, for example through a `System` method. A main with `OpenWith[I]` gets an extension such as `ffile042`, chosen by the manager and varying between machines and compile orders; to save a document the user can later double click, the program must name it `<something>.ffile042`.
 
 ## Implementation notes
@@ -520,6 +524,7 @@ What a rewrite needs that neither this design nor the other repositories say.
 An implementation decides alone every detail the design leaves open below its concepts: wire formats, encodings, intervals, the library calls, the content of the files the design names (information for Eclipse can be added to `manager.info`). It never adds what the user or another program can observe and the design does not describe: a file in the manager folder or in a project, a verb, a GUI element, a message, a fallback. Those go into the design first.
 
 - The stand-in for the tray: under Wayland a program can not place its windows, but AWT on Linux is an X11 client (through XWayland under Wayland), so the manager places the window itself.
+- A double click on a button presses it twice, and the second press comes before the request of the first changes the window, so it sends the same request again. Every button is disabled for half a second after it is pressed.
 - The single manager: the process holding the lock (`FileChannel.tryLock`) of the file `instance.lock` in the manager folder. The operating system releases the lock when the process ends, however it ends, so a manager that was killed leaves no stale lock.
 
 - Tray on Linux: `java.awt.SystemTray` needs an XEmbed tray, which GNOME and most Wayland desktops do not have; what they show is a StatusNotifierItem on the session bus, registered with `org.kde.StatusNotifierWatcher`, its menu served as `com.canonical.dbusmenu`. A desktop with no owner of the watcher name has no tray. The JDK has no D-Bus client, so the manager speaks the D-Bus wire protocol itself on the `unix:path=` socket of `DBUS_SESSION_BUS_ADDRESS`.
