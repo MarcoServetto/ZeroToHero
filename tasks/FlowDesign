@@ -71,7 +71,8 @@ Kinds of stages/terminals:
 - 'elementwise' stage: `map`, `filter`, `flatMap`, `flatMapMut`, `peek`, `mapFilter`.
 - 'streaming stateful' stage: `limit`, `scan`, `actor`, `actorMut`, map with context, `distinct`.
 - 'fence': a stage/terminal that sends nothing downstream, and lets no exception of its own propagate, until every stage before it has finished with every element: the stages `allToAll`, `sort`, `sortDistinct`, `max`, `min`, `distinctMut` and `++`, and the terminal `for`. Not: fence operation, barrier.
-- 'consuming terminal': `list`, `eList`, `set`, `eSet`, `mapping`, `for`, `forEach`, `fold`, `foldAcc`, `size`, `isEmpty`, `get`, `getOpt`, `join`, `sum`, `last`, `let`. Every element passes the whole chain.
+- 'consuming terminal': `list`, `eList`, `set`, `eSet`, `mapping`, `for`, `forEach`, `fold`, `foldAcc`, `size`, `isEmpty`, `get`, `getOpt`, `join`, `sum`, `last`. Every element passes the whole chain.
+- 'utility method': a flow method that is neither a stage nor a terminal: it calls a terminal and continues with ordinary code, so the flow expression ends at that terminal. `let` is the only one.
 - 'short-circuit terminal': `first`, `any`, `all`, `none`, `findFirst`, `findMap`. They can decide before the end, leaving the elements after the decision in flow order never processed.
 
 Results and exceptions:
@@ -530,8 +531,8 @@ Void checkPar(Chain c){
   if(exists i != j: c.source.get(i) == c.source.get(j)){ throw
     "The elements at index <i> and <j> of the source are identity equal: each element of a `<c.mode>` flow must be a distinct object."; }
   for(Lambda l: c.lambdas){
-    if(!l.onlyImmCapture && l.owner not in {for, forEach, let}){ throw
-      "The lambda of `<l.owner>` captures a value that is not `imm`: over `ParRepr` and `ParPod` only the lambdas of `.for`, `.forEach` and `.let` may capture `read` or `mut` values."; }
+    if(!l.onlyImmCapture && l.owner not in {for, forEach}){ throw
+      "The lambda of `<l.owner>` captures a value that is not `imm`: over `ParRepr` and `ParPod` only the lambdas of `.for` and `.forEach` may capture `read` or `mut` values."; }
     }
   checkDecisions(c);
   }
@@ -669,7 +670,7 @@ Fences are the only deviation: a fence sends nothing downstream until every stag
 An exception of a stage before the fence propagates before any exception caused by any stage after and included the fence.
 A fence restricts what is observable, not when code runs: with `read` and `imm` elements the stages after a fence may run before it opens, as positive speculation calls, provided their exceptions are held until it opens.
 
-Apart from `for` and `let`, the consuming terminals are not fences: they trickle like the stages. The work of the terminal on the element at flow order `j` comes before any stage runs on the element at flow order `j+1`, as far as it can be observed.
+Apart from `for`, the consuming terminals are not fences: they trickle like the stages. The work of the terminal on the element at flow order `j` comes before any stage runs on the element at flow order `j+1`, as far as it can be observed.
 So a terminal with work of its own that can throw or not terminate is not `.list` followed by a loop. With `f` not terminating on `e1`, and `h` throwing on the first call,
 `l.flow.map f .fold({0}, h)` throws: the sequential strategy calls `h` on `f#e0` and never processes `e1`. `.list` followed by a fold calls `f#e1` first, and never returns.
 The same holds for `foldAcc`, `mapping` (a repeated key throws), `set` and `eSet` (the calls of `by`), `sum` (the checked `+` throws on overflow) and `join`.
@@ -936,7 +937,7 @@ Every strategy, the sequential strategy included, runs the mode checks before an
 
 The identity check is not a consequence of racing: the sequential strategy runs it too, and skipping it would make the strategy observable. A parallel strategy may run it on the calling worker while the tasks run, provided it completes before the result of any task is used: when two tasks race on one `Repr`, the non deterministic exception is thrown whatever the race did.
 
-No `imm` value can reach a `mut Repr` or `mut IsoPod`, so with the flag each task reaches no `Repr` or `IsoPod` but its own element; the lambdas of `for` and `let` run once every stage has finished. The backend sets the flag on the lambda objects, visible to the runtime (in Java), not in Fearless; when the lambdas are written in place, the flag is checked when compiling and leaves no code.
+No `imm` value can reach a `mut Repr` or `mut IsoPod`, so with the flag each task reaches no `Repr` or `IsoPod` but its own element; the lambda of `for` runs once every stage has finished. The backend sets the flag on the lambda objects, visible to the runtime (in Java), not in Fearless; when the lambdas are written in place, the flag is checked when compiling and leaves no code.
 
 Over `ParRepr` and `ParPod`, and before a `.recoverFlow` in mode `Seq`, a speculating stage receives its elements as `mut`, so it could run in parallel only with positive speculation calls, which may mutate elements the sequential strategy never processes; so such a flow expression throws the misuse exception of `checkDecisions` under **Misuse exceptions**. Ending the flow expression before the decision point costs little: `.list` directly after a fence takes the list the fence has already materialised.
 
@@ -1356,11 +1357,11 @@ es.flow.map{i -> Persons#(..)}
   .map{..}
   .list
 ```
-`let` is a terminal, not a core method.
+`let` is a utility method: `.list` followed by ordinary code over the list, so the flow expression ends at that `.list`.
 The elements are needed twice and a flow consumes once, so they are materialised here.
 Passing on the list rather than a flow makes that visible and allows parallelism:
 the user calls `.seqFlow` or `.flow(mode)` on it.
-Where `x` only reads, `let` does what `allToAll` does, but as a terminal: the flow after it is a new flow expression, with its own mode and checks. `l.flow.map f .allToAll{xs -> PlusTotal#(xs)}.list` computes the total and adds it to each element inside one chain, where the example below starts a second one. What is left to `let` is a continuation that mutates what it captured or returns something that is not a flow, and that is `.list |> cont`, with `x#xs` folded into `cont`. Open decision: keep `let` with that desugaring, or drop it.
+Where `x` only reads, `let` does what `allToAll` does, but outside the flow expression: the flow after it is a new flow expression, with its own mode and checks. `l.flow.map f .allToAll{xs -> PlusTotal#(xs)}.list` computes the total and adds it to each element inside one chain, where the example below starts a second one. What is left to `let` is a continuation that mutates what it captured or returns something that is not a flow.
 
 ### Short-circuit terminals
 
@@ -2072,7 +2073,7 @@ Speed is not a goal: `sort` may be slow and `limit` may run through an actor.
 
 ### Before Stage 1: decisions to take and things to fix
 
-Each item is one session of work: it names what is open, where in this document the answer goes, the options with the one recommended, and when it is done. Items 1 and 2 are what the implementation needs and this document does not describe yet; 3 to 5 can run alongside the implementation. Nothing here changes what a flow expression returns when every call completes.
+Each item is one session of work: it names what is open, where in this document the answer goes, the options with the one recommended, and when it is done. Items 1 and 2 are what the implementation needs and this document does not describe yet; 3 and 4 can run alongside the implementation. Nothing here changes what a flow expression returns when every call completes.
 
 1. **Where the shape and the checks live.**\
 Open in **Stage 2: Sequential**. Options: (a) the flow object keeps the chain as Fearless data (the mode, one step per stage/terminal with its lambdas and the `limit` numbers) and the checks are Fearless over it, with two magic predicates: whether a lambda carries the onlyImmCapture flag (the backend marks such lambdas with the `OnlyImmCapture` marker interface of the runtime) and whether two elements of the source are identity equal; (b) chain and checks in the runtime. Recommended: (a). Goes in **Stage 2: Sequential**. Done when the step data type and the two predicates are named there.
@@ -2083,10 +2084,7 @@ Open in **Stage 2: Sequential**. Options: (a) the flow object keeps the chain as
 3. **Message texts.**\
 Every `<HELP ME WITH WORDING>` of this document: the messages of **Misuse exceptions**. Written in the style of the messages of the Frontend: the shape verbatim, what is wrong, the shape to write instead. Can be done one message at a time as the checks are implemented.
 
-4. **`let`: keep or drop.**\
-Open in **let**. `let` is `.list |> cont` with `x#xs` folded into `cont`. Recommended: drop, and keep `allToAll` for the in chain case. Done when **let** says one or the other and `Flow` matches.
-
-5. **Deferred to Stage 3, not needed before.**\
+4. **Deferred to Stage 3, not needed before.**\
 The sink of `actor` as `mut` or `mutH` (a `down.push#` inside `Repr.mutate` after a `Break#`; under the sequential strategy **A `Break#` while the call before it is still running** already decides: the rest of the call runs); `Yield#` and the catch points of **Cancellation** under **Implementation pitfalls**; the hints that never throw. Listed so that no session spends time on them before Stage 2 exists.
 
 ### Stage 2: Sequential
