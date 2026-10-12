@@ -481,7 +481,7 @@ Misuse exceptions are thrown by the terminals, so the code implementing the term
 
 Every terminal starts with `checkMisuse(c)`, where `c` is its chain:
 - `c.mode`, `c.source` (the elements of the source), `c.stages` (in order, indexed from `0`), `c.terminal`;
-- `c.hints`: the `.hintSequential` and `.hintParallel` calls of the chain, in order; a hint is not in `c.stages`;
+- `c.hints`: the `.hintSequential` and `.hintParallel` of the chain, in order, starting with one `.hintSequential` when the source is `.seqFlow` or `Flows#`; a hint is not in `c.stages`;
 - `c.lambdas`: every lambda of the chain; `l.owner` is the stage/terminal `l` is an argument of;
 - `l.onlyImmCapture`: `l` captures only `imm` values; a top level declaration used as a value and every `imm` lambda carry it.
 
@@ -561,7 +561,7 @@ ReadsFirst=  {map, readOnly, ++, scan, distinct, distinctMut, limit}* .first
 ```
 Void checkShape(Chain c){
   if(c.hints.size > 1){ throw
-    "A flow takes at most one of `.hintSequential` and `.hintParallel`, but this one has "+c.hints.size+". Keep only one."; }
+    "A flow takes at most one of `.hintSequential` and `.hintParallel`, but this one has "+c.hints.size+". A flow started with `.seqFlow` or `Flows#` already has `.hintSequential`. Keep only one."; }
   match c.shape{
     .. s[i] rest with s in {sort}, rest in ReadsEmpty | ReadsCount | ReadsElems
     .. s[i] rest with s in {map, scan}, rest in ReadsEmpty | ReadsCount
@@ -788,7 +788,7 @@ Java streams become parallel through `.parallel()`, with no check: any lambda ma
 Parallelism is available exactly where it is not observable, with no annotation beyond the choice of the source.
 
 **Disadvantages:**\
-`ParRepr` and `ParPod` need the identity check, the onlyImmCapture check and their misuse exceptions at run time. A `mut List` of plain `mut` elements flows in mode `Seq`, and runs with the sequential strategy until a `++`, `flatMap`, `distinct`, `actor` or `scan` makes its elements `read` or `imm`.
+`ParRepr` and `ParPod` need the identity check, the onlyImmCapture check and their misuse exceptions at run time. A `mut List` of plain `mut` elements flows only in mode `Seq`, so it runs with the sequential strategy.
 
 ### The identity check is non deterministic
 
@@ -887,6 +887,7 @@ es.flow //examples, of course it does not make sense to use those together
 ```
 Then we could have unchecked exceptions on inapplicable hints etc.
 `.hintSequential` and `.hintParallel` are the first hints.
+`.seqFlow` and `Flows#` start the flow with `.hintSequential`.
 The flow terminal may choose to use a parallel strategy only when the flow has no `.hintSequential`.
 The presence of `.hintParallel` further incentivizes the flow terminal to apply a parallel strategy.
 
@@ -904,9 +905,9 @@ The mode decides which strategies the terminal may pick:
 
 The source records the mode:
 - `.flow` with no argument exists only where the type of the receiver shows that every element is `imm`, and records `ParImm`: `.flow` on an imm `List`, `EList`, `Map` or `Opt`, on a `Set` and an `ESet`, `.keys` of a `Map`, `UStr`, and the ranges (`0 =~~= 199`, `.flow(step)`).
-- `.seqFlow`, on every `ToFlow`, records `Seq`.
+- `.seqFlow`, on every `ToFlow`, records `Seq` and `.hintSequential`.
 - `xs.flow(mode)` on a read or mut `List`, `EList`, `Map` or `Opt` records the mode passed; the type of `mode` checks the elements: `ParImm[T:imm]`, `ParRead[T:imm,read]`, `ParRepr[T]` over `mut Repr[T]`, `ParPod[T]` over `mut IsoPod[T]`. The flow object keeps the mode passed, and the checks tell the modes apart by its type.
-- `Flows#` records `Seq`.
+- `Flows#` records `Seq` and `.hintSequential`.
 
 A mode is what the chain records, not a Fearless type: `ParImm`, `ParRead`, `ParRepr` and `ParPod` are also the types of the argument of `.flow(mode)`, while `Seq` has no type and is recorded by `.seqFlow` and `Flows#`.
 
@@ -1243,17 +1244,6 @@ A stage sends an element downstream or keeps it, never both. `distinct` keeps th
 ### ++ is a fence, and sends read or imm elements downstream
 
 `++` is a fence: every element of the receiver goes through the stages before the `++` before `++` sends any element downstream, the elements of `b` follow those of the receiver, and every element it sends downstream is `read` or `imm`. `++` reads `b` when it sends its elements downstream, after the stages before it have finished with every element: a stage before it may reach `b` through a `mut` element and change what `++` sends downstream, the same in every strategy.
-It is useful both in the modes and to start data parallelism after the fact.
-After the `++` every element is `read` or `imm` and the stages before it have finished, so nothing the stages after it can reach is still being mutated: even if the receiver is in mode `Seq`, the stages after the `++` can run data parallel on all the elements, of the receiver and of `b`.
-This starts data parallelism after a stage run with the sequential strategy:
-`persons.seqFlow.map{p->p.computeDNA}++{}.map{..}.list`
-This is arguably not the most readable code, but appending the empty list gives type safe knowledge that the second map can be data parallel.
-
-It is the fence, not the types alone, that makes this sound. Two persons of `persons` can share one `mut Address`, and in
-```
-persons.seqFlow.map{p -> Block#(p.moveTo(p.name), p)} ++ {} .map{q -> q.address.street}.list
-```
-trickling without the fence would read the street of the person at index 0 before the person at index 1 moves, while a parallel strategy could read it after that move. With the fence, both streets are read after every move, in every strategy.
 
 ### Consuming terminals trickle
 
@@ -1326,7 +1316,7 @@ The onlyImmCapture flag decides:
 with the flag on every lambda of the stages, and with source elements that are `imm`, as in mode `ParImm`, and with no `flatMapMut`, `actorMut`, `allToAll` or `++` before it, as in the condition of `.forEach`, nothing `for` can mutate is visible to the code executed as part of the stages, so `for` can run on each element, in flow order, as soon as the stages have finished with it.
 The first two conditions are needed:
 - `read` source elements are not enough. With `m: mut List[mut Person]` and `r: read List[mut Person]` the same list, in `r.flow(ParRead#).map{p -> p.age}.for{a -> Block#(ages.add a, m.get(3).birthday)}`, with `ages` a fresh `mut EList[Nat]`, the `for` lambda captures `m`: running it on the element at index 0 before the map stage runs on index 3 changes the age `ages` holds at index 3.
-- In mode `Seq` the elements can share `mut` objects: two persons can share one `mut Address`, as in the `++` example, and the `for` call on one person can mutate what the map stage reads on the other. Under `ParRepr`, the `for` lambda is exempt from the onlyImmCapture flag and can capture a `p: mut Repr[T]` that is also an element.
+- In mode `Seq` the elements can share `mut` objects: two persons can share one `mut Address`, and the `for` call on one person can mutate what the map stage reads on the other. Under `ParRepr`, the `for` lambda is exempt from the onlyImmCapture flag and can capture a `p: mut Repr[T]` that is also an element.
 The `for` calls made this way are speculative calls: under the sequential strategy every call of every stage comes before the first `for` call, so a `for` call on the element at index `j` runs before a call of a stage at a greater index that may still throw or not terminate. As for every speculative call, its exception is held until every stage has finished with every element, and it never delays the exception of a stage: the `for` lambda runs in a node of its own, not on the calling worker, the node stops at its first exception and holds it, and the terminal returns as soon as it receives an exception of a stage, whatever the node is doing. Running the `for` lambda on the calling worker as it receives the elements would throw its exception at index `2` where the sequential strategy throws the exception of a stage at index `5`, and would not return at all where that lambda does not terminate at index `2`. Every mutation such a call makes, also while it is still running after the whole flow expression has returned, is on objects that are garbage collectable once the exception of the stage is caught. The same holds for the `mutH` value passed to `.for(a, f)`, such as the sink or the state of an enclosing `actorMut`, whose call has then thrown; the runtime still drops every element sent through a sink after the call that owns it has returned.
 This avoids materialising large ranges, as in
 `0~~10000000 .flow.map{..}.for{..}`
