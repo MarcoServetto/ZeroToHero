@@ -54,7 +54,7 @@ public final class Walking {
   }
   public String build(){    
     String body= IntStream.range(0, qs.size())
-      .mapToObj(index->qs.get(index).body(index))
+      .mapToObj(index -> qs.get(index).body(index))
       .collect(Collectors.joining("\n"))
       +"\n</div>\n<div class=\"topCenter\">"
       +options();

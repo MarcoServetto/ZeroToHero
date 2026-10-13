@@ -85,7 +85,7 @@ public final class Climb {
     }
   public String build(){
     String body= IntStream.range(0, qs.size())
-      .mapToObj(index->qs.get(index).body(index))
+      .mapToObj(index -> qs.get(index).body(index))
       .collect(Collectors.joining("\n"));
     return name.htmlNextLevel(File.Climb_html.text)
       .replace("[###BODY###]", pre()+body);
@@ -105,7 +105,7 @@ record CQuestion(boolean isContinuation, String context, String text, String sho
     + "    data-selectionend=\"" + end + "\"\n"
     + "    data-option=\"" + option + "\"\n"
     + "    data-iscontinuation=\"" + isContinuation + "\"\n"
-    + rocks.stream().map(r->
+    + rocks.stream().map(r ->
       "    data-rock"+i[0]+"Img=\"Rock"+Climb.nextRock()+".png\""
     + "    data-rock"+(i[0]++)+"Code= \""+Escape.escapeForHtmlAttribute(r)+"\"")
       .collect(Collectors.joining("\n"))

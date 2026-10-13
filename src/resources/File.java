@@ -39,8 +39,8 @@ final class DirectoryStructure {
   public static String of(Path startPath){
     try (Stream<Path> paths= Files.walk(startPath)) {
       return paths
-        .filter(pi->!pi.equals(startPath))
-        .map(pi->startPath.relativize(pi))
+        .filter(pi -> !pi.equals(startPath))
+        .map(pi -> startPath.relativize(pi))
         .mapMulti(DirectoryStructure::single)
         .collect(Collectors.joining());
     }

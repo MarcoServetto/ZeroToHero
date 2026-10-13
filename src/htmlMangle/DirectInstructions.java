@@ -97,7 +97,7 @@ public final class DirectInstructions {
     }
   public String build(){    
     String body= IntStream.range(0, images.size())
-      .mapToObj(index->images.get(index).body(index))
+      .mapToObj(index -> images.get(index).body(index))
       .collect(Collectors.joining("\n"));
     return name
       .htmlNextLevel(File.DirectInstructions_html.text)
@@ -134,7 +134,7 @@ record Image(Days.LevelName name, List<TArea> areas, Map<Integer, String> map, b
     +(example ? " data-example=\"true\"" : "")+" hidden>\n"
     +"<img class=\"img_16_9\" src=\""+indexToName(index+1)+"\" draggable=\"false\"/>\n"
     + IntStream.range(0, areas.size())
-        .mapToObj(i->areas.get(i).body(index,i))
+        .mapToObj(i -> areas.get(i).body(index,i))
         .collect(Collectors.joining("\n"))
     +"\n</div>";
     }
