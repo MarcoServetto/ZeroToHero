@@ -8,7 +8,7 @@ import htmlMangle.BrickWallDeconstruction;
 import mainZeroToHero.Days;
 
 public final class BrickWallDeconTutorial2 implements Function<Days.LevelName,String>{
-  @Override public String apply(Days.LevelName name) {
+  @Override public String apply(Days.LevelName name){
     return new BrickWallDeconstruction(name)
       .background(Tutorial, 2)
       .addMovable(0, "Direction:")

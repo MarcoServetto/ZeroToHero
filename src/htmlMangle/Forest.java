@@ -20,7 +20,7 @@ import java.util.Map;
  * The puzzle can be completed if the code blocks are collected in the right order,
  *  so that the resulting code is valid and correctly answers the question.
  */
-public final class Forest {
+public final class Forest{
   private static final float sizeMultiplier= 10f;
   private static final float defaultCodeBoxWidth= 25;
   private static final float defaultCodeBoxHeight= 4;
@@ -31,7 +31,7 @@ public final class Forest {
   private final Days.LevelName name;
   private String background;
   
-  public Forest(Days.LevelName name, String initialCode, String solution) {
+  public Forest(Days.LevelName name, String initialCode, String solution){
     this.name= name;
     this.initialCode= initialCode;
     this.solution= solution; 
@@ -42,13 +42,13 @@ public final class Forest {
    * @param y position of the node.
    * @return this
    */
-  public Forest addNode(float x, float y) {
+  public Forest addNode(float x, float y){
     return addNode(x, y, "", "red");
     }
-  public Forest addFinishNode(float x, float y) {
+  public Forest addFinishNode(float x, float y){
     return addNode(x, y, "finishNode", "lightgreen");
     }
-  private Forest addNode(float x, float y, String className, String colour) {
+  private Forest addNode(float x, float y, String className, String colour){
     x *= sizeMultiplier;
     y *= sizeMultiplier;
     Position p= new Position((int)x, (int)y);
@@ -68,11 +68,11 @@ public final class Forest {
    * @param bh Box's height
    * @return this
    */
-  public Forest connect(int n1, int n2, String code, int bx, int by, int bw, int bh) {
+  public Forest connect(int n1, int n2, String code, int bx, int by, int bw, int bh){
     int nodesSize= nodes.size();
-    if (nodesSize < n1) { throw new IllegalArgumentException("The index of first node is invalid."); }
-    if (nodesSize < n2) { throw new IllegalArgumentException("The index of second node is invalid."); }
-    if (n2 < n1) { // Swap them around
+    if (nodesSize < n1){ throw new IllegalArgumentException("The index of first node is invalid."); }
+    if (nodesSize < n2){ throw new IllegalArgumentException("The index of second node is invalid."); }
+    if (n2 < n1){ // Swap them around
       int temp= n1;
       n1 = n2;
       n2 = temp;
@@ -80,18 +80,18 @@ public final class Forest {
     connections.add(new ForestNodeConnection(n1, n2, code, bx, by, bw, bh));
     return this;
     }
-  public Forest connect(int n1, int n2, String code, int bx, int by, int bw) {
+  public Forest connect(int n1, int n2, String code, int bx, int by, int bw){
     return connect(n1, n2, code, bx, by, bw, (int)defaultCodeBoxHeight);
     }
-  public Forest connect(int n1, int n2, String code, int bx, int by) {
+  public Forest connect(int n1, int n2, String code, int bx, int by){
     return connect(n1, n2, code, bx, by, (int)defaultCodeBoxWidth);
     }
-  public Forest background(Background kind, int num) {
-    if (num <= 0 || num > kind.limit) { throw new Error(kind+" num must be in the 1.."+kind.limit+" range"); }
+  public Forest background(Background kind, int num){
+    if (num <= 0 || num > kind.limit){ throw new Error(kind+" num must be in the 1.."+kind.limit+" range"); }
     background = kind.loc+"/"+kind.loc+num+".jpg";
     return this;
     }
-  public String build() {
+  public String build(){
     List<Node> forestNodesOrdered= new ArrayList<>(nodes.values());
     Map<String,List<ForestNodeConnection>> connectionGroups= connections.stream()
       .collect(Collectors.groupingBy(conn -> conn.fromIndex() + "," + conn.toIndex()));
@@ -99,8 +99,8 @@ public final class Forest {
     StringBuilder pathCodeBoxesHtml= new StringBuilder();
     Collection<List<ForestNodeConnection>> connections= connectionGroups.values();
     int id= 0;
-    for (List<ForestNodeConnection> conns : connections) {
-      for (int i= 0; i < conns.size(); i++) {
+    for (List<ForestNodeConnection> conns : connections){
+      for (int i= 0; i < conns.size(); i++){
         ForestNodeConnection c= conns.get(i);
         Node from= forestNodesOrdered.get(c.fromIndex());
         Node to= forestNodesOrdered.get(c.toIndex());
@@ -121,13 +121,13 @@ public final class Forest {
       .replace("[###BODY###]", nodesHtml())
       .replace("[###OUTPUT###]", outputBoxHtml());
     }
-  private String nodesHtml() {
+  private String nodesHtml(){
     return nodes.values().stream()
       .map(Node::build)
       .collect(Collectors.joining("\n"));
     }
   
-  private String outputBoxHtml() {
+  private String outputBoxHtml(){
     return """
       <div class="overlayTextarea" id="output"
       style="top:0%%;left:55.00%%;width:45%%;height:40.00%%;overflow-x:auto;pointer-events:auto"
@@ -140,7 +140,7 @@ public final class Forest {
   
   // Quadratic Bezier control point: midpoint offset perpendicular to the line,
   // scaled by how many parallel connections there are and this connection's index.
-  private double[] controlPoint(Node from, Node to, int totalConnections, int index) {
+  private double[] controlPoint(Node from, Node to, int totalConnections, int index){
     int x1= from.position().x();
     int y1= from.position().y();
     int x2= to.position().x();
@@ -177,7 +177,7 @@ public final class Forest {
    * @param id of the path
    * @return
    */
-  private String drawPath(Node from, Node to, double mx, double my, int id) {
+  private String drawPath(Node from, Node to, double mx, double my, int id){
     int x1= from.position().x();
     int y1= from.position().y();
     int x2= to.position().x();
@@ -205,7 +205,7 @@ public final class Forest {
    * @param boxHeight
    * @return
    */
-  private String drawPathCodeBox(String code, int x, int y, Node from, Node to, double mx, double my, int id, int boxWidth, int boxHeight) {
+  private String drawPathCodeBox(String code, int x, int y, Node from, Node to, double mx, double my, int id, int boxWidth, int boxHeight){
     int x1= from.position().x();
     int y1= from.position().y();
     int x2= to.position().x();
@@ -228,8 +228,8 @@ public final class Forest {
       id, x1, y1, mx, my, x2, y2);
   }
   
-  record Node(Position position, String elementClass, String fill) {
-    public String build() {
+  record Node(Position position, String elementClass, String fill){
+    public String build(){
       return """
         <circle class="%s"
           cx="%d" cy="%d"
@@ -238,12 +238,12 @@ public final class Forest {
         />""".formatted(elementClass, position.x(), position.y(), fill);
       }
     }
-  public enum Background {
+  public enum Background{
     Dawn("Dawn", 1);
     String loc;
     int limit; // Images are resources/forest/images/LOC/LOC1.png .. LOC<limit>.png
-    Background(String loc, int limit) { this.loc= loc; this.limit= limit; }
+    Background(String loc, int limit){ this.loc= loc; this.limit= limit; }
     }
   }
-record ForestNodeConnection(int fromIndex, int toIndex, String code, int x, int y, int w, int h) {}
-record Position(int x, int y) {}
+record ForestNodeConnection(int fromIndex, int toIndex, String code, int x, int y, int w, int h){}
+record Position(int x, int y){}

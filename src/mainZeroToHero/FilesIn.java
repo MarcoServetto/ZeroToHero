@@ -6,21 +6,21 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public final class FilesIn {
+public final class FilesIn{
   private final Path root;
   private final List<String> ignorePatterns= new ArrayList<>();
   private final Map<Path,Boolean> fileGroups= new HashMap<>();
   public FilesIn(Path root){ this.root= root; }
-  public FilesIn ignore(String pattern) {
+  public FilesIn ignore(String pattern){
     ignorePatterns.add(pattern);
     return this;
   }
-  public FilesIn add(Path filePath) {
+  public FilesIn add(Path filePath){
     Path absolute= filePath.toAbsolutePath().normalize();
     fileGroups.put(absolute, true);
     return this;
   }
-  public FilesIn addS(Path filePath) {
+  public FilesIn addS(Path filePath){
     Path absolute= filePath.toAbsolutePath().normalize();
     fileGroups.put(absolute, false);
     return this;
@@ -40,7 +40,7 @@ public final class FilesIn {
     return Set.copyOf(res);
     }
 
-  public Content build() throws IOException {
+  public Content build() throws IOException{
     List<Path> allFiles= Files.walk(root)
       .filter(Files::isRegularFile)
       .map(p -> p.toAbsolutePath().normalize())
@@ -68,14 +68,14 @@ public final class FilesIn {
   }
 }
 
-final class Content {
+final class Content{
   private final Path root;
   private final Map<Path,Boolean> fileGroups;
   public Content(Path root, Map<Path,Boolean> fileGroups){
     this.root= root;
     this.fileGroups= Map.copyOf(fileGroups);
   }
-  public List<Path> getFilesForGroup(boolean group) {
+  public List<Path> getFilesForGroup(boolean group){
     return fileGroups.entrySet().stream()
       .filter(entry -> entry.getValue() == group)
       .map(Map.Entry::getKey)
@@ -86,7 +86,7 @@ final class Content {
       writer.write(intro);
       for (Path file : getFilesForGroup(true)){
         writer.write("\n//---File " + root.relativize(file)+"\n");
-        for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+        for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)){
           if (line.trim().startsWith("//")){ continue; }
           writer.write(line);
           writer.newLine();

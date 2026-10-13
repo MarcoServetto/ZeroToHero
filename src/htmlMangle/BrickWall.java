@@ -17,7 +17,7 @@ import resources.File;
  * This mini-game can also double as a mini-game of code simplification,
  *   where the player has to remove all the unnecessary bricks.
  */
-public class BrickWall {
+public class BrickWall{
   protected static final int wallLength= 80;
   protected static final int pileLength= 53;
   
@@ -32,7 +32,7 @@ public class BrickWall {
   private int currentIndexAlongPileRow= 0;
   private String background;
   
-  public BrickWall(Days.LevelName name, String solution) {
+  public BrickWall(Days.LevelName name, String solution){
     this.name= name;
     this.solution= solution;
     wallRows.add(currentWallRowBricks);
@@ -45,7 +45,7 @@ public class BrickWall {
    * @param s - the text on this brick
    * @return
    */
-  public BrickWall addToPile(int indexSkip, boolean movable, String s) {
+  public BrickWall addToPile(int indexSkip, boolean movable, String s){
     currentIndexAlongPileRow += indexSkip;
     currentPileRowBricks.add(new Brick(s, movable, currentIndexAlongPileRow));
     return this;
@@ -54,7 +54,7 @@ public class BrickWall {
    * Create a new row in both the pile and wall.
    * @return
    */
-  public BrickWall newRow() {
+  public BrickWall newRow(){
     currentWallRowBricks = new ArrayList<>();
     currentPileRowBricks = new ArrayList<>();
     wallRows.add(currentWallRowBricks);
@@ -70,7 +70,7 @@ public class BrickWall {
    * @param s
    * @return
    */
-  public BrickWall addBrick(int indexSkip, boolean movable, String s) {
+  public BrickWall addBrick(int indexSkip, boolean movable, String s){
     currentIndexAlongWallRow += indexSkip;
     currentWallRowBricks.add(new Brick(s, movable, currentIndexAlongWallRow));
     currentIndexAlongWallRow += s.length();
@@ -82,23 +82,23 @@ public class BrickWall {
    * @param s
    * @return
    */
-  public BrickWall addImmovable(int indexSkip, String s) { return addBrick(indexSkip, false, s); }
+  public BrickWall addImmovable(int indexSkip, String s){ return addBrick(indexSkip, false, s); }
   /**
    * Equivalent to {@link #addBrick(indexSkip, true, s)}.
    * @param indexSkip
    * @param s
    * @return
    */
-  public BrickWall addMovable(int indexSkip, String s) { return addBrick(indexSkip, true, s); }
-  public BrickWall background(Background kind, int num) {
+  public BrickWall addMovable(int indexSkip, String s){ return addBrick(indexSkip, true, s); }
+  public BrickWall background(Background kind, int num){
     setBackground(kind.loc, kind.limit, num);
     return this;
     }
-  protected void setBackground(String loc, int limit, int num) {
-    if (num <= 0 || num > limit) { throw new Error(loc+" num must be in the 1.."+limit+" range"); }
+  protected void setBackground(String loc, int limit, int num){
+    if (num <= 0 || num > limit){ throw new Error(loc+" num must be in the 1.."+limit+" range"); }
     background = loc+"/"+loc+num+".jpg";
     }
-  public String build() {
+  public String build(){
     return name.htmlNextLevel(File.BrickWall_html.text)
       .replace("[###BACKGROUNDFILE###]", background)
       .replace("[###WALL###]", renderWall(wallRows, wallLength, true))
@@ -106,21 +106,21 @@ public class BrickWall {
       .replace("[###ANSWERWALL###]", renderAnswerWall());
     }
 
-  protected String renderWall(List<List<Brick>> brickRows, int length, boolean isWall) {
+  protected String renderWall(List<List<Brick>> brickRows, int length, boolean isWall){
     StringBuilder sb= new StringBuilder();
-    for (List<Brick> sortedBricks : brickRows) {
+    for (List<Brick> sortedBricks : brickRows){
       sb.append("<span class=\"brickRow\">");
       int currentIndex= 0;
-      for (Brick brick : sortedBricks) {
+      for (Brick brick : sortedBricks){
         int brickIndex= brick.index();
         int len= brick.length();
-        for (; currentIndex < brickIndex; currentIndex++) {
+        for (; currentIndex < brickIndex; currentIndex++){
           sb.append("<span class=\"empty\">&nbsp;</span>");
           }
         sb.append(brick.toHtml());
         currentIndex += len;
         }
-      for (; currentIndex < length; currentIndex++) {
+      for (; currentIndex < length; currentIndex++){
         sb.append("<span class=\"empty\">&nbsp;</span>");
         }
       sb.append("</span>");
@@ -128,24 +128,24 @@ public class BrickWall {
     return !isWall ? "<div id=\"pile\" class=\"brickPile\">" + sb.toString() + "</div>" : 
       "<div id=\"wall\" class=\"wall\" data-solution=\"" + Escape.escapeForHtmlText(solution) + "\">" + sb.toString() + "</div>";
     }
-  private String renderAnswerWall() {
+  private String renderAnswerWall(){
     return "<pre id=\"answerWall\" class=\"wall answer hidden\">" + Escape.escapeForHtmlText(solution) + "</pre>";
     }
 
-  protected String background() { return background; }
-  public enum Background {
+  protected String background(){ return background; }
+  public enum Background{
     Prairie("Prairie", 1),
     Tutorial("Tutorial", 3);
     String loc;
     int limit; // Images are resources/brickWall/images/LOC/LOC1.png .. LOC<limit>.png
-    Background(String loc, int limit) { this.loc= loc; this.limit= limit; }
+    Background(String loc, int limit){ this.loc= loc; this.limit= limit; }
     }
-  private record Brick(String code, boolean movable, int index) {
-    public int length() { return code.length(); }
-    public Brick {
-      if (code.length() <= 0) { throw new IllegalArgumentException("Brick cannot be empty!"); }
+  private record Brick(String code, boolean movable, int index){
+    public int length(){ return code.length(); }
+    public Brick{
+      if (code.length() <= 0){ throw new IllegalArgumentException("Brick cannot be empty!"); }
       }
-    public String toHtml() {
+    public String toHtml(){
       String movableStr= movable ? "movable" : "";
       return "<span class=\"brick %s\">%s</span>".formatted(movableStr, Escape.escapeForHtmlText(code));
       }

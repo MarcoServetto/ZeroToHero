@@ -12,7 +12,7 @@ import com.vladsch.flexmark.parser.Parser;
 
 import mainZeroToHero.Days;
 import resources.File;
-public final class Book {
+public final class Book{
   Days.LevelName name;
   public Book(Days.LevelName name){ this.name= name; }
   public Book left(String left){ this.left = left; return this; }
@@ -46,7 +46,7 @@ public final class Book {
     //would be replaced with the result of htmlHole(1,List.of("abc","dfg")) 
     Matcher matcher= pattern.matcher(text);
     StringBuffer sb= new StringBuffer();
-    while (matcher.find()) {
+    while (matcher.find()){
       String content= matcher.group(1); // The part inside <#[ ... ]#> 
       String[] parts= content.split("\\Q"+middleTag+"\\E");
       int solutionIndex= Integer.parseInt(parts[0]);

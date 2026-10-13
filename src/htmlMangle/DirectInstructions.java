@@ -14,7 +14,7 @@ import java.util.stream.IntStream;
 import mainZeroToHero.Days;
 import mainZeroToHero.Main;
 import resources.File;
-public final class DirectInstructions {
+public final class DirectInstructions{
   private Days.LevelName name;
   private Map<Integer,String> map;
   private final String imageFolder;
@@ -108,8 +108,8 @@ public final class DirectInstructions {
     Map<Integer,String> map= new HashMap<>();   
     Path imagesDir= name.directoryName().getParent().resolve(imageFolder);
     assert imagesDir!= null;
-    List<Path> paths; try (var s= Files.walk(imagesDir)) { paths= s.toList(); }
-    catch (IOException ioe) {throw new UncheckedIOException(ioe); }
+    List<Path> paths; try (var s= Files.walk(imagesDir)){ paths= s.toList(); }
+    catch (IOException ioe){throw new UncheckedIOException(ioe); }
     for (var p : paths){
       String filename= p.getFileName().toString();
       var matcher= ImagePattern.matcher(filename);

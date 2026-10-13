@@ -8,7 +8,7 @@ import htmlMangle.Forest;
 import mainZeroToHero.Days;
 
 public final class ForestIntro implements Function<Days.LevelName,String>{
-  @Override public String apply(Days.LevelName name) {
+  @Override public String apply(Days.LevelName name){
     return new Forest(name, """
 //This is the forest minigame.
 //Click on the path to walk and

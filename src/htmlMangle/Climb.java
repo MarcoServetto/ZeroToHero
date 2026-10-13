@@ -7,7 +7,7 @@ import java.util.stream.IntStream;
 
 import mainZeroToHero.Days;
 import resources.File;
-public final class Climb {
+public final class Climb{
   private static Random rand= new Random(123);
   public static int nextRock(){ return rand.nextInt(8) + 1; }
   private Days.LevelName name;
@@ -92,7 +92,7 @@ public final class Climb {
   }
 }
 record CQuestion(boolean isContinuation, String context, String text, String shouldBe, int start, int end, List<String> rocks, int option){
-  String body(int index) {
+  String body(int index){
     int[] i= {0};
     return
       "<textarea class=\"overlayTextarea questionText\"\n"

@@ -6,7 +6,7 @@ import java.util.stream.IntStream;
 
 import mainZeroToHero.Days;
 import resources.File;
-public final class Walking {
+public final class Walking{
   private Days.LevelName name;
   private int required;
   public Walking(Days.LevelName name, int required){
@@ -105,7 +105,7 @@ public final class Walking {
   }
 }
 record WQuestion(String text, int sel, int start, int end, htmlMangle.Walking.WalkingOption option, String motivation, String errorExplanation, htmlMangle.Walking.Frame frame){
-  String body(int index) {
+  String body(int index){
       var option= (java.lang.Enum<?>)this.option();
       return "<textarea class=\"overlayTextarea\"\n"
           + "    id=\"question" + index + "\"\n"

@@ -2,7 +2,7 @@ package htmlMangle;
 
 import java.util.stream.Collectors;
 
-public final class Escape {
+public final class Escape{
   public static String norm(String s){
     //s= s.replaceAll("[ \t\r]+\n", "\n");
     //s = s.replaceAll("\\s+\n", "\n");
@@ -14,9 +14,9 @@ public final class Escape {
     if (s.endsWith("\n")){ s = s.substring(0, s.length() - 1); }
     return s;
     }
-  public static String escapeForHtmlAttribute(String input) {
+  public static String escapeForHtmlAttribute(String input){
     return input.chars()
-      .mapToObj(c -> switch (c) {
+      .mapToObj(c -> switch (c){
         case '&' -> "&amp;";
         case '<' -> "&lt;";
         case '>' -> "&gt;";
@@ -28,7 +28,7 @@ public final class Escape {
         })
       .collect(Collectors.joining());
     }
-  public static String escapeForHtmlText(String input) {
+  public static String escapeForHtmlText(String input){
     return escapeForHtmlAttribute(input).replace(" ", "&nbsp;");
     }
   public static String escapeForHtmlScripts(String s){

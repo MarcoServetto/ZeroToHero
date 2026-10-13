@@ -4,8 +4,8 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
 
-public final class CollectText {
-  public static void main(String[] args) throws IOException, URISyntaxException {
+public final class CollectText{
+  public static void main(String[] args) throws IOException, URISyntaxException{
     var content= files
       .addS(levels.resolve("Level101", "Level101.html"))
       .add(levels.resolve("Level102", "Level102.html"))

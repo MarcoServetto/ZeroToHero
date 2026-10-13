@@ -7,7 +7,7 @@ import java.util.stream.Collectors;
 
 import mainZeroToHero.Days;
 import resources.File;
-public final class Gather {
+public final class Gather{
   private Days.LevelName name;
   private String common;
   public Gather(Days.LevelName name, String common){

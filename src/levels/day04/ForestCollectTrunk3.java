@@ -7,7 +7,7 @@ import java.util.function.Function;
 import mainZeroToHero.Days;
 
 public final class ForestCollectTrunk3 implements Function<Days.LevelName,String>{
-  @Override public String apply(Days.LevelName name) {
+  @Override public String apply(Days.LevelName name){
     return new htmlMangle.Forest(name, """
 //The last tree trunk snapped like a charm!
 //"Cool, let me do it even more!"

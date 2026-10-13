@@ -52,10 +52,10 @@ final class FileWriter{
       .resolve(name.assetsDest())
       .resolve(name.currentLevel())
       .resolve(name.currentLevel()+".html");
-    try {
+    try{
       Files.createDirectories(p.getParent());
       Files.writeString(p, s);
     }
-    catch (IOException e) { throw new UncheckedIOException(e); }
+    catch (IOException e){ throw new UncheckedIOException(e); }
   }
 }
