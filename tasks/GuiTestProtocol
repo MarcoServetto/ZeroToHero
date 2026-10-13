@@ -1,29 +1,31 @@
 # GUI test protocol
 
 How an outer agent gets one agentTools test of Controllers to pass on one desk.
-<Test> is the test class; <desk> is the name of the desk in the on("<desk>",...) entries of the tests.
+<Test> is the test class; <desk> is the name of the desk in the on("<desk>",...) entries of the tests; <workspace> is the fearlessBranch folder of the outer agent (for example /data/fearlessBranch1).
 The protocol is the same for this machine (ubuntu_gnome) and for a VM: only opening and closing differ.
-The outer agent runs Pre, starts the inner agent with the prompt below, then runs Post.
+The outer agent runs Pre, starts the inner agent with the prompt below, runs Post, and always ends with Finally, whatever happened before.
 
 ## Pre (outer agent)
 
-1. If <desk> is a VM: `/data/AgentsCoordination/linuxVersion/autoScripts/vm.sh open <desk>`
-2. Run the recorded values, from /data/fearlessBranch3/Coordinator/Build/src:
+1. Run the align-branches skill in <workspace>.
+2. If <desk> is a VM: `/data/AgentsCoordination/linuxVersion/autoScripts/vm.sh open <desk>`
+3. Run the recorded values, from <workspace>/Coordinator/Build/src:
    `/opt/jdk-26.0.2/bin/java -ea --module-path ../../../Commons/Commons.jar --add-modules Commons scripts/TestAgentTools.java <desk> false <Test> /data/pilotio/channel_<desk> /data/pilotio`
-   If it passes, go to Post 6.
-3. In Controllers/test/agentTools, set every val(...) of the <desk> entries that <Test> uses (in <Test>.java and ManagerTest.java) to val(null).
+   If it passes, go to Finally.
+   This run is the cheapest way to know whether the recorded values work, so it always runs: when <desk> has no entries in <Test> it fails at once, after the build, because an action has no <desk> entry; that is the expected result, and Pre goes on.
+4. In <workspace>/Controllers/test/agentTools, set every val(...) of the <desk> entries that <Test> uses (in <Test>.java and ManagerTest.java) to val(null).
    Give every other ManagerTest action with no <desk> entry one with the steps of its ubuntu_gnome entry and val(null).
-4. `mkdir -p /data/pilotio/channel_<desk> /data/pilotio/shots_<desk>`
-5. Start the test in agent mode as a background command, from /data/fearlessBranch3/Coordinator/Build/src:
+5. `mkdir -p /data/pilotio/channel_<desk> /data/pilotio/shots_<desk>`
+6. Start the test in agent mode as a background command, from <workspace>/Coordinator/Build/src:
    `/opt/jdk-26.0.2/bin/java -ea --module-path ../../../Commons/Commons.jar --add-modules Commons scripts/TestAgentTools.java <desk> true <Test> /data/pilotio/channel_<desk> /data/pilotio > /data/pilotio/run_<desk>.txt 2>&1`
 
 ## Inner agent
 
-Haiku 5.5, low effort, with the prompt below.
+Haiku 5.5, low effort, with the prompt below, where the outer agent writes <Test>, <desk> and <workspace> out.
 The list of mistakes at its end holds what earlier runs did wrong; the outer agent adds a line when a run shows a new one.
 
 ```
-You are the person at the desk in the agentTools test <Test> (Controllers/test/agentTools/<Test>.java; shared actions in ManagerTest.java), on the desk <desk>.
+You are the person at the desk in the agentTools test <Test> (<workspace>/Controllers/test/agentTools/<Test>.java; shared actions in ManagerTest.java), on the desk <desk>.
 The screen of this machine shows that desk, ready. The test is already running and waits for you.
 
 At each action the test creates an empty file named after the action in /data/pilotio/channel_<desk> and waits.
@@ -34,10 +36,11 @@ Answer by writing the values into that file, one per line, then a line ;
 - on("<desk>",()->keys(KeyEvent.VK_ENTER)) for action closeDialog, no value: `printf ';\n' > /data/pilotio/channel_<desk>/closeDialog`
 - a text value is quoted: "hello"
 Which action waits: `ls /data/pilotio/channel_<desk>`
-The screen: `/opt/jdk-26.0.2/bin/java -ea -cp /data/fearlessBranch3/out/modular/controller-test:/data/fearlessBranch3/Commons/Commons.jar agentTools.Pilot seen /data/pilotio/shots_<desk>/<n>.png`, then read the png; a purple ring marks the pointer.
+The screen: `/opt/jdk-26.0.2/bin/java -ea -cp <workspace>/out/modular/controller-test:<workspace>/Commons/Commons.jar agentTools.Pilot seen /data/pilotio/shots_<desk>/<n>.png`, then read the png; a purple ring marks the pointer.
 The test output: /data/pilotio/run_<desk>.txt; when the test ends it shows how many tests succeeded and failed.
+A wait value is for later runs without you: in this run you are slower than any wait, so every wait is already over when the test reads it, and that is intended.
 A wait is 100 unless you expect the step to take longer.
-What the manager should do: ZeroToHero/tasks/ControllersDesign. Your role: "Testing GUIs" in CLAUDE.md.
+What the manager should do: <workspace>/ZeroToHero/tasks/ControllersDesign. Your role: "Testing GUIs" in CLAUDE.md.
 
 A failure has one of three causes:
 (1) a value you gave was wrong, for example the pointer missed a target the screen shows;
@@ -57,11 +60,17 @@ After a (1), the outer agent starts the test again and sends you a message: answ
 
 ## Post (outer agent)
 
-1. Report (1): Pre 5 again, then message the inner agent `The test started again.`
-2. Report (2) or (3): `git -C /data/fearlessBranch3/Controllers checkout test/agentTools`, go to Post 6, and report the finding to the user.
-3. Passed: write the values of the last run into the <desk> entries, then run Pre 2.
-4. If Pre 2 fails: from the failing check and `agentTools.Pilot seen`, judge which earlier waits may be too short (not every action is followed by a check that verifies it), raise them with informed guesses, and run Pre 2 again.
+1. Report (1): stop the test (Finally 1), Pre 6 again, then message the inner agent `The test started again.`
+2. Report (2) or (3): `git -C <workspace>/Controllers checkout test/agentTools`, report the finding to the user, and go to Finally.
+3. Passed: write the values of the last run into the <desk> entries, then run Pre 3.
+4. If Pre 3 fails: from the failing check and `agentTools.Pilot seen`, judge which earlier waits may be too short (not every action is followed by a check that verifies it), raise them with informed guesses, and run Pre 3 again.
    A wait above 500 gets a comment saying why. A failure that time does not explain goes to the user, with the test unchanged.
 5. A passing <desk> entry set goes into the open Controllers PR of recorded entry sets, if one is open (`gh pr view <n> --repo FearlessLang/Controllers --json state`); otherwise into a new one.
-6. If <desk> is a VM: `/data/AgentsCoordination/linuxVersion/autoScripts/vm.sh close <desk>`.
-   Then `rm -rf /data/pilotio/shots_<desk> /data/pilotio/run_<desk>.txt`, and check the desk is bare: `pgrep -af 'fearlessManaged|nautilus|gnome-terminal|ptyxis'` prints nothing.
+
+## Finally (outer agent, always)
+
+1. Stop the test, if it still runs (in agent mode it waits for its channel file forever):
+   `ps -C java -o pid=,args= | awk '/TestAgentTools.java <desk> |-Ddesk=<desk> /{print $1}' | xargs -r kill`
+2. If <desk> is a VM: `/data/AgentsCoordination/linuxVersion/autoScripts/vm.sh close <desk>`
+3. `rm -rf /data/pilotio/channel_<desk> /data/pilotio/shots_<desk> /data/pilotio/run_<desk>.txt`
+4. Check the desk is bare: `pgrep -af 'fearlessManaged|nautilus|gnome-terminal|ptyxis'` prints nothing.
