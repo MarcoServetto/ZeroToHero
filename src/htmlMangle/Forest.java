@@ -20,7 +20,7 @@ import java.util.Map;
  * The puzzle can be completed if the code blocks are collected in the right order,
  *  so that the resulting code is valid and correctly answers the question.
  */
-public class Forest {
+public final class Forest {
   private static final float sizeMultiplier= 10f;
   private static final float defaultCodeBoxWidth= 25;
   private static final float defaultCodeBoxHeight= 4;

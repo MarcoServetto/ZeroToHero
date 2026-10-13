@@ -5,7 +5,7 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class GatherTrueDecl implements Function<Days.LevelName,String>{
+public final class GatherTrueDecl implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Gather(name,"""
 //This code is visible by all the cards

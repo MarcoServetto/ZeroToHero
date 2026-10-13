@@ -14,7 +14,7 @@ import java.util.stream.IntStream;
 import mainZeroToHero.Days;
 import mainZeroToHero.Main;
 import resources.File;
-public class DirectInstructions {
+public final class DirectInstructions {
   private Days.LevelName name;
   private Map<Integer, String> map;
   private final String imageFolder;

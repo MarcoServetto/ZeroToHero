@@ -5,7 +5,7 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class Walking1 implements Function<Days.LevelName,String>{
+public final class Walking1 implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Walking(name,33)
     // selected, start, end, option

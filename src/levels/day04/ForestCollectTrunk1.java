@@ -6,7 +6,7 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class ForestCollectTrunk1 implements Function<Days.LevelName, String>{
+public final class ForestCollectTrunk1 implements Function<Days.LevelName, String>{
   public String apply(Days.LevelName name) {
     return new htmlMangle.Forest(name, """
 //Panic: "we need to collect trees to make a palisade.

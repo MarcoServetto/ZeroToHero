@@ -8,7 +8,7 @@ import java.util.stream.Collectors;
 import mainZeroToHero.Days;
 import resources.File;
 
-public class BrickWallDeconstruction extends BrickWall {
+public final class BrickWallDeconstruction extends BrickWall {
   private List<String> checkpoints= new ArrayList<>();
   private List<String[]> wallPermutations= new ArrayList<>();
   

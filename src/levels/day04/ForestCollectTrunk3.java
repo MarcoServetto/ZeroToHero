@@ -6,7 +6,7 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class ForestCollectTrunk3 implements Function<Days.LevelName, String>{
+public final class ForestCollectTrunk3 implements Function<Days.LevelName, String>{
   public String apply(Days.LevelName name) {
     return new htmlMangle.Forest(name, """
 //The last tree trunk snapped like a charm!

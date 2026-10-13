@@ -6,7 +6,7 @@ import java.util.stream.IntStream;
 
 import mainZeroToHero.Days;
 import resources.File;
-public class Walking {
+public final class Walking {
   private Days.LevelName name;
   private int required;
   public Walking(Days.LevelName name,int required){

@@ -7,7 +7,7 @@ import java.util.stream.IntStream;
 
 import mainZeroToHero.Days;
 import resources.File;
-public class Climb {
+public final class Climb {
   private static Random rand=new Random(123);
   public static int nextRock(){ return rand.nextInt(8) + 1; }
   private Days.LevelName name;

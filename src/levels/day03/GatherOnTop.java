@@ -5,7 +5,7 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class GatherOnTop implements Function<Days.LevelName,String>{
+public final class GatherOnTop implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Gather(name,ClimbBase.directionsAimTo)
         // code with title, group, img, img num

@@ -5,7 +5,7 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class ClimbStone implements Function<Days.LevelName,String>{
+public final class ClimbStone implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Climb(name,"""
     Stone:  { .break: Rock   -> Rock;   }

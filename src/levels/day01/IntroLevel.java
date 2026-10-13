@@ -6,7 +6,7 @@ import java.util.function.Function;
 import mainZeroToHero.Days;
 
 
-public class IntroLevel implements Function<Days.LevelName,String>{
+public final class IntroLevel implements Function<Days.LevelName,String>{
   @Override public String apply(Days.LevelName name){
     String last;
     String noAdd= "You have to complete the provided text, not add new one. In this case, you redeclared See and Hear";

@@ -6,7 +6,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class FilesIn {
+public final class FilesIn {
   private final Path root;
   private final List<String> ignorePatterns= new ArrayList<>();
   private final Map<Path, Boolean> fileGroups= new HashMap<>();
@@ -68,7 +68,7 @@ public class FilesIn {
   }
 }
 
-class Content {
+final class Content {
   private final Path root;
   private final Map<Path, Boolean> fileGroups;
   public Content(Path root, Map<Path, Boolean> fileGroups){

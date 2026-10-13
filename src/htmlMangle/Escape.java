@@ -2,7 +2,7 @@ package htmlMangle;
 
 import java.util.stream.Collectors;
 
-public class Escape {
+public final class Escape {
   public static String norm(String s){
     //s= s.replaceAll("[ \t\r]+\n", "\n");
     //s = s.replaceAll("\\s+\n", "\n");

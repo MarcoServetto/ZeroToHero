@@ -5,7 +5,7 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class Leo3 implements Function<Days.LevelName,String>{
+public final class Leo3 implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Climb(name,Leo1.bools)
     .question("Hard mode",

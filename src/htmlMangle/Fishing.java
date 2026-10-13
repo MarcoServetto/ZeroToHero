@@ -4,7 +4,7 @@ import java.util.stream.Collectors;
 import java.util.ArrayList;
 import mainZeroToHero.Days;
 import resources.File;
-public class Fishing {
+public final class Fishing {
   Days.LevelName name;
   public Fishing(Days.LevelName name){ this.name= name; }
   public Fishing fish(String f){ this.fishes.add(f); return this; }

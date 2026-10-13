@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import java.util.function.Function;
 
 import resources.File;
-public class Days{
+public final class Days{
   String assetsDest;
   public Days(String assetsDest){ this.assetsDest= assetsDest; }
   public record LevelName(String currentLevel, String nextLevel,String assetsDest){
@@ -45,7 +45,7 @@ public class Days{
   public void add(Function<LevelName,String> l){ next(); write(l); }
   public void addLast(Function<LevelName,String> l){ next(); nextNow= true; write(l); }
 }
-class FileWriter{
+final class FileWriter{
   void writeFile(Days.LevelName name, String s){
     Path p= File.startPath()
       .getParent()

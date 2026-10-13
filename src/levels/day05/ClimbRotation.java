@@ -5,7 +5,7 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class ClimbRotation implements Function<Days.LevelName,String>{
+public final class ClimbRotation implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Climb(name,"""
 Direction: { .turn: Direction }

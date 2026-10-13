@@ -12,7 +12,7 @@ import com.vladsch.flexmark.parser.Parser;
 
 import mainZeroToHero.Days;
 import resources.File;
-public class Book {
+public final class Book {
   Days.LevelName name;
   public Book(Days.LevelName name){ this.name= name; }
   public Book left(String left){ this.left = left; return this; }

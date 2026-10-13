@@ -8,7 +8,7 @@ import levels.day04.*;
 import levels.day05.*;
 import levels.day06.*;
 
-public class Main {
+public final class Main {
   public static final boolean debug= false;
   public static void main(){//see comment below
     leoLevels();

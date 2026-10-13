@@ -35,7 +35,7 @@ public enum File{
   }
 }
 
-class DirectoryStructure {
+final class DirectoryStructure {
   public static String of(Path startPath){
     try (Stream<Path> paths= Files.walk(startPath)) {
       return paths

@@ -4,7 +4,7 @@ import java.util.function.Function;
 
 import htmlMangle.DirectInstructions.Location;
 import mainZeroToHero.Days;
-public class Archery1 implements Function<Days.LevelName,String>{
+public final class Archery1 implements Function<Days.LevelName,String>{
   Location l= new Location(2, 97, 0.5, 40.5);
   String intro="""
       //Code to make an archer

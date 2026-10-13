@@ -7,7 +7,7 @@ import java.util.function.Function;
 import htmlMangle.BrickWallDeconstruction;
 import mainZeroToHero.Days;
 
-public class BrickWallDeconTutorial3 implements Function<Days.LevelName, String>{
+public final class BrickWallDeconTutorial3 implements Function<Days.LevelName, String>{
   public String apply(Days.LevelName name) {
     return new BrickWallDeconstruction(name)
       .background(Tutorial, 3)

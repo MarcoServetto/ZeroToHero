@@ -5,7 +5,7 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class GatherPre3 implements Function<Days.LevelName,String>{
+public final class GatherPre3 implements Function<Days.LevelName,String>{
   public String apply(Days.LevelName name){
     return new htmlMangle.Gather(name,"""
 //You got it!

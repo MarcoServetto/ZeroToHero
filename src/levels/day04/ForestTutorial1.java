@@ -6,7 +6,7 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class ForestTutorial1 implements Function<Days.LevelName, String>{
+public final class ForestTutorial1 implements Function<Days.LevelName, String>{
   public String apply(Days.LevelName name) {
     return new htmlMangle.Forest(name, """
 //Go on the same path again to collect
