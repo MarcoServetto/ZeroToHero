@@ -7,7 +7,7 @@ import java.util.stream.Collectors;
 
 import mainZeroToHero.Days;
 import resources.File;
-public class Gather {
+public final class Gather{
   private Days.LevelName name;
   private String common;
   public Gather(Days.LevelName name, String common){
@@ -15,27 +15,27 @@ public class Gather {
     this.common= common;
     }
   private List<Card> cs= new ArrayList<>();
-  public Gather cardTrash(String text, Kind kind, int num){ return cardPr(text,0,kind,num); }
+  public Gather cardTrash(String text, Kind kind, int num){ return cardPr(text, 0, kind, num); }
   public Gather card(String text, int group, Kind kind, int num){
-    if(group<=0 || group>9){ throw new Error("group must be in the 1..9 range"); }
-    return cardPr(text,group,kind,num);
+    if (group<=0 || group>9){ throw new Error("group must be in the 1..9 range"); }
+    return cardPr(text, group, kind, num);
   }
 
   private Gather cardPr(String text, int group, Kind kind, int num){
-    if(num<=0 || num>kind.limit){ throw new Error(kind+" num must be in the 1.."+kind.limit+" range"); }
+    if (num<=0 || num>kind.limit){ throw new Error(kind+" num must be in the 1.."+kind.limit+" range"); }
     String loc= kind.loc+"/"+kind.loc+num+".png";
     int split= text.indexOf("\n");
     assert split!=-1;
-    var code= text.substring(split+1,text.length());
-    var title= text.substring(0,split);
+    var code= text.substring(split+1, text.length());
+    var title= text.substring(0, split);
     assert title.length()>3 && title.length()< 30;
-    assert code.lines().allMatch(l->l.length()<60);
-    cs.add(new Card(name.currentLevel(),code,group,loc,cs.size(),title));
+    assert code.lines().allMatch(l -> l.length()<60);
+    cs.add(new Card(name.currentLevel(), code, group, loc, cs.size(), title));
     return this;
   }
   public Gather shuffle(){
     Collections.shuffle(cs, new Random(10));
-    for(int i= 0; i < cs.size(); i++){
+    for (int i= 0; i < cs.size(); i++){
       cs.set(i, cs.get(i).withId(i));
     }
     return this;
@@ -48,7 +48,7 @@ public class Gather {
     if (!diffImg){ throw new Error("Repeated card img"); }
     if (!diffTitle){ throw new Error("Repeated card title"); }
 
-    String pre="""
+    String pre= """
     <div class="commonCode">
       <div id="apiContainer" class="cardCode">
         <textarea readonly id="api" class="overlayTextarea noSelection"
@@ -71,11 +71,11 @@ public class Gather {
         +"<p>End of items  - drag one back to compare their code, but leave it empty at the finish. Press the button at the botton to check your solution.</p></div>\n");
   }
   public enum Kind{
-    BrownMushroom("BrownM",20),
-    Eggplant("EggP",25),
-    YellowFlower("YellowF",29),
-    RedFlower("RedF",21),
-    Tomato("Tomato",25);
+    BrownMushroom("BrownM", 20),
+    Eggplant("EggP", 25),
+    YellowFlower("YellowF", 29),
+    RedFlower("RedF", 21),
+    Tomato("Tomato", 25);
     String loc;
     int limit;
     Kind(String loc, int limit){
@@ -87,7 +87,7 @@ record Card(
     String fileName, String code,
     int group, String loc,
     int id, String title){
-  Card withId(int id){ return new Card(fileName,code,group,loc,id,title); }
+  Card withId(int id){ return new Card(fileName, code, group, loc, id, title); }
   String body(){ return 
     "<div class=\"card\" id=\"card_"+id+"\"\n"
    +"data-card_id=\""+id+"\"\n"

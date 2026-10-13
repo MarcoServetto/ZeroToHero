@@ -5,68 +5,68 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class WalkingBoomerangParam implements Function<Days.LevelName,String>{
-  public String apply(Days.LevelName name){
-    return new htmlMangle.Walking(name,20)
+public final class WalkingBoomerangParam implements Function<Days.LevelName,String>{
+  @Override public String apply(Days.LevelName name){
+    return new htmlMangle.Walking(name, 20)
     // selected, start, end, option
     .questionTopLevel("""
       @[Boomerang@@: {
         .throw(dir: Direction): Direction -> dir.reverse
         }]@
-      """,TypeDeclaration)
+      """, TypeDeclaration)
     .questionTopLevel("""
       Boomerang: {
         @[.throw(dir: Direction): Direction @@-> dir.reverse]@
         }
-      """,MethodDeclaration)
+      """, MethodDeclaration)
     .questionTopLevel("""
       Boomerang: {
         .throw(dir: Direction): Direction -> @[dir.r@@everse]@
         }
-      """,MethodCall)
+      """, MethodCall)
     .questionTopLevel("""
       Boomerang: {
         .throw(dir: Direction): Direction -> @[d@@ir]@.reverse
         }
-      """,Parameter)
+      """, Parameter)
     .questionTopLevel("""
       @[Boomerang: {
         .throw(dir: Direction): Direction -> dir.reverse
         @@}]@
-      """,TypeDeclaration)
+      """, TypeDeclaration)
     .questionTopLevel("""
       Boomerang: {
         @[.throw(dir: Direction)@@: Direction -> dir.reverse]@
         }
-      """,MethodDeclaration)
+      """, MethodDeclaration)
     .questionTopLevel("""
       Boomerang: {
         .throw(dir: Direction): Direction -> @[dir@@.reverse]@
         }
-      """,MethodCall)
+      """, MethodCall)
     .questionTopLevel("""
       Boomerang: {
         .throw(dir: Direction): Direction -> @[@@dir]@.reverse
         }
-      """,Parameter)
+      """, Parameter)
     .questionTopLevel("""
       @[Boom@@erang: {
         .throw(dir: Direction): Direction -> dir.reverse
         }]@
-      """,TypeDeclaration)
+      """, TypeDeclaration)
     .questionTopLevel("""
       Boomerang: {
         .throw(dir: @[Dir@@ection]@): Direction -> dir.reverse
         }
-      """,Type)
+      """, Type)
     .questionTopLevel("""
       Boomerang: {
         .throw(dir: Direction): @[Dir@@ection]@ -> dir.reverse
         }
-      """,Type)
+      """, Type)
     .questionTopLevel("""
       Boomerang: {
         @[.throw(d@@ir: Direction): Direction -> dir.reverse]@
         }
-      """,MethodDeclaration)
+      """, MethodDeclaration)
     .build(); } }

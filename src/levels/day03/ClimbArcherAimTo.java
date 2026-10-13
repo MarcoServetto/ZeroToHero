@@ -5,9 +5,9 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class ClimbArcherAimTo implements Function<Days.LevelName,String>{
-  public String apply(Days.LevelName name){
-    return new htmlMangle.Climb(name,ClimbBase.directionsAimTo)
+public final class ClimbArcherAimTo implements Function<Days.LevelName,String>{
+  @Override public String apply(Days.LevelName name){
+    return new htmlMangle.Climb(name, ClimbBase.directionsAimTo)
     .question("""
       Now we use methods Archer.headTo and Archer.aimTo
       Look to the code above to see the implementation.
@@ -27,11 +27,11 @@ public class ClimbArcherAimTo implements Function<Days.LevelName,String>{
       0)
     .question(
       "##【🚶⬇️, 🎯⬆️】.headTo(@[North.turn.turn]@)",
-      List.of("North.turn.turn","this.turn.turn","South"),
+      List.of("North.turn.turn", "this.turn.turn", "South"),
       2)
     .question(
       "##@[【🚶⬇️, 🎯⬆️】.headTo(South)]@",
-      List.of("North.turn.turn","【🚶⬇️, 🎯⬇️】","【🚶⬇️, 🎯⬆️】"),
+      List.of("North.turn.turn", "【🚶⬇️, 🎯⬇️】", "【🚶⬇️, 🎯⬆️】"),
       2)
     .question(
       "##@[【🚶⬇️, 🎯⬆️】]@",

@@ -6,8 +6,8 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class ForestCollectTrunk6 implements Function<Days.LevelName, String>{
-  public String apply(Days.LevelName name) {
+public final class ForestCollectTrunk6 implements Function<Days.LevelName,String>{
+  @Override public String apply(Days.LevelName name){
     return new htmlMangle.Forest(name, """
 //That was not faster. What if I use `inheritance`
 //to avoid repeating Direction?

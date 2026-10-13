@@ -5,9 +5,9 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class ClimbBaseArcher implements Function<Days.LevelName,String>{
-  public String apply(Days.LevelName name){
-    return new htmlMangle.Climb(name,ClimbBase.directions)
+public final class ClimbBaseArcher implements Function<Days.LevelName,String>{
+  @Override public String apply(Days.LevelName name){
+    return new htmlMangle.Climb(name, ClimbBase.directions)
     .question("""
       Now for Archers#
       Reduction produces values that are better represented
@@ -28,19 +28,19 @@ public class ClimbBaseArcher implements Function<Days.LevelName,String>{
       Remember, select the smallest available reduction step!
       """,
       "Archers#(@[North.reverse]@,South)",
-      List.of("North.turn.turn","this.turn.turn","South", "East.turn","East"),
+      List.of("North.turn.turn", "this.turn.turn", "South", "East.turn", "East"),
       0)
     .question(
       "##Archers#(@[North.turn]@.turn,South)",
-      List.of("North.turn.turn","this.turn.turn","South", "East.turn","East"),
+      List.of("North.turn.turn", "this.turn.turn", "South", "East.turn", "East"),
       4)
     .question(
       "##Archers#(@[East.turn]@,South)",
-      List.of("North.turn.turn","this.turn.turn","South", "East.turn","East"),
+      List.of("North.turn.turn", "this.turn.turn", "South", "East.turn", "East"),
       2)
     .question(
       "##@[Archers#(South,South)]@",
-      List.of("【🚶⬆️, 🎯⬇️】","【🚶⬇️, 🎯⬇️】","【🚶⬇️, 🎯⬆️】","【🚶⬆️, 🎯⬆️】"),
+      List.of("【🚶⬆️, 🎯⬇️】", "【🚶⬇️, 🎯⬇️】", "【🚶⬇️, 🎯⬆️】", "【🚶⬆️, 🎯⬆️】"),
       1)
     .question(
       "##@[【🚶⬇️, 🎯⬇️】]@",

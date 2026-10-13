@@ -6,8 +6,8 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class ForestTutorial2 implements Function<Days.LevelName, String>{
-  public String apply(Days.LevelName name) {
+public final class ForestTutorial2 implements Function<Days.LevelName,String>{
+  @Override public String apply(Days.LevelName name){
     return new htmlMangle.Forest(name, "", 
 """
 Direction:{

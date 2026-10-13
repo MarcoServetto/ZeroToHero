@@ -4,9 +4,9 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
 
-public class CollectText {
-  public static void main(String[] args) throws IOException, URISyntaxException {
-    var content = files
+public final class CollectText{
+  public static void main(String[] args) throws IOException, URISyntaxException{
+    var content= files
       .addS(levels.resolve("Level101", "Level101.html"))
       .add(levels.resolve("Level102", "Level102.html"))
       .addS(levels.resolve("Level103", "Level103.html"))
@@ -115,11 +115,11 @@ to a different set of possible answers.
 """;
   content.writeReport(outputFile, intro, outro+currentTask);
   }
-  private static final String intro="""
+  private static final String intro= """
 I'm making a browser based game to teach programming.
 Here are the relevant files I have
 """;
-  private static final String outro="""
+  private static final String outro= """
 -------------------
 As you can see, my formatting and coding style are quite peculiar.
 I need that becuase I'm half blind and this style helps me to keep enough
@@ -203,7 +203,7 @@ Do not try to give a solution from incomplete data.
 - If you think you have all the data, try to help for a solution.
 ----------------
 """;
-  private static final Path workingDir = Path.of("C:\\Users\\sonta\\Documents\\GitHub\\ZeroToHero\\src");
+  private static final Path workingDir= Path.of("C:\\Users\\sonta\\Documents\\GitHub\\ZeroToHero\\src");
   private static final Path levels= workingDir.toAbsolutePath().resolve("assetsDest");
   private static final Path levelsLeo= workingDir.toAbsolutePath().resolve("assetsLeo");
   private static final Path resources= workingDir.toAbsolutePath().resolve("resources");
@@ -211,18 +211,18 @@ Do not try to give a solution from incomplete data.
   private static final Path directInstructions= resources.resolve("directInstructions");
   private static final Path gather= resources.resolve("gather");
   private static final Path book= resources.resolve("book");
-  private static final Path outputFile= workingDir.toAbsolutePath().resolve("assets", "collectedText","collectedText.txt");
+  private static final Path outputFile= workingDir.toAbsolutePath().resolve("assets", "collectedText", "collectedText.txt");
 
-  private static final Path main = workingDir.resolve("main");
-  private static final Path htmlMangle = workingDir.resolve("htmlMangle");
+  private static final Path main= workingDir.resolve("main");
+  private static final Path htmlMangle= workingDir.resolve("htmlMangle");
 
-  private static final Path climb = resources.resolve("climb");
+  private static final Path climb= resources.resolve("climb");
 
-  private static final Path levelsDir = workingDir.resolve("levels");
-  private static final Path day01 = levelsDir.resolve("day01");
-  private static final Path day01Leo = levelsDir.resolve("day01Leo");
-  private static final Path day02 = levelsDir.resolve("day02");
-  private static final Path day03 = levelsDir.resolve("day03");
+  private static final Path levelsDir= workingDir.resolve("levels");
+  private static final Path day01= levelsDir.resolve("day01");
+  private static final Path day01Leo= levelsDir.resolve("day01Leo");
+  private static final Path day02= levelsDir.resolve("day02");
+  private static final Path day03= levelsDir.resolve("day03");
 
 
   private static final FilesIn files= new FilesIn(workingDir)
@@ -235,15 +235,15 @@ Do not try to give a solution from incomplete data.
     .ignore("*.woff2")
     .ignore("*.txt")
     .addS(workingDir.resolve("module-info.java"))
-    .addS(workingDir.resolve("assets","walking","editableDiv.html"))
+    .addS(workingDir.resolve("assets", "walking", "editableDiv.html"))
     .addS(day01Leo.resolve("Leo1.java"))
     .addS(day01Leo.resolve("Leo2.java"))
     .addS(day01Leo.resolve("Leo3.java"))
     .addS(day01Leo.resolve("Leo4.java"))
-    .addS(levelsLeo.resolve("Level101","Level101.html"))
-    .addS(levelsLeo.resolve("Level102","Level102.html"))
-    .addS(levelsLeo.resolve("Level103","Level103.html"))
-    .addS(levelsLeo.resolve("Level104","Level104.html"))
+    .addS(levelsLeo.resolve("Level101", "Level101.html"))
+    .addS(levelsLeo.resolve("Level102", "Level102.html"))
+    .addS(levelsLeo.resolve("Level103", "Level103.html"))
+    .addS(levelsLeo.resolve("Level104", "Level104.html"))
     .addS(main.resolve("CollectText.java"))
     .addS(main.resolve("FilesIn.java"))
     .addS(main.resolve("RealMain.java"));

@@ -5,9 +5,9 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class ClimbStone implements Function<Days.LevelName,String>{
-  public String apply(Days.LevelName name){
-    return new htmlMangle.Climb(name,"""
+public final class ClimbStone implements Function<Days.LevelName,String>{
+  @Override public String apply(Days.LevelName name){
+    return new htmlMangle.Climb(name, """
     Stone:  { .break: Rock   -> Rock;   }
     Rock:   { .break: Pebble -> Pebble; }
     Pebble: { .break: Sand   -> Sand;   }
@@ -48,11 +48,11 @@ public class ClimbStone implements Function<Days.LevelName,String>{
       0)
     .question(
       "##@[Sand.break]@",
-      List.of("Sand.break","Sand","Rock","<completed>"),
+      List.of("Sand.break", "Sand", "Rock", "<completed>"),
       1)
     .question(
       "##@[Sand]@",
-      List.of("Sand.break","Sand","Rock","<completed>"),
+      List.of("Sand.break", "Sand", "Rock", "<completed>"),
       3)
     .build(); }
   }

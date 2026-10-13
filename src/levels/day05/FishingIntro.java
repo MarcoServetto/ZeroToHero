@@ -4,8 +4,8 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class FishingIntro implements Function<Days.LevelName,String>{
-  public String apply(Days.LevelName name){
+public final class FishingIntro implements Function<Days.LevelName,String>{
+  @Override public String apply(Days.LevelName name){
     return new htmlMangle.Fishing(name)
     // selected, @ for hidden, @@ for hidden on leash
     .fish("North")

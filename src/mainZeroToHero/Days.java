@@ -7,13 +7,13 @@ import java.nio.file.Path;
 import java.util.function.Function;
 
 import resources.File;
-public class Days{
+public final class Days{
   String assetsDest;
   public Days(String assetsDest){ this.assetsDest= assetsDest; }
-  public record LevelName(String currentLevel, String nextLevel,String assetsDest){
-    public String htmlNextLevel(String html){ return htmlNextLevel(html,""); }
+  public record LevelName(String currentLevel, String nextLevel, String assetsDest){
+    public String htmlNextLevel(String html){ return htmlNextLevel(html, ""); }
     public String htmlNextLevel(String html, String more){ return html
-      .replace("<body>","<body "+more+" data-next=\"../"
+      .replace("<body>", "<body "+more+" data-next=\"../"
       +nextLevel()+"/"
       +nextLevel()+".html\">");
       }
@@ -30,32 +30,32 @@ public class Days{
   private void next(){
     assert level >= 0 && level <= 98;
     if (!nextNow){ level += 1; return; }
-    day += 1; level= 1; nextNow= false; 
+    day += 1; level = 1; nextNow = false; 
     }
   public String currentLevel(){ return "Level"+day+(level <= 9 ? "0" : "") + level; }
   public String nextLevel(){
-    if(nextNow){ return "Level"+(day + 1) + "01"; }
+    if (nextNow){ return "Level"+(day + 1) + "01"; }
     var level= this.level + 1;
     return "Level"+day+(level <= 9 ? "0" : "") + level; 
     }
   private void write(Function<LevelName,String> l){
-    var ln= new LevelName(this.currentLevel(),this.nextLevel(),assetsDest);
-    new FileWriter().writeFile(ln,l.apply(ln));
+    var ln= new LevelName(this.currentLevel(), this.nextLevel(), assetsDest);
+    new FileWriter().writeFile(ln, l.apply(ln));
   }
   public void add(Function<LevelName,String> l){ next(); write(l); }
-  public void addLast(Function<LevelName,String> l){ next(); nextNow= true; write(l); }
+  public void addLast(Function<LevelName,String> l){ next(); nextNow = true; write(l); }
 }
-class FileWriter{
+final class FileWriter{
   void writeFile(Days.LevelName name, String s){
     Path p= File.startPath()
       .getParent()
       .resolve(name.assetsDest())
       .resolve(name.currentLevel())
       .resolve(name.currentLevel()+".html");
-    try {
+    try{
       Files.createDirectories(p.getParent());
-      Files.writeString(p,s);
+      Files.writeString(p, s);
     }
-    catch (IOException e) { throw new UncheckedIOException(e); }
+    catch (IOException e){ throw new UncheckedIOException(e); }
   }
 }

@@ -6,93 +6,93 @@ import java.util.function.Function;
 import mainZeroToHero.Days;
 
 
-public class IntroLevel implements Function<Days.LevelName,String>{
+public final class IntroLevel implements Function<Days.LevelName,String>{
   @Override public String apply(Days.LevelName name){
     String last;
     String noAdd= "You have to complete the provided text, not add new one. In this case, you redeclared See and Hear";
     String noSemicolon= "You forgot the semicolon! In this case that semicolon could indeed be omitted, but for now please write it down anyway";
     String hold= "Hold your horses, we are doing one direction at a time!";
-    String methInCurly="Declare the method BETWEEN the curly {..}";
-    return new htmlMangle.DirectInstructions(name,this.getClass().getSimpleName())
+    String methInCurly= "Declare the method BETWEEN the curly {..}";
+    return new htmlMangle.DirectInstructions(name, this.getClass().getSimpleName())
     // topStart/end   leftStart/end
     .unlockedImage().image(10).exampleImage()
-      .area(15, 30,     3, 48, "", "Hear:{}",List.of(
+      .area(15, 30,     3, 48, "", "Hear:{}", List.of(
         "Hear{}", "You forgot the colon (:)",
-        "Hear:()","Curly parenthesis, not round ones",
-        "Hear:[]","Curly parenthesis, not square ones",
+        "Hear:()", "Curly parenthesis, not round ones",
+        "Hear:[]", "Curly parenthesis, not square ones",
         "'Hear:{}'", "Do not insert the (')",
         "`Hear:{}`", "Do not insert the (')",
         "hear:{}", "You need Hear with uppercase H"
         ))
     .image(2)
-      .area(15, 30,     3, 48, "", "See:{}",List.of(
+      .area(15, 30,     3, 48, "", "See:{}", List.of(
         "See{}", "You forgot the colon (:)",
-        "See:()","Curly parenthesis, not round ones",
-        "See:[]","Curly parenthesis, not square ones",
+        "See:()", "Curly parenthesis, not round ones",
+        "See:[]", "Curly parenthesis, not square ones",
         "'See:{}'", "Do not insert the (')",
         "`See:{}`", "Do not insert the (')",
         "see:{}", "You need See with uppercase S"
         ))
     .image()
-      .area(33, 80,    45, 98, "\n/*<*/See:/*>*//*<*/{}\nHear:/*>*/{}",last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}",List.of(
-                               "See:{}\nHear:{}\nSense:{}\nSee:Sense{}\nHear:Sense{}",noAdd,
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nSee:{}\nHear:{}",noAdd,
-                               "See:Sense{}Hear:Sense{}","You also need to declare Sense",
-                               "See:Sense{}Hear:Sense{}Sense:{}","It looks better with Sense on top"
+      .area(33, 80,    45, 98, "\n/*<*/See:/*>*//*<*/{}\nHear:/*>*/{}", last=
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}", List.of(
+                               "See:{}\nHear:{}\nSense:{}\nSee:Sense{}\nHear:Sense{}", noAdd,
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nSee:{}\nHear:{}", noAdd,
+                               "See:Sense{}Hear:Sense{}", "You also need to declare Sense",
+                               "See:Sense{}Hear:Sense{}Sense:{}", "It looks better with Sense on top"
                                ))
     .image(5)
-      .area(15, 85,     1, 46, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}/*>*/",last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nNorth:{}",List.of(
-                               "","Do not delete the existing code, just add and adapt. Use reset to get the provided code back",
-                               "North:{}","Do not delete the existing code, just add and adapt",
-                               "North:{}\nSense:{}\nSee:Sense{}\nHear:Sense{}","Add new code in provided empty lines or at the bottom",
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}\nEast:{}\nWest:{}\nSouth:{}",hold))
+      .area(15, 85,     1, 46, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}/*>*/", last =
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nNorth:{}", List.of(
+                               "", "Do not delete the existing code, just add and adapt. Use reset to get the provided code back",
+                               "North:{}", "Do not delete the existing code, just add and adapt",
+                               "North:{}\nSense:{}\nSee:Sense{}\nHear:Sense{}", "Add new code in provided empty lines or at the bottom",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}\nEast:{}\nWest:{}\nSouth:{}", hold))
     .image(5)
-      .area(15, 85,     1, 46, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\n/*>*//*<*/North:{}/*>*/",last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}\nEast:{}\nWest:{}\nSouth:{}",List.of(
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}\nEast:{}","Add also West and South!",
-                               "East:{}\nSense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}","Add at the bottom!",
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}\nWest:{}\nSouth:{}","Forgot East",
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}\nEast:{}\nSouth:{}","Forgot West",
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}\nEast:{}\nWest:{}","Forgot South"))
+      .area(15, 85,     1, 46, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\n/*>*//*<*/North:{}/*>*/", last =
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}\nEast:{}\nWest:{}\nSouth:{}", List.of(
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}\nEast:{}", "Add also West and South!",
+                               "East:{}\nSense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}", "Add at the bottom!",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}\nWest:{}\nSouth:{}", "Forgot East",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}\nEast:{}\nSouth:{}", "Forgot West",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\n\nNorth:{}\nEast:{}\nWest:{}", "Forgot South"))
     .image(2)
-      .area( 2, 85,    55, 98, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\n/*>*/\n/*<*/North:/*>*//*<*/{}\nEast:/*>*//*<*/{}\nWest:/*>*//*<*/{}\nSouth:/*>*/{}",last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}",List.of(
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\nDirection:{}","Write Direction before North",
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:North{}\nDirection:East{}\nDirection:West{}\nDirection:South{}\nDirection:{}","Write North:Direction, not Direction:North",
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nDirection:North{}\nDirection:East{}\nDirection:West{}\nDirection:South{}","Write North:Direction, not Direction:North"
+      .area( 2, 85,    55, 98, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\n/*>*/\n/*<*/North:/*>*//*<*/{}\nEast:/*>*//*<*/{}\nWest:/*>*//*<*/{}\nSouth:/*>*/{}", last =
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}", List.of(
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\nDirection:{}", "Write Direction before North",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:North{}\nDirection:East{}\nDirection:West{}\nDirection:South{}\nDirection:{}", "Write North:Direction, not Direction:North",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nDirection:North{}\nDirection:East{}\nDirection:West{}\nDirection:South{}", "Write North:Direction, not Direction:North"
                                ))
 
     .image()
-      .area(37, 90,     1, 41, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{/*>*//*<*/}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}/*>*/",last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}",List.of(
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}",noSemicolon,
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{turn:Direction}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}","You forgot the initial dot (.)",
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\n.turn:Direction;",methInCurly,
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\n.turn:Direction",methInCurly,
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\n.turn",methInCurly,
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\nturn",methInCurly
+      .area(37, 90,     1, 41, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{/*>*//*<*/}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}/*>*/", last =
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}", List.of(
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}", noSemicolon,
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{turn:Direction}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}", "You forgot the initial dot (.)",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\n.turn:Direction;", methInCurly,
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\n.turn:Direction", methInCurly,
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\n.turn", methInCurly,
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{}\nNorth:Direction{}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}\nturn", methInCurly
                                ))
     .image(2)
-      .area(27, 85,     1, 41, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{/*>*//*<*/}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}/*>*/",last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}",List.of(
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn;}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}","Add the result of turning!",
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}","You forgot the semicolon!",
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}","Add the result of turning!"))
+      .area(27, 85,     1, 41, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{/*>*//*<*/}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}/*>*/", last =
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}", List.of(
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn;}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}", "Add the result of turning!",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}", "You forgot the semicolon!",
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn}\nEast:Direction{}\nWest:Direction{}\nSouth:Direction{}", "Add the result of turning!"))
     .image()
-      .area(27, 85,     1, 41, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{/*>*//*<*/}\nWest:Direction{}\nSouth:Direction{}/*>*/",last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{}\nSouth:Direction{}",List.of(
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East}\nEast:Direction{.turn->South;}\nWest:Direction{}\nSouth:Direction{}",noSemicolon,
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{.turn->North;}\nSouth:Direction{.turn->West;}",hold))
+      .area(27, 85,     1, 41, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{/*>*//*<*/}\nWest:Direction{}\nSouth:Direction{}/*>*/", last =
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{}\nSouth:Direction{}", List.of(
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East}\nEast:Direction{.turn->South;}\nWest:Direction{}\nSouth:Direction{}", noSemicolon,
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{.turn->North;}\nSouth:Direction{.turn->West;}", hold))
     .image()
-      .area(27, 85,     1, 41, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{}\nSouth:Direction{/*>*/}",last=
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{}\nSouth:Direction{.turn->West;}",List.of(
+      .area(27, 85,     1, 41, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{}\nSouth:Direction{/*>*/}", last =
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{}\nSouth:Direction{.turn->West;}", List.of(
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{.turn->North;}\nSouth:Direction{}",
                                "You just assumed We asked to complete West, right? Read slowly and carefully! :-)",
-                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;\nEast:Direction{.turn->South;}\nWest:Direction{.turn->North;}\nSouth:Direction{.turn->West;}",hold))
+                               "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;\nEast:Direction{.turn->South;}\nWest:Direction{.turn->North;}\nSouth:Direction{.turn->West;}", hold))
     .image()
-      .area(27, 85,     1, 41, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{/*>*//*<*/}\nSouth:Direction{.turn->West;}/*>*/",last=
+      .area(27, 85,     1, 41, "/*<*/Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{/*>*//*<*/}\nSouth:Direction{.turn->West;}/*>*/", last =
                                "Sense:{}\nSee:Sense{}\nHear:Sense{}\nDirection:{.turn:Direction;}\nNorth:Direction{.turn->East;}\nEast:Direction{.turn->South;}\nWest:Direction{.turn->North;}\nSouth:Direction{.turn->West;}")
     .image(4)
     .build(); } }

@@ -8,11 +8,11 @@ import java.util.stream.Collectors;
 import mainZeroToHero.Days;
 import resources.File;
 
-public class BrickWallDeconstruction extends BrickWall {
+public final class BrickWallDeconstruction extends BrickWall{
   private List<String> checkpoints= new ArrayList<>();
   private List<String[]> wallPermutations= new ArrayList<>();
   
-  public BrickWallDeconstruction(Days.LevelName name) {
+  public BrickWallDeconstruction(Days.LevelName name){
     super(name, "");
     }
   /**
@@ -20,40 +20,40 @@ public class BrickWallDeconstruction extends BrickWall {
    * @param checkpoint
    * @return
    */
-  public BrickWallDeconstruction checkpoint(String checkpoint) {
+  public BrickWallDeconstruction checkpoint(String checkpoint){
     checkpoints.add(checkpoint);
     return this;
     }
-  public BrickWallDeconstruction background(Background kind, int num) {
+  public BrickWallDeconstruction background(Background kind, int num){
     setBackground(kind.loc, kind.limit, num);
     return this;
     }
-  public enum Background {
-    Tutorial("Tutorial",3),
-    Prairie("Prairie",1);
+  public enum Background{
+    Tutorial("Tutorial", 3),
+    Prairie("Prairie", 1);
     String loc;
     int limit; // Images are resources/brickWallDeconstruction/images/LOC/LOC1.png .. LOC<limit>.png
-    Background(String loc, int limit) { this.loc= loc; this.limit= limit; }
+    Background(String loc, int limit){ this.loc= loc; this.limit= limit; }
     }
-  public BrickWallDeconstruction newRow() {
+  @Override public BrickWallDeconstruction newRow(){
     super.newRow();
     return this;
     }
-  public BrickWallDeconstruction addToPile(int indexSkip, boolean movable, String s) {
+  @Override public BrickWallDeconstruction addToPile(int indexSkip, boolean movable, String s){
     super.addToPile(indexSkip, movable, s);
     return this;
     }
-  public BrickWallDeconstruction addBrick(int indexSkip, boolean movable, String s) {
+  @Override public BrickWallDeconstruction addBrick(int indexSkip, boolean movable, String s){
     super.addBrick(indexSkip, movable, s);
-    if (indexSkip > 0) { wallPermutations.add(new String[]{" ".repeat(indexSkip)}); }
+    if (indexSkip > 0){ wallPermutations.add(new String[]{" ".repeat(indexSkip)}); }
     wallPermutations.add(new String[]{s});
     return this;
     }
-  public BrickWallDeconstruction addMovable(int indexSkip, String s) {
+  @Override public BrickWallDeconstruction addMovable(int indexSkip, String s){
     super.addMovable(indexSkip, s);
     return this;
     }
-  public BrickWallDeconstruction addImmovable(int indexSkip, String s) {
+  @Override public BrickWallDeconstruction addImmovable(int indexSkip, String s){
     super.addImmovable(indexSkip, s);
     return this;
     }
@@ -65,7 +65,7 @@ public class BrickWallDeconstruction extends BrickWall {
    * @param to - the list of text this text can become.
    * @return
    */
-  public BrickWallDeconstruction addReplaceable(int indexSkip, String from, String... to) {
+  public BrickWallDeconstruction addReplaceable(int indexSkip, String from, String... to){
     super.addBrick(indexSkip, true, from);
     String[] permutations= new String[to.length + 1];
     permutations[0] = from;
@@ -80,11 +80,11 @@ public class BrickWallDeconstruction extends BrickWall {
    * @param to - the list of text the group of bricks can become.
    * @return
    */
-  public BrickWallDeconstruction makeReplaceable(int lastBricks, String... to) {
-    String[] newPermutation = new String[to.length + 1];
+  public BrickWallDeconstruction makeReplaceable(int lastBricks, String... to){
+    String[] newPermutation= new String[to.length + 1];
     newPermutation[0] = "";
-    List<String[]> subPermutations = wallPermutations.subList(wallPermutations.size() - lastBricks, wallPermutations.size());
-    for (String[] subPermutation : subPermutations) {
+    List<String[]> subPermutations= wallPermutations.subList(wallPermutations.size() - lastBricks, wallPermutations.size());
+    for (String[] subPermutation : subPermutations){
       newPermutation[0] += subPermutation[0];
       }
     subPermutations.clear();
@@ -92,7 +92,7 @@ public class BrickWallDeconstruction extends BrickWall {
     subPermutations.add(newPermutation);
     return this;
     }
-  public String build() {
+  @Override public String build(){
     checkpoints.addAll(Arrays.asList(wallPermutations()));
     String wallString= renderWall(wallRows, wallLength, true);
     String pileString= renderWall(pileRows, pileLength, false);
@@ -109,13 +109,13 @@ public class BrickWallDeconstruction extends BrickWall {
    * The full list of permutations. Each is a checkpoint.
    * @return String[] containing each permutation.
    */
-  private String[] wallPermutations() {
+  private String[] wallPermutations(){
     List<String> results= new ArrayList<>();
     results.add("");
-    for (String[] options : wallPermutations) {
+    for (String[] options : wallPermutations){
       List<String> next= new ArrayList<>();
-      for (String result : results) {
-        for (String option : options) {
+      for (String result : results){
+        for (String option : options){
           next.add(result + option);
           }
         }

@@ -7,8 +7,8 @@ import java.util.function.Function;
 import htmlMangle.BrickWallDeconstruction;
 import mainZeroToHero.Days;
 
-public class BrickWallDeconTest implements Function<Days.LevelName, String>{
-  public String apply(Days.LevelName name) {
+public final class BrickWallDeconTest implements Function<Days.LevelName,String>{
+  @Override public String apply(Days.LevelName name){
     //Wood[]:Material{ imm .mass(length: Nat): imm Nat -> length+length+length; }
     BrickWallDeconstruction bw= new BrickWallDeconstruction(name)
       .background(Prairie, 1)

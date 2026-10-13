@@ -5,9 +5,9 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class ClimbFood implements Function<Days.LevelName,String>{
-  public String apply(Days.LevelName name){
-    return new htmlMangle.Climb(name,"""
+public final class ClimbFood implements Function<Days.LevelName,String>{
+  @Override public String apply(Days.LevelName name){
+    return new htmlMangle.Climb(name, """
 Food: {}
 Salt: {}
 Mushroom: Food{ .fry: Mushroom -> this }
@@ -34,14 +34,14 @@ List.of(
   "Mushroom",
   "Eggplant",
   "Eggplant.salted(Salt))",
-  "<completed>"),0)
+  "<completed>"), 0)
 .question(
 "##Recipe.cook(Mushroom, @[Eggplant.salted(Salt)]@, Tomato.cut)",
 List.of(
   "Eggplant",
   "Eggplant.salted(Salt)",
   "Mushroom.fry",
-  "<completed>"),0)
+  "<completed>"), 0)
 .question(
 "##Recipe.cook(Mushroom, Eggplant, @[Tomato.cut]@)",
 List.of(
@@ -49,7 +49,7 @@ List.of(
   "CutTomato",
   "Tomato",
   "Recipe",
-  "<completed>"),1)
+  "<completed>"), 1)
 .question(
 "##@[Recipe.cook(Mushroom, Eggplant, CutTomato)]@",
 List.of(
@@ -57,13 +57,13 @@ List.of(
   "<completed>",
   "Ratatouille",
   "Recipe",
-  "【🍄, 🍆, 🍅🔪】"),4)
+  "【🍄, 🍆, 🍅🔪】"), 4)
 .question(
 "##@[【🍄, 🍆, 🍅🔪】]@",
 List.of(
   "Ratatouille",
   "Recipe",
   "【🍄, 🍆, 🍅🔪】",
-  "<completed>"),3)
+  "<completed>"), 3)
     .build(); }
   }

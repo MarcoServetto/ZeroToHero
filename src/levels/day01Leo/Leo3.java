@@ -5,28 +5,28 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class Leo3 implements Function<Days.LevelName,String>{
-  public String apply(Days.LevelName name){
-    return new htmlMangle.Climb(name,Leo1.bools)
+public final class Leo3 implements Function<Days.LevelName,String>{
+  @Override public String apply(Days.LevelName name){
+    return new htmlMangle.Climb(name, Leo1.bools)
     .question("Hard mode",
        "not (@[not T]@ and not T)",
-       List.of("T","F","G","0","0/0"),
+       List.of("T", "F", "G", "0", "0/0"),
        1)
     .question(
        "##not (F and @[not T]@)",
-       List.of("T","F","G","0","0/0"),
+       List.of("T", "F", "G", "0", "0/0"),
        1)
     .question(
        "##not (@[F and F]@)",
-       List.of("T","F","G","0","0/0"),
+       List.of("T", "F", "G", "0", "0/0"),
        1)
     .question(
        "##not @[(F)]@",
-       List.of("T","F","G","0","0/0"),
+       List.of("T", "F", "G", "0", "0/0"),
        1)
     .question(
        "##@[not F]@",
-       List.of("T","F","G","0","0/0"),
+       List.of("T", "F", "G", "0", "0/0"),
        0)    
     
     .build(); }

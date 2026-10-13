@@ -5,9 +5,9 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public class WalkingExplainClimb implements Function<Days.LevelName,String>{
-  public String apply(Days.LevelName name){
-    return new htmlMangle.Walking(name,23)
+public final class WalkingExplainClimb implements Function<Days.LevelName,String>{
+  @Override public String apply(Days.LevelName name){
+    return new htmlMangle.Walking(name, 23)
     // selected, start, end, option
     .errorTopLevel("""
       @[Panic shook me awake, his voice urgent.
@@ -25,12 +25,12 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
     .questionTopLevel("""
         @[//Let me repeat: We need to @@CLIMB the hill nearby]@
         //Climbing is tricky, I hope you are ready!
-        ]@""",Comment)
+        ]@""", Comment)
     .questionMethodBody("""
       /*As we have seen, operations move forward into results.
       For example */@[North@@.turn]@/*.turn becomes East.turn
       that becomes South.*/
-      """,MethodCall)
+      """, MethodCall)
     .errorTopLevel("""
       @[/Climbing is all about recognizing those natural
       /transitions etched in the shapes of the rocks.
@@ -41,7 +41,7 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
     .questionMethodBody("""
       //We are near there, just a few more steps toward
       @[No@@rth]@
-      """,ObjectLiteral)
+      """, ObjectLiteral)
     .errorTopLevel("""
         @[/ * Getting there@@! * /]@
         """,
@@ -50,7 +50,7 @@ public class WalkingExplainClimb implements Function<Days.LevelName,String>{
       @[//@@/Still here? how many times did]@
       ///you stumble today?
       ///are you still sea sick?
-      """,Comment)
+      """, Comment)
     .questionTopLevel("""
       // No worry, back to walking,
             @[// We are near @@there!]@

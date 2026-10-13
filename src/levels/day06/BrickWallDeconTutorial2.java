@@ -7,19 +7,19 @@ import java.util.function.Function;
 import htmlMangle.BrickWallDeconstruction;
 import mainZeroToHero.Days;
 
-public class BrickWallDeconTutorial2 implements Function<Days.LevelName, String>{
-  public String apply(Days.LevelName name) {
+public final class BrickWallDeconTutorial2 implements Function<Days.LevelName,String>{
+  @Override public String apply(Days.LevelName name){
     return new BrickWallDeconstruction(name)
       .background(Tutorial, 2)
       .addMovable(0, "Direction:")
       .addImmovable(0, "{.turn:Direction}")
       .newRow()
       .addImmovable(0, "North:Direction{")
-      .addReplaceable(0, ".turn:Direction->East","East")
+      .addReplaceable(0, ".turn:Direction->East", "East")
       .addMovable(0, "}")
       .newRow()
       .addImmovable(0, "South:Direction{")
-      .addReplaceable(0, ".turn:Direction->","")
+      .addReplaceable(0, ".turn:Direction->", "")
       .addImmovable(0, "West}")
       .newRow()
       .addImmovable(0, "West:Direction{North}")

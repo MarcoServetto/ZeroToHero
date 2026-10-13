@@ -4,9 +4,9 @@ import java.util.function.Function;
 
 import htmlMangle.DirectInstructions.Location;
 import mainZeroToHero.Days;
-public class Archery1 implements Function<Days.LevelName,String>{
+public final class Archery1 implements Function<Days.LevelName,String>{
   Location l= new Location(2, 97, 0.5, 40.5);
-  String intro="""
+  String intro= """
       //Code to make an archer
       //shooting and then moving
       //to hit the targets
@@ -28,7 +28,7 @@ public class Archery1 implements Function<Days.LevelName,String>{
     return question;
   }
   @Override public String apply(Days.LevelName name){
-    return new htmlMangle.DirectInstructions(name,this.getClass().getSimpleName())
+    return new htmlMangle.DirectInstructions(name, this.getClass().getSimpleName())
     // topStart/end   leftStart/end
     .image(8)
     .area(l, intro+"""
@@ -36,7 +36,7 @@ public class Archery1 implements Function<Days.LevelName,String>{
         .heading-> _____,
         .aiming -> _____,
         }
-      """,intro+"""
+      """, intro+"""
       Archer1:Archer{
         .heading-> North;
         .aiming -> South;
@@ -46,7 +46,7 @@ public class Archery1 implements Function<Days.LevelName,String>{
         .heading-> _____;
         ________________;
         }
-      """,intro+"""
+      """, intro+"""
       Archer2:Archer{
         .heading-> North;
         .aiming -> West;

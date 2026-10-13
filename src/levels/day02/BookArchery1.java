@@ -5,7 +5,7 @@ import java.util.function.Function;
 import mainZeroToHero.Days;
 
 
-public class BookArchery1 implements Function<Days.LevelName,String>{
+public final class BookArchery1 implements Function<Days.LevelName,String>{
   @Override public String apply(Days.LevelName name){
     return new htmlMangle.Book(name)
     // topStart/end   leftStart/end

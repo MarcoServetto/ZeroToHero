@@ -2,7 +2,7 @@ package htmlMangle;
 
 import java.util.stream.Collectors;
 
-public class Escape {
+public final class Escape{
   public static String norm(String s){
     //s= s.replaceAll("[ \t\r]+\n", "\n");
     //s = s.replaceAll("\\s+\n", "\n");
@@ -10,13 +10,13 @@ public class Escape {
     return Escape.escapeForHtmlAttribute(cleanUp(s));
     }
   public static String cleanUp(String s){
-    s = s.replaceAll("\r","").replaceAll(" +\n", "\n");
+    s = s.replaceAll("\r", "").replaceAll(" +\n", "\n");
     if (s.endsWith("\n")){ s = s.substring(0, s.length() - 1); }
     return s;
     }
-  public static String escapeForHtmlAttribute(String input) {
+  public static String escapeForHtmlAttribute(String input){
     return input.chars()
-      .mapToObj(c -> switch (c) {
+      .mapToObj(c -> switch (c){
         case '&' -> "&amp;";
         case '<' -> "&lt;";
         case '>' -> "&gt;";
@@ -28,14 +28,14 @@ public class Escape {
         })
       .collect(Collectors.joining());
     }
-  public static String escapeForHtmlText(String input) {
+  public static String escapeForHtmlText(String input){
     return escapeForHtmlAttribute(input).replace(" ", "&nbsp;");
     }
   public static String escapeForHtmlScripts(String s){
     var res= new StringBuilder();
     for (var i= 0; i < s.length(); i++){
       var c= s.charAt(i);
-      switch(c){
+      switch (c){
         case '"'  -> res.append("\\\"");
         case '\\' -> res.append("\\\\");
         case '\b' -> res.append("\\b");
