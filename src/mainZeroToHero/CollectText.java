@@ -6,7 +6,7 @@ import java.nio.file.Path;
 
 public final class CollectText {
   public static void main(String[] args) throws IOException, URISyntaxException {
-    var content = files
+    var content= files
       .addS(levels.resolve("Level101", "Level101.html"))
       .add(levels.resolve("Level102", "Level102.html"))
       .addS(levels.resolve("Level103", "Level103.html"))
@@ -115,11 +115,11 @@ to a different set of possible answers.
 """;
   content.writeReport(outputFile, intro, outro+currentTask);
   }
-  private static final String intro="""
+  private static final String intro= """
 I'm making a browser based game to teach programming.
 Here are the relevant files I have
 """;
-  private static final String outro="""
+  private static final String outro= """
 -------------------
 As you can see, my formatting and coding style are quite peculiar.
 I need that becuase I'm half blind and this style helps me to keep enough
@@ -203,7 +203,7 @@ Do not try to give a solution from incomplete data.
 - If you think you have all the data, try to help for a solution.
 ----------------
 """;
-  private static final Path workingDir = Path.of("C:\\Users\\sonta\\Documents\\GitHub\\ZeroToHero\\src");
+  private static final Path workingDir= Path.of("C:\\Users\\sonta\\Documents\\GitHub\\ZeroToHero\\src");
   private static final Path levels= workingDir.toAbsolutePath().resolve("assetsDest");
   private static final Path levelsLeo= workingDir.toAbsolutePath().resolve("assetsLeo");
   private static final Path resources= workingDir.toAbsolutePath().resolve("resources");
@@ -213,16 +213,16 @@ Do not try to give a solution from incomplete data.
   private static final Path book= resources.resolve("book");
   private static final Path outputFile= workingDir.toAbsolutePath().resolve("assets", "collectedText","collectedText.txt");
 
-  private static final Path main = workingDir.resolve("main");
-  private static final Path htmlMangle = workingDir.resolve("htmlMangle");
+  private static final Path main= workingDir.resolve("main");
+  private static final Path htmlMangle= workingDir.resolve("htmlMangle");
 
-  private static final Path climb = resources.resolve("climb");
+  private static final Path climb= resources.resolve("climb");
 
-  private static final Path levelsDir = workingDir.resolve("levels");
-  private static final Path day01 = levelsDir.resolve("day01");
-  private static final Path day01Leo = levelsDir.resolve("day01Leo");
-  private static final Path day02 = levelsDir.resolve("day02");
-  private static final Path day03 = levelsDir.resolve("day03");
+  private static final Path levelsDir= workingDir.resolve("levels");
+  private static final Path day01= levelsDir.resolve("day01");
+  private static final Path day01Leo= levelsDir.resolve("day01Leo");
+  private static final Path day02= levelsDir.resolve("day02");
+  private static final Path day03= levelsDir.resolve("day03");
 
 
   private static final FilesIn files= new FilesIn(workingDir)

@@ -43,7 +43,7 @@ public final class Walking {
     int start= text.indexOf("@[");
     assert start >= 0:text;
     text = text.replace("@[","");
-    int sel=text.indexOf("@@");
+    int sel= text.indexOf("@@");
     assert sel >= 0:text;
     text = text.replace("@@","");
     int end= text.indexOf("]@");
@@ -106,7 +106,7 @@ public final class Walking {
 }
 record WQuestion(String text, int sel, int start, int end, htmlMangle.Walking.WalkingOption option, String motivation, String errorExplanation, htmlMangle.Walking.Frame frame){
   String body(int index) {
-      var option=(java.lang.Enum<?>)this.option();
+      var option= (java.lang.Enum<?>)this.option();
       return "<textarea class=\"overlayTextarea\"\n"
           + "    id=\"question" + index + "\"\n"
           + "    name=\"Question_" + index + "\"\n"

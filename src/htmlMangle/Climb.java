@@ -8,7 +8,7 @@ import java.util.stream.IntStream;
 import mainZeroToHero.Days;
 import resources.File;
 public final class Climb {
-  private static Random rand=new Random(123);
+  private static Random rand= new Random(123);
   public static int nextRock(){ return rand.nextInt(8) + 1; }
   private Days.LevelName name;
   private String api;
@@ -44,7 +44,7 @@ public final class Climb {
     shouldBe = Escape.cleanUp(shouldBe);
     boolean isContinuation= text.startsWith("##");
     assert shouldBe.startsWith("##") == isContinuation: shouldBe+" -- "+text;
-    if (isContinuation){ text= text.substring(2); shouldBe= shouldBe.substring(2); }
+    if (isContinuation){ text = text.substring(2); shouldBe = shouldBe.substring(2); }
     context = Escape.cleanUp(context);
     rocks = rocks.stream().map(Escape::cleanUp).toList();
     int start= text.indexOf("@[");
@@ -93,7 +93,7 @@ public final class Climb {
 }
 record CQuestion(boolean isContinuation, String context, String text, String shouldBe, int start, int end, List<String> rocks, int option){
   String body(int index) {
-    int[] i={0};
+    int[] i= {0};
     return
       "<textarea class=\"overlayTextarea questionText\"\n"
     + "    id=\"question" + index + "\"\n"

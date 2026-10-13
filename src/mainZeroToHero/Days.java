@@ -30,7 +30,7 @@ public final class Days{
   private void next(){
     assert level >= 0 && level <= 98;
     if (!nextNow){ level += 1; return; }
-    day += 1; level= 1; nextNow= false; 
+    day += 1; level = 1; nextNow = false; 
     }
   public String currentLevel(){ return "Level"+day+(level <= 9 ? "0" : "") + level; }
   public String nextLevel(){
@@ -43,7 +43,7 @@ public final class Days{
     new FileWriter().writeFile(ln,l.apply(ln));
   }
   public void add(Function<LevelName,String> l){ next(); write(l); }
-  public void addLast(Function<LevelName,String> l){ next(); nextNow= true; write(l); }
+  public void addLast(Function<LevelName,String> l){ next(); nextNow = true; write(l); }
 }
 final class FileWriter{
   void writeFile(Days.LevelName name, String s){

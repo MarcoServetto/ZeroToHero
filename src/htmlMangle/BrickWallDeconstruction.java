@@ -81,9 +81,9 @@ public final class BrickWallDeconstruction extends BrickWall {
    * @return
    */
   public BrickWallDeconstruction makeReplaceable(int lastBricks, String... to) {
-    String[] newPermutation = new String[to.length + 1];
+    String[] newPermutation= new String[to.length + 1];
     newPermutation[0] = "";
-    List<String[]> subPermutations = wallPermutations.subList(wallPermutations.size() - lastBricks, wallPermutations.size());
+    List<String[]> subPermutations= wallPermutations.subList(wallPermutations.size() - lastBricks, wallPermutations.size());
     for (String[] subPermutation : subPermutations) {
       newPermutation[0] += subPermutation[0];
       }

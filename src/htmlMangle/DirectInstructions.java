@@ -19,14 +19,14 @@ public final class DirectInstructions {
   private Map<Integer, String> map;
   private final String imageFolder;
   public DirectInstructions(Days.LevelName name, String imageFolder){
-    this.name = name;
-    this.imageFolder = imageFolder;
-    this.map = loadImageMap();    
+    this.name= name;
+    this.imageFolder= imageFolder;
+    this.map= loadImageMap();    
     }
   private List<Image> images= new ArrayList<>();
   private Image current;
   private void commit(Image i){
-    current= i;
+    current = i;
     images.add(i);
     }
   public DirectInstructions image(){ commit(new Image(name, new ArrayList<>(), map, false, false)); return this; }
@@ -41,8 +41,8 @@ public final class DirectInstructions {
     return area(minX,maxX,minY,maxY,original,solution,List.of());
     }
   public DirectInstructions area(double minX, double maxX, double minY, double maxY,String original, String solution,List<String> alternatives){
-    if (Main.debug){ original= solution; }
-    var alts=alternatives.stream().collect(Collectors.joining("|###|"));
+    if (Main.debug){ original = solution; }
+    var alts= alternatives.stream().collect(Collectors.joining("|###|"));
     var protectedOriginal= extractProtected(original);
     current.areas().add(new TArea(protectedOriginal.text(),solution,alts,"",
       protectedOriginal.ranges(),new Range(minX,maxX,minY,maxY)));
@@ -64,7 +64,7 @@ public final class DirectInstructions {
       int start= sb.length();
       sb.append(s, open+protectStart.length(), close);
       ranges.add(start+"-"+sb.length());
-      i= close+protectEnd.length();
+      i = close+protectEnd.length();
       }
     return new Protected(sb.toString(), String.join(",", ranges));
     }

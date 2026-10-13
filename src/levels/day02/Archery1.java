@@ -6,7 +6,7 @@ import htmlMangle.DirectInstructions.Location;
 import mainZeroToHero.Days;
 public final class Archery1 implements Function<Days.LevelName,String>{
   Location l= new Location(2, 97, 0.5, 40.5);
-  String intro="""
+  String intro= """
       //Code to make an archer
       //shooting and then moving
       //to hit the targets

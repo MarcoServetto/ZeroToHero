@@ -96,7 +96,7 @@ public class BrickWall {
     }
   protected void setBackground(String loc, int limit, int num) {
     if (num <= 0 || num > limit) { throw new Error(loc+" num must be in the 1.."+limit+" range"); }
-    background= loc+"/"+loc+num+".jpg";
+    background = loc+"/"+loc+num+".jpg";
     }
   public String build() {
     return name.htmlNextLevel(File.BrickWall_html.text)
@@ -107,10 +107,10 @@ public class BrickWall {
     }
 
   protected String renderWall(List<List<Brick>> brickRows, int length, boolean isWall) {
-    StringBuilder sb = new StringBuilder();
+    StringBuilder sb= new StringBuilder();
     for (List<Brick> sortedBricks : brickRows) {
       sb.append("<span class=\"brickRow\">");
-      int currentIndex = 0;
+      int currentIndex= 0;
       for (Brick brick : sortedBricks) {
         int brickIndex= brick.index();
         int len= brick.length();
@@ -146,7 +146,7 @@ public class BrickWall {
       if (code.length() <= 0) { throw new IllegalArgumentException("Brick cannot be empty!"); }
       }
     public String toHtml() {
-      String movableStr = movable ? "movable" : "";
+      String movableStr= movable ? "movable" : "";
       return "<span class=\"brick %s\">%s</span>".formatted(movableStr, Escape.escapeForHtmlText(code));
       }
     }

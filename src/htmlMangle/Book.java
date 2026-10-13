@@ -27,7 +27,7 @@ public final class Book {
   static private final String holeChar= "X";
   static private final String holeEnd1= "\">";
   static private final String holeEnd2= "</span>";
-  static private final Pattern pattern = Pattern.compile("<#\\[(.*?)\\]#>");
+  static private final Pattern pattern= Pattern.compile("<#\\[(.*?)\\]#>");
   private final Map<String,String> holeReplacements= new HashMap<>();
   private int holeCounter= 0;
   
@@ -44,15 +44,15 @@ public final class Book {
     //find all openTag text closeTag
     //replace it with htmlHole(first,elems), for example <#[1|#|abc|#|dfg]#>
     //would be replaced with the result of htmlHole(1,List.of("abc","dfg")) 
-    Matcher matcher = pattern.matcher(text);
-    StringBuffer sb = new StringBuffer();
+    Matcher matcher= pattern.matcher(text);
+    StringBuffer sb= new StringBuffer();
     while (matcher.find()) {
-      String content = matcher.group(1); // The part inside <#[ ... ]#> 
-      String[] parts = content.split("\\Q"+middleTag+"\\E");
-      int solutionIndex = Integer.parseInt(parts[0]);
-      List<String> elems = List.of(parts);
-      String replacement = htmlHole(solutionIndex, elems.subList(1,elems.size()));
-      String placeholder = "@@@HOLE_" + (holeCounter++) + "@@@";
+      String content= matcher.group(1); // The part inside <#[ ... ]#> 
+      String[] parts= content.split("\\Q"+middleTag+"\\E");
+      int solutionIndex= Integer.parseInt(parts[0]);
+      List<String> elems= List.of(parts);
+      String replacement= htmlHole(solutionIndex, elems.subList(1,elems.size()));
+      String placeholder= "@@@HOLE_" + (holeCounter++) + "@@@";
       holeReplacements.put(placeholder, replacement);
       matcher.appendReplacement(sb, Matcher.quoteReplacement(placeholder));
       }
@@ -66,11 +66,11 @@ public final class Book {
     return text;
     }
   private String generate(String text){
-    String htmlText=allHtmlHoles(text);
-    List<Parser.ParserExtension> extensions = List.of(TablesExtension.create());
-    Parser parser = Parser.builder().extensions(extensions).build();
-    HtmlRenderer renderer = HtmlRenderer.builder().extensions(extensions).build();
-    String renderedHtml = renderer.render(parser.parse(htmlText));
+    String htmlText= allHtmlHoles(text);
+    List<Parser.ParserExtension> extensions= List.of(TablesExtension.create());
+    Parser parser= Parser.builder().extensions(extensions).build();
+    HtmlRenderer renderer= HtmlRenderer.builder().extensions(extensions).build();
+    String renderedHtml= renderer.render(parser.parse(htmlText));
     return restorePlaceholders(renderedHtml);    
     }
   public String build(){

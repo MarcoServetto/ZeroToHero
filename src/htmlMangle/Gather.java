@@ -48,7 +48,7 @@ public final class Gather {
     if (!diffImg){ throw new Error("Repeated card img"); }
     if (!diffTitle){ throw new Error("Repeated card title"); }
 
-    String pre="""
+    String pre= """
     <div class="commonCode">
       <div id="apiContainer" class="cardCode">
         <textarea readonly id="api" class="overlayTextarea noSelection"

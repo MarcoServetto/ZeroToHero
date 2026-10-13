@@ -16,19 +16,19 @@ public final class FilesIn {
     return this;
   }
   public FilesIn add(Path filePath) {
-    Path absolute = filePath.toAbsolutePath().normalize();
+    Path absolute= filePath.toAbsolutePath().normalize();
     fileGroups.put(absolute, true);
     return this;
   }
   public FilesIn addS(Path filePath) {
-    Path absolute = filePath.toAbsolutePath().normalize();
+    Path absolute= filePath.toAbsolutePath().normalize();
     fileGroups.put(absolute, false);
     return this;
   }
 
   private Set<Path> ignoredFiles(List<Path> allFiles){
     Set<Path> res= new HashSet<>();
-    FileSystem fs = FileSystems.getDefault();
+    FileSystem fs= FileSystems.getDefault();
     for (String pattern : ignorePatterns){
       PathMatcher m= fs.getPathMatcher("glob:" + pattern);
       for (Path file : allFiles){
@@ -41,7 +41,7 @@ public final class FilesIn {
     }
 
   public Content build() throws IOException {
-    List<Path> allFiles = Files.walk(root)
+    List<Path> allFiles= Files.walk(root)
       .filter(Files::isRegularFile)
       .map(p -> p.toAbsolutePath().normalize())
       .toList();//wrong code but it is only an internal tool (does not close stream)
@@ -52,7 +52,7 @@ public final class FilesIn {
     return new Content(root,fileGroups);
   }  
   private void assertAllPresent(Set<Path> expected, Set<Path> actual, String errorMessage){
-    String missing = expected.stream()
+    String missing= expected.stream()
       .map(p -> p.toAbsolutePath().normalize())
       .filter(p -> actual.stream()
         .map(Path::toAbsolutePath)
@@ -73,7 +73,7 @@ final class Content {
   private final Map<Path, Boolean> fileGroups;
   public Content(Path root, Map<Path, Boolean> fileGroups){
     this.root= root;
-    this.fileGroups = Map.copyOf(fileGroups);
+    this.fileGroups= Map.copyOf(fileGroups);
   }
   public List<Path> getFilesForGroup(boolean group) {
     return fileGroups.entrySet().stream()
@@ -82,7 +82,7 @@ final class Content {
       .toList();
   }
   public void writeReport(Path outputFile, String intro, String outro) throws IOException{
-    try (var writer = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8, StandardOpenOption.CREATE)){
+    try (var writer= Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8, StandardOpenOption.CREATE)){
       writer.write(intro);
       for (Path file : getFilesForGroup(true)){
         writer.write("\n//---File " + root.relativize(file)+"\n");
