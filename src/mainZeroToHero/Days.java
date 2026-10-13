@@ -34,7 +34,7 @@ public final class Days{
     }
   public String currentLevel(){ return "Level"+day+(level <= 9 ? "0" : "") + level; }
   public String nextLevel(){
-    if(nextNow){ return "Level"+(day + 1) + "01"; }
+    if (nextNow){ return "Level"+(day + 1) + "01"; }
     var level= this.level + 1;
     return "Level"+day+(level <= 9 ? "0" : "") + level; 
     }

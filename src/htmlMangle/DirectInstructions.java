@@ -32,7 +32,7 @@ public final class DirectInstructions {
   public DirectInstructions image(){ commit(new Image(name, new ArrayList<>(), map, false, false)); return this; }
   public DirectInstructions image(int size){
     assert size>0;
-    if(size==1){ return image(); }
+    if (size==1){ return image(); }
     return image().image(size-1);
     }
   public DirectInstructions unlockedImage(){ commit(new Image(name, new ArrayList<>(), map, true, false)); return this; }
@@ -108,8 +108,8 @@ public final class DirectInstructions {
     Map<Integer, String> map= new HashMap<>();   
     Path imagesDir= name.directoryName().getParent().resolve(imageFolder);
     assert imagesDir!= null;
-    List<Path> paths; try(var s= Files.walk(imagesDir)) { paths= s.toList(); }
-    catch(IOException ioe) {throw new UncheckedIOException(ioe); }
+    List<Path> paths; try (var s= Files.walk(imagesDir)) { paths= s.toList(); }
+    catch (IOException ioe) {throw new UncheckedIOException(ioe); }
     for (var p : paths){
       String filename= p.getFileName().toString();
       var matcher= ImagePattern.matcher(filename);
@@ -125,7 +125,7 @@ public final class DirectInstructions {
 }
 record Image(Days.LevelName name, List<TArea> areas, Map<Integer, String> map, boolean unlocked, boolean example){
   String indexToName(int index){
-    if(!map.containsKey(index)){ System.err.println("Image "+index+" is missing in "+name.directoryName()); }
+    if (!map.containsKey(index)){ System.err.println("Image "+index+" is missing in "+name.directoryName()); }
     return map.getOrDefault(index,"ImageNotFound.jpg");
     }
   String div(int index){ return

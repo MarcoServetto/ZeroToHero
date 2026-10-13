@@ -35,7 +35,7 @@ public final class Escape {
     var res= new StringBuilder();
     for (var i= 0; i < s.length(); i++){
       var c= s.charAt(i);
-      switch(c){
+      switch (c){
         case '"'  -> res.append("\\\"");
         case '\\' -> res.append("\\\\");
         case '\b' -> res.append("\\b");

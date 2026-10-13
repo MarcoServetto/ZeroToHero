@@ -17,12 +17,12 @@ public final class Gather {
   private List<Card> cs= new ArrayList<>();
   public Gather cardTrash(String text, Kind kind, int num){ return cardPr(text,0,kind,num); }
   public Gather card(String text, int group, Kind kind, int num){
-    if(group<=0 || group>9){ throw new Error("group must be in the 1..9 range"); }
+    if (group<=0 || group>9){ throw new Error("group must be in the 1..9 range"); }
     return cardPr(text,group,kind,num);
   }
 
   private Gather cardPr(String text, int group, Kind kind, int num){
-    if(num<=0 || num>kind.limit){ throw new Error(kind+" num must be in the 1.."+kind.limit+" range"); }
+    if (num<=0 || num>kind.limit){ throw new Error(kind+" num must be in the 1.."+kind.limit+" range"); }
     String loc= kind.loc+"/"+kind.loc+num+".png";
     int split= text.indexOf("\n");
     assert split!=-1;
@@ -35,7 +35,7 @@ public final class Gather {
   }
   public Gather shuffle(){
     Collections.shuffle(cs, new Random(10));
-    for(int i= 0; i < cs.size(); i++){
+    for (int i= 0; i < cs.size(); i++){
       cs.set(i, cs.get(i).withId(i));
     }
     return this;

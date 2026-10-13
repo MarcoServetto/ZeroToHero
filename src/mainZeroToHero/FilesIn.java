@@ -87,7 +87,7 @@ final class Content {
       for (Path file : getFilesForGroup(true)){
         writer.write("\n//---File " + root.relativize(file)+"\n");
         for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-          if(line.trim().startsWith("//")){ continue; }
+          if (line.trim().startsWith("//")){ continue; }
           writer.write(line);
           writer.newLine();
         }

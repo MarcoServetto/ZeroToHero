@@ -31,7 +31,7 @@ public enum File{
     assert Files.exists(p):"Name "+name+" not found. Visible files are \n"
       +DirectoryStructure.of(startPath());
     try{ return Files.readString(p); }
-    catch(IOException e) { throw new UncheckedIOException(e); }
+    catch (IOException e) { throw new UncheckedIOException(e); }
   }
 }
 
@@ -44,7 +44,7 @@ final class DirectoryStructure {
         .mapMulti(DirectoryStructure::single)
         .collect(Collectors.joining());
     }
-    catch(IOException ioe){ throw new UncheckedIOException(ioe); }
+    catch (IOException ioe){ throw new UncheckedIOException(ioe); }
   }
   private static void single(Path rel,Consumer<String> c) {
     int depth= rel.getNameCount() - 1;

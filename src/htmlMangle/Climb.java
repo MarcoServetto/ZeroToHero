@@ -31,7 +31,7 @@ public final class Climb {
   private static final String endContext= Escape.cleanUp("\n_______________\n");
 
   private String handleContinuations(boolean isContinuation, String context, String shouldBe, String isInstead){
-    if(!isContinuation){ return context + endContext; }
+    if (!isContinuation){ return context + endContext; }
     checkContinuation(shouldBe);
     int i= context.indexOf(endContext);
     if (i==-1){ i = context.length(); context += endContext; }
