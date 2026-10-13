@@ -8,7 +8,7 @@ import htmlMangle.BrickWall;
 import mainZeroToHero.Days;
 
 public final class BrickWallTutorial3 implements Function<Days.LevelName, String>{
-  public String apply(Days.LevelName name) {
+  @Override public String apply(Days.LevelName name) {
     return new BrickWall(name, """
 Hour: { .succ: Hour }
 I: Hour{ II }

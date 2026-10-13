@@ -6,7 +6,7 @@ import java.util.function.Function;
 import mainZeroToHero.Days;
 
 public final class WalkingToForest implements Function<Days.LevelName,String>{
-  public String apply(Days.LevelName name){
+  @Override public String apply(Days.LevelName name){
     return new htmlMangle.Walking(name, 21)
     // selected, start, end, option
     .questionTopLevel("""

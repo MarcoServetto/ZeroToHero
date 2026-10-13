@@ -6,7 +6,7 @@ import java.util.function.Function;
 import mainZeroToHero.Days;
 
 public final class Leo4 implements Function<Days.LevelName,String>{
-  public String apply(Days.LevelName name){
+  @Override public String apply(Days.LevelName name){
     return new htmlMangle.Climb(name,lambdas)
     .question("New rules here, look at the bottom of the rules set",
       "@[{x -> 10 + x}#4]@",

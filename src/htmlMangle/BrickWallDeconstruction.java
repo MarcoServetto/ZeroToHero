@@ -35,25 +35,25 @@ public final class BrickWallDeconstruction extends BrickWall {
     int limit; // Images are resources/brickWallDeconstruction/images/LOC/LOC1.png .. LOC<limit>.png
     Background(String loc, int limit) { this.loc= loc; this.limit= limit; }
     }
-  public BrickWallDeconstruction newRow() {
+  @Override public BrickWallDeconstruction newRow() {
     super.newRow();
     return this;
     }
-  public BrickWallDeconstruction addToPile(int indexSkip, boolean movable, String s) {
+  @Override public BrickWallDeconstruction addToPile(int indexSkip, boolean movable, String s) {
     super.addToPile(indexSkip, movable, s);
     return this;
     }
-  public BrickWallDeconstruction addBrick(int indexSkip, boolean movable, String s) {
+  @Override public BrickWallDeconstruction addBrick(int indexSkip, boolean movable, String s) {
     super.addBrick(indexSkip, movable, s);
     if (indexSkip > 0) { wallPermutations.add(new String[]{" ".repeat(indexSkip)}); }
     wallPermutations.add(new String[]{s});
     return this;
     }
-  public BrickWallDeconstruction addMovable(int indexSkip, String s) {
+  @Override public BrickWallDeconstruction addMovable(int indexSkip, String s) {
     super.addMovable(indexSkip, s);
     return this;
     }
-  public BrickWallDeconstruction addImmovable(int indexSkip, String s) {
+  @Override public BrickWallDeconstruction addImmovable(int indexSkip, String s) {
     super.addImmovable(indexSkip, s);
     return this;
     }
@@ -92,7 +92,7 @@ public final class BrickWallDeconstruction extends BrickWall {
     subPermutations.add(newPermutation);
     return this;
     }
-  public String build() {
+  @Override public String build() {
     checkpoints.addAll(Arrays.asList(wallPermutations()));
     String wallString= renderWall(wallRows, wallLength, true);
     String pileString= renderWall(pileRows, pileLength, false);

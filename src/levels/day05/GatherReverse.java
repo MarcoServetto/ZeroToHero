@@ -6,7 +6,7 @@ import java.util.function.Function;
 import mainZeroToHero.Days;
 
 public final class GatherReverse implements Function<Days.LevelName,String>{
-  public String apply(Days.LevelName name){
+  @Override public String apply(Days.LevelName name){
     return new htmlMangle.Gather(name,"""
 Direction: { .turn: Direction }
 North: Direction { East  }

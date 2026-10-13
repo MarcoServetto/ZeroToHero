@@ -6,7 +6,7 @@ import java.util.function.Function;
 import mainZeroToHero.Days;
 
 public final class ClimbArcherAimTo implements Function<Days.LevelName,String>{
-  public String apply(Days.LevelName name){
+  @Override public String apply(Days.LevelName name){
     return new htmlMangle.Climb(name,ClimbBase.directionsAimTo)
     .question("""
       Now we use methods Archer.headTo and Archer.aimTo

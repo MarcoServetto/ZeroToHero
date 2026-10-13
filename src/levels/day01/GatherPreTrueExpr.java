@@ -6,7 +6,7 @@ import java.util.function.Function;
 import mainZeroToHero.Days;
 
 public final class GatherPreTrueExpr implements Function<Days.LevelName,String>{
-  public String apply(Days.LevelName name){
+  @Override public String apply(Days.LevelName name){
     return new htmlMangle.Gather(name,"""
 //Now some expressions. You have to identify equivalent
 //expression: expressions denoting the same values
