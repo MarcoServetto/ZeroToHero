@@ -7,27 +7,27 @@ import mainZeroToHero.Days;
 
 public final class Walking2 implements Function<Days.LevelName,String>{
   @Override public String apply(Days.LevelName name){
-    return new htmlMangle.Walking(name,33)
+    return new htmlMangle.Walking(name, 33)
     // selected, start, end, option
     .questionMethodBody("""
       //Going forward the text will help
       //you less and less.
       //Learn from your mistakes and experiment!
       @[Ea@@st]@
-      """,ObjectLiteral)
+      """, ObjectLiteral)
     .questionTopLevel("""
       Direction:{}
       @[North@@:Direction{}]@
       South:Direction{}
       //What is this? we mentioned in
       //the story before!
-      """,TypeDeclaration)
+      """, TypeDeclaration)
     .questionTopLevel("""
       Direction:{}
       North:Direction{}
       @[South@@:Direction{}]@
       //Can you solve it now?
-      """,TypeDeclaration)
+      """, TypeDeclaration)
     .questionMethodBody("@[South@@.turn]@", MethodCall)
     .questionMethodBody("@[So@@uth]@.turn\n//Remember, you need to select the smallest\n//syntactical unit around the highlighted character", ObjectLiteral)
     .questionMethodBody("@[Ea@@st]@.turn", ObjectLiteral)

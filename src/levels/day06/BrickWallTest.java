@@ -7,7 +7,7 @@ import java.util.function.Function;
 import htmlMangle.BrickWall;
 import mainZeroToHero.Days;
 
-public final class BrickWallTest implements Function<Days.LevelName, String>{
+public final class BrickWallTest implements Function<Days.LevelName,String>{
   @Override public String apply(Days.LevelName name) {
     return new BrickWall(name, """
 Direction: {

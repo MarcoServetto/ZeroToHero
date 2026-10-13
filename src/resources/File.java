@@ -23,10 +23,10 @@ public enum File{
   public final String text;
   File(){text= loadText(this.name());}
   public static Path startPath(){
-    return Paths.get(System.getProperty("user.dir"),"src","resources");
+    return Paths.get(System.getProperty("user.dir"), "src", "resources");
   } 
   static private String loadText(String name){
-    name = name.replace('_','.');
+    name = name.replace('_', '.');
     Path p= startPath().resolve(Path.of(name));
     assert Files.exists(p):"Name "+name+" not found. Visible files are \n"
       +DirectoryStructure.of(startPath());
@@ -46,7 +46,7 @@ final class DirectoryStructure {
     }
     catch (IOException ioe){ throw new UncheckedIOException(ioe); }
   }
-  private static void single(Path rel,Consumer<String> c) {
+  private static void single(Path rel, Consumer<String> c) {
     int depth= rel.getNameCount() - 1;
     assert depth>=0;
     c.accept("--|".repeat(depth));

@@ -9,7 +9,7 @@ import resources.File;
 public final class Walking {
   private Days.LevelName name;
   private int required;
-  public Walking(Days.LevelName name,int required){
+  public Walking(Days.LevelName name, int required){
     this.required= required;
     this.name= name;
     }
@@ -18,39 +18,39 @@ public final class Walking {
     qs.add(q);
   }
   public Walking questionTopLevel(String text, WalkingOption option){
-    return question(text,option,"",Frame.TopLevel);
+    return question(text, option, "", Frame.TopLevel);
   }
   public Walking questionMethodBody(String text, WalkingOption option){
-    return question(text,option,"",Frame.MethodBody);
+    return question(text, option, "", Frame.MethodBody);
   }
   private Walking question(String text, WalkingOption option, String motivation, Frame frame){
     assert option != Option.Error:"error questions require an explanation: use error(text,explanation)";
-    commit(parse(text,option,motivation,"",frame));
+    commit(parse(text, option, motivation, "", frame));
     return this;
   }
   public Walking errorTopLevel(String text, String explanation){
-    return error(text,explanation,Frame.TopLevel);
+    return error(text, explanation, Frame.TopLevel);
   }
   public Walking errorMethodBody(String text, String explanation){
-    return error(text,explanation,Frame.MethodBody);
+    return error(text, explanation, Frame.MethodBody);
   }
   private Walking error(String text, String explanation, Frame frame){
-    commit(parse(text,Option.Error,"",explanation,frame));
+    commit(parse(text, Option.Error, "", explanation, frame));
     return this;
   }
   private WQuestion parse(String text, WalkingOption option, String motivation, String explanation, Frame frame){
     text = Escape.cleanUp(text);
     int start= text.indexOf("@[");
     assert start >= 0:text;
-    text = text.replace("@[","");
+    text = text.replace("@[", "");
     int sel= text.indexOf("@@");
     assert sel >= 0:text;
-    text = text.replace("@@","");
+    text = text.replace("@@", "");
     int end= text.indexOf("]@");
     assert end >= 0:text;
-    text = text.replace("]@","");
-    return new WQuestion(Escape.escapeForHtmlAttribute(text), sel,start,end,option,motivation,
-        Escape.escapeForHtmlAttribute(explanation),frame);
+    text = text.replace("]@", "");
+    return new WQuestion(Escape.escapeForHtmlAttribute(text), sel, start, end, option, motivation,
+        Escape.escapeForHtmlAttribute(explanation), frame);
   }
   public String build(){    
     String body= IntStream.range(0, qs.size())
@@ -64,16 +64,16 @@ public final class Walking {
   }
   public String options(){
     return//option(label,tooltip,id,explanation,emoji)
-        option("parameter","Parameter",1,"a parameter","🏷️")
-      + option("method call","Method Call",2,"a method call","🏃")
-      + option("object literal","Object Literal",3,"an object literal","📦")
-      + option("method declaration","Method Declaration",4,"a method declaration","📝")
-      + option("type declaration","Type Declaration",5,"a type declaration","📒")
-      + option("type","Type",6,"a type","🧩")
-      + option("comment","Comment",7,"a comment","💬")
-      + option("error","Error",8,"an error","⚠️");
+        option("parameter", "Parameter", 1, "a parameter", "🏷️")
+      + option("method call", "Method Call", 2, "a method call", "🏃")
+      + option("object literal", "Object Literal", 3, "an object literal", "📦")
+      + option("method declaration", "Method Declaration", 4, "a method declaration", "📝")
+      + option("type declaration", "Type Declaration", 5, "a type declaration", "📒")
+      + option("type", "Type", 6, "a type", "🧩")
+      + option("comment", "Comment", 7, "a comment", "💬")
+      + option("error", "Error", 8, "an error", "⚠️");
   }
-  public String option(String label,String tooltip, int id, String explanation, String emoji){
+  public String option(String label, String tooltip, int id, String explanation, String emoji){
     return "<div class=\"buttonRow\">\n<div class=\"roundBtn\" data-tooltip=\""+tooltip
       +"\" data-optionid=\""+id
       +"\" data-optionexplanation=\""+explanation
@@ -94,8 +94,8 @@ public final class Walking {
     Error;
   }
   public enum Frame{
-    TopLevel("🏛️","this code is to be understood as 'top level code'"),
-    MethodBody("⚙️","this code is to be understood as 'method body'");
+    TopLevel("🏛️", "this code is to be understood as 'top level code'"),
+    MethodBody("⚙️", "this code is to be understood as 'method body'");
     public final String icon;
     public final String tooltip;
     Frame(String icon, String tooltip){

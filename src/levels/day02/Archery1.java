@@ -28,7 +28,7 @@ public final class Archery1 implements Function<Days.LevelName,String>{
     return question;
   }
   @Override public String apply(Days.LevelName name){
-    return new htmlMangle.DirectInstructions(name,this.getClass().getSimpleName())
+    return new htmlMangle.DirectInstructions(name, this.getClass().getSimpleName())
     // topStart/end   leftStart/end
     .image(8)
     .area(l, intro+"""
@@ -36,7 +36,7 @@ public final class Archery1 implements Function<Days.LevelName,String>{
         .heading-> _____,
         .aiming -> _____,
         }
-      """,intro+"""
+      """, intro+"""
       Archer1:Archer{
         .heading-> North;
         .aiming -> South;
@@ -46,7 +46,7 @@ public final class Archery1 implements Function<Days.LevelName,String>{
         .heading-> _____;
         ________________;
         }
-      """,intro+"""
+      """, intro+"""
       Archer2:Archer{
         .heading-> North;
         .aiming -> West;

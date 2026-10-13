@@ -7,7 +7,7 @@ import mainZeroToHero.Days;
 
 public final class Walking1 implements Function<Days.LevelName,String>{
   @Override public String apply(Days.LevelName name){
-    return new htmlMangle.Walking(name,33)
+    return new htmlMangle.Walking(name, 33)
     // selected, start, end, option
     .questionTopLevel("""
       // You need to do two actions:
@@ -17,7 +17,7 @@ public final class Walking1 implements Function<Days.LevelName,String>{
       @[//Select all and only this lin@@e]@
 
       //Press the button 'comment'
-      """,Comment)
+      """, Comment)
     .questionTopLevel("""
       @[/*
       This is the walking minigame
@@ -26,7 +26,7 @@ public final class Walking1 implements Function<Days.LevelName,String>{
       Indeed, this code is a multiline comment.
       Text useful for explanation but
       ignored in execution@@.
-      */]@""",Comment)
+      */]@""", Comment)
     .questionTopLevel("""
       @[//This is a @@single line comment]@
       //Select all and only the line with
@@ -34,14 +34,14 @@ public final class Walking1 implements Function<Days.LevelName,String>{
       //The highlighted character is
       //the currently selected character.
       //Valid selections must include the highlighted character.
-      """,Comment)
+      """, Comment)
     .questionMethodBody("""
       @[No@@rth]@
       //In this kind of puzzle, we select the
       //smallest self contained unit of code
       //around the highlighted/selected character.
       //This time it is an object literal.
-      """,ObjectLiteral)
+      """, ObjectLiteral)
     .errorTopLevel("@[+%/-@@-%--]@",
       "Text +%/--%-- is not valid code, just gibberish")
     .errorTopLevel("""
@@ -59,12 +59,12 @@ public final class Walking1 implements Function<Days.LevelName,String>{
       //more questions and maybe also to redo
       //some of the past questions.
       //+%/--%--
-      """,Comment)
+      """, Comment)
     .questionTopLevel("""
       @[//@@Why the question before was a]@
       //comment and not error?
       //because the creazy +%/--%-- text was in a comment.
-      """,Comment)
+      """, Comment)
     .questionMethodBody("""
       //Ok, back to some questions.
       //This is a method call!

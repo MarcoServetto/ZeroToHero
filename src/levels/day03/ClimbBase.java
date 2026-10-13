@@ -7,7 +7,7 @@ import mainZeroToHero.Days;
 
 public final class ClimbBase implements Function<Days.LevelName,String>{
   @Override public String apply(Days.LevelName name){
-    return new htmlMangle.Climb(name,directions)
+    return new htmlMangle.Climb(name, directions)
     .question("""
       This is the climbing minigame.
       Highlight/Select all the code below.
@@ -17,27 +17,27 @@ public final class ClimbBase implements Function<Days.LevelName,String>{
           It works because North.turn reduces to East in one step            rock       |➡️
       """,
       "@[North.turn]@",
-      List.of("East","North",".turn","Direction"),
+      List.of("East", "North", ".turn", "Direction"),
       0)
     .question("""
       Here Highlight/Select only the first operation.
       Select the rock with the correct result
       """,
       "@[East.turn]@.turn",
-      List.of("Direction","South","North","Panic","<completed>"),
+      List.of("Direction", "South", "North", "Panic", "<completed>"),
       1)
     .question("""
       Great, now select the next reduction step!
       """,
       "##@[South.turn]@",
-      List.of("Direction","South","North","West","<completed>"),
+      List.of("Direction", "South", "North", "West", "<completed>"),
       3)
     .question("""
       This is it. We have reduced `East.turn.turn`
       Now just select <completed>
       """,
       "##@[West]@",
-      List.of("Direction","South","North","West","<completed>"),
+      List.of("Direction", "South", "North", "West", "<completed>"),
       4)
     .build(); }
   public static final String directions= """

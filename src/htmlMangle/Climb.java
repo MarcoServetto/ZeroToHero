@@ -12,21 +12,21 @@ public final class Climb {
   public static int nextRock(){ return rand.nextInt(8) + 1; }
   private Days.LevelName name;
   private String api;
-  public Climb(Days.LevelName name,String api){ this.name= name; this.api= api;}
+  public Climb(Days.LevelName name, String api){ this.name= name; this.api= api;}
   private List<CQuestion> qs= new ArrayList<>();
   private void commit(CQuestion q){ qs.add(q); }
   private String lastContext= "";
   public Climb question(String text, List<String> rocks, int option){
-    return question(lastContext,text,rocks,option);
+    return question(lastContext, text, rocks, option);
   }
   public Climb question(String context, String text, List<String> rocks, int option){
-    return question(context,text,text,rocks,option);
+    return question(context, text, text, rocks, option);
   }
   public Climb questionInstead(String shouldBe, String isInstead, List<String> rocks, int option){
-    return questionInstead(lastContext,shouldBe,isInstead,rocks,option);
+    return questionInstead(lastContext, shouldBe, isInstead, rocks, option);
   }
   public Climb questionInstead(String context, String shouldBe, String isInstead, List<String> rocks, int option){
-    return question(context,isInstead,shouldBe,rocks,option);
+    return question(context, isInstead, shouldBe, rocks, option);
   }
   private static final String endContext= Escape.cleanUp("\n_______________\n");
 
@@ -35,8 +35,8 @@ public final class Climb {
     checkContinuation(shouldBe);
     int i= context.indexOf(endContext);
     if (i==-1){ i = context.length(); context += endContext; }
-    String part1= context.substring(0,i+endContext.length());
-    String part2= context.substring(i+endContext.length(),context.length());
+    String part1= context.substring(0, i+endContext.length());
+    String part2= context.substring(i+endContext.length(), context.length());
     return part1+"\n"+isInstead+part2;
   }
   private Climb question(String context, String text, String shouldBe, List<String> rocks, int option){
@@ -49,23 +49,23 @@ public final class Climb {
     rocks = rocks.stream().map(Escape::cleanUp).toList();
     int start= text.indexOf("@[");
     assert start >= 0:text;
-    text = text.replace("@[","");
+    text = text.replace("@[", "");
     int end= text.indexOf("]@");
     assert end >= 0:text;
-    text = text.replace("]@","");
-    shouldBe = shouldBe.replace("@[","").replace("]@","");
+    text = text.replace("]@", "");
+    shouldBe = shouldBe.replace("@[", "").replace("]@", "");
     assert !shouldBe.contains("@[") && !shouldBe.contains("]@"): shouldBe;
     assert option >= 0 && option < rocks.size(): "Option out of size bounds:"+option+" max is "+(rocks.size()-1);
-    context = handleContinuations(isContinuation,context,shouldBe,text);
+    context = handleContinuations(isContinuation, context, shouldBe, text);
     lastContext = context;
-    commit(new CQuestion(isContinuation,context,text,shouldBe,start,end,rocks,option));
+    commit(new CQuestion(isContinuation, context, text, shouldBe, start, end, rocks, option));
     return this;
   }
   void checkContinuation(String text){
     var last= qs.getLast();
     var sol= last.rocks().get(last.option());
-    var prefix= last.text().substring(0,last.start());
-    var suffix= last.text().substring(last.end(),last.text().length());
+    var prefix= last.text().substring(0, last.start());
+    var suffix= last.text().substring(last.end(), last.text().length());
     var next= prefix+sol+suffix;
     assert next.equals(text):
       next+" -- "+text;

@@ -211,7 +211,7 @@ Do not try to give a solution from incomplete data.
   private static final Path directInstructions= resources.resolve("directInstructions");
   private static final Path gather= resources.resolve("gather");
   private static final Path book= resources.resolve("book");
-  private static final Path outputFile= workingDir.toAbsolutePath().resolve("assets", "collectedText","collectedText.txt");
+  private static final Path outputFile= workingDir.toAbsolutePath().resolve("assets", "collectedText", "collectedText.txt");
 
   private static final Path main= workingDir.resolve("main");
   private static final Path htmlMangle= workingDir.resolve("htmlMangle");
@@ -235,15 +235,15 @@ Do not try to give a solution from incomplete data.
     .ignore("*.woff2")
     .ignore("*.txt")
     .addS(workingDir.resolve("module-info.java"))
-    .addS(workingDir.resolve("assets","walking","editableDiv.html"))
+    .addS(workingDir.resolve("assets", "walking", "editableDiv.html"))
     .addS(day01Leo.resolve("Leo1.java"))
     .addS(day01Leo.resolve("Leo2.java"))
     .addS(day01Leo.resolve("Leo3.java"))
     .addS(day01Leo.resolve("Leo4.java"))
-    .addS(levelsLeo.resolve("Level101","Level101.html"))
-    .addS(levelsLeo.resolve("Level102","Level102.html"))
-    .addS(levelsLeo.resolve("Level103","Level103.html"))
-    .addS(levelsLeo.resolve("Level104","Level104.html"))
+    .addS(levelsLeo.resolve("Level101", "Level101.html"))
+    .addS(levelsLeo.resolve("Level102", "Level102.html"))
+    .addS(levelsLeo.resolve("Level103", "Level103.html"))
+    .addS(levelsLeo.resolve("Level104", "Level104.html"))
     .addS(main.resolve("CollectText.java"))
     .addS(main.resolve("FilesIn.java"))
     .addS(main.resolve("RealMain.java"));

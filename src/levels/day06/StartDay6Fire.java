@@ -6,7 +6,7 @@ import mainZeroToHero.Days;
 
 public final class StartDay6Fire implements Function<Days.LevelName,String>{
   @Override public String apply(Days.LevelName name){
-    return new htmlMangle.DirectInstructions(name,this.getClass().getSimpleName())
+    return new htmlMangle.DirectInstructions(name, this.getClass().getSimpleName())
     // topStart/end   leftStart/end
     .image(17)
           .area(15, 95,     50, 99, """
@@ -23,7 +23,7 @@ IX: Hour{ X }
 X: Hour{ XI }
 XI: Hour{ XII }
 XII: Hour{ I }
-""","""
+""", """
 Hour: { .succ: Hour; }//succ = successor
 I: Hour{ II }
 II: Hour{ II }

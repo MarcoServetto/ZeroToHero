@@ -24,7 +24,7 @@ public final class Forest {
   private static final float sizeMultiplier= 10f;
   private static final float defaultCodeBoxWidth= 25;
   private static final float defaultCodeBoxHeight= 4;
-  private final Map<Position, Node> nodes= new LinkedHashMap<>();
+  private final Map<Position,Node> nodes= new LinkedHashMap<>();
   private final Set<ForestNodeConnection> connections= new LinkedHashSet<>();
   private final String initialCode;
   private final String solution;
@@ -93,7 +93,7 @@ public final class Forest {
     }
   public String build() {
     List<Node> forestNodesOrdered= new ArrayList<>(nodes.values());
-    Map<String, List<ForestNodeConnection>> connectionGroups= connections.stream()
+    Map<String,List<ForestNodeConnection>> connectionGroups= connections.stream()
       .collect(Collectors.groupingBy(conn -> conn.fromIndex() + "," + conn.toIndex()));
     StringBuilder pathsHtml= new StringBuilder();
     StringBuilder pathCodeBoxesHtml= new StringBuilder();
@@ -239,7 +239,7 @@ public final class Forest {
       }
     }
   public enum Background {
-    Dawn("Dawn",1);
+    Dawn("Dawn", 1);
     String loc;
     int limit; // Images are resources/forest/images/LOC/LOC1.png .. LOC<limit>.png
     Background(String loc, int limit) { this.loc= loc; this.limit= limit; }

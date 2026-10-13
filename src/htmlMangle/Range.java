@@ -12,8 +12,8 @@ record Range(double minX, double maxX, double minY, double maxY){
     return true;
   }
   Range{
-    assert checkRange(minX,maxX);
-    assert checkRange(minY,maxY);
+    assert checkRange(minX, maxX);
+    assert checkRange(minY, maxY);
   }
   String asStyle() {
     return String.format(

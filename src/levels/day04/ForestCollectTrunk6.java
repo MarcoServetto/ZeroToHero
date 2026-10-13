@@ -6,7 +6,7 @@ import java.util.function.Function;
 
 import mainZeroToHero.Days;
 
-public final class ForestCollectTrunk6 implements Function<Days.LevelName, String>{
+public final class ForestCollectTrunk6 implements Function<Days.LevelName,String>{
   @Override public String apply(Days.LevelName name) {
     return new htmlMangle.Forest(name, """
 //That was not faster. What if I use `inheritance`

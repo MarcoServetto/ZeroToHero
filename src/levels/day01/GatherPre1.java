@@ -7,7 +7,7 @@ import mainZeroToHero.Days;
 
 public final class GatherPre1 implements Function<Days.LevelName,String>{
   @Override public String apply(Days.LevelName name){
-    return new htmlMangle.Gather(name,"""
+    return new htmlMangle.Gather(name, """
 //Follow the instructions in the comments
 //to understand how this game works
 Direction:{.turn:Direction;}
@@ -19,7 +19,7 @@ East:Direction{.turn->South;}
 //This code is correct:
 //it says turning from East we get South
 //Put this code in any basket
-""",1,BrownMushroom,3)
+""", 1, BrownMushroom, 3)
 .cardTrash("""
 Nope, Bad
 West:Direction{.turn->West;}
@@ -27,5 +27,5 @@ West:Direction{.turn->West;}
 //it says turning from West we get West
 //Put this code in the trash basket.
 //Then press the next level button.
-""",BrownMushroom,5)
+""", BrownMushroom, 5)
 .build(); } }

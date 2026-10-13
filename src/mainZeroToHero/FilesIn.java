@@ -9,7 +9,7 @@ import java.util.stream.Collectors;
 public final class FilesIn {
   private final Path root;
   private final List<String> ignorePatterns= new ArrayList<>();
-  private final Map<Path, Boolean> fileGroups= new HashMap<>();
+  private final Map<Path,Boolean> fileGroups= new HashMap<>();
   public FilesIn(Path root){ this.root= root; }
   public FilesIn ignore(String pattern) {
     ignorePatterns.add(pattern);
@@ -49,7 +49,7 @@ public final class FilesIn {
     relevantFiles.removeAll(ignoredFiles(allFiles));
     assertAllPresent(relevantFiles, fileGroups.keySet(), "Files not assigned to any group");
     assertAllPresent(fileGroups.keySet(), relevantFiles, "Files added but not found under root");    
-    return new Content(root,fileGroups);
+    return new Content(root, fileGroups);
   }  
   private void assertAllPresent(Set<Path> expected, Set<Path> actual, String errorMessage){
     String missing= expected.stream()
@@ -70,8 +70,8 @@ public final class FilesIn {
 
 final class Content {
   private final Path root;
-  private final Map<Path, Boolean> fileGroups;
-  public Content(Path root, Map<Path, Boolean> fileGroups){
+  private final Map<Path,Boolean> fileGroups;
+  public Content(Path root, Map<Path,Boolean> fileGroups){
     this.root= root;
     this.fileGroups= Map.copyOf(fileGroups);
   }

@@ -7,7 +7,7 @@ import java.util.function.Function;
 import htmlMangle.Forest;
 import mainZeroToHero.Days;
 
-public final class ForestIntro implements Function<Days.LevelName, String>{
+public final class ForestIntro implements Function<Days.LevelName,String>{
   @Override public String apply(Days.LevelName name) {
     return new Forest(name, """
 //This is the forest minigame.

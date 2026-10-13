@@ -51,7 +51,7 @@ public final class Book {
       String[] parts= content.split("\\Q"+middleTag+"\\E");
       int solutionIndex= Integer.parseInt(parts[0]);
       List<String> elems= List.of(parts);
-      String replacement= htmlHole(solutionIndex, elems.subList(1,elems.size()));
+      String replacement= htmlHole(solutionIndex, elems.subList(1, elems.size()));
       String placeholder= "@@@HOLE_" + (holeCounter++) + "@@@";
       holeReplacements.put(placeholder, replacement);
       matcher.appendReplacement(sb, Matcher.quoteReplacement(placeholder));

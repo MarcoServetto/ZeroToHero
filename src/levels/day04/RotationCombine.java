@@ -6,7 +6,7 @@ import mainZeroToHero.Days;
 
 public final class RotationCombine implements Function<Days.LevelName,String>{
   @Override public String apply(Days.LevelName name){
-    return new htmlMangle.DirectInstructions(name,this.getClass().getSimpleName())
+    return new htmlMangle.DirectInstructions(name, this.getClass().getSimpleName())
     // topStart/end   leftStart/end
     .image(6)
       .area(20, 95,     0.5, 55, """

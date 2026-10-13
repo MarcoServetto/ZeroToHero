@@ -10,10 +10,10 @@ import resources.File;
 public final class Days{
   String assetsDest;
   public Days(String assetsDest){ this.assetsDest= assetsDest; }
-  public record LevelName(String currentLevel, String nextLevel,String assetsDest){
-    public String htmlNextLevel(String html){ return htmlNextLevel(html,""); }
+  public record LevelName(String currentLevel, String nextLevel, String assetsDest){
+    public String htmlNextLevel(String html){ return htmlNextLevel(html, ""); }
     public String htmlNextLevel(String html, String more){ return html
-      .replace("<body>","<body "+more+" data-next=\"../"
+      .replace("<body>", "<body "+more+" data-next=\"../"
       +nextLevel()+"/"
       +nextLevel()+".html\">");
       }
@@ -39,8 +39,8 @@ public final class Days{
     return "Level"+day+(level <= 9 ? "0" : "") + level; 
     }
   private void write(Function<LevelName,String> l){
-    var ln= new LevelName(this.currentLevel(),this.nextLevel(),assetsDest);
-    new FileWriter().writeFile(ln,l.apply(ln));
+    var ln= new LevelName(this.currentLevel(), this.nextLevel(), assetsDest);
+    new FileWriter().writeFile(ln, l.apply(ln));
   }
   public void add(Function<LevelName,String> l){ next(); write(l); }
   public void addLast(Function<LevelName,String> l){ next(); nextNow = true; write(l); }
@@ -54,7 +54,7 @@ final class FileWriter{
       .resolve(name.currentLevel()+".html");
     try {
       Files.createDirectories(p.getParent());
-      Files.writeString(p,s);
+      Files.writeString(p, s);
     }
     catch (IOException e) { throw new UncheckedIOException(e); }
   }
