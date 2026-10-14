@@ -100,7 +100,7 @@ public final class Forest{
     Collection<List<ForestNodeConnection>> connections= connectionGroups.values();
     int id= 0;
     for (List<ForestNodeConnection> conns : connections){
-      for (int i= 0; i < conns.size(); i++){
+      for (int i= 0; i < conns.size(); i += 1){
         ForestNodeConnection c= conns.get(i);
         Node from= forestNodesOrdered.get(c.fromIndex());
         Node to= forestNodesOrdered.get(c.toIndex());
@@ -111,7 +111,7 @@ public final class Forest{
         
         pathsHtml.append(drawPath(from, to, mx, my, id));
         pathCodeBoxesHtml.append(drawPathCodeBox(c.code(), c.x(), c.y(), from, to, mx, my, id, c.w(), c.h()));
-        id++;
+        id += 1;
         }
       }
     return name.htmlNextLevel(File.Forest_html.text)

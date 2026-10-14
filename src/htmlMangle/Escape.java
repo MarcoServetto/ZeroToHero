@@ -33,7 +33,7 @@ public final class Escape{
     }
   public static String escapeForHtmlScripts(String s){
     var res= new StringBuilder();
-    for (var i= 0; i < s.length(); i++){
+    for (var i= 0; i < s.length(); i += 1){
       var c= s.charAt(i);
       switch (c){
         case '"'  -> res.append("\\\"");
