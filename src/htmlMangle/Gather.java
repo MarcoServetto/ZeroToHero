@@ -35,7 +35,7 @@ public final class Gather{
   }
   public Gather shuffle(){
     Collections.shuffle(cs, new Random(10));
-    for (int i= 0; i < cs.size(); i++){
+    for (int i= 0; i < cs.size(); i += 1){
       cs.set(i, cs.get(i).withId(i));
     }
     return this;

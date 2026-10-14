@@ -114,13 +114,13 @@ public class BrickWall{
       for (Brick brick : sortedBricks){
         int brickIndex= brick.index();
         int len= brick.length();
-        for (; currentIndex < brickIndex; currentIndex++){
+        for (; currentIndex < brickIndex; currentIndex += 1){
           sb.append("<span class=\"empty\">&nbsp;</span>");
           }
         sb.append(brick.toHtml());
         currentIndex += len;
         }
-      for (; currentIndex < length; currentIndex++){
+      for (; currentIndex < length; currentIndex += 1){
         sb.append("<span class=\"empty\">&nbsp;</span>");
         }
       sb.append("</span>");
