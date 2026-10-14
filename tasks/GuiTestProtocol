@@ -5,6 +5,10 @@ How an outer agent gets one agentTools test of Controllers to pass on one desk.
 The protocol is the same for this machine (ubuntu_gnome) and for a VM: only opening and closing differ.
 Every test empties the share /data/pilotio and copies the app back into it before it starts, so nothing of the protocol lives there: its files are in /data/pilot_<desk>.
 The outer agent runs Pre, starts the inner agent with the prompt below, runs Post, and always ends with Finally, whatever happened before.
+The outer agent must be able to start the inner agent.
+An outer agent that cannot start agents (for example an agent started by another agent) fails loudly: it runs nothing of the protocol, tells the user it cannot start the inner agent, and stops.
+The outer agent never answers the actions of the test itself.
+Whenever a run of <Test> fails, the outer agent first goes through Self consistency.
 
 ## Pre (outer agent)
 
@@ -67,10 +71,23 @@ After a (1), the outer agent starts the test again and sends you a message: answ
 
 1. Report (1): stop the test (Finally 1), Pre 6 again, then message the inner agent `The test started again.`
 2. Report (2) or (3): `git -C <workspace>/Controllers checkout test/agentTools`, report the finding to the user, and go to Finally.
-3. Passed: write the values of the last run into the <desk> entries, then run Pre 3.
-4. If Pre 3 fails: from the failing check and `agentTools.Pilot seen`, judge which earlier waits may be too short (not every action is followed by a check that verifies it), raise them with informed guesses, and run Pre 3 again.
+3. Passed: write the values of the last run into the <desk> entries, then run Pre 3 three times.
+   The values count only when all three runs pass: the shortest wait that passes once can fail the next time.
+4. If a run of Pre 3 fails: from the failing check and `agentTools.Pilot seen`, judge which earlier waits may be too short (not every action is followed by a check that verifies it), raise them with informed guesses, and run Pre 3 three times again.
    A wait above 500 gets a comment saying why. A failure that time does not explain goes to the user, with the test unchanged.
 5. A passing <desk> entry set goes into the open Controllers PR of recorded entry sets, if one is open (`gh pr view <n> --repo FearlessLang/Controllers --json state`); otherwise into a new one.
+
+## Self consistency (outer agent)
+
+The test files are <workspace>/Controllers/test/agentTools/<Test>.java and ManagerTest.java.
+Every test builds all the actions of ManagerTest, and building an action looks up its <desk> entry: a ManagerTest action with no <desk> entry makes every test fail on <desk>, also the tests that never do that action.
+The checks:
+1. Every action of ManagerTest has exactly one entry for each of the 13 desks.
+2. Every action of <Test> has exactly one entry for each desk that any action of <Test> has an entry for.
+3. In <Test> and ManagerTest, every step of the person comes after a wait: no entry calls a plain click, doubleClick, rightClick, drag, keys or type; the entries call waitClick, waitDoubleClick, waitRightClick, waitDrag, waitKeys, waitType or waitClickKeys.
+4. Every wait above 500 has a comment saying why.
+A check that fails in the <desk> entries of <Test> is fixed by the protocol itself: Pre 4 for checks 1 and 2, Post 4 for check 4.
+A check that fails anywhere else is a finding: report it to the user with the check, and go on with the protocol.
 
 ## Finally (outer agent, always)
 
