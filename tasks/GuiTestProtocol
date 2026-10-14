@@ -1,16 +1,31 @@
 # GUI test protocol
 
-How an outer agent gets one agentTools test of Controllers to pass on one desk.
-<Test> is the test class; <desk> is the name of the desk in the on("<desk>",...) entries of the tests; <workspace> is the fearlessBranch folder of the outer agent (for example /data/fearlessBranch1).
+How three agents get one agentTools test of Controllers to pass on one desk.
+<Test> is the test class; <desk> is the name of the desk in the on("<desk>",...) entries of the tests; <workspace> is the fearlessBranch folder of the coordinator (for example /data/fearlessBranch1).
 The protocol is the same for this machine (ubuntu_gnome) and for a VM: only opening and closing differ.
 Every test empties the share /data/pilotio and copies the app back into it before it starts, so nothing of the protocol lives there: its files are in /data/pilot_<desk>.
-The outer agent runs Pre, starts the inner agent with the prompt below, runs Post, and always ends with Finally, whatever happened before.
-The outer agent must be able to start the inner agent.
-An outer agent that cannot start agents (for example an agent started by another agent) fails loudly: it runs nothing of the protocol, tells the user it cannot start the inner agent, and stops.
-The outer agent never answers the actions of the test itself.
-Whenever a run of <Test> fails, the outer agent first goes through Self consistency.
 
-## Pre (outer agent)
+## Roles
+
+- The coordinator: the session that runs the protocol. It starts the other two agents and passes the messages between them; it runs no step of Pre, Post, Self consistency or Finally, and it never answers an action of the test.
+- The operator: Opus 5.5, medium effort, started by the coordinator. It runs Pre, Post, Self consistency and Finally.
+- The person: Haiku 5.5, low effort, started by the coordinator with the prompt of "The person". It answers the actions of the test.
+The coordinator must be able to start agents.
+A coordinator that cannot start agents (for example an agent started by another agent) fails loudly: it runs nothing of the protocol, tells the user it cannot start the operator and the person, and stops.
+
+## Coordinator
+
+1. Start the operator with this message, with <Test>, <desk> and <workspace> written out:
+   `You are the operator of the GUI test protocol <workspace>/ZeroToHero/tasks/GuiTestProtocol, for <Test> on <desk>, in <workspace>. Run Pre. End your reply with "passed" if Pre 3 passed and you ran Finally, or with "ready" if the test runs in agent mode.`
+2. If the operator replied "passed", report its reply to the user: the protocol is over.
+3. Start the person with the prompt of "The person", with <Test>, <desk> and <workspace> written out.
+4. When the person replies, send its whole reply to the operator: `The person reported:` followed by the reply, then `Run Post.`
+5. If the operator replied "restarted", send the person `The test started again.` and go to 4.
+6. Otherwise the operator ran Finally: report its reply to the user.
+
+## Pre (operator)
+
+Whenever a run of <Test> fails, the operator first goes through Self consistency.
 
 1. Run the align-branches skill in <workspace>.
 2. If <desk> is a VM: `/data/AgentsCoordination/linuxVersion/autoScripts/vm.sh open <desk>`
@@ -21,13 +36,14 @@ Whenever a run of <Test> fails, the outer agent first goes through Self consiste
    This run is the cheapest way to know whether the recorded values work, so it always runs: when the <desk> entries hold val(null) it fails at the first of them; that is the expected result, and Pre goes on.
 4. In <workspace>/Controllers/test/agentTools, set every val(...) of the <desk> entries that <Test> uses (in <Test>.java and ManagerTest.java) to val(null).
 5. `mkdir -p /data/pilot_<desk>/channel /data/pilot_<desk>/shots`
-6. Start the test in agent mode as a background command, from <workspace>/Coordinator/Build/src:
-   `/opt/jdk-26.0.2/bin/java -ea --module-path ../../../Commons/Commons.jar --add-modules Commons scripts/TestAgentTools.java <desk> true <Test> /data/pilot_<desk>/channel /data/pilotio > /data/pilot_<desk>/run.txt 2>&1`
+6. Start the test in agent mode, detached from the shell of the operator, from <workspace>/Coordinator/Build/src:
+   `setsid -f /opt/jdk-26.0.2/bin/java -ea --module-path ../../../Commons/Commons.jar --add-modules Commons scripts/TestAgentTools.java <desk> true <Test> /data/pilot_<desk>/channel /data/pilotio > /data/pilot_<desk>/run.txt 2>&1`
+   Then end the reply with "ready".
 
-## Inner agent
+## The person
 
-Haiku 5.5, low effort, with the prompt below, where the outer agent writes <Test>, <desk> and <workspace> out.
-The list of mistakes at its end holds what earlier runs did wrong; the outer agent adds a line when a run shows a new one.
+The prompt of the person is below.
+The list of mistakes at its end holds what earlier runs did wrong; the operator adds a line when a run shows a new one, and says so in its reply.
 
 ```
 You are the person at the desk in the agentTools test <Test> (<workspace>/Controllers/test/agentTools/<Test>.java; shared actions in ManagerTest.java), on the desk <desk>.
@@ -64,20 +80,20 @@ Mistakes made in earlier runs of this prompt:
 
 Report: for each action, the values you gave, what the screen showed, and why (for a wait above 100, why longer); how the test ended; for a failure, its cause 1, 2 or 3 with the evidence, and for (1) the better values.
 End the report with one line per action, in the order the test asked them, with the exact values you wrote: `name: v1, v2, v3`.
-After a (1), the outer agent starts the test again and sends you a message: answer the new run.
+After a (1), the test starts again and you get the message "The test started again.": answer the new run.
 ```
 
-## Post (outer agent)
+## Post (operator)
 
-1. Report (1): stop the test (Finally 1), Pre 6 again, then message the inner agent `The test started again.`
-2. Report (2) or (3): `git -C <workspace>/Controllers checkout test/agentTools`, report the finding to the user, and go to Finally.
+1. Report (1): stop the test (Finally 1), Pre 6 again, then end the reply with "restarted".
+2. Report (2) or (3): `git -C <workspace>/Controllers checkout test/agentTools`, put the finding in the reply, and go to Finally.
 3. Passed: write the values of the last run into the <desk> entries, then run Pre 3 three times.
    The values count only when all three runs pass: the shortest wait that passes once can fail the next time.
 4. If a run of Pre 3 fails: from the failing check and `agentTools.Pilot seen`, judge which earlier waits may be too short (not every action is followed by a check that verifies it), raise them with informed guesses, and run Pre 3 three times again.
-   A wait above 500 gets a comment saying why. A failure that time does not explain goes to the user, with the test unchanged.
+   A wait above 500 gets a comment saying why. A failure that time does not explain goes in the reply, with the test unchanged.
 5. A passing <desk> entry set goes into the open Controllers PR of recorded entry sets, if one is open (`gh pr view <n> --repo FearlessLang/Controllers --json state`); otherwise into a new one.
 
-## Self consistency (outer agent)
+## Self consistency (operator)
 
 The test files are <workspace>/Controllers/test/agentTools/<Test>.java and ManagerTest.java.
 Every test builds all the actions of ManagerTest, and building an action looks up its <desk> entry: a ManagerTest action with no <desk> entry makes every test fail on <desk>, also the tests that never do that action.
@@ -86,9 +102,12 @@ The checks:
 2. In <Test> and ManagerTest, every step of the person comes after a wait: no entry calls a plain click, doubleClick, rightClick, drag, keys or type; the entries call waitClick, waitDoubleClick, waitRightClick, waitDrag, waitKeys, waitType or waitClickKeys.
 3. Every wait above 500 has a comment saying why.
 A wait above 500 in the <desk> entries of <Test> gets its comment in Post 4.
-Any other failing check is a finding: report it to the user with the check, and go on with the protocol.
+Any other failing check is a finding: put it in the reply with the check, and go on with the protocol.
 
-## Finally (outer agent, always)
+## Finally (operator, always)
+
+The operator always ends with Finally, whatever happened before, and then replies with the outcome: passed with the PR of the values, or the finding.
+
 
 1. Stop the test, if it still runs (in agent mode it waits for its channel file forever):
    `ps -C java -o pid=,args= | awk '/TestAgentTools.java <desk> |-Ddesk=<desk> /{print $1}' | xargs -r kill`
