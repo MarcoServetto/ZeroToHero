@@ -47,9 +47,10 @@ runRecorded: `/opt/jdk-26.0.2/bin/java -ea --module-path ../../../Commons/Common
 startTest: `setsid -f /opt/jdk-26.0.2/bin/java -ea --module-path ../../../Commons/Commons.jar --add-modules Commons scripts/TestAgentTools.java <desk> true <test> /data/pilot_<desk>/channel /data/pilotio > /data/pilot_<desk>/run.txt 2>&1`
   It runs the test in agent mode: at each action the test waits for the UserAgent. setsid keeps the test running after the shell that started it ends.
 stopTest: `ps -C java -o pid=,args= | awk '/TestAgentTools.java <desk> |-Ddesk=<desk> /{print $1}' | xargs -r kill`
-One Robot JVM at a time: the test JVM, runRecorded and every Pilot command reach the screen through the same desktop portal, and a second Robot JVM that starts while another one starts or acts makes the portal show the dialog "Remote Desktop", which blocks all of them.
-  Pilot commands run one after the other and only while the test waits at an action (its file is in the channel folder with no answer yet) or after the test ended; never during runRecorded, and never in the seconds right after an answer is written, when the test acts.
-  If the dialog "Remote Desktop" shows: stopTest, then on the screen turn on "Allow Remote Interaction" and press Share (this keeps the permission for the next runs), then startTest again.
+Two Robot JVMs: two JVMs that start a screen session within the same instant with the same restore token make the desktop portal show the dialog "Remote Desktop", which blocks both.
+  The test JVM (startTest, runRecorded) uses the token file of the home of the user. Every `agentTools.Pilot` command runs with `-Duser.home=/data/pilot_robot_home`, which holds a token file of its own; so a Pilot command and the test JVM never share a token.
+  Pilot commands still run one after the other, never two at once.
+  If the dialog "Remote Desktop" shows anyway: stopTest, then on the screen turn on "Allow Remote Interaction" and press Share (this keeps the permission for the next runs), then startTest again.
   On a VM desk, stopTest also ends the manager and the file manager of the previous run inside the guest (virsh qemu-agent-command <desk> with guest-exec and pkill), because the test cleanup does not run when the JVM is killed.
 """
 
@@ -95,7 +96,7 @@ The UserAgent answered the actions of the test <test> on the desk <desk> and rep
 {commands}
 The report ends with the values the UserAgent wrote, one line per action: `name: v1, v2, v3`.
 A failure has one of three causes: (1) a value was wrong; (2) the test checks behaviour the design does not describe; (3) a step of the test is not what a person does on this desk.
-Judge the report from its evidence and from the screen (`/opt/jdk-26.0.2/bin/java -ea -cp <workspace>/out/modular/controller-test:<workspace>/Commons/Commons.jar agentTools.Pilot seen /data/pilot_<desk>/shots/judge.png`, then read the png), then do one of these:
+Judge the report from its evidence and from the screen (`/opt/jdk-26.0.2/bin/java -ea -Duser.home=/data/pilot_robot_home -cp <workspace>/out/modular/controller-test:<workspace>/Commons/Commons.jar agentTools.Pilot seen /data/pilot_<desk>/shots/judge.png`, then read the png), then do one of these:
 - Cause (1): end your reply with the line restart. The test then starts again and the UserAgent answers it.
 - Cause (2) or (3): `git -C <workspace>/Controllers checkout test/agentTools`, do Finally, then end your reply with the finding: the cause, the action, the evidence.
 - The test passed:
@@ -127,7 +128,7 @@ Answer by writing the values into that file, one per line, then a line ;
 - an entry () -> region(val(null), val(null), val(null), val(null)) for action tileArea: x, y, width and height of the part of the screen the next check of the test compares, here the tile: `printf '69\n95\n128\n85\n;\n' > /data/pilot_<desk>/channel/tileArea`
 - a text value is quoted: "hello"
 Which action waits: `ls /data/pilot_<desk>/channel`
-The screen: `/opt/jdk-26.0.2/bin/java -ea -cp <workspace>/out/modular/controller-test:<workspace>/Commons/Commons.jar agentTools.Pilot seen /data/pilot_<desk>/shots/<n>.png`, then read the png; a purple ring marks the pointer.
+The screen: `/opt/jdk-26.0.2/bin/java -ea -Duser.home=/data/pilot_robot_home -cp <workspace>/out/modular/controller-test:<workspace>/Commons/Commons.jar agentTools.Pilot seen /data/pilot_<desk>/shots/<n>.png`, then read the png; a purple ring marks the pointer.
 The test output: /data/pilot_<desk>/run.txt; when the test ends it shows how many tests succeeded and failed.
 A wait value is for later runs without you: in this run you are slower than any wait, so every wait is already over when the test reads it, and that is intended.
 A wait is 100 unless you expect the step to take longer.
@@ -147,6 +148,7 @@ Mistakes made in earlier runs of this prompt:
 - an action whose entry is only a waitAfter reported as a step that does nothing: a waitAfter entry is a wait, never a finding.
 - a strip at the top of a window read as its title bar on a desk that draws no title bars: there that strip is the menu bar of the window (a word with an underlined letter, like Manager, is a menu), and a window showing a menu bar over an empty area is not blank;
 - a double click on an icon whose name is close to the one the comment above the action names, instead of the icon with exactly that name (the launcher whose name ends with w).
+- a window the test did not open, already on the screen at the first action, answered around instead of reported: the test starts on a bare desk, so such a window is a finding, and the values answered with it on the screen are wrong.
 
 Report: for each action, the values you gave, what the screen showed, and why (for a wait above 100, why longer); how the test ended; for a failure, its cause 1, 2 or 3 with the evidence, and for (1) the better values.
 End the report with one line per action, in the order the test asked them, with the exact values you wrote: `name: v1, v2, v3`.
