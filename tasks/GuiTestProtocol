@@ -10,7 +10,7 @@ On the Linux machine the desks are ubuntu_gnome (the desk of the machine) and th
 
 ## Agents
 
-outer agent: the session running the protocol. It runs `protocol` and the commands it names; it never answers an action of a test. It owns the desk: it opens it, brings it to its shape, closes it, and repairs it when it is not in its shape; no other agent does.
+outer agent: the session running the protocol. It runs `protocol` and the commands it names; it never answers an action of a test.
 OperatorAgent: Opus 5.5, medium effort. A new one for each test on each desk. It prepares the test, judges the run and records the values.
 UserAgent: Haiku 5.5, low effort. A new one for each test on each desk. It is the person at the desk: it answers the actions of the test.
 The OperatorAgent and the UserAgent know only the texts the outer agent sends them.
@@ -22,17 +22,14 @@ An outer agent that cannot start agents runs nothing of the protocol: it tells t
 
   for desk in <desks>:
     for test in <tests>:
-      set the desk: if it can not be set, tell the user the item that does not hold and continue with the next desk
+      set the desk
       operator= start OperatorAgent with text(prepare)
-      if reply(operator) ends with the line "desk wrong": run stopTest, set the desk, then start the operator again, once
+      if reply(operator) ends with the line "desk wrong": tell the user reply(operator); stop
       if reply(operator) ends with the line "passed": close the desk; tell the user reply(operator); continue
       user= start UserAgent with text(answer)
       while true:
         send operator text(judge), where <report> is reply(user)
-        if reply(operator) ends with the line "desk wrong":
-          run stopTest, set the desk, then startTest
-          send user "The test started again."
-          continue
+        if reply(operator) ends with the line "desk wrong": tell the user reply(operator); stop
         if reply(operator) ends with the line "restart":
           run stopTest, then startTest
           send user "The test started again."
@@ -45,16 +42,18 @@ An outer agent that cannot start agents runs nothing of the protocol: it tells t
 text(t) is the text t below, where the outer agent writes out <test>, <desk>, <workspace> and <report>, and replaces each {name} with the text named name.
 stopTest and startTest are the commands of the text commands.
 
-## desk (outer agent)
+## desks
 
-To set the desk, the outer agent:
-1. Opens it. If <desk> is a VM: `/data/AgentsCoordination/linuxVersion/autoScripts/vm.sh open <desk>`
-2. Brings it to its shape, if its machine describes one. The shape of the desk of a machine is the list of the section "The desk of this machine" of the file installation.txt of that machine: /data/AgentsCoordination/linuxVersion/installation.txt for ubuntu_gnome, C:\data\AgentsCoordination\windowsVersion\installation.txt for windows. The outer agent checks every item with the checks given there, repairs the items that do not hold with the commands given there, and checks again. An item that still does not hold means the desk can not be set.
-The recorded values hold only on a desk of that shape: a run on another shape judges the desk, not the manager.
-To close the desk, the outer agent runs stopTest and, if <desk> is a VM, `/data/AgentsCoordination/linuxVersion/autoScripts/vm.sh close <desk>`, and checks the shape again: whatever a run leaves behind (a window, a process, a setting) is repaired now, never in the middle of the next test.
+The open command, the shape and the close command of each desk:
+  ubuntu_gnome: no open command. The shape is the list of the section "The desk of this machine" of /data/AgentsCoordination/linuxVersion/installation.txt. No close command.
+  windows: no open command. The shape is the list of the section "The desk of this machine" of C:\data\AgentsCoordination\windowsVersion\installation.txt. No close command.
+  a VM: the open command is `/data/AgentsCoordination/linuxVersion/autoScripts/vm.sh open <desk>`. No shape: a VM starts from its clean disk. The close command is `/data/AgentsCoordination/linuxVersion/autoScripts/vm.sh close <desk>`.
 
-The outer agent reacts. A reply that names a window, a pointer position or a screen that nobody asked for, a click that lands on another target than the recorded one, or a failure that the shape could explain, makes the outer agent check the shape at once, repair it, and run the test again from the start; it does not judge a run made on a desk that was not in its shape.
-No run changes the shape: no agent pins, unpins or sets anything that an item of the shape lists.
+To set the desk:
+1. Run the open command of <desk>.
+2. Check each item of the shape of <desk>. If an item does not hold, run the commands bringing the desk back to its shape given in the same section, then check the item again. If it still does not hold, tell the user the item and stop.
+
+To close the desk: run the close command of <desk>.
 
 ## Texts
 
@@ -77,15 +76,15 @@ A failing check is a finding: put it in your reply, with the check, and go on.
 """
 
 wrongDesk= """
-The desk is the outer agent's: do not open it, close it, repair it or change its settings. What a run of the test itself left behind is the run's: stopTest ends the processes, and you close a window the run left open before the next run and say so in your reply.
-If the desk is not in its shape (a window that nobody opened, a folder pinned or a setting changed, a click that lands on another target than the screen shows), end your reply with what you found, then the line desk wrong, without Finally: the outer agent runs stopTest, sets the desk and starts the test again.
+Do not open, close or repair the desk.
+If the desk is not in its shape (a window nobody opened, a pinned folder, a changed setting), end your reply with what you found, then the line desk wrong.
 """
 
 finally= """
 Finally, always, whatever happened before:
 1. stopTest.
 2. `rm -rf /data/pilot_<desk>`
-3. Put in your reply every window, process or setting of the desk that the run left behind: the outer agent repairs the desk.
+3. Check the desk is bare: `ps -eo pid,comm | awk '$2 ~ /^(fearlessManaged|nautilus|gnome-terminal-|ptyxis|gnome-text-edit)/'` prints nothing; if it prints something, put it in your reply.
 """
 
 prepare= """
@@ -116,7 +115,7 @@ Judge the report from its evidence and from the screen (`/opt/jdk-26.0.2/bin/jav
 - Cause (2) or (3): `git -C <workspace>/Controllers checkout test/agentTools`, do Finally, then end your reply with the finding: the cause, the action, the evidence.
 - The test passed:
   1. Write the values of the report into the <desk> entries.
-  2. Run runRecorded three times. The values count only when all three runs pass: the shortest wait that passes once can fail the next time.
+  2. Run runRecorded three times, closing the windows the previous run left open before each run. The values count only when all three runs pass: the shortest wait that passes once can fail the next time.
   3. If a run fails: do Self consistency; from the failing check and the screen, judge which earlier waits may be too short (not every action is followed by a check that verifies it), raise them with informed guesses, and go to 2.
      A failure that time does not explain: `git -C <workspace>/Controllers checkout test/agentTools`, do Finally, then end your reply with that failure.
   4. A wait above 500 gets a comment saying why.
