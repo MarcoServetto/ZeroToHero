@@ -1,0 +1,160 @@
+# Gui API: the reference canvas
+
+### Goal
+
+A Fearless program with a Gui looks the same on every desk.
+The programmer draws on a canvas of a size they choose.
+What the user sees is that canvas, uniformly scaled, on any screen, any resolution, any OS scale setting.
+Nothing is ever off screen, wrapped differently, or clipped because the screen is different.
+
+Game engines work this way: the author designs on a reference resolution, the engine maps it to the screen with one uniform scale, and the leftover of a screen with a different shape is a band.
+Browsers work the other way: the content adapts to the space it gets, so what is visible depends on the device.
+Predictability is the Fearless priority, so the Gui follows the game model.
+Layout helpers like the flow of `Pane` still exist, but they lay out inside the canvas, never against the window.
+
+### Fearless facts the design relies on
+
+The Gui is an object capability: `s.gui` from `mut System`.
+A `Frame` is a window; its content is a tree of widgets drawn by the standard library itself, with bundled fonts and its own colors.
+The desk's fonts, theme and scale setting play no part in how a Fearless Gui looks.
+Button actions and mouse handlers run on the model queue, one at a time, in order.
+The frame has a repaint timer (`.fps`) that runs on the toolkit thread.
+
+### The model
+
+Three quantities describe where a frame is drawn.
+The programmer controls the first, says one thing once about the second, and only ever sees the third as an event.
+
+1. The reference canvas: `W x H` in canvas units.
+   Every length and position in the library is in canvas units: widget widths, insets, text height, painter coordinates, `panelWidth`/`panelHeight`, `mouseX`/`mouseY`.
+   Each frame has its own canvas and may change it at any time.
+
+2. The scale: screen pixels per canvas unit.
+   In a window, the window is exactly the canvas: same shape, one uniform scale, the whole canvas and nothing else.
+   The window opens centered on the screen, with the canvas shape, covering the given fraction of the screen area (capped so that the window fits the screen).
+   The scale is computed in physical pixels, so the OS scale setting does not change what the user sees.
+   After the window is open, the program has no control of where the window is or how big it is.
+
+3. The shape imposed from outside: a user drag, a maximize, full screen.
+   The program sees it only as a request to change the aspect ratio, delivered to `.onResize`.
+   The program never learns where the window is on the screen.
+
+### API
+
+```
+Gui:{
+  read .screenWidth: WidthNat;
+  read .screenHeight: HeightNat;
+  mut .run(screenArea: Float, mut Consumer[mut Frame]): Void;
+  }
+Frame: _Styled[Frame]{
+  mut .referenceCanvasSize(w: WidthNat, h: HeightNat): mut Frame;
+  read .referenceCanvasWidth: WidthNat;
+  read .referenceCanvasHeight: HeightNat;
+  mut .fullScreen: mut Frame;
+  mut .windowed: mut Frame;
+  mut .bands(Color): mut Frame;
+  mut .onResize(mut Consumer[ResizeRequest]): mut Frame;
+  ...title, fps, elapsed, modelFps, content, contentB, onKey, undecorated, decorated as today
+  }
+ResizeRequest: ScreenContext{ .aspectRatio: Float; }
+ScreenContext:{
+  read .elapsed: Instant;
+  read .panelWidth: WidthNat;
+  read .panelHeight: HeightNat;
+  }
+```
+
+`Gui.run(screenArea, consumer)`:
+`screenArea` is the fraction of the screen area the window covers when it opens.
+A deterministic error is thrown unless `0 < screenArea <= 1`.
+A frame that calls `.fullScreen` before the consumer returns opens in full screen; `screenArea` is then the window it goes back to.
+
+`Gui.screenWidth`, `Gui.screenHeight`:
+The resolution of the default screen, in physical pixels.
+Only the capability knows the screen: a program holding a `Frame` and not the `Gui` can not recover the screen resolution.
+
+`Frame.referenceCanvasSize(w, h)`:
+Sets the canvas.
+Before the window is shown, it is the canvas the window opens with.
+After, the content is laid out again in the new units and the window becomes exactly the new canvas at the current scale.
+When never called, the canvas is the size the content takes on its own (the packed size), as every program without an explicit canvas gets today.
+
+`Frame.fullScreen`, `Frame.windowed`:
+A live toggle.
+Full screen is a borderless window covering the whole default screen, with no mode switch of the display.
+The canvas is centered both ways at the largest scale that fits; the leftover is painted with the `bands` color.
+Entering full screen fires a `ResizeRequest` with the aspect ratio of the screen.
+`.windowed` restores the window bounds recorded when full screen was entered; a frame that opened in full screen goes to the bounds it would have opened with.
+
+`Frame.bands(Color)`:
+The color of the leftover, default black.
+It shows in full screen when the canvas and the screen have different shapes, and in a window only while the user is still dragging an edge.
+
+`Frame.onResize(handler)`:
+Replaces the previous handler; the default handler does nothing.
+The handler runs on the model queue, like a button action.
+`aspectRatio` is the width of the requested shape divided by its height.
+`panelWidth`/`panelHeight` of the request are the current canvas.
+A handler accepts the request by changing the canvas to the requested shape with `.referenceCanvasSize`; there is no other way to accept.
+A handler that leaves the canvas as it is rejects the request.
+
+### What a user resize does
+
+The window manager resizes the window while the user drags; the Gui draws the canvas at the fitting scale with `bands` in the leftover, and fires nothing.
+The drag has settled when the window size has not changed for a quiet period measured on the repaint timer (a library constant, like the warmup).
+Then one `ResizeRequest` with `draggedWidth/draggedHeight` is queued.
+When the handler has run, the window is set to exactly the current canvas `W' x H'` at scale `min(draggedWidth/W', draggedHeight/H')`.
+With the default handler the canvas is unchanged: the window keeps its shape and takes the new scale.
+With a handler that changed the canvas to the requested shape, the window is exactly the dragged rectangle.
+
+Maximize is a resize like any other: the window manager gives the window the shape of the work area, the request carries that aspect ratio, and a rejected request leaves a normal, non maximized window of canvas shape, as large as fits in the work area, centered.
+
+Moving the window fires nothing.
+
+### Coordinates
+
+Mouse events report `mouseX`/`mouseY` in canvas units: the window position divided by the scale, rounded down.
+A click on canvas point `(205, 85)` reports `X[+205] Y[+85]` at every window size and on every desk.
+At scale 2, two screen pixels report the same canvas point.
+A press on a band in full screen is outside every widget and reaches no handler.
+Painters draw in canvas units and are clipped to their widget, as today.
+
+### Removed
+
+`Frame.maximized`, `Frame.location`, `Frame.locationX`, `Frame.locationY`, `Frame.fixedSize` and `Frame.resizable` in all their forms, `Frame.screenWidth`, `Frame.screenHeight`, `ScreenContext.screenWidth`, `ScreenContext.screenHeight`.
+The errors about a maximized window with an explicit size or location, and about a window larger than the screen, go with them.
+
+### Implementation notes
+
+Every pixel of a frame is drawn by Skia into one bitmap, with one `canvas.scale` call for the OS transform.
+The uniform scale multiplies into that call, the band offset translates it, and the clear color becomes the `bands` color.
+The Swing components keep canvas bounds: no component ever sees the scale, so the layout managers do not change.
+Mouse hit testing divides the window point by the scale and subtracts the band offset before `getDeepestComponentAt`.
+Text stays sharp at every scale: glyph outlines are scaled, not pixels (hinting is already off).
+Images drawn by `Graphics.image` go through the same transform.
+
+The repaint tick compares the window size with the size the Gui last set.
+A difference starts or continues a drag; equality for the quiet period settles it and queues the request.
+The quiet period and the settle are the only place where timing enters the design; the end state is computed by the Gui and does not depend on the desk.
+
+### Example
+
+```
+s.gui.run(0.3, {f -> f
+  .referenceCanvasSize(Width#520, Height#340)
+  .bands(Color.deepNapBlue)
+  .onResize{r -> f.referenceCanvasSize(Width#((340.0 * (r.aspectRatio)).softRound.getNat), Height#340)}
+  .content{:: ...}
+  })
+```
+
+This frame opens as a window covering 30% of the screen area, with a 520x340 canvas.
+In full screen on a 16:9 screen the handler widens the canvas to 604x340 and there are no bands.
+A frame with no `.onResize` keeps its 520x340 canvas and shows `deepNapBlue` bands in full screen.
+
+### Tests to update
+
+`integrationTests/testingStandardLibrary/_test/test_gui_frame.fear`: the location, maximized and fixedSize checks go; new checks for `referenceCanvasWidth/Height`, the `screenArea` range error, `fullScreen`/`windowed` and the canvas units of `panelWidth`/`panelHeight` under a scale.
+`integrationTests/testTicTacToe`: `gui_frozen.fear`, `gui_resizable.fear` and `gui_chunk.fear` become one game on a square canvas; the resizable one accepts no aspect ratio change, so the board stays square.
+`integrationTests/testGui1`, `testGui2`, `testGuiLive`, `testGuiImg`: `Gui.run` gains the `screenArea` argument; `.fixedSize`/`.resizable` calls go.
