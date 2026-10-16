@@ -55,12 +55,13 @@ Fixed on `Gui`, each with a default, so that `s.gui.run{f -> ...}` is a complete
 | `name` | `"Fearless App"` | the identity shown by the task switcher, the taskbar and the title bar; a blank name is a deterministic error |
 | `icon` | the Fearless icon | the image shown by the task switcher, the taskbar and the title bar |
 | `screenArea` | `0.3` | the fraction of the screen area the window opens with |
-| `fearlessDecorations` | desk decorations | the decorations the window opens with (below) |
+| `fearlessDecorations` | desk decorations | the window opens with the Fearless decorations (below) |
+| `fullScreen` | windowed | the window opens in full screen |
 | `opacityFloor` | opaque | the lowest opacity the window can take |
 | `closeKey` | `esc` | the key that asks the window to close |
 | `fullScreenKey` | `f11` | the key that toggles full screen |
 
-Dynamic on `Frame`: the subtitle, the canvas, full screen, the bands color, the opacity above the floor, the handlers, `fps` and `modelFps`, the content.
+Dynamic on `Frame`: the subtitle, the canvas, the bands color, the opacity above the floor, the handlers, `fps` and `modelFps`, the content.
 
 Not offered at all: the position of the window, a window always on top, raising the window or stealing the focus, a non rectangular window, the theme of the desk decorations, the choice of the screen (always the default screen).
 
@@ -75,6 +76,7 @@ Gui:{
   mut .icon(Image): mut Gui;
   mut .screenArea(Float): mut Gui;
   mut .fearlessDecorations: mut Gui;
+  mut .fullScreen: mut Gui;
   mut .opacityFloor(Alpha): mut Gui;
   mut .closeKey(KeyStroke): mut Gui;
   mut .fullScreenKey(KeyStroke): mut Gui;
@@ -87,8 +89,6 @@ Frame: _Styled[Frame]{
   mut .referenceCanvasSize(w: WidthNat, h: HeightNat): mut Frame;
   read .referenceCanvasWidth: WidthNat;
   read .referenceCanvasHeight: HeightNat;
-  mut .fullScreen: mut Frame;
-  mut .windowed: mut Frame;
   mut .bands(Color): mut Frame;
   mut .opacity(Alpha): mut Frame;
   mut .onResize(mut Consumer[ResizeRequest]): mut Frame;
@@ -119,7 +119,7 @@ The image is scaled by the desk to each place it shows in.
 
 `Gui.screenArea(Float)`:
 A deterministic error is thrown unless `0 < screenArea <= 1`.
-A frame that calls `.fullScreen` before the consumer returns opens in full screen; `screenArea` is then the window it goes back to.
+With `Gui.fullScreen` the window opens in full screen; `screenArea` is then the window it goes back to.
 
 `Gui.screenWidth`, `Gui.screenHeight`:
 The resolution of the default screen, in physical pixels.
@@ -139,12 +139,11 @@ The close key reaches no `onKey` handler.
 Closing the window is not ending the program: the code after `Gui.run` runs.
 The Manager is the way to see which programs are alive and to end one that ignores its close requests.
 
-`Gui.fullScreenKey(KeyStroke)`, `Frame.fullScreen`, `Frame.windowed`:
-A live toggle, both for the program and for the user.
+`Gui.fullScreen`, `Gui.fullScreenKey(KeyStroke)`:
 Full screen is a borderless window covering the whole default screen, with no mode switch of the display.
 The canvas is centered both ways at the largest scale that fits; the leftover is painted with the `bands` color.
 Entering full screen fires a `ResizeRequest` with the aspect ratio of the screen.
-`.windowed` restores the window bounds recorded when full screen was entered; a frame that opened in full screen goes to the bounds it would have opened with.
+The program chooses only whether the window opens in full screen; after that, full screen is a decoration state and belongs to the user (below).
 The full screen key reaches no `onKey` handler.
 
 `Frame.referenceCanvasSize(w, h)`:
@@ -169,33 +168,45 @@ A handler that leaves the canvas as it is rejects the request.
 ### Decorations
 
 A window has either the desk decorations or the Fearless decorations, never neither and never both.
-The program chooses the decorations the window opens with (`Gui.fearlessDecorations`); after that the decorations belong to the user, who switches between the two at will.
-The program can not move its window, can not know where it is, and can not minimize it: the decorations are how the user does these things, so they can never be taken away by the program.
+A window is in one of three states:
+a decorated window, with the desk decorations;
+a Fearless window, with the Fearless decorations;
+full screen, with the Fearless decorations.
+The program chooses the state the window opens in (`Gui.fearlessDecorations`, `Gui.fullScreen`); after that the state belongs to the user.
+The program can not move its window, can not know where it is, can not minimize it and can not change its state: the decorations are how the user does these things, so they can never be taken away by the program.
 
 The desk decorations are the title bar and borders of the desk: moving, resizing, minimizing, maximizing and closing work as on every window of that desk.
-Full screen has no desk decorations, so a full screen window has the Fearless decorations while it is full screen.
 
 The Fearless decorations are the Fearless corner: a right triangle in the top left corner of the window, showing the Fearless logo.
 The legs measure `min(screenHeight/16, windowHeight/4)` physical pixels, so the corner has the same size on every desk and still fits a small window.
 The library paints the corner after everything else, over the canvas and over the bands; the content never covers it, and mouse events inside it reach no widget.
 The corner is painted in physical pixels, with its own colors: it looks the same in every program.
-A drag of the corner moves the window.
-A click on the corner opens the corner menu, painted by the library, with these entries:
-minimize; full screen or window (whichever the window is not); desk decorations (not in full screen); close (runs the `onClose` action).
-A click outside the menu closes the menu.
-With the Fearless decorations the window has no border to drag, so the user resizes it in full screen or with the desk decorations.
+The corner is a title bar reduced to a handle: a drag of the corner moves the window, a click on the corner gives the desk decorations back.
+With the Fearless decorations the window has no border to drag, so the user resizes it with the desk decorations.
+
+The transitions:
+
+| From | The user | To |
+|---|---|---|
+| decorated window | maximizes (the button, a double click on the title bar, the desk's key or gesture) | Fearless window covering the work area |
+| decorated window or Fearless window | presses the full screen key | full screen |
+| Fearless window | clicks the corner | decorated window, at the bounds it had before the maximize when it came from one |
+| full screen | presses the full screen key | the state before full screen |
+| full screen | clicks the corner | decorated window, at the bounds recorded when full screen was entered |
+| Fearless window | drags the corner | the same, moved |
+
+A window that opened as a Fearless window or in full screen goes to the bounds it would have opened with as a decorated window.
+A maximize is the one thing a desk does to a decorated window that a Fearless window shows better: the biggest window the desk allows, without the title bar.
+The toolkit reports a maximize as a window state, distinct from a resize; a snap to half the screen is a resize and the window stays decorated.
+A desk without maximize (a tiling desk) reaches the Fearless window only when the program opens with it; full screen and the corner work there as everywhere.
+The program sees a transition only through the `ResizeRequest` it fires: the maximize carries the aspect ratio of the work area, full screen the aspect ratio of the screen, the corner click the aspect ratio of the bounds the window goes back to; a drag fires nothing.
 
 Why the corner exists.
 In full screen, or in a window without the desk decorations, the program paints every pixel the user sees: a program could paint a desktop, a Manager, a system prompt, and the user would have no way to tell.
 The corner is the one region the program can not paint.
-Its presence tells the user that this is a Fearless window; its menu gives the real desktop back.
+Its presence tells the user that this is a Fearless window; its click gives the real desktop back, and the program can not take full screen again by itself.
 The cost is the top left of a full screen canvas, which a program designer must know is not theirs.
 A window with the desk decorations needs no corner: the desk's title bar is the evidence, and the desk's buttons are the way out.
-
-Switching.
-From the desk decorations to the Fearless decorations: the full screen key enters full screen, where the corner is, and the corner menu goes back to a window with the Fearless decorations.
-From the Fearless decorations to the desk decorations: the corner menu.
-The program sees a switch only through the `ResizeRequest` that full screen fires; a switch between two kinds of window decorations fires nothing.
 
 ### What a user resize does
 
@@ -206,7 +217,7 @@ When the handler has run, the window is set to exactly the current canvas `W' x 
 With the default handler the canvas is unchanged: the window keeps its shape and takes the new scale.
 With a handler that changed the canvas to the requested shape, the window is exactly the dragged rectangle.
 
-Maximize is a resize like any other: the window manager gives the window the shape of the work area, the request carries that aspect ratio, and a rejected request leaves a normal, non maximized window of canvas shape, as large as fits in the work area, centered.
+Maximize is a transition to the Fearless window covering the work area (see Decorations): the request carries the aspect ratio of the work area, and a rejected request leaves the canvas centered in that window at the largest scale that fits, with bands in the leftover, as in full screen.
 
 Moving the window fires nothing.
 
@@ -222,7 +233,7 @@ Painters draw in canvas units and are clipped to their widget, as today.
 
 `Gui.run(mut Consumer[mut Frame])` keeps its shape; the `Gui` setters come before it.
 `Frame.title` as the whole title: it is now the subtitle after the fixed name.
-`Frame.undecorated`, `Frame.decorated`: the decorations are the user's.
+`Frame.undecorated`, `Frame.decorated`, and a live `Frame.fullScreen`/`Frame.windowed`: the decorations and full screen are the user's; the program only chooses what the window opens as.
 `Frame.maximized`, `Frame.location`, `Frame.locationX`, `Frame.locationY`, `Frame.fixedSize` and `Frame.resizable` in all their forms, `Frame.screenWidth`, `Frame.screenHeight`, `ScreenContext.screenWidth`, `ScreenContext.screenHeight`.
 The errors about a maximized window with an explicit size or location, and about a window larger than the screen, go with them.
 
@@ -235,9 +246,9 @@ Mouse hit testing divides the window point by the scale and subtracts the band o
 Text stays sharp at every scale: glyph outlines are scaled, not pixels (hinting is already off).
 Images drawn by `Graphics.image` go through the same transform.
 
-The corner and its menu are painted on the same bitmap after the content, in physical pixels, and take their mouse events before hit testing.
+The corner is painted on the same bitmap after the content, in physical pixels, and takes its mouse events before hit testing.
 A drag of the corner moves the window with `setLocation` from the toolkit thread; the program never sees the position.
-Minimize is `setExtendedState(ICONIFIED)`, which every desk we run on honours.
+A maximize arrives as a `WindowStateListener` event with `MAXIMIZED_BOTH`; the Gui answers it with the transition, never with a maximized decorated window.
 Switching decorations is the dispose, `setUndecorated`, show again sequence the toolkit requires; it happens only on the user's request, so the native flicker is the user's own action.
 The opacity goes through `setOpacity`, which the toolkit allows only on an undecorated window: that is why a window with desk decorations is painted opaque.
 
@@ -263,6 +274,7 @@ Pressing `esc` closes it, since no `.onClose` replaced the default `{f.close}`.
 
 ### Tests to update
 
-`integrationTests/testingStandardLibrary/_test/test_gui_frame.fear`: the location, maximized, fixedSize, undecorated and decorated checks go; new checks for `referenceCanvasWidth/Height`, the `screenArea` range error, the blank name error, the opacity floor error, the setter-while-open error, `fullScreen`/`windowed`, the title as name plus subtitle and the canvas units of `panelWidth`/`panelHeight` under a scale.
+`integrationTests/testingStandardLibrary/_test/test_gui_frame.fear`: the location, maximized, fixedSize, undecorated and decorated checks go; new checks for `referenceCanvasWidth/Height`, the `screenArea` range error, the blank name error, the opacity floor error, the setter-while-open error, a window opened with `Gui.fullScreen` and one with `Gui.fearlessDecorations`, the title as name plus subtitle and the canvas units of `panelWidth`/`panelHeight` under a scale.
+The transitions driven by the user (maximize, the keys, the corner) are for the `agentTools` tests of the Manager, not for the standard library tests.
 `integrationTests/testTicTacToe`: `gui_frozen.fear`, `gui_resizable.fear` and `gui_chunk.fear` become one game on a square canvas; the resizable one accepts no aspect ratio change, so the board stays square.
 `integrationTests/testGui1`, `testGui2`, `testGuiLive`, `testGuiImg`: the `Gui` setters replace `.fixedSize`/`.resizable`/`.undecorated`/`.decorated` calls.
