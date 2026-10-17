@@ -127,12 +127,12 @@ Only the capability knows the screen: a program holding a `Frame` and not the `G
 
 `Gui.opacityFloor(Alpha)`, `Frame.opacity(Alpha)`:
 The window opens opaque.
-`Frame.opacity` sets the opacity of the whole window; below the floor is a deterministic error.
+`Frame.opacity` sets the opacity of the whole window, corner included; below the floor is a deterministic error.
 A pulsating effect ranges between the floor and opaque.
-Only a window with Fearless decorations shows the opacity; a window with desk decorations is painted opaque while it has them.
+Only a Fearless window shows the opacity; a decorated window and a full screen window are painted opaque while they are such.
 
 `Gui.closeKey(KeyStroke)`, `Frame.onClose(action)`, `Frame.close`:
-The close key, the close button of the desk decorations and the close entry of the Fearless corner all run the `onClose` action on the model queue, like a button action.
+The close key and the close button of the desk decorations both run the `onClose` action on the model queue, like a button action.
 The default action is `{f.close}`: the window closes and `Gui.run` returns.
 A program that asks "save changes?" replaces the action, shows its question inside the canvas, and calls `f.close` later or never.
 The close key reaches no `onKey` handler.
@@ -140,7 +140,8 @@ Closing the window is not ending the program: the code after `Gui.run` runs.
 The Manager is the way to see which programs are alive and to end one that ignores its close requests.
 
 `Gui.fullScreen`, `Gui.fullScreenKey(KeyStroke)`:
-Full screen is a borderless window covering the whole default screen, with no mode switch of the display.
+Full screen is the full screen state of the desk, asked of the window manager as such, with no mode switch of the display.
+A borderless window merely sized like the screen is not full screen: GNOME keeps it inside the work area, under the bars.
 The canvas is centered both ways at the largest scale that fits; the leftover is painted with the `bands` color.
 Entering full screen fires a `ResizeRequest` with the aspect ratio of the screen.
 The program chooses only whether the window opens in full screen; after that, full screen is a decoration state and belongs to the user (below).
@@ -181,25 +182,39 @@ The Fearless decorations are the Fearless corner: a right triangle in the top le
 The legs measure `min(screenHeight/16, windowHeight/4)` physical pixels, so the corner has the same size on every desk and still fits a small window.
 The library paints the corner after everything else, over the canvas and over the bands; the content never covers it, and mouse events inside it reach no widget.
 The corner is painted in physical pixels, with its own colors: it looks the same in every program.
-The corner is a title bar reduced to a handle: a drag of the corner moves the window, a click on the corner gives the desk decorations back.
-With the Fearless decorations the window has no border to drag, so the user resizes it with the desk decorations.
+The corner is a title bar reduced to a handle.
+Its tip, a small square at the very corner of the window, resizes the window from its top left; the rest of the triangle moves the window; a click on it gives the desk decorations back.
+The pointer shows which, with the desk's own resize and move cursors.
 
 The transitions:
 
 | From | The user | To |
 |---|---|---|
-| decorated window | maximizes (the button, a double click on the title bar, the desk's key or gesture) | Fearless window covering the work area |
-| decorated window or Fearless window | presses the full screen key | full screen |
-| Fearless window | clicks the corner | decorated window, at the bounds it had before the maximize when it came from one |
-| full screen | presses the full screen key | the state before full screen |
-| full screen | clicks the corner | decorated window, at the bounds recorded when full screen was entered |
+| decorated window | maximizes (the button, a double click on the title bar, the desk's key or gesture) | decorated window, maximized, as on every desk |
+| decorated window, maximized | unmaximizes (the same button, the same double click, the desk's key) | Fearless window, with the bounds the maximized window had |
+| Fearless window | clicks the corner | decorated window, at the bounds before the maximize while the window still has the maximized bounds, else at its current bounds |
 | Fearless window | drags the corner | the same, moved |
+| Fearless window | drags the tip of the corner | the same, resized from the top left; a `ResizeRequest` when the drag settles, as for an edge drag |
+| Fearless window | drops the corner at the top left of the work area | full screen |
+| decorated window or Fearless window | presses the full screen key | full screen |
+| full screen | presses the full screen key | the state before full screen |
+| full screen | drags the corner | Fearless window, at the bounds recorded when full screen was entered, under the pointer, the drag going on |
+| full screen | clicks the corner | decorated window, at the bounds recorded when full screen was entered |
 
-A window that opened as a Fearless window or in full screen goes to the bounds it would have opened with as a decorated window.
-A maximize is the one thing a desk does to a decorated window that a Fearless window shows better: the biggest window the desk allows, without the title bar.
-The toolkit reports a maximize as a window state, distinct from a resize; a snap to half the screen is a resize and the window stays decorated.
+The loop is three stages: maximize, unmaximize, click the corner, and the window is back where it started.
+Maximize keeps its meaning and its look on every desk; the Fearless window comes on the way back, at the moment the user is already looking at the corner, and keeps the large size, so that the biggest window without a title bar is one unmaximize away and not only behind the full screen key.
+The toolkit reports a maximize as a window state, distinct from a resize; the trigger of the second stage is the maximized bit clearing, never "the state becomes normal", because a maximized window brought back from the taskbar also becomes normal and is still maximized.
+A snap to half the screen is a resize and the window stays decorated.
 A desk without maximize (a tiling desk) reaches the Fearless window only when the program opens with it; full screen and the corner work there as everywhere.
-The program sees a transition only through the `ResizeRequest` it fires: the maximize carries the aspect ratio of the work area, full screen the aspect ratio of the screen, the corner click the aspect ratio of the bounds the window goes back to; a drag fires nothing.
+On Windows and GNOME a drag down on the title bar of a maximized window unmaximizes it and goes on as a move; the unmaximize swaps the decorations, which recreates the native window and ends the desk's move grab, so the window drops where it is and the user goes on with the corner.
+Full screen and the Fearless window are both undecorated, so a transition between the two keeps the native window and a drag goes on across it.
+The program sees a transition only through the `ResizeRequest` it fires: the maximize carries the aspect ratio of the work area, full screen the aspect ratio of the screen, the corner click the aspect ratio of the bounds the window goes back to; a move fires nothing.
+
+A move or a resize by the corner is, for the desk, a move made by the program, not by the user.
+GNOME keeps a window that the user has never moved through the window manager fully inside the work area on every move made by the program: a Fearless window with the bounds of the work area does not move at all, and no Fearless window goes past the screen edge by its corner.
+Only a move the window manager drives (`_NET_WM_MOVERESIZE` on X11, `WM_NCLBUTTONDOWN` with `HTCAPTION` on Windows) counts as the user's, and the toolkit has no way to ask for one; it would take the foreign function API and the native window id.
+Windows has no such constraint.
+Whether the corner drive should go through the window manager is an open decision.
 
 Why the corner exists.
 In full screen, or in a window without the desk decorations, the program paints every pixel the user sees: a program could paint a desktop, a Manager, a system prompt, and the user would have no way to tell.
@@ -217,7 +232,7 @@ When the handler has run, the window is set to exactly the current canvas `W' x 
 With the default handler the canvas is unchanged: the window keeps its shape and takes the new scale.
 With a handler that changed the canvas to the requested shape, the window is exactly the dragged rectangle.
 
-Maximize is a transition to the Fearless window covering the work area (see Decorations): the request carries the aspect ratio of the work area, and a rejected request leaves the canvas centered in that window at the largest scale that fits, with bands in the leftover, as in full screen.
+Maximize is a resize whose shape is imposed: the request carries the aspect ratio of the work area, and a rejected request leaves the canvas centered in the maximized window at the largest scale that fits, with bands in the leftover, as in full screen.
 
 Moving the window fires nothing.
 
@@ -247,10 +262,14 @@ Text stays sharp at every scale: glyph outlines are scaled, not pixels (hinting 
 Images drawn by `Graphics.image` go through the same transform.
 
 The corner is painted on the same bitmap after the content, in physical pixels, and takes its mouse events before hit testing.
-A drag of the corner moves the window with `setLocation` from the toolkit thread; the program never sees the position.
-A maximize arrives as a `WindowStateListener` event with `MAXIMIZED_BOTH`; the Gui answers it with the transition, never with a maximized decorated window.
-Switching decorations is the dispose, `setUndecorated`, show again sequence the toolkit requires; it happens only on the user's request, so the native flicker is the user's own action.
-The opacity goes through `setOpacity`, which the toolkit allows only on an undecorated window: that is why a window with desk decorations is painted opaque.
+A drag of the corner moves the window with `setLocation`, a drag of its tip with `setBounds`, from the toolkit thread; the program never sees the position.
+The maximized bounds are recorded on each repaint tick while the window is maximized; the unmaximize arrives as a `WindowStateListener` event whose old state has `MAXIMIZED_BOTH` and whose new state has not, and the Gui answers it with the Fearless window at those bounds.
+Full screen is `GraphicsDevice.setFullScreenWindow`: `_NET_WM_STATE_FULLSCREEN` on X11, the full screen style on Windows, the presentation options on macOS; no display mode is set.
+Switching between desk decorations and Fearless decorations is a new frame: the toolkit recreates the native window for a change of decorations anyway; it happens only on the user's request, so the native flicker is the user's own action.
+The opacity goes through `setOpacity`, which the toolkit allows only on an undecorated window that is not the full screen window: that is why a decorated window and a full screen window are painted opaque.
+Per-pixel translucency, which would keep the corner opaque while the content fades, is not used: under GNOME on XWayland a per-pixel translucent window that repaints continuously is shown or not at random (the window is mapped and focused, the toolkit paints into it, the compositor shows nothing and routes no clicks), reproduced with a forty line program, nine runs, three visible.
+An opaque corner over a fading content would need a second, shaped window owned by the main one.
+On macOS, Cmd+Q ends the process without a `windowClosing` unless the quit strategy is `CLOSE_ALL_WINDOWS`; the runtime sets it, so Cmd+Q is a close request.
 
 The repaint tick compares the window size with the size the Gui last set.
 A difference starts or continues a drag; equality for the quiet period settles it and queues the request.
@@ -271,6 +290,11 @@ This frame opens as a window with the desk decorations, titled `Nap`, covering 3
 In full screen on a 16:9 screen the handler widens the canvas to 604x340 and there are no bands.
 A frame with no `.onResize` keeps its 520x340 canvas and shows `deepNapBlue` bands in full screen.
 Pressing `esc` closes it, since no `.onClose` replaced the default `{f.close}`.
+
+### Demo
+
+https://github.com/marcoautomation2/fearless_gui_demo is a Swing program that behaves as this document says, with a launcher for the fixed settings and a Show button; its `demo` release has a Linux and a Windows build.
+What it has shown on GNOME: the canvas scaling and the mouse in canvas units, the title as name plus subtitle, the settle and request of an edge drag, the three stage loop with the size kept, the corner move, tip resize, click and snap, full screen as the desk's state, the close question inside the canvas, and the two desk facts above (full screen needs the desk's state, GNOME constrains moves made by the program).
 
 ### Tests to update
 
