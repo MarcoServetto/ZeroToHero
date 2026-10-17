@@ -378,16 +378,21 @@ Images drawn by `Graphics.image` go through the same transform.
 
 The Fearless corner is painted on the same bitmap after the content, in screen pixels, with legs of `min(screenHeight/16, windowHeight/4)`, and takes its mouse events before hit testing; it answers the primary button only.
 A drag of the Fearless corner sets the window bounds from the toolkit thread, computed by the edge rule from the pointer, the point of the corner that was pressed and the current size; the program never sees the position.
-A drag starts past the desk's drag threshold, as a drag of a title bar does; a double click on the Fearless corner is a press with a click count of two.
+A drag starts past the desk's drag threshold, as a drag of a title bar does; a double click on the Fearless corner is the release of a second click: a window replaced while a button is down leaves XWayland reporting that button down until the pointer next enters one of its windows.
 Window level key bindings fire only while a component inside the window owns the focus, and a full screen switch can leave the window focused with no focus owner: the library gives the focus to its drawing surface whenever the window gains focus.
 Full screen is `GraphicsDevice.setFullScreenWindow`: `_NET_WM_STATE_FULLSCREEN` on X11, the full screen style on Windows, the presentation options on macOS; no display mode is set.
 On Windows the runtime sets `sun.java2d.d3d=false`: with the Direct3D pipeline the toolkit makes full screen an exclusive mode of the display, and on a desk scaled above 100% the bounds set in the same event that leaves it reach the native window unscaled (a 600x400 window shows as 400x267 at 150%); the library paints one bitmap and gains nothing from Direct3D.
-Moving between the desk border and the Fearless corner is a new frame: the toolkit recreates the native window for a change of decorations anyway; the new frame is shown before the old one is disposed, so the desk's close animation plays under the new window.
+Moving between the desk border and the Fearless corner is a new frame: the toolkit recreates the native window for a change of decorations anyway; on Windows the new frame is shown before the old one is disposed, so the desk's close animation plays under the new window.
+Elsewhere the old frame is disposed before the new one is shown: the toolkit answers `WM_TAKE_FOCUS` without `XSetInputFocus` when it already counts the window as focused, so under GNOME a new undecorated frame shown while the old one holds the keyboard can stay without the keyboard.
 The restore size is set on Windows with `SetWindowPlacement`: the restore rectangle in work area coordinates and device pixels, with `SW_SHOWMAXIMIZED` when entering state 3 and `SW_SHOWNORMAL` after a compaction.
 `SetWindowPlacement` with the current rectangle also ends a snap: Windows keeps the size from before a snap as the restore size of the snapped window, and `setBounds` moves the window but keeps that size and the snap.
 The window handle is `WComponentPeer.getHWnd` of the frame's peer: the runtime opens `java.desktop/java.awt` and `java.desktop/sun.awt.windows` to the library.
-On X11 and macOS the request that sets the restore size is to be found on each desk; until then entering state 3 there is a new frame given the restore size with `setBounds` and `setExtendedState(MAXIMIZED_BOTH)` before `setVisible`, replacing the window the desk has just maximized, and a compaction is `setBounds` alone.
-On X11 the toolkit guesses the insets of a window with the desk border before it is mapped and corrects them after, so the window can come out a few pixels taller than its picture.
+On X11 and macOS the request that sets the restore size is to be found on each desk; until then the desk maximizes the window itself and keeps the window before the maximize as the restore size, and a compaction is `setBounds` alone.
+A new frame mapped already maximized is no substitute: GNOME restores it to the size it was given, but at the top left of the work area.
+The toolkit reports a window the desk tiles to half the screen as `MAXIMIZED_VERT`: state 3 is exactly `MAXIMIZED_BOTH`.
+On X11 the toolkit guesses the insets of a window with the desk border before it is mapped and corrects them after, so the window can come out taller than its picture, by up to the height of the title bar.
+GNOME shows in the dock and in the window picker the name and the icon of the `.desktop` file whose `StartupWMClass` is the `WM_CLASS` of the window, and the `WM_CLASS` with a generic icon when there is none; it does not show the icon of the window.
+The toolkit sets `WM_CLASS` from the main class; the library sets it to the name, and the icon reaches the GNOME dock only through a `.desktop` file.
 
 A size the library sets comes back from the toolkit up to one pixel different on a desk scaled above 100%: a content area within one pixel of the size the library chose is the library's, and sends no ResizeRequest.
 The pointer buttons are read from the platform on each repaint tick, through the Java foreign function API (the runtime enables native access for the library module): `GetAsyncKeyState` of the left, right and middle buttons on Windows, the button mask of `XQueryPointer` on the root window on X11, `CGEventSourceButtonState` on macOS.
@@ -420,7 +425,7 @@ Pressing `esc` closes it, since no `.onClose` replaced the default `{f.close}`.
 
 https://github.com/marcoautomation2/fearless_gui_demo is a Swing program that behaves as this document says, with a launcher for the fixed settings; its `demo` release has a Linux and a Windows build.
 The launcher logs every transition, request, desk report and uncaught exception, and shows each window as the program sees it.
-The transitions of the state machine have been tried by hand on Windows at 150% scale.
+The transitions of the state machine have been tried by hand on Windows at 150% scale and on GNOME on Wayland at 100% scale.
 
 ### Tests to update
 
