@@ -197,7 +197,11 @@ The handler runs on the model queue, like a button action.
 `aspectRatio` is the desired aspect ratio: the width of the content area divided by its height.
 `panelWidth`/`panelHeight` of the request are the current virtual pixel space.
 
-### The state machine
+### The state machine on floating desks: Windows, macOS, GNOME, KDE Plasma, Cinnamon, MATE, Xfce, LXQt, COSMIC
+
+A floating desk lets windows overlap and keeps the size and the position the library sets for a window.
+The floating desks are Windows, macOS, and on Linux GNOME (Ubuntu, Fedora, Debian), KDE Plasma (Kubuntu, openSUSE), Cinnamon, MATE, Xfce (Xubuntu), LXQt (Lubuntu) and COSMIC (Fedora COSMIC).
+Every desk that is not a tiling desk (below) is a floating desk.
 
 The program chooses the state the window opens in (`Gui.fearlessCorner`, `Gui.fullScreen`, or state 4 by default); after that the state belongs to the user.
 
@@ -351,6 +355,68 @@ Without the desk border the program paints every pixel the user sees, and could 
 The Fearless corner is the one region the program can not paint: it tells the user that this is a Fearless window, and its double click gives the desk border back; the program can not take full screen again by itself.
 The cost is the top left of the picture in states 1 and 2, which a program designer must know is not theirs.
 
+### The state machine on tiling desks: Hyprland, sway, i3
+
+A tiling desk sets the size and the position of every window: Hyprland (Omarchy), sway (Arch with sway) and i3 (Void with i3).
+The library recognizes a tiling desk when `XDG_CURRENT_DESKTOP` names Hyprland, sway or i3, or when `SWAYSOCK` is set.
+
+The program chooses whether the window opens as state 1 (`Gui.fullScreen`) or as state M (otherwise; `Gui.fearlessCorner` opens it as state M too).
+After that the state belongs to the user.
+
+    STATES
+
+    There is always exactly one window: a transition never replaces it.
+    The state is the one the desk reports: a full screen the desk starts or ends is a transition.
+
+    State 1: FullScreen
+      the window has the Fearless corner.
+      the window is in the desk's full screen state and covers the screen.
+      the content area is the screen.
+      the bands exist when the virtual pixel space and the screen
+        have different aspect ratios.
+
+    State M: DeskManaged
+      the window has the Fearless corner, and the border the desk gives it, if any.
+      the desk chooses the size and the position of the window, tiled or floating.
+      the bands exist when the virtual pixel space and the content area
+        have different aspect ratios.
+
+    The window opens asking for a content area of screenArea, centered;
+    the desk keeps that size only for a window it floats.
+    The library never sets the size or the position of the window after it opens.
+
+
+    ACTIONS
+
+    Corner double click
+      in 1:  transition to M.
+      in M:  transition to 1.
+
+    Corner drag: nothing.
+
+    Full screen key
+      in 1:  transition to M.
+      in M:  transition to 1.
+
+    Desk full screen (the desk's own key: Super+F on Omarchy)
+      in 1:  transition to M.
+      in M:  transition to 1.
+
+    Desk tile, float, move, resize, swap
+      in M:  the desk changes the window; a new size queues a ResizeRequest.
+
+    The program chooses a new virtual pixel space
+      in 1, M:  the library computes the new bands.
+
+    Close key, desk close
+      in every state: the program's onClose action runs. This is not a transition.
+
+Why a tiling desk has two states.
+A tiling desk owns the size of every window: it ignores the bounds set on a tiled window, so a compaction or a move by the library changes nothing.
+The desk resizes and moves windows with its own gestures (Super + drag on Hyprland), which hold the pointer, so the library can not know when a desk resize ends.
+State 2 has no desk border to give back, and maximizing is the desk's business (Omarchy ignores the maximize requests of programs).
+The Fearless corner is in both states, so the user always sees that the window is a Fearless window, and its double click is the one gesture that moves the window between the two states.
+
 ### Coordinates
 
 Mouse events report `mouseX`/`mouseY` in virtual pixels: the position in the content area minus the bands, divided by the scale, rounded down.
@@ -390,6 +456,10 @@ The window handle is `WComponentPeer.getHWnd` of the frame's peer: the runtime o
 On X11 and macOS the request that sets the restore size is to be found on each desk; until then the desk maximizes the window itself and keeps the window before the maximize as the restore size, and a compaction is `setBounds` alone.
 A new frame mapped already maximized is no substitute: GNOME restores it to the size it was given, but at the top left of the work area.
 The toolkit reports a window the desk tiles to half the screen as `MAXIMIZED_VERT`: state 3 is exactly `MAXIMIZED_BOTH`.
+On a tiling desk the library asks the desk for full screen with the `_NET_WM_STATE` client message on the X11 root window, and reads `_NET_WM_STATE_FULLSCREEN` on the window at each repaint tick: the state is what the desk did, never what the library asked.
+A window that opens as state 1 sends the message once the desk manages the window, which the desk marks with the `WM_STATE` property: a message sent before is ignored, and a `_NET_WM_STATE` set before mapping does not survive the mapping.
+sway reports a tiled window as maximized; on a tiling desk the maximized state has no meaning.
+The X11 window managers of Wayland desks (Hyprland, wlroots, Smithay for COSMIC) set no `_NET_FRAME_EXTENTS` and no `_NET_WM_ALLOWED_ACTIONS`, on floating and tiling desks alike: nothing seen through X11 tells a tiling desk apart, so the library goes by the name of the desk.
 On X11 the toolkit guesses the insets of a window with the desk border before it is mapped and corrects them after, so the window can come out taller than its picture, by up to the height of the title bar.
 GNOME shows in the dock and in the window picker the name and the icon of the `.desktop` file whose `StartupWMClass` is the `WM_CLASS` of the window, and the `WM_CLASS` with a generic icon when there is none; it does not show the icon of the window.
 The toolkit sets `WM_CLASS` from the main class; the library sets it to the name and provides the `.desktop` file that carries the icon.
@@ -425,7 +495,7 @@ Pressing `esc` closes it, since no `.onClose` replaced the default `{f.close}`.
 
 https://github.com/marcoautomation2/fearless_gui_demo is a Swing program that behaves as this document says, with a launcher for the fixed settings; its `demo` release has a Linux and a Windows build.
 The launcher logs every transition, request, desk report and uncaught exception, and shows each window as the program sees it.
-The transitions of the state machine have been tried by hand on Windows at 150% scale and on GNOME on Wayland at 100% scale.
+The transitions of the floating desk state machine have been tried by hand on Windows at 150% scale and on GNOME on Wayland at 100% scale; the tiling desk state machine on Hyprland (Omarchy) and sway, with tiled and floating windows on Hyprland.
 
 ### Tests to update
 
