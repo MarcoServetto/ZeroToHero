@@ -223,12 +223,14 @@ The program chooses the state the window opens in (`Gui.fearlessCorner`, `Gui.fu
       the bands exist when the virtual pixel space and the content area
         have different aspect ratios.
       the restore size the desk keeps is the one the library gave the window
-        when it created it (below): no size of an earlier window survives.
+        when it entered state 3 (below): no size of an earlier window survives.
 
     State 4: DeskWindow
       the window has the desk border.
       the window is not maximized.
       the window is compacted: there are no bands,
+        except while the desk is resizing the window.
+      the restore size the desk keeps is the window itself,
         except while the desk is resizing the window.
       the desk does not shrink the window below the smallest window
         whose picture covers minArea of the screen area.
@@ -236,16 +238,15 @@ The program chooses the state the window opens in (`Gui.fearlessCorner`, `Gui.fu
 
     CREATING A WINDOW
 
-    A transition between the desk border and the Fearless corner, and a transition
-    into state 3, replace the window with a new one.
+    A transition between the desk border and the Fearless corner replaces the window with a new one.
     The window after a transition takes its place from the window before it, the leaving bounds:
       leaving state 1:  the largest rectangle with the aspect ratio of the virtual pixel space
                         that fits the work area, centered.
       leaving state 2:  the rectangle of that window.
     Entering state 1: the desk's full screen.
     Entering state 2: the window is exactly the leaving bounds.
-    Entering state 3: the desk's maximized state; the restore size is the leaving bounds
-                      of state 1, compacted.
+    Entering state 3: the desk's maximized state; the library sets the restore size
+                      to the leaving bounds of state 1, compacted.
     Entering state 4: the leaving bounds, compacted.
 
 
@@ -283,20 +284,21 @@ The program chooses the state the window opens in (`Gui.fearlessCorner`, `Gui.fu
     Desk maximize (the button, a title bar double click, a drag to the top, the desk's key)
       in 4:  transition to 3.
 
-    Desk unmaximize (the button, a title bar double click, a title bar drag, the desk's key)
-      in 3:  the desk unmaximizes the window to the restore size.
+    Desk unmaximize (the button, a title bar double click, a title bar drag, a snap, the desk's key)
+      in 3:  the desk unmaximizes the window.
              When no pointer button is down:
-               if the window has not moved since the unmaximize: transition to 1;
-               if it has moved, it was a title bar drag: the window is in state 4,
-               the drag having gone on as the desk's move (a delegation),
-               and the library compacts it.
+               if the window is exactly the restore size: transition to 1;
+               otherwise the desk has moved it (a title bar drag, which went on
+               as the desk's move: a delegation) or arranged it (a snap):
+               the window is in state 4, and the library compacts it.
 
     Title bar drag
       in 4:  the desk moves the window; it stays in state 4.
 
     Desk resize, snap
       in 4:  the desk changes the size of the window; while it does, there are bands.
-             When the desk has finished, the library compacts the window.
+             When the desk has finished, the library compacts the window
+             and sets its restore size to the compacted window.
              The desk has finished when no pointer button is down:
              a desk resize by the pointer lasts as long as a button is held,
              and a desk resize by a key is finished at once.
@@ -334,14 +336,15 @@ Why the transitions are as they are.
 Maximize keeps its meaning on every desk; unmaximize, the desk's gesture for "the other state of this window", gives full screen; a title bar drag of a maximized window gives a desk window, as on every desk.
 The Fearless corner moves the window between states 1 and 2, and its double click gives the desk border back.
 The full screen key gives full screen from every state.
-A new window in state 3 leaves the desk no memory of an earlier window: what the user sees is the whole state.
+The restore size the desk keeps is always set by the library from the current state, so the desk has no memory of an earlier window: what the user sees is the whole state.
+Desks keep a restore size per window when it maximizes, tiles, snaps or zooms it, and gives it back when the user drags the window out; moving or resizing the window is not enough to replace it.
 Nothing in the state machine depends on timing.
 
 Why the library waits for the pointer buttons.
 A window resized by the library while the desk is still resizing it ends with the toolkit and the desk disagreeing on its size (`improved_gui_api_stale_paint.png`).
 The press and the release of a desk resize happen on the desk border, so the window receives neither.
 The size staying the same for a while is no end either: a user pausing on the border looks the same.
-The desk reports the same unmaximize for the button, the title bar double click, the key and the title bar drag; only the drag moves the window before the buttons are up.
+The desk reports the same unmaximize for the button, the title bar double click, the key and the title bar drag; the button, the double click and the key give back exactly the restore size, a drag moves the window and a snap resizes it.
 
 Why the Fearless corner exists.
 Without the desk border the program paints every pixel the user sees, and could paint a desktop or a system prompt.
@@ -379,8 +382,11 @@ A drag starts past the desk's drag threshold, as a drag of a title bar does; a d
 Window level key bindings fire only while a component inside the window owns the focus, and a full screen switch can leave the window focused with no focus owner: the library gives the focus to its drawing surface whenever the window gains focus.
 Full screen is `GraphicsDevice.setFullScreenWindow`: `_NET_WM_STATE_FULLSCREEN` on X11, the full screen style on Windows, the presentation options on macOS; no display mode is set.
 On Windows the runtime sets `sun.java2d.d3d=false`: with the Direct3D pipeline the toolkit makes full screen an exclusive mode of the display, and on a desk scaled above 100% the bounds set in the same event that leaves it reach the native window unscaled (a 600x400 window shows as 400x267 at 150%); the library paints one bitmap and gains nothing from Direct3D.
-Moving between the desk border and the Fearless corner, or into state 3, is a new frame: the toolkit recreates the native window for a change of decorations anyway, and a new native window carries no restore size of an earlier one; the new frame is shown before the old one is disposed, so the desk's close animation plays under the new window.
-Entering state 3 is a frame given the restore size with `setBounds` and `setExtendedState(MAXIMIZED_BOTH)` before `setVisible`, replacing the window the desk has just maximized.
+Moving between the desk border and the Fearless corner is a new frame: the toolkit recreates the native window for a change of decorations anyway; the new frame is shown before the old one is disposed, so the desk's close animation plays under the new window.
+The restore size is set on Windows with `SetWindowPlacement`: the restore rectangle in work area coordinates and device pixels, with `SW_SHOWMAXIMIZED` when entering state 3 and `SW_SHOWNORMAL` after a compaction.
+`SetWindowPlacement` with the current rectangle also ends a snap: Windows keeps the size from before a snap as the restore size of the snapped window, and `setBounds` moves the window but keeps that size and the snap.
+The window handle is `WComponentPeer.getHWnd` of the frame's peer: the runtime opens `java.desktop/java.awt` and `java.desktop/sun.awt.windows` to the library.
+On X11 and macOS the request that sets the restore size is to be found on each desk; until then entering state 3 there is a new frame given the restore size with `setBounds` and `setExtendedState(MAXIMIZED_BOTH)` before `setVisible`, replacing the window the desk has just maximized, and a compaction is `setBounds` alone.
 On X11 the toolkit guesses the insets of a window with the desk border before it is mapped and corrects them after, so the window can come out a few pixels taller than its picture.
 
 A size the library sets comes back from the toolkit up to one pixel different on a desk scaled above 100%: a content area within one pixel of the size the library chose is the library's, and sends no ResizeRequest.
