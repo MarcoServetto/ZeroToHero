@@ -161,8 +161,7 @@ When never called, the canvas is the size the content takes on its own (the pack
 
 `Frame.bands(Color)`:
 The color of the leftover, default black.
-It shows in full screen when the canvas and the screen have different shapes, in a maximized decorated window when the request is rejected, and in a decorated window only while the user is still dragging an edge.
-A Fearless window never shows bands: every size it takes is the canvas at some scale.
+It shows in every state but the Fearless window, when the window and the canvas have different shapes (below).
 The window is black before the first paint.
 
 `Frame.onResize(handler)`:
@@ -176,11 +175,18 @@ A handler that leaves the canvas as it is rejects the request.
 ### Decorations
 
 A window has either the desk decorations or the Fearless decorations, never neither and never both.
-A window is in one of four states:
-1. full screen, with the Fearless decorations; bands when the canvas and the screen have different shapes;
-2. a Fearless window, with the Fearless decorations; never bands: the window is always exactly the canvas at some scale;
-3. a decorated window maximized by the desk; bands when the request is rejected;
-4. a decorated window; bands only while an edge drag has not settled.
+A window covers either the whole screen area it can take (the screen with the Fearless decorations, the work area with the desk decorations) or a part of it.
+The two choices give the four states of a window:
+
+| | whole | part |
+|---|---|---|
+| Fearless decorations | 1 full screen | 2 Fearless window |
+| desk decorations | 3 decorated maximized | 4 decorated window |
+
+The Gui sets the bounds of a window when it creates the window, and while the window is a Fearless window; at no other time.
+The bounds of a full screen window are the screen, and the bounds of a decorated window are the desk's, maximized or not.
+So the Fearless window is always exactly the canvas at some scale, and never shows bands.
+The other three states show the canvas at the largest scale that fits, with bands when the window and the canvas have different shapes.
 The program chooses the state the window opens in (`Gui.fearlessDecorations`, `Gui.fullScreen`); after that the state belongs to the user.
 The program can not move its window, can not know where it is, can not minimize it and can not change its state: the decorations are how the user does these things, so they can never be taken away by the program.
 
@@ -190,29 +196,37 @@ The Fearless decorations are the Fearless corner: a right triangle in the top le
 The legs measure `min(screenHeight/16, windowHeight/4)` physical pixels, so the corner has the same size on every desk and still fits a small window.
 The library paints the corner after everything else, over the canvas and over the bands; the content never covers it, and mouse events inside it reach no widget.
 The corner is painted in physical pixels, with its own colors: it looks the same in every program.
-The corner is a title bar reduced to a handle: very dark gray, the Fearless logo centered in it, and its tip, a small square at the very corner of the window in a lighter dark gray, is the resize handle.
-In a Fearless window: dragging the corner moves the window, dragging the tip resizes it from the top left, a double click gives the desk decorations.
-In full screen: dragging the corner, tip included, leaves full screen for a Fearless window under the pointer; a double click gives the maximized decorated window.
-A single click does nothing.
+The corner is a title bar reduced to a handle: very dark gray, the Fearless logo centered in it.
+In a Fearless window its tip, a small square at the very corner of the window in a lighter dark gray, is the resize handle.
 The pointer shows which, with the desk's own resize and move cursors.
 
-The transitions:
+The transitions.
+Each gesture changes one of the two choices and keeps the other, except the full screen key.
 
-| From | The user | To |
+| The user | Changes | Transitions |
 |---|---|---|
-| 4 decorated window | maximizes (the button, a double click on the title bar, the desk's key or gesture) | 3, as on every desk |
-| 4 decorated window | moves, resizes, snaps, minimizes | 4, as on every desk; a resize settles as below |
-| 3 decorated maximized | unmaximizes, so that every maximized bit clears (the button, the double click on the title bar, the desk's key) | 1 |
-| 3 decorated maximized | drags the title bar, which unmaximizes and moves on every desk | 4, as on every desk |
-| 3 decorated maximized | resizes an edge, on a desk that allows it and so unmaximizes in that direction only | 3, as on that desk, bands while any maximized bit is set |
-| 1 full screen | double clicks the corner | 3 |
-| 1 full screen | drags the corner or its tip | 2, at the largest size that fits the work area, under the pointer, the drag going on |
-| 2 Fearless window | double clicks the corner | 4, with the same bounds on screen (the content is smaller by the title bar and the borders) and the same shape |
-| 2 Fearless window | drags the corner | 2, moved, under the edge rule |
-| 2 Fearless window | drags the tip | 2, resized from the top left with the bottom right corner fixed, keeping the shape of the canvas, never below the min size |
-| 2 Fearless window | releases the corner or the tip with the pointer within a corner's size of the top left of the work area | 1 |
-| 2, 3 or 4 | presses the full screen key | 1 |
-| 1 full screen | presses the full screen key | 2, at the largest size that fits the work area, centered |
+| double clicks the corner | the decorations | 1 to 3, 2 to 4 |
+| unmaximizes, so that every maximized bit clears (the button, the double click on the title bar, the desk's key) | the decorations | 3 to 1 |
+| maximizes (the button, the double click on the title bar, the desk's key or gesture) | whole or part | 4 to 3, as on every desk |
+| drags the title bar of a maximized window, which unmaximizes and moves on every desk | whole or part | 3 to 4, as on every desk |
+| drags the corner of a full screen window | whole or part | 1 to 2, the drag going on |
+| releases the corner or the tip with the pointer within a corner's size of the top left of the work area | whole or part | 2 to 1 |
+| presses the full screen key | both, toward full screen | 2, 3, 4 to 1 |
+| presses the full screen key in full screen | whole or part | 1 to 2 |
+
+A transition is determined by the state it reaches and the window it leaves.
+The window that is left gives its bounds to the new one: a full screen window gives the largest canvas that fits the work area, centered; any other window gives its own bounds.
+A Fearless window takes those bounds as they are.
+A decorated window takes those bounds as its outer bounds, with the canvas fitted inside the title bar and the borders; a decorated window coming from full screen is then maximized.
+So the corner double click on a Fearless window gives a decorated window with the same bounds on screen and the same shape, and the corner double click on a full screen window gives a maximized decorated window that the title bar drag restores to the largest canvas that fits the work area.
+
+Inside a state:
+- In a Fearless window the corner drag moves the window and the tip drag resizes it from the top left with the bottom right corner fixed, both under the edge rule.
+- A decorated window moves, resizes, snaps and minimizes as on every desk; a resize settles as below.
+- A desk that allows an edge resize of a maximized window unmaximizes it in that direction only; the window stays in state 3 while any maximized bit is set.
+- A single click on the corner does nothing.
+
+A decorated window has no corner, so the way from state 4 to the Fearless decorations goes through full screen: the key, then the corner drag.
 
 The edge rule.
 A Fearless window never leaves the work area and the pointer never loses the corner: when a drag would push the bottom or the right edge of the window past the work area, the window shrinks instead, keeping its shape and its top left under the pointer, down to the min size (`Gui.minArea`); at the min size the window stops following the pointer.
@@ -228,8 +242,9 @@ The trigger of unmaximize is "every maximized bit clears and the window is not i
 A snap to half the screen is a resize and the window stays decorated.
 A desk without maximize (a tiling desk) reaches full screen by the key and the Fearless window by the corner.
 On Windows and GNOME a drag of the title bar of a maximized window unmaximizes it and goes on as a move, and the toolkit reports the same unmaximize event for it as for the button; the two are told apart by what follows.
-A drag restores the window only once the pointer has moved past the desk's drag threshold, so after the event the window keeps moving with the pointer; after the button, the double click or the key, the window and the pointer are still.
-The Gui watches the window position and the pointer for a few repaint ticks after the event: still for a short period (a library constant, 100 ms in the demo) gives full screen, movement within a longer one (266 ms in the demo) means the desk is moving the window and nothing happens.
+A drag restores the window only once the pointer has moved past the desk's drag threshold, so after the event the window keeps moving with the pointer; after the button, the double click or the key, the window is still.
+The Gui watches the window position for a few repaint ticks after the event: still for a short period (a library constant, 100 ms in the demo) gives full screen, no such period within a longer one (266 ms in the demo) means the desk is moving the window and nothing happens.
+The pointer plays no part: a user who clicks the button and moves the pointer away at once still gets full screen.
 Every swap of decorations shows the new window before it disposes the old one; the restored window shows for the still period plus whatever unmaximize animation the desk plays before the event.
 Full screen and the Fearless window are both undecorated, so a transition between the two keeps the native window and a drag goes on across it.
 The program sees a transition only through the `ResizeRequest` it fires: the maximize carries the aspect ratio of the work area, full screen the aspect ratio of the screen; a move fires nothing, and a Fearless window, which is always the canvas at some scale, fires nothing.
@@ -249,13 +264,15 @@ A window with the desk decorations needs no corner: the desk's title bar is the 
 
 The window manager resizes the window while the user drags; the Gui draws the canvas at the fitting scale with `bands` in the leftover, and fires nothing.
 The drag has settled when the window size has not changed for a quiet period measured on the repaint timer (a library constant, like the warmup).
-Then one `ResizeRequest` with `draggedWidth/draggedHeight` is queued.
-When the handler has run, the window is set to exactly the current canvas `W' x H'` at scale `min(draggedWidth/W', draggedHeight/H')`.
-With the default handler the canvas is unchanged: the window keeps its shape and takes the new scale.
-With a handler that changed the canvas to the requested shape, the window is exactly the dragged rectangle.
+Then, if the window and the canvas have different shapes, one `ResizeRequest` with `draggedWidth/draggedHeight` is queued.
+A handler that changes the canvas to the requested shape removes the bands; with the default handler the canvas is unchanged and the bands stay.
+The Gui never sets the bounds of the decorated window to remove the bands.
+The toolkit is not told when the desk's resize drag ends, and a user who pauses while holding the edge looks settled.
+Bounds set by the toolkit while the desk is still resizing the same window make the two disagree on its size: the toolkit paints the size it set, and the desk shows its own larger window with the rest unpainted (`improved_gui_api_stale_paint.png`, next to this file, captured seconds after the release: a stale copy of the lower part of the canvas, then black).
+The rule that a decorated window has the desk's bounds is the only one that needs no guess about the end of the drag.
 
-Maximize is a resize whose shape is imposed: the request carries the aspect ratio of the work area, and a rejected request leaves the canvas centered in the maximized window at the largest scale that fits, with bands in the leftover, as in full screen.
-A desk that unmaximizes in one direction only (GNOME, on an edge resize of a maximized window) leaves the window maximized in the other: the Gui treats it as maximized, with bands, until the window is maximized again or unmaximized in both directions.
+Maximize and full screen are resizes whose shape is imposed: the request carries the aspect ratio of the work area or of the screen.
+A desk that unmaximizes in one direction only (GNOME, on an edge resize of a maximized window) leaves the window maximized in the other; the window is resized like any decorated window.
 
 Moving the window fires nothing.
 
@@ -288,7 +305,7 @@ The corner is painted on the same bitmap after the content, in physical pixels, 
 A drag of the corner sets the window bounds from the toolkit thread, computed by the edge rule from the pointer, the point of the corner that was pressed and the size at the press; the program never sees the position.
 Window level key bindings fire only while a component inside the window owns the focus, and a full screen switch can leave the window focused with no focus owner: the Gui gives the focus to its drawing surface whenever the window gains focus.
 A double click on the corner is a press with a click count of two.
-The unmaximize arrives as a `WindowStateListener` event whose old state has a bit of `MAXIMIZED_BOTH` and whose new state has none and is not `ICONIFIED`; the Gui then compares the window location and `MouseInfo.getPointerInfo` on each repaint tick, and gives full screen after the still period or gives up after the drag period.
+The unmaximize arrives as a `WindowStateListener` event whose old state has a bit of `MAXIMIZED_BOTH` and whose new state has none and is not `ICONIFIED`; the Gui then compares the window location on each repaint tick, and gives full screen after the still period or gives up after the drag period.
 Full screen is `GraphicsDevice.setFullScreenWindow`: `_NET_WM_STATE_FULLSCREEN` on X11, the full screen style on Windows, the presentation options on macOS; no display mode is set.
 Switching between desk decorations and Fearless decorations is a new frame: the toolkit recreates the native window for a change of decorations anyway; it happens only on the user's request, so the native flicker is the user's own action; the new frame is shown before the old one is disposed, so the desk's close animation plays under the new window.
 The decorated window that answers a double click on a Fearless window takes the Fearless window's bounds as its outer bounds, with the canvas fitted inside the insets; on X11 the toolkit guesses the insets before the window is mapped and corrects them after, so the decorated window can come out a few pixels taller.
@@ -297,9 +314,10 @@ Per-pixel translucency, which would keep the corner opaque while the content fad
 An opaque corner over a fading content would need a second, shaped window owned by the main one.
 On macOS, Cmd+Q ends the process without a `windowClosing` unless the quit strategy is `CLOSE_ALL_WINDOWS`; the runtime sets it, so Cmd+Q is a close request.
 
-The repaint tick compares the window size with the size the Gui last set.
-A difference starts or continues a drag; equality for the quiet period settles it and queues the request.
-The quiet period and the settle are the only place where timing enters the design; the end state is computed by the Gui and does not depend on the desk.
+The repaint tick compares the window size with the size at the previous tick.
+A difference starts or continues a drag; equality for the quiet period settles it and queues the request, if the window and the canvas have different shapes.
+The settle and the watch after an unmaximize are the only places where timing enters the design.
+The settle decides only when the request is queued, never the bounds of a window.
 
 ### Example
 
@@ -320,7 +338,7 @@ Pressing `esc` closes it, since no `.onClose` replaced the default `{f.close}`.
 ### Demo
 
 https://github.com/marcoautomation2/fearless_gui_demo is a Swing program that behaves as this document says, with a launcher for the fixed settings and a Show button; its `demo` release has a Linux and a Windows build.
-What it has shown on GNOME: the canvas scaling and the mouse in canvas units, the title as name plus subtitle, the settle and request of an edge drag, the four states and every transition of the table but the one direction unmaximize (a single monitor GNOME offers no edge resize on a maximized window), the edge rule with the stop at the min size, the drop at the top left by the corner and by the tip, the title bar drag of a maximized window told apart from the unmaximize button (the drag was recognized in 266 ms, the double click gave full screen in 75 ms), the corner drag to the top left, full screen as the desk's state, the close question inside the canvas, and the desk facts above.
+What it has shown on GNOME: the canvas scaling and the mouse in canvas units, the title as name plus subtitle, the settle and request of an edge drag, the bands of a decorated window after a rejected request, the four states and every transition of the table but the one direction unmaximize (a single monitor GNOME offers no edge resize on a maximized window), the edge rule with the stop at the min size, the drop at the top left by the corner and by the tip, the title bar drag of a maximized window told apart from the unmaximize button (the drag was recognized in 266 ms, the double click gave full screen in 75 ms), the corner drag to the top left, full screen as the desk's state, the close question inside the canvas, and the desk facts above.
 Its launcher logs every transition, request, desk report (shown, hidden, iconified, closed) and uncaught exception, and shows each window as the program sees it (state, bounds, showing or not, focus and who gets the keys, opacity), for the times a window seems to vanish.
 
 What the hands-on tests on Windows and on a two monitor GNOME have taught, beyond the desk facts above:
@@ -332,15 +350,6 @@ What the hands-on tests on Windows and on a two monitor GNOME have taught, beyon
 - Window level key bindings fire only while a component inside the window owns the focus; after a full screen switch the window was focused with no focus owner, and the close key and the full screen key did nothing. A window that ignores its close key looks like a window that can not be closed.
 - A window that seems to vanish has a reason in the log: a close by the close key is the first thing to look for.
 - The opacity pulse made a second monitor flicker once, not reproduced.
-
-Observed bug, Windows, a decorated window after edge drags with rejected requests, `improved_gui_api_stale_paint.png` next to this file:
-the content is painted at the top, a stale copy of the lower part of the canvas is painted again below it, and the rest of the window is black; the program believes its content is 409x267 while the desk shows a window twice as tall.
-The window was settled twelve times, each time with the request rejected and the window packed back to the canvas shape.
-The toolkit sets the window bounds at the settle; when the user is still holding the edge, the desk's own resize is still running, the two resize the same window in turns, and the toolkit's idea of the size and the desk's part ways: the toolkit paints its 409x267 and the desk shows the rest of its larger window unpainted.
-The quiet period on the repaint timer is not the end of the user's drag: a user who pauses while holding the edge is quiet.
-The toolkit does not report the end of a resize drag (`WM_EXITSIZEMOVE` on Windows, the end of the `_NET_WM_MOVERESIZE` on X11 are not surfaced), so the settle needs a better sign that the drag is over.
-Candidates, to try in the demo: settle only when the pointer has moved away from the window edge after the quiet period, with a long timeout (a second) for a user who releases and does not move; or keep the dragged size with bands until then.
-Whichever is chosen, the Gui must never set the bounds of a decorated window while the desk may be resizing it.
 
 ### Tests to update
 
