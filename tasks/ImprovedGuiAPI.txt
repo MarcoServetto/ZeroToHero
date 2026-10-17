@@ -32,7 +32,7 @@ The programmer controls the first, says one thing once about the second, and onl
 
 2. The scale: screen pixels per canvas unit.
    In a window, the window is exactly the canvas: same shape, one uniform scale, the whole canvas and nothing else.
-   The window opens centered on the screen, with the canvas shape, covering the given fraction of the screen area (capped so that the window fits the screen).
+   The window opens centered on the work area, with the canvas shape, covering the given fraction of the screen area (capped so that the window fits the work area).
    The scale is computed in physical pixels, so the OS scale setting does not change what the user sees.
    After the window is open, the program has no control of where the window is or how big it is.
 
@@ -210,15 +210,15 @@ Each gesture changes one of the two choices and keeps the other, except the full
 | maximizes (the button, the double click on the title bar, the desk's key or gesture) | whole or part | 4 to 3, as on every desk |
 | drags the title bar of a maximized window, which unmaximizes and moves on every desk | whole or part | 3 to 4, as on every desk |
 | drags the corner of a full screen window | whole or part | 1 to 2, the drag going on |
-| releases the corner or the tip with the pointer within a corner's size of the top left of the work area | whole or part | 2 to 1 |
+| releases the corner or the tip with the pointer within `screenHeight/16` (the full size of the corner) of the top left of the work area | whole or part | 2 to 1 |
 | presses the full screen key | both, toward full screen | 2, 3, 4 to 1 |
 | presses the full screen key in full screen | whole or part | 1 to 2 |
 
 A transition is determined by the state it reaches and the window it leaves.
 The window that is left gives its bounds to the new one: a full screen window gives the largest canvas that fits the work area, centered; any other window gives its own bounds.
 A Fearless window takes those bounds as they are.
-A decorated window takes those bounds as its outer bounds, with the canvas fitted inside the title bar and the borders; a decorated window coming from full screen is then maximized.
-So the corner double click on a Fearless window gives a decorated window with the same bounds on screen and the same shape, and the corner double click on a full screen window gives a maximized decorated window that the title bar drag restores to the largest canvas that fits the work area.
+A decorated window is the smallest window around the largest canvas that fits inside those bounds, title bar and borders included, centered in them, so it shows no bands; a decorated window coming from full screen is then maximized.
+So the corner double click on a Fearless window gives a decorated window inside the same bounds on screen, with the same shape, and the corner double click on a full screen window gives a maximized decorated window that the title bar drag restores to the largest canvas that fits the work area.
 
 Inside a state:
 - In a Fearless window the corner drag moves the window and the tip drag resizes it from the top left with the bottom right corner fixed, both under the edge rule.
@@ -230,7 +230,7 @@ A decorated window has no corner, so the way from state 4 to the Fearless decora
 
 The edge rule.
 A Fearless window never leaves the work area and the pointer never loses the corner: when a drag would push the bottom or the right edge of the window past the work area, the window shrinks instead, keeping its shape and its top left under the pointer, down to the min size (`Gui.minArea`); at the min size the window stops following the pointer.
-A drag never grows the window: its size at the press is the most it can have during the drag, and the tip is the one way to grow it.
+A drag never grows the window: a window that shrank at the edge stays as small when the drag goes back into room, and the tip is the one way to grow it.
 A drag past the top or the left edge of the work area is stopped at the edge.
 The window has no memory: what the user sees is the whole state, and nothing from a finished drag changes the next one.
 
@@ -302,11 +302,13 @@ Text stays sharp at every scale: glyph outlines are scaled, not pixels (hinting 
 Images drawn by `Graphics.image` go through the same transform.
 
 The corner is painted on the same bitmap after the content, in physical pixels, and takes its mouse events before hit testing.
-A drag of the corner sets the window bounds from the toolkit thread, computed by the edge rule from the pointer, the point of the corner that was pressed and the size at the press; the program never sees the position.
+A drag of the corner sets the window bounds from the toolkit thread, computed by the edge rule from the pointer, the point of the corner that was pressed and the current size; the program never sees the position.
 Window level key bindings fire only while a component inside the window owns the focus, and a full screen switch can leave the window focused with no focus owner: the Gui gives the focus to its drawing surface whenever the window gains focus.
-A double click on the corner is a press with a click count of two.
+The corner answers the primary button only; a drag of the corner starts past the desk's drag threshold, as a drag of a title bar does; a double click on the corner is a press with a click count of two.
 The unmaximize arrives as a `WindowStateListener` event whose old state has a bit of `MAXIMIZED_BOTH` and whose new state has none and is not `ICONIFIED`; the Gui then compares the window location on each repaint tick, and gives full screen after the still period or gives up after the drag period.
 Full screen is `GraphicsDevice.setFullScreenWindow`: `_NET_WM_STATE_FULLSCREEN` on X11, the full screen style on Windows, the presentation options on macOS; no display mode is set.
+On Windows the runtime sets `sun.java2d.d3d=false`: with the Direct3D pipeline the toolkit makes full screen an exclusive mode of the display, and on a desk scaled above 100% the bounds set in the same event that leaves it reach the native window unscaled (a 600x400 window shows as 400x267 at 150%); the Gui paints one bitmap and gains nothing from Direct3D.
+A window that leaves full screen by `Window.dispose` needs no `setFullScreenWindow(null)`: dispose does it.
 Switching between desk decorations and Fearless decorations is a new frame: the toolkit recreates the native window for a change of decorations anyway; it happens only on the user's request, so the native flicker is the user's own action; the new frame is shown before the old one is disposed, so the desk's close animation plays under the new window.
 The decorated window that answers a double click on a Fearless window takes the Fearless window's bounds as its outer bounds, with the canvas fitted inside the insets; on X11 the toolkit guesses the insets before the window is mapped and corrects them after, so the decorated window can come out a few pixels taller.
 The opacity goes through `setOpacity`, which the toolkit allows only on an undecorated window that is not the full screen window: that is why a decorated window and a full screen window are painted opaque.
@@ -345,7 +347,7 @@ What the hands-on tests on Windows and on a two monitor GNOME have taught, beyon
 - Windows puts a window wherever a program asks, under the taskbar and past the screen edge included; GNOME does not. The edge rule makes the two desks agree.
 - A desk with a second monitor to the right lets the pointer reach the right edge of a maximized window from the other monitor, and GNOME then unmaximizes in that direction only. A maximized window is maximized while any bit is set.
 - The desk reports one and the same unmaximize for the restore button and for a title bar drag; the window keeps moving after the event only in the drag.
-- A Fearless window with a remembered size that grows back when dragged into room is hidden state: nothing on screen shows the remembered size. The window has no memory; the size at the press is the cap of the drag.
+- A Fearless window with a remembered size that grows back when dragged into room is hidden state: nothing on screen shows the remembered size. The window has no memory; a drag only shrinks it.
 - A snap that looks at the window position never fires for the tip: the bottom right stays fixed and the shape is kept, so the top left of the window never reaches the top left of the work area. The snap looks at the pointer, on the release.
 - Window level key bindings fire only while a component inside the window owns the focus; after a full screen switch the window was focused with no focus owner, and the close key and the full screen key did nothing. A window that ignores its close key looks like a window that can not be closed.
 - A window that seems to vanish has a reason in the log: a close by the close key is the first thing to look for.
