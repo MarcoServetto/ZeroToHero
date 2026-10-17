@@ -1,0 +1,505 @@
+# Gui API: the virtual pixel space
+
+### Goal
+
+A Fearless program with a Gui looks the same on every desk.
+The programmer draws in a virtual pixel space of a size they choose.
+What the user sees is that virtual pixel space, uniformly scaled, on any screen, any resolution, any OS scale setting.
+Nothing is ever off screen, wrapped differently, or clipped because the screen is different.
+
+Game engines work this way: the author designs on a reference resolution, the engine maps it to the screen with one uniform scale, and the leftover of a screen with a different shape is a band.
+Browsers work the other way: the content adapts to the space it gets, so what is visible depends on the device.
+Predictability is the Fearless priority, so the Gui follows the game model.
+Layout helpers like the flow of `Pane` still exist, but they lay out inside the virtual pixel space, never against the window.
+
+### Fearless facts the design relies on
+
+The Gui is an object capability: `s.gui` from `mut System`.
+A `Frame` is a window; its content is a tree of widgets drawn by the standard library itself, with bundled fonts and its own colors.
+The desk's fonts, theme and scale setting play no part in how a Fearless Gui looks.
+Button actions and mouse handlers run on the model queue, one at a time, in order.
+The frame has a repaint timer (`.fps`) that runs on the toolkit thread.
+`Gui.run` returns when the window is closed; the program continues after it.
+
+### Terms
+
+    the program          the Fearless code that uses s.gui.
+    the library          the standard library code that implements Gui and Frame.
+    the desk             the operating system and its window manager.
+    the user             the person at the screen.
+
+    screen pixel         a physical pixel of the screen.
+    work area            the screen minus the desk's bars (taskbar, panels).
+    window               a rectangle on the screen, owned by the desk.
+    desk border          the title bar and the borders the desk draws around a window.
+    Fearless corner      a dark triangle the library paints at the top left of a window
+                         without the desk border.
+    resize handle        a small lighter square that the library paints over the top left
+                         of the Fearless corner, in state 2 only.
+    content area         the window minus its desk border; the whole window when it has none.
+                         It is a rectangle.
+
+    virtual pixel space  a rectangle of W x H virtual pixels, chosen by the program.
+                         Every length and position the program uses is in virtual pixels.
+                         The program can choose a new one at any time.
+                         The program never learns the size or the position of the window.
+    picture              what the program draws in its virtual pixel space, as shown on the screen:
+                         uniformly scaled to the largest size that fits the content area,
+                         and centered in it.
+                         The picture always fits inside the content area.
+    bands                the part of the content area that the picture does not cover.
+                         They are painted with the bands color.
+
+    ResizeRequest        the library tells the program a new desired aspect ratio:
+                         the aspect ratio of a content area whose size the desk has chosen.
+                         The program can do what it wants with it.
+                         One thing it can do is choose a new virtual pixel space,
+                         with that aspect ratio or not.
+                         Each time the desk gives the content area a new size,
+                         the library queues one ResizeRequest.
+                         A ResizeRequest still waiting is replaced by the new one.
+                         A size chosen by the library sends no ResizeRequest.
+
+    compacting           compacting a window with the desk border keeps its top edge
+                         and shrinks the content area to the largest rectangle
+                         with the aspect ratio of the virtual pixel space that fits inside it:
+                         the same amount is removed on the left and on the right,
+                         or the amount is removed from the bottom.
+                         The picture then fills the content area.
+
+The scale is computed in screen pixels, so the OS scale setting does not change what the user sees.
+
+### Fixed and dynamic
+
+Platforms that run code the user did not choose to trust (browsers, mobile systems, wayland) all follow one principle: what tells the user WHO they are talking to, and the way OUT, is not under the program's control.
+The Fearless Gui follows the same principle.
+What identifies the window is fixed before the window opens: the program sets it on `Gui`, and `Gui.run` locks it for the life of the window.
+What the user sees inside the picture is dynamic: the program sets it on `Frame`, at any time.
+The way out is the user's: the desk border or the Fearless corner, the close key and the Manager.
+
+Fixed on `Gui`, each with a default, so that `s.gui.run{f -> ...}` is a complete program:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `name` | `"Fearless App"` | the identity shown by the task switcher, the taskbar and the title bar; a blank name is a deterministic error |
+| `icon` | the Fearless icon | the image shown by the task switcher, the taskbar and the title bar |
+| `screenArea` | `0.3` | the fraction of the screen area the content area opens with |
+| `minArea` | `0.02` | the fraction of the screen area the picture always covers at least |
+| `fearlessCorner` | desk border | the window opens as state 2 (below) |
+| `fullScreen` | windowed | the window opens as state 1 (below) |
+| `opacityFloor` | opaque | the lowest opacity the window can take |
+| `closeKey` | `esc` | the key that asks the window to close |
+| `fullScreenKey` | `f11` | the key that toggles full screen |
+
+Dynamic on `Frame`: the subtitle, the virtual pixel space, the bands color, the opacity above the floor, the handlers, `fps` and `modelFps`, the content.
+
+Not offered at all: the position of the window, a window always on top, raising the window or stealing the focus, a non rectangular window, the theme of the desk border, the choice of the screen (always the default screen).
+
+### API
+
+```
+Gui:{
+  read .screenWidth: WidthNat;
+  read .screenHeight: HeightNat;
+  mut .name(s: Str): mut Gui -> this.uName(s.u);
+  mut .uName(UStr): mut Gui;
+  mut .icon(Image): mut Gui;
+  mut .screenArea(Float): mut Gui;
+  mut .minArea(Float): mut Gui;
+  mut .fearlessCorner: mut Gui;
+  mut .fullScreen: mut Gui;
+  mut .opacityFloor(Alpha): mut Gui;
+  mut .closeKey(KeyStroke): mut Gui;
+  mut .fullScreenKey(KeyStroke): mut Gui;
+  mut .run(mut Consumer[mut Frame]): Void;
+  }
+Frame: _Styled[Frame]{
+  mut .title(s: Str): mut Frame -> this.uTitle(s.u);
+  mut .uTitle(UStr): mut Frame;
+  read .uTitle: UStr;
+  mut .virtualPixelSpace(w: WidthNat, h: HeightNat): mut Frame;
+  read .virtualWidth: WidthNat;
+  read .virtualHeight: HeightNat;
+  mut .bands(Color): mut Frame;
+  mut .opacity(Alpha): mut Frame;
+  mut .onResize(mut Consumer[ResizeRequest]): mut Frame;
+  mut .onClose(mut MF[Void]): mut Frame;
+  mut .close: Void;
+  ...fps, elapsed, modelFps, content, contentB, onKey as today
+  }
+ResizeRequest: ScreenContext{ .aspectRatio: Float; }
+ScreenContext:{
+  read .elapsed: Instant;
+  read .panelWidth: WidthNat;
+  read .panelHeight: HeightNat;
+  }
+```
+
+`Gui.run(consumer)`:
+Opens the window with the settings of this `Gui`, gives the frame to the consumer, and returns when the window is closed.
+The settings of this `Gui` can not change while a window is open: calling a setter then is a deterministic error.
+
+`Gui.name`, `Frame.title`:
+The title bar shows the name, then four spaces, then the subtitle set with `Frame.title`; with no subtitle it shows the name alone.
+The name is the fixed part: a window can not stop looking like the program that opened it.
+The subtitle is the dynamic part, for what the window shows now: a document, a level, a count.
+The title bar and the task switcher are painted by the desk from one plain string, so the two parts can not differ in font; the four spaces are the only separation.
+
+`Gui.icon(Image)`:
+The image is scaled by the desk to each place it shows in.
+Every Gui can specify its icon, on every desk, including the desks that show only the icon of an installed `.desktop` file (below).
+
+`Gui.screenArea(Float)`:
+A deterministic error is thrown unless `0 < screenArea <= 1`.
+The window opens centered on the work area; its content area has the aspect ratio of the virtual pixel space and covers `screenArea` of the screen area, capped so that the window fits the work area.
+With `Gui.fullScreen` the window opens as state 1 and `screenArea` is not used.
+
+`Gui.minArea(Float)`:
+A deterministic error is thrown unless `0 < minArea`; `Gui.run` throws a deterministic error when `minArea > screenArea`.
+
+`Gui.screenWidth`, `Gui.screenHeight`:
+The resolution of the default screen, in screen pixels.
+Only the capability knows the screen: a program holding a `Frame` and not the `Gui` can not recover the screen resolution.
+
+`Gui.opacityFloor(Alpha)`, `Frame.opacity(Alpha)`:
+The window opens opaque.
+`Frame.opacity` sets the opacity of the whole window, Fearless corner included; below the floor is a deterministic error.
+A pulsating effect ranges between the floor and opaque.
+Only state 2 shows the opacity; the other states are painted opaque while the window is in them.
+
+`Gui.closeKey(KeyStroke)`, `Frame.onClose(action)`, `Frame.close`:
+The close key and the close button of the desk border both run the `onClose` action on the model queue, like a button action.
+The default action is `{f.close}`: the window closes and `Gui.run` returns.
+A program that asks "save changes?" replaces the action, shows its question inside the picture, and calls `f.close` later or never.
+The close key reaches no `onKey` handler.
+Closing the window is not ending the program: the code after `Gui.run` runs.
+The Manager is the way to see which programs are alive and to end one that ignores its close requests.
+
+`Gui.fullScreen`, `Gui.fullScreenKey(KeyStroke)`:
+Full screen is the full screen state of the desk, asked of the window manager as such, with no mode switch of the display.
+A borderless window merely sized like the screen is not full screen: GNOME keeps it inside the work area, under the bars.
+The program chooses only whether the window opens in full screen; after that, the state belongs to the user (below).
+The full screen key reaches no `onKey` handler.
+
+`Frame.virtualPixelSpace(w, h)`, `Frame.virtualWidth`, `Frame.virtualHeight`:
+Chooses the virtual pixel space.
+Before the window is shown, the window opens with it.
+After, the content is laid out again in the new virtual pixels and the window changes as the state machine says (below).
+When never called, the virtual pixel space is the size the content takes on its own (the packed size), as every program without an explicit size gets today.
+
+`Frame.bands(Color)`:
+The color of the bands, default black.
+The window is black before the first paint.
+
+`Frame.onResize(handler)`:
+Replaces the previous handler; the default handler does nothing.
+The handler runs on the model queue, like a button action.
+`aspectRatio` is the desired aspect ratio: the width of the content area divided by its height.
+`panelWidth`/`panelHeight` of the request are the current virtual pixel space.
+
+### The state machine on floating desks: Windows, macOS, GNOME, KDE Plasma, Cinnamon, MATE, Xfce, LXQt, COSMIC
+
+A floating desk lets windows overlap and keeps the size and the position the library sets for a window.
+The floating desks are Windows, macOS, and on Linux GNOME (Ubuntu, Fedora, Debian), KDE Plasma (Kubuntu, openSUSE), Cinnamon, MATE, Xfce (Xubuntu), LXQt (Lubuntu) and COSMIC (Fedora COSMIC).
+Every desk that is not a tiling desk (below) is a floating desk.
+
+The program chooses the state the window opens in (`Gui.fearlessCorner`, `Gui.fullScreen`, or state 4 by default); after that the state belongs to the user.
+
+    STATES
+
+    There is always exactly one window.
+    In every state the picture covers at least minArea of the screen area.
+
+    State 1: FullScreen
+      the window has the Fearless corner.
+      the window is in the desk's full screen state and covers the screen.
+      the content area is the screen.
+      the bands exist when the virtual pixel space and the screen
+        have different aspect ratios.
+
+    State 2: FearlessWindow
+      the window has the Fearless corner and the resize handle.
+      the window is inside the work area.
+      the window is the picture: there are no bands.
+
+    State 3: DeskMaximized
+      the window has the desk border.
+      the window is in the desk's maximized state and covers the work area.
+      the bands exist when the virtual pixel space and the content area
+        have different aspect ratios.
+      the restore size the desk keeps is the last size of the window the user saw
+        before the maximize: no size of an earlier window survives,
+        and a new virtual pixel space does not change it.
+
+    State 4: DeskWindow
+      the window has the desk border.
+      the window is not maximized.
+      the window is compacted: there are no bands,
+        except while the desk is resizing the window.
+      the restore size the desk keeps is the window itself,
+        except while the desk is resizing the window.
+      the desk does not shrink the window below the smallest window
+        whose picture covers minArea of the screen area.
+
+
+    CREATING A WINDOW
+
+    A transition between the desk border and the Fearless corner replaces the window with a new one.
+    The window after a transition takes its place from the window before it, the leaving bounds:
+      leaving state 1:  the largest rectangle with the aspect ratio of the virtual pixel space
+                        that fits the work area, centered.
+      leaving state 2:  the rectangle of that window.
+    Entering state 1: the desk's full screen.
+    Entering state 2: the window is exactly the leaving bounds.
+    Entering state 4: the leaving bounds, compacted.
+
+
+    ACTIONS
+
+    A delegation is a transition after which the same action goes on in the new state.
+
+    Corner drag
+      (press the Fearless corner, outside the resize handle, with the primary button;
+       move past the desk's drag threshold; release)
+      in 1:  transition to 2;
+             then delegation: the same drag goes on in 2.
+      in 2:  the window moves so that the pressed point of the Fearless corner
+             stays under the pointer, under the edge rule.
+             On release within screenHeight/16 of the top left of the work area:
+               transition to 1.
+
+    Resize handle drag
+      (press the resize handle with the primary button; move past the drag threshold; release)
+      in 2:  the top left of the window follows the pointer;
+             the bottom right of the window stays fixed;
+             the window keeps the aspect ratio of the virtual pixel space,
+             under the edge rule.
+             On release within screenHeight/16 of the top left of the work area:
+               transition to 1.
+
+    Corner double click
+      in 1:  transition to 4.
+      in 2:  transition to 4.
+
+    Full screen key
+      in 1:        transition to 2.
+      in 2, 3, 4:  transition to 1.
+
+    Desk maximize (the button, a title bar double click, a drag to the top, the desk's key)
+      in 4:  transition to 3.
+
+    Desk unmaximize (the button, a title bar double click, a title bar drag, a snap, the desk's key)
+      in 3:  the desk unmaximizes the window.
+             When no pointer button is down:
+               if the window is exactly the restore size: transition to 1;
+               otherwise the desk has moved it (a title bar drag, which went on
+               as the desk's move: a delegation) or arranged it (a snap):
+               the window is in state 4, and the library compacts it.
+
+    Title bar drag
+      in 4:  the desk moves the window; it stays in state 4.
+
+    Desk resize, snap
+      in 4:  the desk changes the size of the window; while it does, there are bands.
+             When the desk has finished, the library compacts the window
+             and sets its restore size to the compacted window.
+             The desk has finished when no pointer button is down:
+             a desk resize by the pointer lasts as long as a button is held,
+             and a desk resize by a key is finished at once.
+
+    Desk minimize, restore from the taskbar
+      in 3, 4:  the window keeps its state.
+
+    The program chooses a new virtual pixel space
+      in 1, 3:     the library computes the new bands.
+      in 2, 4:     the library gives the window a new size and position
+                   (in 4, while the desk is resizing the window,
+                   nothing until the desk has finished).
+                   The content area takes the aspect ratio of the new virtual pixel space.
+                   If not all of these constraints can be respected,
+                   the earlier ones in this list win:
+                     1. the picture covers at least minArea of the screen area;
+                     2. the four corners of the window are in the work area;
+                     3. the center of the picture stays in the same place;
+                     4. the content area covers the same fraction of the screen area.
+
+    Close key, desk close button
+      in every state: the program's onClose action runs. This is not a transition.
+
+
+    THE EDGE RULE (corner drag and resize handle drag, state 2)
+
+    The window never leaves the work area.
+    A drag that pushes the right or the bottom edge of the window past the work area
+      shrinks the window, keeping its aspect ratio and its top left under the pointer.
+    At minArea the window stops following the pointer.
+    A drag past the top or the left edge of the work area stops at that edge.
+    A drag never grows the window; the resize handle drag is the only way to grow it.
+
+Why the transitions are as they are.
+Maximize keeps its meaning on every desk; unmaximize, the desk's gesture for "the other state of this window", gives full screen; a title bar drag of a maximized window gives a desk window, as on every desk.
+The Fearless corner moves the window between states 1 and 2, and its double click gives the desk border back.
+The full screen key gives full screen from every state.
+The restore size the desk keeps is always the last size of the window the user saw, so the desk has no memory of an earlier window: what the user sees is the whole state.
+Desks keep a restore size per window when it maximizes, tiles, snaps or zooms it, and gives it back when the user drags the window out; moving or resizing the window is not enough to replace it.
+Nothing in the state machine depends on timing.
+
+Why the library waits for the pointer buttons.
+A window resized by the library while the desk is still resizing it ends with the toolkit and the desk disagreeing on its size (`improved_gui_api_stale_paint.png`).
+The press and the release of a desk resize happen on the desk border, so the window receives neither.
+The size staying the same for a while is no end either: a user pausing on the border looks the same.
+The desk reports the same unmaximize for the button, the title bar double click, the key and the title bar drag; the button, the double click and the key give back exactly the restore size, a drag moves the window and a snap resizes it.
+
+Why the Fearless corner exists.
+Without the desk border the program paints every pixel the user sees, and could paint a desktop or a system prompt.
+The Fearless corner is the one region the program can not paint: it tells the user that this is a Fearless window, and its double click gives the desk border back; the program can not take full screen again by itself.
+The cost is the top left of the picture in states 1 and 2, which a program designer must know is not theirs.
+
+### The state machine on tiling desks: Hyprland, sway, i3
+
+A tiling desk sets the size and the position of every window: Hyprland (Omarchy), sway (Arch with sway) and i3 (Void with i3).
+The library recognizes a tiling desk when `XDG_CURRENT_DESKTOP` names Hyprland, sway or i3, or when `SWAYSOCK` is set.
+
+The program chooses whether the window opens as state 1 (`Gui.fullScreen`) or as state M (otherwise; `Gui.fearlessCorner` opens it as state M too).
+After that the state belongs to the user.
+
+    STATES
+
+    There is always exactly one window: a transition never replaces it.
+    The state is the one the desk reports: a full screen the desk starts or ends is a transition.
+
+    State 1: FullScreen
+      the window has the Fearless corner.
+      the window is in the desk's full screen state and covers the screen.
+      the content area is the screen.
+      the bands exist when the virtual pixel space and the screen
+        have different aspect ratios.
+
+    State M: DeskManaged
+      the window has the Fearless corner, and the border the desk gives it, if any.
+      the desk chooses the size and the position of the window, tiled or floating.
+      the bands exist when the virtual pixel space and the content area
+        have different aspect ratios.
+
+    The window opens asking for a content area of screenArea, centered;
+    the desk keeps that size only for a window it floats.
+    The library never sets the size or the position of the window after it opens.
+
+
+    ACTIONS
+
+    Corner double click
+      in 1:  transition to M.
+      in M:  transition to 1.
+
+    Corner drag: nothing.
+
+    Full screen key
+      in 1:  transition to M.
+      in M:  transition to 1.
+
+    Desk full screen (the desk's own key: Super+F on Omarchy)
+      in 1:  transition to M.
+      in M:  transition to 1.
+
+    Desk tile, float, move, resize, swap
+      in M:  the desk changes the window; a new size queues a ResizeRequest.
+
+    The program chooses a new virtual pixel space
+      in 1, M:  the library computes the new bands.
+
+    Close key, desk close
+      in every state: the program's onClose action runs. This is not a transition.
+
+Why a tiling desk has two states.
+A tiling desk owns the size of every window: it ignores the bounds set on a tiled window, so a compaction or a move by the library changes nothing.
+The desk resizes and moves windows with its own gestures (Super + drag on Hyprland), which hold the pointer, so the library can not know when a desk resize ends.
+State 2 has no desk border to give back, and maximizing is the desk's business (Omarchy ignores the maximize requests of programs).
+The Fearless corner is in both states, so the user always sees that the window is a Fearless window, and its double click is the one gesture that moves the window between the two states.
+
+### Coordinates
+
+Mouse events report `mouseX`/`mouseY` in virtual pixels: the position in the content area minus the bands, divided by the scale, rounded down.
+A click on virtual pixel `(205, 85)` reports `X[+205] Y[+85]` at every window size and on every desk.
+At scale 2, two screen pixels report the same virtual pixel.
+A press on a band, or on the Fearless corner, is outside every widget and reaches no handler.
+Painters draw in virtual pixels and are clipped to their widget, as today.
+
+### Removed
+
+`Gui.run(mut Consumer[mut Frame])` keeps its shape; the `Gui` setters come before it.
+`Frame.title` as the whole title: it is now the subtitle after the fixed name.
+`Frame.undecorated`, `Frame.decorated`, and a live `Frame.fullScreen`/`Frame.windowed`: the states belong to the user; the program only chooses what the window opens as.
+`Frame.maximized`, `Frame.location`, `Frame.locationX`, `Frame.locationY`, `Frame.fixedSize` and `Frame.resizable` in all their forms, `Frame.screenWidth`, `Frame.screenHeight`, `ScreenContext.screenWidth`, `ScreenContext.screenHeight`.
+The errors about a maximized window with an explicit size or location, and about a window larger than the screen, go with them.
+
+### Implementation notes
+
+Every pixel of a frame is drawn by Skia into one bitmap, with one `canvas.scale` call for the OS transform.
+The uniform scale multiplies into that call, the band offset translates it, and the clear color becomes the `bands` color.
+The Swing components keep bounds in virtual pixels: no component ever sees the scale, so the layout managers do not change.
+Mouse hit testing divides the content area point by the scale and subtracts the band offset before `getDeepestComponentAt`.
+Text stays sharp at every scale: glyph outlines are scaled, not pixels (hinting is already off).
+Images drawn by `Graphics.image` go through the same transform.
+
+The Fearless corner is painted on the same bitmap after the content, in screen pixels, with legs of `min(screenHeight/16, windowHeight/4)`, and takes its mouse events before hit testing; it answers the primary button only.
+A drag of the Fearless corner sets the window bounds from the toolkit thread, computed by the edge rule from the pointer, the point of the corner that was pressed and the current size; the program never sees the position.
+A drag starts past the desk's drag threshold, as a drag of a title bar does; a double click on the Fearless corner is the release of a second click: a window replaced while a button is down leaves XWayland reporting that button down until the pointer next enters one of its windows.
+Window level key bindings fire only while a component inside the window owns the focus, and a full screen switch can leave the window focused with no focus owner: the library gives the focus to its drawing surface whenever the window gains focus.
+Full screen is `GraphicsDevice.setFullScreenWindow`: `_NET_WM_STATE_FULLSCREEN` on X11, the full screen style on Windows, the presentation options on macOS; no display mode is set.
+On Windows the runtime sets `sun.java2d.d3d=false`: with the Direct3D pipeline the toolkit makes full screen an exclusive mode of the display, and on a desk scaled above 100% the bounds set in the same event that leaves it reach the native window unscaled (a 600x400 window shows as 400x267 at 150%); the library paints one bitmap and gains nothing from Direct3D.
+Moving between the desk border and the Fearless corner is a new frame: the toolkit recreates the native window for a change of decorations anyway; on Windows the new frame is shown before the old one is disposed, so the desk's close animation plays under the new window.
+Elsewhere the old frame is disposed before the new one is shown: the toolkit answers `WM_TAKE_FOCUS` without `XSetInputFocus` when it already counts the window as focused, so under GNOME a new undecorated frame shown while the old one holds the keyboard can stay without the keyboard.
+The restore size is set on Windows with `SetWindowPlacement`: the restore rectangle in work area coordinates and device pixels, with `SW_SHOWMAXIMIZED` when entering state 3 and `SW_SHOWNORMAL` after a compaction.
+`SetWindowPlacement` with the current rectangle also ends a snap: Windows keeps the size from before a snap as the restore size of the snapped window, and `setBounds` moves the window but keeps that size and the snap.
+The window handle is `WComponentPeer.getHWnd` of the frame's peer: the runtime opens `java.desktop/java.awt` and `java.desktop/sun.awt.windows` to the library.
+On X11 and macOS the request that sets the restore size is to be found on each desk; until then the desk maximizes the window itself and keeps the window before the maximize as the restore size, and a compaction is `setBounds` alone.
+A new frame mapped already maximized is no substitute: GNOME restores it to the size it was given, but at the top left of the work area.
+The toolkit reports a window the desk tiles to half the screen as `MAXIMIZED_VERT`: state 3 is exactly `MAXIMIZED_BOTH`.
+On a tiling desk the library asks the desk for full screen with the `_NET_WM_STATE` client message on the X11 root window, and reads `_NET_WM_STATE_FULLSCREEN` on the window at each repaint tick: the state is what the desk did, never what the library asked.
+A window that opens as state 1 sends the message once the desk manages the window, which the desk marks with the `WM_STATE` property: a message sent before is ignored, and a `_NET_WM_STATE` set before mapping does not survive the mapping.
+sway reports a tiled window as maximized; on a tiling desk the maximized state has no meaning.
+The X11 window managers of Wayland desks (Hyprland, wlroots, Smithay for COSMIC) set no `_NET_FRAME_EXTENTS` and no `_NET_WM_ALLOWED_ACTIONS`, on floating and tiling desks alike: nothing seen through X11 tells a tiling desk apart, so the library goes by the name of the desk.
+On X11 the toolkit guesses the insets of a window with the desk border before it is mapped and corrects them after, so the window can come out taller than its picture, by up to the height of the title bar.
+GNOME shows in the dock and in the window picker the name and the icon of the `.desktop` file whose `StartupWMClass` is the `WM_CLASS` of the window, and the `WM_CLASS` with a generic icon when there is none; it does not show the icon of the window.
+The toolkit sets `WM_CLASS` from the main class; the library sets it to the name and provides the `.desktop` file that carries the icon.
+
+A size the library sets comes back from the toolkit up to one pixel different on a desk scaled above 100%: a content area within one pixel of the size the library chose is the library's, and sends no ResizeRequest.
+The pointer buttons are read from the platform on each repaint tick, through the Java foreign function API (the runtime enables native access for the library module): `GetAsyncKeyState` of the left, right and middle buttons on Windows, the button mask of `XQueryPointer` on the root window on X11, `CGEventSourceButtonState` on macOS.
+The toolkit does not offer them: AWT reports the buttons only for events inside its own windows.
+The desk's minimum size is `setMinimumSize`: the smallest window whose content area holds the rectangle with the aspect ratio of the virtual pixel space that covers minArea, desk border included.
+The Windows peer of the toolkit hands the desk the minimum size in user space while the desk reads it in device pixels; on Windows the frame reports the minimum multiplied by the display scale to the peer, and the plain minimum while the library sets bounds, which `Window.reshape` checks in user space.
+
+The opacity goes through `setOpacity`, which the toolkit allows only on an undecorated window that is not the full screen window: that is why only state 2 shows the opacity.
+Per-pixel translucency, which would keep the Fearless corner opaque while the content fades, is not used: under GNOME on XWayland a per-pixel translucent window that repaints continuously is shown or not at random (the window is mapped and focused, the toolkit paints into it, the compositor shows nothing and routes no clicks), reproduced with a forty line program, nine runs, three visible.
+An opaque Fearless corner over a fading content would need a second, shaped window owned by the main one.
+On macOS, Cmd+Q ends the process without a `windowClosing` unless the quit strategy is `CLOSE_ALL_WINDOWS`; the runtime sets it, so Cmd+Q is a close request.
+
+### Example
+
+```
+s.gui.name("Nap").screenArea(0.3).run{f -> f
+  .virtualPixelSpace(Width#520, Height#340)
+  .bands(Color.deepNapBlue)
+  .onResize{r -> f.virtualPixelSpace(Width#((340.0 * (r.aspectRatio)).softRound.getNat), Height#340)}
+  .content{:: ...}
+  }
+```
+
+This frame opens as state 4, titled `Nap`, its content area covering 30% of the screen area, with a 520x340 virtual pixel space.
+In full screen on a 16:9 screen the handler widens the virtual pixel space to 604x340 and there are no bands.
+A frame with no `.onResize` keeps its 520x340 virtual pixel space and shows `deepNapBlue` bands in full screen.
+Pressing `esc` closes it, since no `.onClose` replaced the default `{f.close}`.
+
+### Demo
+
+https://github.com/marcoautomation2/fearless_gui_demo is a Swing program that behaves as this document says, with a launcher for the fixed settings; its `demo` release has a Linux and a Windows build.
+The launcher logs every transition, request, desk report and uncaught exception, and shows each window as the program sees it.
+The transitions of the floating desk state machine have been tried by hand on Windows at 150% scale and on GNOME on Wayland at 100% scale; the tiling desk state machine on Hyprland (Omarchy) and sway, with tiled and floating windows on Hyprland.
+
+### Tests to update
+
+`integrationTests/testingStandardLibrary/_test/test_gui_frame.fear`: the location, maximized, fixedSize, undecorated and decorated checks go; new checks for `virtualWidth/Height`, the `screenArea` range error, the `minArea` range error and the `minArea > screenArea` error at `run`, the blank name error, the opacity floor error, the setter-while-open error, a window opened with `Gui.fullScreen` and one with `Gui.fearlessCorner`, the title as name plus subtitle and the virtual pixels of `panelWidth`/`panelHeight` under a scale.
+The transitions driven by the user (maximize, the keys, the Fearless corner) are for the `agentTools` tests of the Manager, not for the standard library tests.
+`integrationTests/testTicTacToe`: `gui_frozen.fear`, `gui_resizable.fear` and `gui_chunk.fear` become one game on a square virtual pixel space; the resizable one keeps a square virtual pixel space whatever the request, so the board stays square.
+`integrationTests/testGui1`, `testGui2`, `testGuiLive`, `testGuiImg`: the `Gui` setters replace `.fixedSize`/`.resizable`/`.undecorated`/`.decorated` calls.
