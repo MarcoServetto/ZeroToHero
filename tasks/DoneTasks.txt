@@ -3494,3 +3494,50 @@ Design (PR https://github.com/MarcoServetto/ZeroToHero/pull/231, amended): the f
 Bug of the image: the settle packed the decorated window back to the canvas shape while the user still held the edge, so the toolkit and the desk both set the bounds of one window. Fixed by the rule above: a rejected request leaves bands. Verified on Windows with a held, paused edge drag.
 Demo (https://github.com/marcoautomation2/fearless_gui_demo, release https://github.com/marcoautomation2/fearless_gui_demo/releases/tag/demo): simplified to the new specification, then 10 rounds by fresh Opus 5.5 high agents; I reviewed each round and reverted two wrong changes (the decorated window losing the canvas shape after a double click, a redundant full screen exit before dispose). 230 lines added, 311 removed.
 Debugging by hand on Windows at 150% found two more: a corner move regrew the window back into room (now it only shrinks), and leaving full screen under the Direct3D pipeline set the bounds unscaled (the window showed at 2/3 of its size). The packaged demo now runs with -Dsun.java2d.d3d=false. Every transition was tried on screen; the CI build of the final commit is in the release.
+
+---
+
+Task:
+in-session task: "Files read/write"
+
+The fearless manager supports data projects, and supports some fearless projects being able to read/write those files.
+But the fearless standard library does not have any connection here.
+
+Design two new capability:
+CapDataRead
+CapDataReadWrite
+Those can be obtained by the system as for others.
+The api is as follows:
+.paths(name:Str,path:List[Str]):Action[List[Str]]//on both
+.read(name:Str,path:List[Str]):Action[InputCursorNode] //on both
+The 'File' must be the same thing that open with now gives.
+'name' is the alias of the data project that the manager lets the user see.
+path is a list of strings denoting the path from the root of the data project to a file.
+Invalid if it is a directory.
+The path must be able to transparently enter in zips, while the zip file itself is conceptually invisible.
+.paths give all the files/folders at the inner path 'path'.
+Info if the inner path does not denote a folder (or a folder in a zip)
+
+.writeStr(name:Str,path:List[Str],content:Str):Action[Void] //only in CapDataReadWrite
+.delete(name:Str,path:List[Str]):Action[Void] //only in CapDataReadWrite
+Similar, but only on the write capability.
+In addition to .writeStr we will need many variants, supporting writing images and strings/ustr with various encodings.
+
+Crucially, the manager must cooperate for this to happen.
+When the main start the manager must inject the map from logical aliases to validated Java paths.
+The manager must prevent any permission change while the program run.
+If the files somehow change on disk in a way that prevents the read/write, we get a non deterministic exception. That is, there is not continuos checking that the folders are still ok, but if when reading we find issues about the specific reading/writing we are doing, we do get an error.
+
+Take your time this is a large task.
+
+After completed, review you work 5 times.
+
+Then open the relevant PRs.
+
+Report:
+PRs (all on branch data_projects): https://github.com/FearlessLang/StandardLibrary/pull/185 (the API and its runtime), https://github.com/FearlessLang/Coordinator/pull/237 (startMain passes the links), https://github.com/FearlessLang/Controllers/pull/136 (the manager gives the links and refuses changing them while a main runs). Coordinator and Controllers must be merged together.
+sys.dataRead and sys.dataReadWrite give CapDataRead and CapDataReadWrite; name is a type name of a link of the code project, path is from the root of the data project; zip files (also nested) are folders named without ".zip"; .read gives the InputCursorNode of OpenWith. Besides writeStr: Str in UTF-16/32 LE/BE, UStr in UTF-8/16/32, ASCII, Latin-1, writeBytes, writeImagePng. Writes keep the data project valid (valid names, no second marker, no readme next to readme.txt), rewrite the zip files they enter, and a delete removes the folders and zip files it leaves empty.
+Info for wrong names, invalid paths, paths naming nothing, refused writes; non deterministic error for IO failures while doing a request.
+The manager passes -DfearlessDataRead.<Type>=<folder> and -DfearlessDataWrite.<Type>=<folder>; any registry change altering what the links of a running main give is refused. A type name is now in one link only.
+Tests: all suites pass, except theOpenedFileIsTheFirstInputFile, which also fails on main on Windows (file name with a tab). GUI agentTools tests not run. ControllersDesign updated in this PR.
+Reviewed 5 times; the PR texts list the design decisions to check.
