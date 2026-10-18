@@ -290,12 +290,11 @@ The program chooses the state the window opens in (`Gui.fearlessCorner`, `Gui.fu
 
     Desk unmaximize (the button, a title bar double click, a title bar drag, the desk's key)
       in 3:  the desk unmaximizes the window.
-             When no pointer button is down:
-               if the pointer moved past the drag threshold while a button was down,
-               the desk has moved the window (a title bar drag, which went on
+             When the desk reports the first position and size after the unmaximize:
+               if the window is at the position of the restore size: transition to 1;
+               otherwise the desk has moved it (a title bar drag, which goes on
                as the desk's move: a delegation):
-               the window is in state 4, and the library compacts it;
-               otherwise: transition to 1.
+               the window is in state 4, and the library compacts it.
              A snap of a maximized window is no unmaximize: the window stays maximized vertically, as a window in state 4.
 
     Title bar drag
@@ -350,8 +349,12 @@ Why the library waits for the pointer buttons.
 A window resized by the library while the desk is still resizing it ends with the toolkit and the desk disagreeing on its size (`improved_gui_api_stale_paint.png`).
 The press and the release of a desk resize happen on the desk border, so the window receives neither.
 The size staying the same for a while is no end either: a user pausing on the border looks the same.
-The desk reports the same unmaximize for the button, the title bar double click, the key and the title bar drag; only the title bar drag moves the pointer while a button is down.
-The size of the unmaximized window does not tell the gestures apart: GNOME gives back a restore size above 80% of the work area resized to its own choice.
+The desk reports the same unmaximize for the button, the title bar double click, the key and the title bar drag.
+The button, the double click and the key put the window at the position of the restore size; a title bar drag puts it under the pointer, wherever the pointer is.
+The size does not tell the gestures apart: GNOME gives back a restore size above 80% of the work area resized to its own choice, at the same position.
+Nothing in the gesture itself is visible: the title bar is the desk's, and on Wayland desks the pointer is the compositor's during the drag.
+An unmaximize always changes the size of the window, so the desk always reports a new position and size; the decision waits for that report, not for a time.
+A title bar drag that starts exactly where the window, placed under the pointer, lands at the position of the restore size is read as a double click.
 
 Why the Fearless corner exists.
 Without the desk border the program paints every pixel the user sees, and could paint a desktop or a system prompt.
@@ -500,8 +503,10 @@ On COSMIC the library takes the position and the size of a window from the X ser
 The drags handed to COSMIC are `_NET_WM_MOVERESIZE` messages sent after releasing the pointer grab of the toolkit's own X11 connection; the release comes back to the window because the pointer is over the Fearless corner when the desk's move or resize ends.
 A desk move from state 1 would start with the pointer away from the window, since COSMIC leaves full screen at a position it remembers; a desk move that ends with the pointer away from the window sends no release to it.
 COSMIC gives a new window the size it remembers for the program, and a window leaving full screen its own size after the library has set one: the library sets its size again once COSMIC manages the window (`WM_STATE`) and the window is out of the full screen state and off the bounds of the screen.
-COSMIC reports a window unmaximized before giving it the restore size, and freezes the pointer for X11 clients during its title bar drag: on COSMIC the library decides on an unmaximize once the window has the size of the restore size, and a window at the restore size and position is a transition to 1.
+COSMIC reports a window unmaximized before giving it the restore size: on COSMIC the library decides on an unmaximize once the window has the size of the restore size, and a window at the restore size and position is a transition to 1.
 On Windows the library sets the restore size itself (`SetWindowPlacement`), and a window at exactly the restore size is a transition to 1.
+On X11 the library takes both the maximized state and the geometry from the X server (`_NET_WM_STATE`, `XGetGeometry`), in the order the desk sets them: the state changes first, the geometry follows.
+The toolkit is no source for this decision: it reports the state change after the X server has the new geometry, and under KDE Plasma it keeps the bounds of a maximized window at the restore bounds, with guessed borders.
 GNOME maximizes a window that maps wider than 80% of the width and taller than 80% of the height of the work area, and gives that maximized state back when the window leaves full screen.
 That is why the leaving bounds of state 1 fit 77% of each side of the work area, and why, off Windows, the library maps a window entering state 1 at those bounds before asking for full screen.
 Leaving full screen, Cinnamon can give the window its size from before full screen after the library has set the new one: a corner drag takes the size of the window from the bounds the library set last, not from the toolkit.
