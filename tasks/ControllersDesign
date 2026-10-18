@@ -89,7 +89,7 @@ A verb is one of the following, written in upper camel case. Verbs about the who
 - `Reset`: end the manager and every job it runs, remove every association the manager took, and delete the manager folder;
 - `ConnectEclipse <path>`, the path as a tagged text: connect the Eclipse found from the path, then say so in a dialog, asking to restart Eclipse if it is running and to open the Fearless perspective;
 - `EditMetadata <path>`, the path as a tagged text: replace `projects.info` with the content of the file at the path;
-- `OpenWithOrShortcut <path>`, the path as a tagged text: open the file with the main whose `OpenWith` or `Shortcut` gives its extension. Double clicking the file on the desktop is its gui operation.
+- `OpenWithOrShortcut <path>`, the path as a tagged text: open the file with the main whose `OpenWith` or `Shortcut` gives its extension. Double clicking the file on the desktop is its gui operation. With two more arguments, the name of a registered project and a main of that project, open the file with that main; picking a main in the window listing the mains of an extension is its gui operation.
 Verbs about one project, taking the name of a registered project:
 - `Run <name>`: select the project and run the mains of the second argument, separated by spaces, in the order of the mains of the project; they become the selected mains: the last mains started take the lead; a third argument, when present, is a port;
 - `Compile <name>`: select the project and compile it if it needs compiling; a second argument, when present, is a port;
@@ -110,7 +110,7 @@ Ill formed messages:
 - a name that is not the name of a registered project (the message lists the registered projects);
 - a `Register` whose path is blank, names nothing, is the root of a drive, or is the manager folder, anything inside it or a folder holding it;
 - a `ConnectEclipse` whose path leads to no Eclipse folder, and an `EditMetadata` whose path names no file;
-- an `OpenWithOrShortcut` whose path names no file, names an empty file, or names a file whose extension no main claims;
+- an `OpenWithOrShortcut` whose path names no file, names an empty file, or names a file whose extension no main claims, or naming a project and a main that does not claim that extension (the message lists the mains claiming it);
 - a kind that is not one of the four, and a malformed link;
 - a request whose result would make `projects.info` invalid (the message is the error of `projects.info`).
 - `Run` and `Compile` of a project that is not code, naming its kind;
@@ -438,11 +438,20 @@ On Windows the registry names an icon by its path, so the desktop reads the `.ic
 
 The desktop starts the manager program with the path of the double clicked file as its only argument; for a file that is not a `.fearless` file the message is `OpenWithOrShortcut <path>`. The single manager reacts:
 
-1. One main claims the extension: run that main, as `Run <name> <main>` does: the project is selected, only that main runs, and it becomes the selected main of the project.
-2. Several mains claim it: a small window lists them with their icons as `project::pkg.Main`, sorted, and runs the one picked, as in 1; closing it runs nothing.
+1. One main claims the extension: run that main, as `Run <name> <main>` does: the project is selected, only that main runs, and it becomes the selected main of the project. The running main receives the file as its first input file (see Input files).
+2. Several mains claim it: a small window lists them with their icons as `project::pkg.Main`, sorted; picking one is `OpenWithOrShortcut` with the path, the project and the main, and runs it as in 1; closing the window runs nothing.
 3. No main claims the extension (an extension of `systemExtensions` that no main opens): the message is refused, saying that no main opens files with that extension.
 
 An empty file runs nothing: the manager shows a note naming the file. GNOME types every empty file as `application/x-zerosize` whatever its name and never hands it to the manager; refusing empty files everywhere makes Windows and the other desktops behave the same.
+
+### Input files
+
+A running main sees its input files through `System.inputCursor` of the standard library: the list of the files given to the program, in the order they arrived.
+The list starts with the file opened by `OpenWithOrShortcut`, a document or a shortcut file alike, and starts empty for a main started by `Run`.
+Dropping files on a window of a running Fearless program adds them at the end of the list, in the order of the drop. A drop holding anything that is not a file, a folder for example, adds nothing and is refused.
+This holds for the portable Fearless too: dropping files on a window is part of the runtime of every Fearless program.
+`sys.inputCursor` is a cursor on the first position of the list; `#` gives the file at that position, empty until a file arrives there, and `.next` the cursor on the next position. So a program sees a new file by asking again at the first position that was empty.
+An input file offers the reading methods of the autoloaded `TxtFile` and `ImageFile` assets, without their `AssetReadCapability` argument: the input file is itself the capability. Every read reads the file again, and a file that can not be read any more is a non deterministic error.
 
 ### System extensions
 
@@ -483,7 +492,7 @@ The toolbar of the Fearless perspective also holds New Package and New Type, for
 - New Package takes a path like `lib/_beer`, and makes the package folder `_beer` with the folders holding it;
 - New Type takes a path like `lib/_beer/point`, and makes the file `point.fear` holding the type `Point`. Rank file makes the rank file of that package instead, `_rank_app.fear` or the rank chosen, holding the usual `use` lines of the standard library. Example tests adds a test suite checking some arithmetic: a project runs its tests more than a bare main.
 New Folder and New File of the Fearless perspective warn when the name is not a valid name of a Fearless project, saying why, and create it anyway.
-New Fearless Project registers a folder, made if missing (`Register`). It can first write a demo into a new or empty folder, then make the project code (`Kind`) once the manager lists it: Hello world; Simple GUI, a window with a button; Shortcut and OpenWith, a main started by its shortcut file and a main opening the files of its extension, each with its icon.
+New Fearless Project registers a folder, made if missing (`Register`). It can first write a demo into a new or empty folder, then make the project code (`Kind`) once the manager lists it: Hello world; Simple GUI, a window with a button; Shortcut and OpenWith, a main started by its shortcut file and a main opening the files of its extension, each with its icon; the main opening files shows the text of the opened file and appends the text of every file dropped on its window.
 A missing or malformed file of the manager is an error shown in Eclipse, and the plugin stops following the manager until Eclipse starts again.
 
 ## Content assist
@@ -515,7 +524,7 @@ What the design will cover later; nothing in this section is current behaviour.
 - The Output keeps only the last part of what a job prints, so a program printing without end does not fill the memory.
 - `reads` and `edits` reach the running main through new APIs of the standard library.
 - The GUI becomes a separate program, as for many Linux daemons: the manager has no window, and the GUI commands the single manager through the manager program with `FearlessCommand<Verb>` arguments, as every other program does. The GUI could be a Fearless program with some extra permissions.
-- Delivering the opened file to the program, and feeding more files to a running main, through `System.inputCursor` of the standard library: a linked list that grows when new input files arrive, giving the running main the file of its double click, and the files of later double clicks on its extension. The text written inside a shortcut file could then be input for its main.
+- A later double click on a file for a main already running adds that file to the input files of the running main.
 - A double click for a main already running signals the running main to wake up, for example bringing its window to the front.
 - A captured extension that no main claims gets its own icon, showing that the manager holds it, instead of the conflict icon.
 - The fields of the Links area show what they take and complete what is typed: the type names the code uses for that data project, separated by spaces.
