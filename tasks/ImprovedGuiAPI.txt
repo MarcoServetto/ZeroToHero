@@ -36,8 +36,8 @@ Terms
     work area            the screen minus the desk's bars (taskbar, panels).
     window               a rectangle on the screen, owned by the desk.
     desk border          the title bar and the borders the desk draws around a window.
-    Fearless corner      a dark triangle the library paints at the top left of a window
-                         without the desk border.
+    Fearless corner      a dark triangle with the Fearless icon, that the library paints
+                         at the top left of a window without the desk border.
     resize handle        a small lighter square that the library paints over the top left
                          of the Fearless corner, in state 2 only.
     content area         the window minus its desk border; the whole window when it has none.
@@ -87,15 +87,19 @@ Fixed on Gui, each with a default, so that s.gui.run{f -> ...} is a complete pro
     name            the identity shown by the task switcher, the taskbar and the title bar.
                     Default "Fearless App". A blank name is a deterministic error.
     icon            the image shown by the task switcher, the taskbar and the title bar.
-                    Default: the Fearless icon.
-    screenArea      the fraction of the screen area the content area opens with.
-                    Default 0.3.
+                    Default: the icon of the Shortcut of the running main,
+                    or the Fearless icon when the main has no Shortcut.
+                    Only an icon the running main preloads.
+    start           the state the window opens in (below), set by one of four methods;
+                    the last one called counts.
+                    startAsWindow(initialArea)     state 4, a window with the desk border;
+                    startMaximised                 state 3, maximized by the desk;
+                    startUndecorated(initialArea)  state 2, a window with the Fearless corner;
+                    startFullScreen                state 1, full screen.
+                    initialArea is the fraction of the screen area the content area opens with.
+                    Default: startAsWindow(0.3).
     minArea         the fraction of the screen area the picture always covers at least.
                     Default 0.02.
-    fearlessCorner  the window opens as state 2 (below).
-                    Default: the window opens with the desk border.
-    fullScreen      the window opens as state 1 (below).
-                    Default: the window opens as a window.
     opacityFloor    the lowest opacity the window can take.
                     Default: opaque.
     closeKey        the key that asks the window to close.
@@ -115,11 +119,12 @@ API
       read .screenHeight: HeightNat;
       mut .name(s: Str): mut Gui -> this.uName(s.u);
       mut .uName(UStr): mut Gui;
-      mut .icon(Image): mut Gui;
-      mut .screenArea(Float): mut Gui;
+      mut .icon(ImageFile): mut Gui;
+      mut .startAsWindow(initialArea: Float): mut Gui;
+      mut .startMaximised: mut Gui;
+      mut .startUndecorated(initialArea: Float): mut Gui;
+      mut .startFullScreen: mut Gui;
       mut .minArea(Float): mut Gui;
-      mut .fearlessCorner: mut Gui;
-      mut .fullScreen: mut Gui;
       mut .opacityFloor(Alpha): mut Gui;
       mut .closeKey(KeyStroke): mut Gui;
       mut .fullScreenKey(KeyStroke): mut Gui;
@@ -148,7 +153,12 @@ API
 
 Gui.run(consumer):
 Opens the window with the settings of this Gui, gives the frame to the consumer, and returns when the window is closed.
-The settings of this Gui can not change while a window is open: calling a setter then is a deterministic error.
+The window keeps the settings this Gui has when run is called: the frame remembers them for the life of the window.
+
+Gui setters:
+A Gui is the capability that makes windows, not a widget: each setter returns a new Gui with the new setting, and leaves the Gui it is called on unchanged.
+One Gui can make many independent windows, each with its own settings: with g the Gui s.gui.name "Game", g.run{...} and g.startFullScreen.run{...} open two windows that differ only in the state they open in.
+A setter that contradicts an earlier setting of the same Gui is a deterministic error: the second of the two calls throws it, and names the setting to change first.
 
 Gui.name, Frame.title:
 The title bar shows the name, then four spaces, then the subtitle set with Frame.title; with no subtitle it shows the name alone.
@@ -156,17 +166,27 @@ The name is the fixed part: a window can not stop looking like the program that 
 The subtitle is the dynamic part, for what the window shows now: a document, a level, a count.
 The title bar and the task switcher are painted by the desk from one plain string, so the two parts can not differ in font; the four spaces are the only separation.
 
-Gui.icon(Image):
+Gui.icon(ImageFile):
+The argument is an autoloaded image, the same value a main names in Shortcut[I] and OpenWith[I]: s.gui.icon(IconsFoo) for _pkg/icons/foo.png.
+The icon is one of the icons the running main preloads; any other image is a deterministic error of Gui.icon.
+A main preloads the icon I of each Shortcut[I], OpenWith[I] and PreLoadIcon[I] it implements, and base.IconsFearless.
+PreLoadIcon[I] is a claim like Shortcut[I] and OpenWith[I]: only a main can implement it, and the manager accepts only a square PNG image with a side from 64 to 1024 pixels.
+The compiler gives each generated main the list of its preloaded icons, so the check is the same with and without the manager.
+A main implementing Shortcut[I] gives the icon I to every Gui it runs; with more than one Shortcut, the first one declared.
 The image is scaled by the desk to each place it shows in.
-Every Gui can specify its icon, on every desk, including the desks that show only the icon of an installed .desktop file (below).
+The title bar and the task switcher show the icon on every desk.
+The desks that show the icon of an installed program instead of the icon of the window (GNOME, COSMIC, the Windows taskbar) show it for a main the manager runs: the manager installs the preloaded icons of every main (below).
+A program the manager does not run shows its icon only where the desk shows the icon of the window.
 
-Gui.screenArea(Float):
-A deterministic error is thrown unless 0 < screenArea <= 1.
-The window opens centered on the work area; its content area has the aspect ratio of the virtual pixel space and covers screenArea of the screen area, capped so that the window fits the work area.
-With Gui.fullScreen the window opens as state 1 and screenArea is not used.
+Gui.startAsWindow(initialArea), Gui.startMaximised, Gui.startUndecorated(initialArea), Gui.startFullScreen:
+A deterministic error is thrown unless 0 < initialArea <= 1, and when initialArea < minArea.
+With startAsWindow and startUndecorated the window opens centered on the work area; its content area has the aspect ratio of the virtual pixel space and covers initialArea of the screen area, capped so that the window fits the work area.
+With startMaximised the window opens with the desk border at the size of the leaving bounds of state 1, centered, and the library asks the desk to maximize it: that window is the restore size.
+With startFullScreen the window opens as state 1.
+On a tiling desk every start but startFullScreen opens the window as state M (below): the desk chooses its size.
 
 Gui.minArea(Float):
-A deterministic error is thrown unless 0 < minArea; Gui.run throws a deterministic error when minArea > screenArea.
+A deterministic error is thrown unless 0 < minArea <= 1, and when minArea > initialArea of a startAsWindow or startUndecorated start.
 
 Gui.screenWidth, Gui.screenHeight:
 The resolution of the default screen, in screen pixels.
@@ -186,7 +206,7 @@ The close key reaches no onKey handler.
 Closing the window is not ending the program: the code after Gui.run runs.
 The Manager is the way to see which programs are alive and to end one that ignores its close requests.
 
-Gui.fullScreen, Gui.fullScreenKey(KeyStroke):
+Gui.startFullScreen, Gui.fullScreenKey(KeyStroke):
 Full screen is the full screen state of the desk, asked of the window manager as such, with no mode switch of the display.
 A borderless window merely sized like the screen is not full screen: GNOME keeps it inside the work area, under the bars.
 The program chooses only whether the window opens in full screen; after that, the state belongs to the user (below).
@@ -215,7 +235,7 @@ A floating desk lets windows overlap and keeps the size and the position the lib
 The floating desks are Windows, macOS, and on Linux GNOME (Ubuntu, Fedora, Debian), KDE Plasma (Kubuntu, openSUSE), Cinnamon, MATE, Xfce (Xubuntu), LXQt (Lubuntu) and COSMIC (Fedora COSMIC).
 Every desk that is not a tiling desk (below) is a floating desk.
 
-The program chooses the state the window opens in (Gui.fearlessCorner, Gui.fullScreen, or state 4 by default); after that the state belongs to the user.
+The program chooses the state the window opens in (Gui.startAsWindow, Gui.startMaximised, Gui.startUndecorated, Gui.startFullScreen); after that the state belongs to the user.
 
     STATES
 
@@ -302,7 +322,8 @@ The program chooses the state the window opens in (Gui.fearlessCorner, Gui.fullS
 
     Desk unmaximize (the button, a title bar double click, a title bar drag, the desk's key)
       in 3:  the desk unmaximizes the window.
-             When the desk reports the first position and size after the unmaximize:
+             Once the desk has reported a new position and size after the unmaximize
+             and no pointer button is down:
                if the window is at the position of the restore size: transition to 1;
                otherwise the desk has moved it (a title bar drag, which goes on
                as the desk's move: a delegation):
@@ -367,6 +388,8 @@ The button, the double click and the key put the window at the position of the r
 The size does not tell the gestures apart: GNOME gives back a restore size above 80% of the work area resized to its own choice, at the same position.
 Nothing in the gesture itself is visible: the title bar is the desk's, and on Wayland desks the pointer is the compositor's during the drag.
 An unmaximize always changes the size of the window, so the desk always reports a new position and size; the decision waits for that report, not for a time.
+GNOME 50 first puts a window dragged out of the maximized state at the position of the restore size, and moves it under the pointer after, while the button of the drag is still down: so the decision also waits for the pointer buttons, as a desk resize does.
+A desk that never shows the button of its drag to the window (KDE Plasma on Wayland) puts the window under the pointer in its first report.
 A title bar drag that starts exactly where the window, placed under the pointer, lands at the position of the restore size is read as a double click.
 
 Why the Fearless corner exists.
@@ -408,7 +431,7 @@ The state machine on tiling desks: Hyprland, sway, i3
 A tiling desk sets the size and the position of every window: Hyprland (Omarchy), sway (Arch with sway) and i3 (Void with i3).
 The library recognizes a tiling desk when XDG_CURRENT_DESKTOP names Hyprland, sway or i3, or when SWAYSOCK is set.
 
-The program chooses whether the window opens as state 1 (Gui.fullScreen) or as state M (otherwise; Gui.fearlessCorner opens it as state M too).
+The program chooses whether the window opens as state 1 (Gui.startFullScreen) or as state M (any other start).
 After that the state belongs to the user.
 
     STATES
@@ -429,7 +452,7 @@ After that the state belongs to the user.
       the bands exist when the virtual pixel space and the content area
         have different aspect ratios.
 
-    The window opens asking for a content area of screenArea, centered;
+    The window opens asking for a content area of initialArea, centered;
     the desk keeps that size only for a window it floats.
     The library never sets the size or the position of the window after it opens.
 
@@ -529,8 +552,15 @@ That is why the leaving bounds of state 1 fit 77% of each side of the work area,
 Leaving full screen, Cinnamon can give the window its size from before full screen after the library has set the new one: a corner drag takes the size of the window from the bounds the library set last, not from the toolkit.
 KDE Plasma marks a window without the desk border that covers the height of the work area as maximized (_NET_WM_STATE_MAXIMIZED_VERT and _HORZ), and keeps the mark after the window shrinks: the maximized state of the toolkit means state 3 only for a window with the desk border.
 KDE Plasma on Wayland honours the position the library sets, publishes _NET_WORKAREA and _NET_FRAME_EXTENTS, and shows the icon of the window in its taskbar.
-GNOME shows in the dock and in the window picker the name and the icon of the .desktop file whose StartupWMClass is the WM_CLASS of the window, and the WM_CLASS with a generic icon when there is none; it does not show the icon of the window.
-The toolkit sets WM_CLASS from the main class; the library sets it to the name and provides the .desktop file that carries the icon.
+GNOME and COSMIC show in the dock and in the window picker the name and the icon of the .desktop file whose StartupWMClass is the WM_CLASS of the window, and the WM_CLASS with a generic icon when there is none; they do not show the icon of the window.
+The window class of a main and an icon is <identity>-<hash of the project folder and the main>-<icon>, with <identity> the identity of the manager in its file associations.
+The manager installs, as part of its file associations, one hidden .desktop file (NoDisplay=true) for each icon each main preloads, with that icon and that window class as StartupWMClass: the reconcile that writes, replaces and removes the file associations does the same with these files.
+The manager passes the child JVM of a main the window class without the icon (-DfearlessDesk.id), the folder of the installed icons (-DfearlessDesk.icons) and the command that opens the project in the manager (-DfearlessDesk.relaunch).
+The toolkit sets WM_CLASS from the class of the bottom frame of the thread that starts it, the main class, when it creates each window: the library sets XToolkit.awtAppClassName to the window class of the icon before each window is created; the runtime opens java.desktop/sun.awt.X11 to the library.
+The Windows taskbar groups windows by their AppUserModelID, and without one by their program file: every Fearless program runs on the same java.exe.
+On Windows the library gives each window the window class as its AppUserModelID, with the .ico file of the icon as RelaunchIconResource, and the name of the Gui and the relaunch command as RelaunchDisplayNameResource and RelaunchCommand: the taskbar ignores RelaunchIconResource without the other two.
+These are properties of the property store of the window (SHGetPropertyStoreForWindow), set after the toolkit creates the native window and before it is shown.
+Without the manager the library leaves WM_CLASS and the AppUserModelID as the toolkit sets them.
 
 A size the library sets comes back from the toolkit up to one pixel different on a desk scaled above 100%: a content area within one pixel of the size the library chose is the library's, and sends no ResizeRequest.
 The pointer buttons are read from the platform on each repaint tick, through the Java foreign function API (the runtime enables native access for the library module): GetAsyncKeyState of the left, right and middle buttons on Windows, the button mask of XQueryPointer on the root window on X11, CGEventSourceButtonState on macOS.
@@ -547,10 +577,10 @@ On macOS, Cmd+Q ends the process without a windowClosing unless the quit strateg
 Example
 =======
 
-    s.gui.name("Nap").screenArea(0.3).run{f -> f
+    s.gui.name("Nap").startAsWindow(0.3).run{f -> f
       .virtualPixelSpace(Width#520, Height#340)
       .bands(Color.deepNapBlue)
-      .onResize{r -> f.virtualPixelSpace(Width#((340.0 * (r.aspectRatio)).softRound.getNat), Height#340)}
+      .onResize{r -> Block#(f.virtualPixelSpace(Width#((+340.0 * (r.aspectRatio)).softRound.getNat), Height#340), Void)}
       .content{:: ...}
       }
 
@@ -569,7 +599,7 @@ The transitions of the floating desk state machine have been tried by hand on Wi
 Tests to update
 ===============
 
-integrationTests/testingStandardLibrary/_test/test_gui_frame.fear: the location, maximized, fixedSize, undecorated and decorated checks go; new checks for virtualWidth/Height, the screenArea range error, the minArea range error and the minArea > screenArea error at run, the blank name error, the opacity floor error, the setter-while-open error, a window opened with Gui.fullScreen and one with Gui.fearlessCorner, the title as name plus subtitle and the virtual pixels of panelWidth/panelHeight under a scale.
+integrationTests/testingStandardLibrary/_test/test_gui_frame.fear: the location, maximized, fixedSize, undecorated and decorated checks go; new checks for virtualWidth/Height, the initialArea range error, the minArea range error, the initialArea < minArea and minArea > initialArea errors at the second setter, the close key equal to the full screen key, the blank name error, the opacity floor error, a setter leaving its Gui unchanged, a window opened with each start but startAsWindow, the title as name plus subtitle and the virtual pixels of panelWidth/panelHeight under a scale.
 The transitions driven by the user (maximize, the keys, the Fearless corner) are for the agentTools tests of the Manager, not for the standard library tests.
 integrationTests/testTicTacToe: gui_frozen.fear, gui_resizable.fear and gui_chunk.fear become one game on a square virtual pixel space; the resizable one keeps a square virtual pixel space whatever the request, so the board stays square.
 integrationTests/testGui1, testGui2, testGuiLive, testGuiImg: the Gui setters replace .fixedSize/.resizable/.undecorated/.decorated calls.
