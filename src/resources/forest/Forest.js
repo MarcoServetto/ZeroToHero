@@ -48,9 +48,8 @@ const edges= document.getElementsByClassName("edge");
 const codeBoxEdges= document.getElementsByClassName("codeBoxEdge");
 
 // Map each HTML node to Javascript node.
-const normalNodes= Array.from(nodesRaw).map(c => new Node(c.cx.baseVal.value, c.cy.baseVal.value));
+const nodes= Array.from(nodesRaw).map(c => new Node(c.cx.baseVal.value, c.cy.baseVal.value));
 const finishNodes= Array.from(finishNodesRaw).map(c => new Node(c.cx.baseVal.value, c.cy.baseVal.value));
-const nodes= normalNodes.concat(finishNodes);
 
 let interactionEnabled= true;
 let currentNode= nodes[0]; // The node the player is currently on
