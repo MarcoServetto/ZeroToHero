@@ -120,7 +120,8 @@ Ill formed messages:
 - `Run` of a project that is not compiled, naming its state; `Run` naming no main, or a main that is not a main of the project (the message lists the mains);
 - `Link` of a project that is not code;
 - a job, `DeleteCache`, `Kind` or `Forget` while the project has a job;
-- a `Kind` change that is not from idle or back to idle.
+- a `Kind` change that is not from idle or back to idle;
+- a request changing the data projects that a running main reads or writes (see Data projects of a running main).
 
 Whether a message is ill formed is decided when it arrives, from the message and the current state, before anything is compiled, run or written to the Output.
 An ill formed message is shown in a dialog, never in the Output: the Output of a project holds only the results of well formed requests. A failing compile is such a result: the request is right, the code is broken.
@@ -173,7 +174,7 @@ Each project has:
 - `path`: the absolute path of the project folder, any path the system allows, exactly as the current system and file system name it, separators included: the tagged text only picks the most readable form holding those exact bytes. Two projects never share a folder, and a project folder is never inside another one.
 - `kind`: `idle`, `code`, `data:readOnly` or `data:readWrite`.
 - `mains`: the selected mains: the mains the last `Run` ran, for a code project with several mains.
-- `reads` and `edits`: for a code project, the data projects it may read, and those it may read and write, each with the type names the code uses for it. A project in `reads` is `data:readOnly` or `data:readWrite`; a project in `edits` is `data:readWrite`. A data project may be in both: the type names in `edits` read and write, those in `reads` only read; a type name is not in both. A link names at least one type name.
+- `reads` and `edits`: for a code project, the data projects it may read, and those it may read and write, each with the type names the code uses for it. A project in `reads` is `data:readOnly` or `data:readWrite`; a project in `edits` is `data:readWrite`. A data project may be in both: the type names in `edits` read and write, those in `reads` only read. A type name is in one link only: the code reaches one data project through it. A link names at least one type name.
 
 A code project whose links name a missing project, or a project of the wrong kind, or an invalid project, is invalid, and the message says which link and why.
 
@@ -281,6 +282,18 @@ Every job, and every `Check`, starts with an empty Output area. Everything a job
 - Compile (code projects): a code project with broken links is not compiled. The compiler runs in its own JVM; its output goes to the Output. A compile that ends with the mains known removes from the selected mains those that are no longer mains. A compile that fails leaves the project out of date: the packages it did not compile stay out of date, and a compile that fails after compiling the packages (on an icon, an extension or a shortcut file) deletes `mains.info`, so reading the mains fails. A compile that fails writes its error text to `.fearless_out/compile_error.txt`, and a compile that succeeds deletes `.fearless_out/compile_error.txt`.
 - Run (code projects): a code project with broken links does not run. When the project is out of date, the main button compiles. A `Run` runs the mains it names, in the order of the mains of the project. Each main runs in its own JVM, one after the other.
 - Terminate ends the job: the JVM of the running main or of the compile ends, and no further main of that run starts.
+
+### Data projects of a running main
+
+A running main reads the data projects of its links through `System.dataRead` of the standard library, and reads and writes them through `System.dataReadWrite`.
+The roots of `System.dataRead` are the type names in `reads` and in `edits`; the roots of `System.dataReadWrite` are the type names in `edits`: a main names a data project by a root of the capability it uses. A type name is in one link only, so a root names one data project; one data project can still be linked under several type names, also in `reads` under one and in `edits` under another.
+When a `Run` starts, the manager gives each main of the run the folder of every data project its links accept, by the type names of those links.
+Changes follow the dependencies of the projects:
+- what a running main depends on does not change: a `Link`, `Kind`, `Forget` or `EditMetadata` changing what the links of that project give, or the kind or the folder of a data project they name, is refused, naming the project and its running main;
+- what a code project that is not running depends on can change: removing a data project it links, or changing its kind or its folder, is accepted, and the code project becomes invalid, naming the broken link.
+A data project that changes on disk while a main runs is not checked again: a read or a write that finds the files changed so that it can not be done is a non deterministic error of that main.
+A main does not see the marker of a data project or the files and folders whose name starts with "."; a path naming them is not valid.
+A write keeps the data project valid: it writes only valid names, never at the place of the marker, and a delete removes the folders and the zip files it leaves empty.
 
 An error file (`compile_error.txt`, `check_error.txt`) is out of date once a file or folder of the project outside `.fearless_out`, or `projects.info`, is modified after it, as the compiled cache of a package is out of date once one of its files is modified after it. An error file that is out of date is shown nowhere: it says why the project was broken, not why it is broken now.
 
@@ -524,12 +537,13 @@ Controllers must have a similar (`Report`, `Violation`) classification inside it
 
 What the design will cover later; nothing in this section is current behaviour.
 - The Output keeps only the last part of what a job prints, so a program printing without end does not fill the memory.
-- `reads` and `edits` reach the running main through new APIs of the standard library.
 - The GUI becomes a separate program, as for many Linux daemons: the manager has no window, and the GUI commands the single manager through the manager program with `FearlessCommand<Verb>` arguments, as every other program does. The GUI could be a Fearless program with some extra permissions.
 - A later double click on a file for a main already running adds that file to the input files of the running main.
 - A double click for a main already running signals the running main to wake up, for example bringing its window to the front.
 - A captured extension that no main claims gets its own icon, showing that the manager holds it, instead of the conflict icon.
 - The fields of the Links area show what they take and complete what is typed: the type names the code uses for that data project, separated by spaces.
+- Removing or changing a data project that a code project links shows a confirmation dialog in the GUI, naming the code projects that become invalid.
+- A data project folder can be deleted when it is left empty, and so can a zip, since a zip is a folder for a main. Deleting something and writing it again "the same" can then give another structure on disk: what was a zip can come back as a plain folder. How to handle this is to be discussed.
 - A main learns the extensions it claims, for example through a `System` method. A main with `OpenWith[I]` gets an extension such as `ffile042`, chosen by the manager and varying between machines and compile orders; to save a document the user can later double click, the program must name it `<something>.ffile042`.
 
 ## Implementation notes
