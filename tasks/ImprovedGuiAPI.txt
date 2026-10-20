@@ -500,56 +500,62 @@ Painters draw in virtual pixels and are clipped to their widget, as today.
 Layout
 ======
 
-Every size is decided from the outside in.
-The virtual pixel space gives the content its size.
-A container gets its size before its children are looked at.
-A child then gets its size from its own settings and the size of its parent.
+The size of a widget is state: a number for the width and one for the height, held by the widget.
+It changes only when the program acts on the widget, never when the layout runs.
+The layout only places widgets: a parent places each child at its size, or larger with .fill.
 No size is ever computed from a size that depends on it.
 A layout where a parent measures its children, the children adapt to the parent and the parent measures them again has no predictable result; it does not exist here.
-The program knows the virtual pixel space, so it can state every size it needs as a number.
 
 Sizes:
 
     Widget[S]:_Styled[S]{
-      mut .minWidth(n:Nat):mut S->this.minWidth'(WidthNat#n);
-      mut .minWidth'(WidthNat):mut S;
-      mut .minHeight(n:Nat):mut S->this.minHeight'(HeightNat#n);
-      mut .minHeight'(HeightNat):mut S;
+      mut .width(n:Nat):mut S->this.width'(WidthNat#n);
+      mut .width'(WidthNat):mut S;
+      mut .height(n:Nat):mut S->this.height'(HeightNat#n);
+      mut .height'(HeightNat):mut S;
+      mut .pack:mut S;
       mut .fill:mut S;
       mut .noFill:mut S;
-      read .minWidth:WidthNat;
-      read .minHeight:HeightNat;
+      read .width:WidthNat;
+      read .height:HeightNat;
       read .fill:Bool;
       ...insets, radius, colors as today
       }
 
-minWidth and minHeight include the insets.
-A minWidth smaller than leftInset+rightInset is an error at the second setter: .minWidth 4 after .leftInset 6, or .leftInset 6 after .minWidth 4.
-The same holds for minHeight with topInset and bottomInset.
-The default minWidth and minHeight are fixed numbers, about twice the default insets; there is no unset size.
-.fill takes the space the parent gives, on the axes the parent allows; .noFill is the default.
+The width and the height include the insets; both start at 24.
+A width smaller than leftInset+rightInset is an error at the second setter: .width 4 after .leftInset 6, or .leftInset 6 after .width 4.
+The same holds for the height with topInset and bottomInset.
 
-On each axis the size of a widget is the largest of:
-  its min size;
-  for a Button or a Label, what its text needs;
-  with .fill, the space its parent gives on that axis.
-A container never grows from its children: children that do not fit are clipped, or scroll (below).
-A shorter text makes a Button or a Label smaller again, never below its min size.
+The last action on a widget decides its size:
+  .width and .height set it;
+  a new text of a Button or a Label, a new child of a Pane or a Border, grows it on each axis to fit the new content;
+  .pack sets it to the smallest size that fits the current content.
+A new content never shrinks a widget: a shorter text leaves a Button as wide as before, until .pack.
+A child added to a container grows the container to fit that child alone, plus the insets.
+A child that changes after it is added does not change its parent.
+In the builder the scope of a child runs before the child is added, so nested widgets grow from the inside out in one pass: a Pane around a Label fits the Label.
+Setting a size after adding the children overrides what the children grew: .pane{:: .label{...} .width 10} is 10 wide, and the Label is clipped.
 
-Why a container never grows from its children.
+.pack fits all the current content with the current size of each child:
+  a Button or a Label fits its text;
+  a Pane fits its lines, broken only at maxPerLine: one line by default, a column with .maxPerLine 1;
+  a Border fits its regions: north, the row of west, center and east, and south, one above the other.
+A Pane holding two Labels grows to fit the larger one; .pack makes it fit both side by side.
+
+.fill places a widget larger than its size, on the axes its parent allows: the space a Border gives its region, the space a Pane gives its line.
+.noFill is the default.
+.fill never changes the size of the widget: the getters return the size, and painters and mouse handlers receive the space they are drawn in as panelWidth and panelHeight.
+
+Why a container does not grow when its children wrap.
 A Pane in the north of a Border whose buttons wrap into a second row when the virtual pixel space gets narrower would take height from the center.
 A horizontal change would then remove vertical space from another widget, depending on where the lines of a far away Pane break.
 Instead the north keeps its height and the second row is clipped, with a warning.
-.minWidth and .minHeight replace .width, .height, .autoWidth, .autoHeight and .autoSize.
 
-Why min sizes and not exact sizes.
-A new virtual pixel space changes the size of the content, of the regions of every Border, of every child with .fill and where every line of a Pane breaks.
-The min sizes stay as they are.
-With exact sizes the program would have to set again the size of every widget after each new virtual pixel space.
+Why sizes change only when the program acts.
+A size computed from the children at every layout costs a walk of the tree for every widget, or a cache kept between repaints, which is the measuring loop again.
+A size that is state costs nothing to read, and the program can always override it after the content is added.
 
-The current size of a widget:
-Painters and mouse handlers receive it as panelWidth and panelHeight of their ScreenContext.
-There is no getter for it: the layout runs at the repaint tick, so a getter called by the program could return a size the screen does not show yet, or does not show any more.
+Every clipping prints a warning: a widget that does not fit in its parent, a text that does not fit in its widget, a painter that draws past the edges of its widget.
 
 Border:
 A Border has five regions: north, south, west, east and center.
@@ -563,9 +569,9 @@ So a Border can have empty space: its children do not take all the space unless 
 Example, with the insets and gaps of the Border at 0:
 
     f.virtualPixelSpace(Width#1000, Height#1000).contentB{::
-      .north{:: .fill .minHeight 60 ...}
-      .west{:: .minWidth 200 .minHeight 300 ...}
-      .center{:: .minWidth 400 .minHeight 400 ...}
+      .north{:: .fill .height 60 ...}
+      .west{:: .width 200 .height 300 ...}
+      .center{:: .width 400 .height 400 ...}
       }
 
 The north Pane is 1000 x 60, at the top.
@@ -592,7 +598,7 @@ Between the two, a child that would make the line longer than the Pane starts a 
 With width 10 and minPerLine 2, children of width 100 and 235 stay on one line.
 With width 10 and maxPerLine 5, children of width 1, 2, 1 and 34 make the line 1 2 1, and 34 starts the next line.
 A minPerLine more than the maxPerLine is an error at the second setter.
-The lines break against the size of the Pane itself, never against a size its children report.
+The lines break against the space the Pane is drawn in, never against a size its children report.
 With .fill, a child takes the whole line axis of the Pane, and keeps its own size on the stack axis.
 So .horizontal .maxPerLine 1 with children with .fill is a list of rows as wide as the Pane, also after a new virtual pixel space.
 A child with .fill filling both axes of a Pane would be the center of a Border: the Pane does not offer it.
@@ -603,13 +609,13 @@ Lines that do not fit on the stack axis come from the number of lines.
 lineScroll(True) scrolls the line axis, stackScroll(True) scrolls the stack axis; with False, what does not fit is clipped.
 A scroll bar is shown whenever its setting is True, and always takes its space, also when everything fits.
 So the lines always break against the same size, and a scroll bar can never change where they break.
-The size of a Pane does not depend on its content, so a Pane with a scroll gets its scroll bars exactly when its content is bigger than it.
+The layout never changes the size of a Pane, so a Pane with a scroll gets its scroll bars exactly when its content is bigger than the space it is drawn in.
 
 A vertical list:
 .horizontal .maxPerLine 1 gives one row per line, and the rows fill the width of the Pane with .fill.
 .vertical with a large minPerLine gives one column; its line axis is the height, so its children can fill the height, not the width.
 
-Open: a widget whose min size is larger than the space its parent gives.
+Open: a widget larger than the space its parent gives.
 It is clipped by its parent.
 It could be an error instead, in the offensive style.
 Many other things clip as well (a long text in a region, a line forced by minPerLine), so clipping stays for now, and this point stays open.
