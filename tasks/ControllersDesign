@@ -34,7 +34,7 @@ Starting the manager program leaves one message in the manager folder. There cou
 
 The manager program takes:
 - zero arguments: the message is `Show`: show the window, starting the single manager when none runs;
-- a first argument `FearlessCommand<Verb>`, then the arguments of the verb: the message is the verb `<Verb>` with those arguments. A project name, a main, a kind and a type name are written as they are. A path is written as a tagged text in its `Base16:` form, `Base16:` then the bytes naming the path, so every argument is plain ASCII on every system. A port is written `Port:` then its number. The words after the project name of `Run` and `Link` form their second argument, separated by single spaces, except a last `Port:` word, the port of `Run`;
+- a first argument `FearlessCommand<Verb>`, then the arguments of the verb: the message is the verb `<Verb>` with those arguments. A project name, a main, a kind and a type name are written as they are. A path is written as a tagged text in its `Base16:` form, `Base16:` then the bytes naming the path, so every argument is plain ASCII on every system. A port is written `Port:` then its number. The words after the project name of `Run` and `Link` form their second argument, separated by single spaces, except a last `Port:` word, the port;
 - one argument not starting with `FearlessCommand`: the path of a file or a folder, as the system passes the path when the file is opened (for example by a double click); the message is `Register` with that path for a folder or a `.fearless` file, and `OpenWithOrShortcut` with that path for any other file.
 For example:
 ```
@@ -92,15 +92,21 @@ A verb is one of the following, written in upper camel case. Verbs about the who
 - `OpenWithOrShortcut <path>`, the path as a tagged text: open the file with the main whose `OpenWith` or `Shortcut` gives its extension. Double clicking the file on the desktop is its gui operation.
 - `OpenWithOrShortcut <path> <name> <main>`: open the file with the main `<main>` of the project `<name>`, one of the mains claiming the extension of the file. When several mains claim that extension, `OpenWithOrShortcut <path>` shows a window listing them (see Opening a file); picking a main in that window is its gui operation, with the project and the main of the picked entry. Another program, for example an agent, sends it to choose the main itself.
 Verbs about one project, taking the name of a registered project:
-- `Run <name>`: select the project and run the mains of the second argument, separated by spaces, in the order of the mains of the project; they become the selected mains: the last mains started take the lead; a third argument, when present, is a port;
-- `Compile <name>`: select the project and compile it if it needs compiling; a second argument, when present, is a port;
+- `Run <name>`: select the project and run the mains of the second argument, separated by spaces, in the order of the mains of the project; they become the selected mains: the last mains started take the lead;
+- `Compile <name>`: select the project and compile it if it needs compiling;
 - `Check <name>`: select the project and report in its Output why it is invalid or out of date, or that it is neither; why it is invalid is also written to `.fearless_out/check_error.txt`, and a `Check` of a valid project deletes `.fearless_out/check_error.txt`;
 - `Terminate <name>`: select the project and end its job, if any;
 - `DeleteCache <name>`: select the project and delete its compiled cache;
 - `Kind <name>`: set the kind of the project to the second argument (`idle`, `code`, `data:readOnly`, `data:readWrite`);
 - `Forget <name>`: forget the project.
 - `Link <name>`: set a link of the code project to a data project to the second argument: the name of the data project, then `read` or `write`, then the type names the code uses for it, separated by spaces; no type names removes that link;
-A port of `Run` and `Compile` is where the Output of the job goes, also: before the job starts, the manager connects to that port of this machine, and sends there what the job prints, from its start and then as it prints it, with its marks of where the job and each main start and end; the connection ends with the job, at once when there is no job. This is how another program (Eclipse, for example) follows a job it asked for.
+Every verb takes a port as its last argument, when present.
+Before applying the request, the manager connects to that port of this machine.
+The connection ends once the request is applied, or refused.
+When the manager refuses the message, it also sends on the connection the line `Refused`, then why, as the dialog shows it.
+The Output of a job starts with the mark of where the job starts, so it never starts with the line `Refused`.
+For `Run` and `Compile`, the connection is where the Output of the job goes, also: the manager sends there what the job prints, from its start and then as it prints it, with its marks of where the job and each main start and end; the connection ends with the job, at once when there is no job.
+This is how another program (Eclipse, a running main) knows that the manager has applied its message, and follows a job it asked for.
 Two more message files exist, `InvalidCall <details>` and `FatalError <details>`, written only by a run of the manager program that is not the single manager, about its own failure. They are not verbs: no argument of the manager program and no gui operation produces them, and the argument `FearlessCommandInvalidCall` or `FearlessCommandFatalError` is an invalid call.
 The details of `InvalidCall` and `FatalError` are every line after the verb, any number of lines.
 
@@ -471,13 +477,15 @@ An input file offers the reading methods of the autoloaded `TxtFile` and `ImageF
 ### Messages from a running main
 
 A running main sends messages to the manager through `System.manager` of the standard library, the capability `CapManager`.
-Each method of `CapManager` is one verb: it runs the manager program with `FearlessCommand<Verb>` and the arguments of the verb, and waits for that run to end.
-So the messages of a running main arrive in the order the running main sends them.
-`CapManager` offers every verb, without the port of `Run` and `Compile`.
+Each method of `CapManager` is one verb, and gives an action.
+The `.run` of that action does what Eclipse does: it listens on a port, runs the manager program with `FearlessCommand<Verb>`, the arguments of the verb and that port, and ends when the manager ends the connection.
+So the `.run` of an action ends once the manager has applied its message: for `Run` and `Compile`, once the job ends.
+The action of `Run` and `Compile` gives the Output of the job, all the text the manager sent on the port; the other actions give `Void`.
 A kind is a method of its own (`.kindCode`), and so is a link for reading or for writing (`.linkRead`, `.linkWrite`): a message of a running main can not hold a kind that is not one of the four, or a link that is neither `read` nor `write`.
-A path is the list of the bytes naming it, the bytes of its `Base16:` form. A path that is not absolute is refused by the running main itself: no message is sent, and the method gives an Info.
-A method gives `.ok` once the message is in the manager folder. The manager shows a refused message in a dialog, as for every other message, and the running main is not told.
-A program started by the portable Fearless has no manager: every method of `CapManager` gives an Info.
+A path is the list of the bytes naming it, the bytes of its `Base16:` form. A path that is not absolute is refused by the running main itself: no message is sent, and the action gives an Info.
+The manager shows a refused message in a dialog, as for every other message, and the action gives an Info saying why, the text after the line `Refused`.
+`Quit`, `Reset` and `Terminate` of the project of the running main end the running main before the `.run` of their action ends.
+A program started by the portable Fearless has no manager: every action of `CapManager` gives an Info.
 
 ### System extensions
 
@@ -504,6 +512,7 @@ Connect Eclipse puts the plugin in the Eclipse folder, with `manager.info` next 
 
 Plugin design: Eclipse reads `projects.info` and follows up into the `.fearless_out` files when needed to recover information and display the state.
 The Output of a running program has no bound on its size, so the manager does not pass it through files: Eclipse listens on a port, and its `Run` and `Compile` carry that port.
+Eclipse shows a refused `Run` or `Compile` only through the dialog of the manager: the Output view stays empty.
 Eclipse follows exactly one job: the job of its last `Run` or `Compile`; Eclipse sends no other `Run` or `Compile` until that job ends, except for a save. Everything else Eclipse shows (the error of the last compile, the unit test log) is read from files.
 
 Eclipse commands the manager by running the manager program with the arguments `FearlessCommand<Verb>` and the arguments of the verb. If a message ends up in error, the manager shows the error as usual.
@@ -581,4 +590,4 @@ An implementation decides alone every detail the design leaves open below its co
 - Hidden buttons in Eclipse: the extension point `org.eclipse.ui.perspectiveExtensions` hides toolbar items (`hiddenToolBarItem`) and menus (`hiddenMenuItem`) by id in one perspective. The ids are those of the buttons the Eclipse IDE package shows; Window > Perspective > Customize Perspective hides items by hand, and the workbench model saved at exit lists their ids.
 - Syntax highlighting in Eclipse: `org.eclipse.tm4e` colours a file from a TextMate grammar. The only grammar of Fearless is `syntaxes/fearless.tmLanguage.json` of the plugin, with the themes `fearless-light.css` and `fearless-dark.css`; a rewrite keeps those files, or writes the grammar again from the tokens of the Frontend.
 - JUnit view in Eclipse: `JUnitCore.importTestRunSession` of `org.eclipse.jdt.junit.core` shows a JUnit XML report file.
-- Port of `Run` and `Compile`: a TCP port on the loopback address. The manager connects and sends the Output as UTF-8 text, then closes the connection. Eclipse listens on a port the system picks.
+- Port of a message: a TCP port on the loopback address. The manager connects, sends the Output of a job as UTF-8 text, then closes the connection. Eclipse and a running main listen on a port the system picks.
