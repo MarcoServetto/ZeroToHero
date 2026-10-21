@@ -806,6 +806,88 @@ Why Enter commits also in a TextArea.
 Chat programs commit on Enter and give a newline on Shift+Enter; document editors give a newline on Enter and commit on Ctrl+Enter.
 Shift+Enter is a newline and Ctrl+Enter is a commit in both, so only Enter is in question, and the shorter key goes to the commit.
 
+Drawing
+=======
+
+A painter draws in virtual pixels with Graphics: lines, rectangles, ovals, images and text.
+The same Graphics paints a container (.paint) and an image (Image.paint).
+
+    Graphics:ScreenContext{
+      mut .color(Color): mut Graphics;
+      mut .position(XInt, YInt): mut Graphics;
+      mut .line(XInt, YInt): mut Graphics;
+      mut .rect(WidthNat, HeightNat): mut Graphics;
+      mut .oval(WidthNat, HeightNat): mut Graphics;
+      mut .image(Image): mut Graphics;
+      mut .textHeight(n: Nat): mut Graphics -> this.textHeight'(HeightNat#n);
+      mut .textHeight'(HeightNat): mut Graphics;
+      mut .text(s: Str): mut Graphics -> this.uText(s.u);
+      mut .uText(text: UStr): mut Graphics;
+      }
+    TextWidth:{ #(text: UStr, textHeight: HeightNat): WidthNat }
+    MouseEvent:ScreenContext{ .mouseX:XInt; .mouseY:YInt; .clicks:Nat; }
+
+Graphics has three settings: the color, the position and the text height.
+They start as opaque black, (0, 0) and 12.
+Each drawing call uses the settings and leaves them unchanged.
+
+.text draws one line of text in the color.
+The top left corner of the line is the position.
+The baseline is textHeight below the position, and the line is one and a half textHeight high: the line of a Label with the default .aboveBaseline and .belowBaseline.
+The text uses the fonts bundled in the library, as every text of the library.
+
+TextWidth#(text, textHeight) is the width of the text drawn by .text at textHeight, rounded up to a whole virtual pixel.
+A Label with the same text and text height packs to that width plus its insets.
+TextWidth needs no capability and no window: the fonts are bundled, so the width is the same on every desk.
+A painter centers a text with TextWidth.
+A program shortens a long text with "..." with TextWidth, once, when the text changes.
+
+MouseEvent.clicks is 1 for the press, the release and the click of a single click, 2 for those of the second click of a double click, and so on.
+It is 0 for .moved, .dragged, .entered and .exited.
+The desk decides how close in time and in space two presses are to make a double click, as for the double click on the Fearless corner.
+
+A tile grid:
+The Manager shows its projects as a grid of tiles.
+A tile shows the icon of a project, its name under the icon, and a flag over the bottom right of the icon for the state of the project.
+The flag of a busy project is animated.
+A click on a tile selects the project; a double click runs it.
+integrationTests/testGuiTiles draws this grid with the API above:
+
+    tile         a Pane of 128 x 88 with a painter and a .mouse.
+                 Its painter draws the selection, the icon, the flag, and the name centered under the icon.
+    grid         a Pane with .fill, .stackScroll(True) and gaps 0, holding the tiles.
+                 The grid breaks its lines against the space it is drawn in, and scrolls them.
+    icon         an Image of 48 x 48, painted once with Images# and Image.paint, and kept in the tile.
+    flag         a Painter drawn over the icon.
+                 An animated flag reads .elapsed: the frame paints at .fps, so the flag moves with no action of the program.
+                 A flag can also change with time alone: the busy flag draws a spinner until an Instant, and the flag of a compiled project after it.
+    hit testing  the .mouse of each tile: the library finds the tile under the pointer.
+    a change     the program replaces the tiles: .clear on the grid, then a new Pane for each tile.
+                 The grid keeps its scroll position.
+
+No widget has an absolute position, and no click is mapped back to a tile by the program.
+A tile is the unit of layout, of drawing and of hit testing.
+
+The tile grid as a widget of base:
+testGuiTiles uses only the public API of the library, so the tile grid can become Fearless code in base, with no runtime code:
+
+    Tile:{ .image: Image; .name: Str; .flag: Painter; }
+    TileGrids:{ #(grid: mut Pane, tiles: List[Tile], selected: Opt[Nat], clicked: mut TileClicked): Void }
+    TileClicked:{ mut #(index: Nat, e: MouseEvent): Void }
+
+TileGrids# replaces the children of grid with one tile for each element of tiles.
+The flags of the Manager (a colored dot with a letter, and the spinner) become constants of base next to it.
+
+Open: what the Manager has and the tile grid lacks.
+The lines of a Pane are centered, and so is the stack of lines; the tiles of the Manager start at the top left.
+A Pane needs a setting that places its lines at the start of both axes.
+The Manager scrolls the selected tile into view when the selection comes from elsewhere, for example a project opened from a file; a program can not set the scroll position of a Pane.
+The Manager shows the folder and the state of a tile when the pointer rests on it; a painter draws only inside its widget, so a tile can not show a tooltip larger than itself.
+The panel beside the tiles shows the folder and the state of the selected project, so the grid does without a tooltip.
+The spinner of the Manager is a thick arc; Graphics draws lines one virtual pixel wide and no arcs, so the spinner of testGuiTiles is eight dots of fading alpha, drawn with .oval.
+The Manager reads the icon of a project from its folder; reading an image from any folder is a capability of the Manager, not a part of drawing.
+.text shapes its text at each call, and a painter runs at each repaint tick: a cache of shaped lines in the library would cost the program nothing.
+
 Removed
 =======
 
