@@ -623,59 +623,75 @@ A vertical list:
 .vertical with a large minPerLine gives one column; its line axis is the height, so its children can fill the height, not the width.
 
 Split:
-A Split has two regions and a divider between them that the user drags.
+A Split has two regions and a divider between them.
 .horizontal (the default) puts the first region left of the second; .vertical puts the first region above the second.
 The axis of a Split is the width for .horizontal and the height for .vertical.
 
-    Split:_Container[Split]{
+    Split:Widget[Split]{
       mut .horizontal: mut Split;
       mut .vertical: mut Split;
-      mut .divider(n:Nat): mut Split;
-      read .divider: Nat;
+      mut .dividerPosition(n:Nat): mut Split;
+      read .dividerPosition: Nat;
+      mut .draggable(b:Bool): mut Split;
+      read .draggable: Bool;
       mut .first(mut Scope[Pane]):mut Split;
       mut .firstB(mut Scope[Border]):mut Split;
       mut .firstS(mut Scope[Split]):mut Split;
       mut .second(mut Scope[Pane]):mut Split;
       mut .secondB(mut Scope[Border]):mut Split;
       mut .secondS(mut Scope[Split]):mut Split;
-      ...gaps, mouse, paint as on every container
+      mut .mouse(mut Scope[Mouse]):mut Split;
+      mut .paint(Painter):mut Split;
       }
     Pane:_Container[Pane]{ ... mut .split(mut Scope[Split]):mut Pane; }
     Border:_Container[Border]{ ... mut .northS(mut Scope[Split]):mut Border; ...southS, eastS, westS, centerS }
 
-The divider is the gap of the Split on its axis: widthGap wide for .horizontal, heightGap high for .vertical.
-A gap of 0 leaves nothing to drag.
-.divider is where the program asks the divider to stand: that many virtual pixels after the start of the Split on its axis, insets excluded.
-So .divider is the length of the first region.
-The divider stands at .divider unless the first region would be shorter than the first child, or the second region shorter than the second child, on the axis.
-Then the divider moves as little as needed; when the space can not hold both children, the first region fits the first child and the second child is clipped.
-The default .divider is 0, so the first region fits the first child exactly.
-Each region spans the Split on the other axis.
-A child smaller than its region is centered in the region; with .fill it fills the region on both axes.
+Every divider is 5 virtual pixels thick on the axis, as thick as a scroll bar, and spans the Split on the other axis.
+A Split has no gaps: it is not a _Container, and the divider is the only space between its two regions.
+The divider position is a distance in virtual pixels on the axis: from the start of the Split, after the left inset for .horizontal and after the top inset for .vertical, to the divider.
+The first region goes from that start to the divider.
+The second region goes from the end of the divider to the end of the Split, before the right inset or the bottom inset.
+So the divider position is the length of the first region.
+The default divider position is 0.
 
-The user drags the divider with the primary button: the divider follows the pointer, under the rule above, and the drag sets .divider.
+The divider stands at the divider position, whatever the size of the children and of the space the Split is drawn in.
+A divider position past the end of the Split leaves the second region empty, and the divider is clipped.
+Each region spans the Split on the other axis.
+A child takes its region as the center of a Border does: with .fill it fills the region, and a child smaller than its region is centered in it.
+A child larger than its region is centered on the region and clipped to it, on both sides.
+
+The divider is drawn in the faint color of a scroll track, with a darker grip in the middle.
+The user drags the divider with the mouse primary button: the divider follows the pointer, and the drag sets the divider position.
+A drag keeps the divider inside the Split.
 A press on the divider reaches no handler, as a press on a scroll bar.
 The pointer over the divider shows the resize cursor of the axis.
+.draggable is True by default.
+With .draggable(False) the divider has no grip and the pointer over it shows the default cursor.
+A press on that divider is a press on the Split.
 
-A new child grows the Split to fit both children and the divider, plus the insets; .pack does the same.
+A new child grows the Split as a new child grows a Pane or a Border: to fit that child alone, plus the insets.
+.pack sets the length of the Split on the axis to the lengths of the two children plus the divider, plus the insets.
+On the other axis, .pack sets the length of the Split to the larger of the two children, plus the insets.
+.pack also sets the divider position to the length of the first child on the axis, so that neither child is clipped.
 The slots are replaceable, as the slots of a Border: a second .first replaces the first one, also when one is a Pane and the other a Border.
 
-Why .divider is a request and not a position.
-The space a Split is drawn in changes with .fill and with a new virtual pixel space, and the program does not know it.
-A divider kept only as a request goes back to where it was asked when the space comes back, and a second child replaced by a larger one never starts clipped when there is room for it.
-The size of a child is the shortest its region gets on the axis, so the program keeps a region readable by giving its child a size.
+Why the divider stands where it is put.
+The program and the user put the divider at a position, and no layout moves it: predictability wins over convenience.
+The space a Split is drawn in changes only when the program acts: a new virtual pixel space, a new size of a widget.
+So the program that changes that space also sets the divider position it wants in the new space, for example in its .onResize handler; the user can always drag the divider.
 
 Example, the manager layout:
 
     f.contentB{::
       .north{:: .fill ...}
-      .centerS{:: .fill .divider 320
-        .first{:: .fill .width 120 .maxPerLine 1 .stackScroll(True) ...tiles}
-        .second{:: .fill .width 300 ...the selected project}
+      .centerS{:: .fill .dividerPosition 320
+        .first{:: .fill .maxPerLine 1 .stackScroll(True) ...tiles}
+        .second{:: .fill ...the selected project}
         }
       }
 
-The tiles take 320 virtual pixels; the user drags them between 120 and the width that leaves 300 to the project.
+The tiles take 320 virtual pixels, and the selected project takes the rest of the width.
+The user drags the divider to share the width in another way.
 
 Open: a widget larger than the space its parent gives.
 It is clipped by its parent.
