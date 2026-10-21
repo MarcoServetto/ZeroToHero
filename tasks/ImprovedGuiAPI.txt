@@ -529,6 +529,7 @@ The same holds for the height with topInset and bottomInset.
 The last action on a widget decides its size:
   .width and .height set it;
   a new text of a Button or a Label, a new child of a Pane or a Border, grows it on each axis to fit the new content;
+  the text of a TextField or a TextArea never changes its size: what does not fit scrolls;
   .pack sets it to the smallest size that fits the current content.
 A new content never shrinks a widget: a shorter text leaves a Button as wide as before, until .pack.
 A child added to a container grows the container to fit that child alone, plus the insets.
@@ -538,6 +539,7 @@ Setting a size after adding the children overrides what the children grew: .pane
 
 .pack fits all the current content with the current size of each child:
   a Button or a Label fits its text;
+  a TextField or a TextArea fits its text with its scroll bars, one displayed line for each line of the text;
   a Pane fits its lines, broken only at maxPerLine: one line by default, a column with .maxPerLine 1;
   a Border fits its regions: north, the row of west, center and east, and south, one above the other.
 A Pane holding two Labels grows to fit the larger one; .pack makes it fit both side by side.
@@ -608,6 +610,7 @@ A line longer than the Pane comes from minPerLine, or from a single child longer
 Lines that do not fit on the stack axis come from the number of lines.
 lineScroll(True) scrolls the line axis, stackScroll(True) scrolls the stack axis; with False, what does not fit is clipped.
 A scroll bar is shown whenever its setting is True, and always takes its space, also when everything fits.
+Every scroll bar of the library, on a Pane, a TextField or a TextArea, is 4 virtual pixels thick; a thumb as long as its track shows that there is nothing to scroll.
 A new child grows a scrolling Pane as it grows any Pane: the size of a scrolling Pane is set before its children are added, and is larger than each child, so adding a child leaves it unchanged; it is the children together that do not fit, and scroll.
 A press on a scroll bar scrolls and reaches no handler: on the thumb it starts a drag, on the track it moves by one view.
 The wheel scrolls the innermost Pane under the pointer that scrolls on that axis and can still move; shift makes the wheel scroll sideways.
@@ -623,6 +626,185 @@ Open: a widget larger than the space its parent gives.
 It is clipped by its parent.
 It could be an error instead, in the offensive style.
 Many other things clip as well (a long text in a region, a line forced by minPerLine), so clipping stays for now, and this point stays open.
+
+Text editing
+============
+
+A TextField holds one line of text; a TextArea holds any number of lines.
+The two share every rule below, and differ only where this section says so.
+
+    _Caption[S]:Widget[S]{ ...text, textHeight, aboveBaseline, belowBaseline as today }
+    Button:_Caption[Button]{ ... }
+    Label:_Caption[Label]{ ... }
+
+    _EditText[S]:Widget[S]{
+      mut .text(s:Str):mut S->this.uText(s.u);
+      mut .uText(UStr):mut S;
+      read .text:Str->this.uText.getStr;
+      read .uText:UStr;
+      mut .textHeight(n:Nat):mut S->this.textHeight'(HeightNat#n);
+      mut .textHeight'(HeightNat):mut S;
+      mut .aboveBaseline(f:Float):mut S->this.aboveBaseline'(TextRatio#f);
+      mut .aboveBaseline'(TextRatio):mut S;
+      mut .belowBaseline(f:Float):mut S->this.belowBaseline'(TextRatio#f);
+      mut .belowBaseline'(TextRatio):mut S;
+      read .textHeight:HeightNat;
+      read .aboveBaseline:TextRatio;
+      read .belowBaseline:TextRatio;
+      mut .editable(Bool):mut S;
+      read .editable:Bool;
+      mut .textClearsUndo(Bool):mut S;
+      read .textClearsUndo:Bool;
+      mut .onInput(mut MF[UStr,UStr]):mut S;
+      mut .onEdit(mut Consumer[TextEvent]):mut S;
+      mut .onCommit(mut Consumer[TextEvent]):mut S;
+      mut .caret(CaretPainter):mut S;
+      }
+    TextField:_EditText[TextField]{ .self->this; }
+    TextArea:_EditText[TextArea]{
+      .self->this;
+      mut .append(s:Str):mut TextArea->this.uAppend(s.u);
+      mut .uAppend(UStr):mut TextArea;
+      mut .wrap(Bool):mut TextArea;
+      read .wrap:Bool;
+      }
+    TextEvent:ScreenContext{ .text:UStr; .caret:Nat; .anchor:Nat; }
+    CaretPainter:{ .run(mut CaretGraphics):mut CaretGraphics; }
+    CaretGraphics:Graphics{ read .sinceMove:Duration; read .lineHeight:HeightNat; }
+    Pane:_Container[Pane]{ ... mut .textField(mut Scope[TextField]):mut Pane; mut .textArea(mut Scope[TextArea]):mut Pane; }
+
+A Button and a Label grow to fit a new text; a TextField and a TextArea never change size because of their text.
+That is why they are not _Caption: they share only the three font settings with it.
+
+The text:
+The text of a TextField has no newline: a .text or .uText with a newline on a TextField is a deterministic error.
+The lines of a TextArea are its text split on newline: "a" newline has two lines, the second one empty, and the caret can stand on it.
+The text holds any UStr the program gives it; what the user adds goes through .onInput first.
+
+The offsets:
+.caret and .anchor are offsets in unicode scalar values, the unit of UStr.size.
+The selection is the text between .anchor and .caret; nothing is selected when they are equal.
+The user moves the caret and the anchor only to the boundaries of grapheme clusters.
+The program reads the caret and the anchor in a TextEvent, and has no way to set them.
+The grapheme cluster rules come from the Unicode version of the runtime, so a new Fearless release can move a boundary; with no way to set an offset, the program can not depend on where the boundaries are.
+A program .text or .uText erases the caret and the selection: the caret goes to the end of the new text and nothing is selected.
+So a program that rewrites the text in .onEdit sends the caret to the end at every key; a correction that keeps the caret belongs in .onInput.
+
+Incoming text:
+Every text the user adds goes through .onInput before it reaches the widget: a typed text, a pasted text, a text an input method commits.
+.onInput receives the incoming text and returns the text to insert; an empty result inserts nothing.
+The default reduces the incoming text to Str:
+  carriage return newline and carriage return become newline, tab becomes space;
+  each scalar value is decomposed (NFKD), so an accented letter becomes its letter;
+  what is still not in Str is dropped;
+  in a TextField, newline becomes space.
+A program that wants any UStr, or another correction, sets its own .onInput.
+A result with a newline for a TextField is a deterministic error.
+With the default, .text never throws unless the program itself gave a text that is not a Str.
+
+Open: the keys a desk turns into text.
+The program never sees the keys pressed inside a TextField or a TextArea, only the text that comes out of them.
+The same keys can give a different text on another desk: a keyboard layout puts q or a on the same key, a dead key turns ´ then e into é, an input method turns nihon into 日本 after the user picks it from a list.
+Each of these is the desk deciding which text the user typed, the way a paste is the clipboard deciding it, and the program receives that text through the same .onInput.
+This is less predictable than the rest of the Gui, and there is no clear better rule yet.
+
+Input methods:
+The text an input method is still composing is drawn underlined at the caret; it is not part of the text and reaches no handler.
+When the input method commits it, the committed text goes through .onInput like a typed text.
+The library tells the input method where the caret is, so that its list of choices opens next to the caret.
+
+Events:
+Each action of the user is one model task, queued with the clicks and the keys: one key, one paste, one cut, one undo.
+The task changes the text and the caret, runs .onEdit if the text changed, and the frame shows the result only when the task ends.
+So the text a handler receives is the current text, a key typed while the model is busy shows up late and is never lost, and a handler that changes the text never shows the text in between.
+.onEdit runs for every change of the text the user makes, with the text after the change; a move of the caret or of the selection alone runs nothing.
+A .text, .uText or .uAppend of the program never runs .onEdit or .onCommit, so a handler that sets the text can not loop.
+The committed text is the text of the last commit or of the last .text, .uText or .uAppend of the program.
+A commit runs .onCommit when the text differs from the committed text, and the text becomes the committed text.
+A commit happens on Enter and on Ctrl+Enter, and when the focus leaves the widget by a press elsewhere, Tab or Shift+Tab.
+A press elsewhere queues the commit first and the handlers of the press after it, so a Button action sees the committed text.
+A widget removed from the window (.clear, a replaced Border slot, a new .content) commits nothing.
+A new .onInput, .onEdit, .onCommit or .caret replaces the earlier one, as a new .action of a Button does.
+
+Focus:
+At most one TextField or TextArea of a frame has the focus; it receives the keys and shows the caret.
+A press on a TextField or a TextArea gives it the focus and places the caret at the pressed point.
+A press anywhere else in the window takes the focus away; a band and the Fearless corner are part of the window.
+Tab and Shift+Tab, in the widget that has the focus, give the focus to the next and the previous TextField or TextArea of the window, in the order of the tree, from the last back to the first.
+Without a widget with the focus, Tab reaches Frame.onKey like any other key.
+The focus moving away and back changes nothing in a widget: the text, the caret, the selection and the scroll position stay as they are.
+A widget without the focus shows no caret, and draws its selection in a muted color.
+The caret is shown only while the window has the keyboard.
+
+Keys:
+While a widget has the focus, the keys below and the keys that type text are used by it and never reach Frame.onKey, whether the widget is editable or not.
+Every other key reaches Frame.onKey: the function keys, Escape, Insert, and Shift, Ctrl and Alt themselves, so that a program can bind Ctrl+S.
+A key held when the focus changes sends its release where its press went.
+The close key and the full screen key keep their meaning.
+
+    Pointer
+      press            focus, caret at the pressed point, nothing selected
+      Shift+press      the selection extends to the pressed point
+      drag             selects from the press to the pointer; past an edge it scrolls
+      wheel            scrolls as on a Pane; Shift+wheel scrolls sideways
+      scroll bar       as on a Pane
+      right press      nothing
+    Moving the caret; with Shift, each also extends the selection
+      Left, Right      one grapheme cluster
+      Up, Down         one displayed line (TextArea)
+      Home, End        the start and the end of the displayed line
+      Ctrl+Home, Ctrl+End  the start and the end of the text
+      PageUp, PageDown one view (TextArea)
+    Editing; nothing on a widget that is not editable
+      a typed text     through .onInput, replaces the selection or goes at the caret
+      Backspace        deletes the selection, else the grapheme cluster before the caret
+      Delete           deletes the selection, else the grapheme cluster after the caret
+      Shift+Enter      inserts a newline (TextArea); nothing in a TextField
+      Ctrl+X           cuts the selection to the clipboard
+      Ctrl+V           pastes the clipboard through .onInput
+      Ctrl+Z           undo
+      Ctrl+Y, Ctrl+Shift+Z  redo
+    Always
+      Ctrl+A           selects all the text
+      Ctrl+C           copies the selection to the clipboard
+      Enter, Ctrl+Enter  commit
+      Tab, Shift+Tab   moves the focus
+
+There are no word movements: Ctrl+Left, Ctrl+Backspace and a double click do what Left, Backspace and two clicks do.
+The clipboard is the desk clipboard only, with the same keys on every desk; there is no selection pasted by the middle button.
+On a widget that is not editable, the user can still focus it, move the caret, select, copy and scroll; the caret is shown.
+
+Undo:
+Each user action that changes the text is one step of the history: undo goes back one step and restores the caret and the anchor of before the step; redo goes forward.
+A new change after an undo drops the steps that redo would replay.
+An undo and a redo are changes the user makes: they run .onEdit.
+With .textClearsUndo(True), the default, a .text, .uText or .uAppend of the program empties the history.
+With .textClearsUndo(False), it is one step of the history like a user action.
+
+Scrolling and wrapping:
+A TextField always has a horizontal scroll bar.
+A TextArea always has a vertical scroll bar, and a horizontal one exactly when .wrap is False.
+So whether a scroll bar is there depends on the kind of widget and on .wrap, never on the text.
+With .wrap(True), the default, a line of the text longer than the widget goes on over more displayed lines; the breaks fall between words when a line has a break, inside a word only when the word is longer than the widget, and never change the text.
+After every move of the caret by the user, the view scrolls by the least amount that shows the caret.
+A .text or .uText scrolls the view to show the caret at the end.
+.uAppend adds at the end, keeps the caret and the selection where they are, and moves an offset that the new text puts inside a grapheme cluster to the start of that cluster.
+If the view showed the last displayed line before .uAppend, it shows the last displayed line after it; otherwise the view does not move.
+
+The caret:
+The caret painter draws the caret with its origin at the top of the caret position, clipped to the widget, every repaint tick.
+.sinceMove is the time since the caret last moved or the text last changed, so a caret always shows right after a key.
+The default caret is a line 2 virtual pixels wide and .lineHeight high, in the foreground color, shown for the first 500 milliseconds of every second of .sinceMove.
+An animated caret picks an image from .sinceMove and draws it with .image.
+
+Why the user actions are model tasks.
+A text that the toolkit changes at once and reports to the program later loses keys: a handler that sets the text from an old event overwrites what the user typed since, and the caret jumps.
+Queued with the clicks and the keys, the user and the program change the text in one order.
+The cost is when the model is busy: the text shows up late, as in a busy terminal.
+
+Why Enter commits also in a TextArea.
+Chat programs commit on Enter and give a newline on Shift+Enter; document editors give a newline on Enter and commit on Ctrl+Enter.
+Shift+Enter is a newline and Ctrl+Enter is a commit in both, so only Enter is in question, and the shorter key goes to the commit.
 
 Removed
 =======
@@ -730,3 +912,5 @@ integrationTests/testingStandardLibrary/_test/test_gui_frame.fear: the location,
 The transitions driven by the user (maximize, the keys, the Fearless corner) are for the agentTools tests of the Manager, not for the standard library tests.
 integrationTests/testTicTacToe: gui_frozen.fear, gui_resizable.fear and gui_chunk.fear become one game on a square virtual pixel space; the resizable one keeps a square virtual pixel space whatever the request, so the board stays square.
 integrationTests/testGui1, testGui2, testGuiLive, testGuiImg: the Gui setters replace .fixedSize/.resizable/.undecorated/.decorated calls.
+integrationTests/testingStandardLibrary/_test: new checks for the text editing errors (a newline in the text of a TextField, an .onInput result with a newline for a TextField), the committed text rules, .uAppend keeping the caret and the selection, and .textClearsUndo.
+The keys, the pointer, the clipboard and the input methods are for the agentTools tests, not for the standard library tests.
