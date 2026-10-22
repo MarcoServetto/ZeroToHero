@@ -1,0 +1,191 @@
+# Attenuation design
+
+How a Fearless program gets less than the full `System`, and how a main runs another main of the same program in a new process with the same limits or more.
+
+### Fearless facts
+
+`System` is the root object capability: every observation of the world goes through a method of `System` or of a capability `System` gives (`CapTry`, `Output`, `InputCursor`, `AssetReadCapability`, `DownloadCapability`, `CapDataRead`, `CapDataReadWrite`, `CapManager`, `LogReader`, `Gui`).
+`System` and every capability it gives are not sealed: Fearless code can implement them.
+A main is `Main: { .main(sys: mut System): Void }`; the runtime gives it the one real `System` of the process.
+Observable Determinism: a method with no mut parameters, receiver included, returns structurally equivalent results for structurally equivalent inputs; non termination and deterministic exceptions are results.
+A non deterministic exception is caught only by a `CapTry`, and a `CapTry` comes only from a `System`.
+A type implementing `CaptureFree` captures nothing: its instance is a singleton, and its type name denotes that singleton. A top level type captures nothing by construction; a type declared inside a method captures nothing only when it implements `CaptureFree`.
+The Fearless manager runs each main in a JVM of its own, started with the folder of the project and the data projects of its links (ControllersDesign, Jobs and Data projects of a running main).
+`Info` is the one value with a text form that parses back: `Info.str` is JSON text, `Infos.fromStr` reads it.
+
+### Terms
+
+From the object capability literature, used here with one meaning each:
+- 'authority': what a program can do to the world. A capability carries authority; a `mut System` carries all of it.
+- 'attenuation': deriving from a capability a capability with less authority. An 'attenuator' is a function from a `mut System` to a `mut System` with less authority. Not: limiter, watchdog, restriction, filter.
+- 'caretaker': the pattern of a 'forwarder' and a 'gate'. The forwarder is an object delegating every call to the content of the gate; the holder of the gate changes what the forwarder reaches. Not: proxy, updatable capability.
+- 'revoke': to set the gate to a capability with no authority. 'grant': to set the gate to a capability with authority. A capability 'revoked' is one with no authority: every method of it throws.
+- 'membrane': a forwarder that wraps every object passing through it, so that revoking the membrane revokes also what came through it. A plain forwarder is 'shallow': what came through it stays usable after revocation.
+- 'capture free': the Fearless `CaptureFree` promise. An attenuator is capture free, so it is named by its type.
+- 'reconstruction': building in a new process the attenuated `System` of another process from the names of its attenuators, instead of transferring any object.
+
+## Current design
+
+Everything below is in `base/attenuation.fear`, in the runtime `rt/_CapProcess$18g$0.java` and `rt/Caretakers$16o$0.java`, and in the `Main.java` the backend writes for each package.
+
+### Attenuators
+
+```
+Attenuator: CaptureFree, F[mut System, mut System]{}
+```
+An attenuator receives a `mut System` and gives a `mut System` whose methods reach the world only through the received one.
+It is capture free, so its type name identifies it everywhere the program runs.
+An attenuator that keeps a capability writes the method as a delegation, `.out -> u.out`; one that revokes a capability throws from the method that gives it, `.download -> Error.nonDeterministic "NoDownload: the download capability is revoked."`; one that attenuates part of a capability gives a literal of that capability, delegating some methods and throwing from the others.
+The error of a revoked capability is non deterministic: for the attenuated program it is the environment refusing, as a file that can not be read, and only a `CapTry` catches it.
+The `ToIso` methods of the given `System` are `.iso -> Name#(u.iso.close)` and `.close -> s`, with `s` the name the literal gives itself (`this` names the attenuator): the iso image of an attenuated `System` is a fresh attenuation of the iso image of the received one.
+```
+NoDownload: Attenuator { u -> {'s
+  .try -> u.try; .out -> u.out; .inputCursor -> u.inputCursor; .assetRead -> u.assetRead;
+  .download -> Error.nonDeterministic "NoDownload: the download capability is revoked.";
+  .dataRead -> u.dataRead; .dataReadWrite -> u.dataReadWrite; .manager -> u.manager; .process -> u.process;
+  .readLog l -> u.readLog l; .gui -> u.gui;
+  .iso -> NoDownload#(u.iso.close); .close -> s;
+  }}
+```
+Attenuators compose by application: `NoManager#(NoDownload#(sys))` gives a `System` with neither capability, whatever the order; an outer attenuator reaches only what the inner one gives, so no attenuator recovers authority.
+
+### The revoked System and the caretaker
+
+```
+Systems: { .revoked: mut System }
+Caretakers: Sealed { #[T](gate: mut Var[mut T]): mut T -> _Magic! }
+```
+`Systems.revoked` is a `System` with no authority: every method throws the non deterministic error `This System is revoked: System.<method> can not be called.`; `.iso` gives another revoked `System` and `.close` gives itself.
+`Caretakers#(gate)` is the forwarder of a caretaker: a `T` delegating every call to the content of `gate` at the time of the call. Fearless code uses it as a revocable capability: `gate` starts holding `sys`, the forwarder is given away, `gate.set(Systems.revoked)` revokes it, `gate.set(sys)` grants it again.
+The forwarder is its own iso image (`.iso` and `.close` give the forwarder), as every capability is: a capability is a view on the world, not data with a region of its own.
+The forwarder is shallow: `fwd.out` is the `Output` of the content of the gate at that moment, and keeps working after the gate changes. A deep revocation is the end of the process (see Processes).
+The runtime implements the forwarder with one `java.lang.reflect.Proxy` over the interfaces of the initial content of the gate, calling on the current content the method of the same name, so one implementation serves every capability type; the two `ToIso` methods are the only ones not forwarded.
+
+### Deterministic reconstruction
+
+The runtime applies attenuators as follows, in every process it starts for a main:
+```
+Block#
+  .var[mut System] gate= {Systems.revoked}
+  .let u= {Caretakers#(gate)}
+  .let attenuated= {An#(...(A1#(u)))}
+  .do{ gate.set(realSystem) }
+  .return{ main.main(attenuated) }
+```
+`A1`...`An` are the attenuators of the process, in order; `A1` is applied first, so it is the closest to the real `System`, and `An` is what the main sees.
+While the attenuators run, every call on `u` throws a non deterministic error, and nothing in the process holds a `CapTry` yet: every `System` reachable by the attenuators is `u` or something built from it, and `u.try` throws. So an attenuator either does not call `u` while it runs, or ends the process. Attenuators are capture free, so `u` is their only mut input. By Observable Determinism, the `System` the attenuators build is structurally equivalent in every process applying the same names in the same order: the construction is a deterministic computation, with the one mut input muted.
+The real `System` enters only after the construction, through the gate, and only the forwarders reach it: no Fearless code of the process ever holds the real `System` itself.
+Consequences:
+- a process is fully described by the program, a main name and a list of attenuator names: no object crosses a process boundary;
+- the Fearless manager applies attenuators by name without running anything else of the program;
+- a main starting another main passes only names, and the new process rebuilds the same attenuation, then adds its own.
+
+### Processes
+
+```
+System: ... { mut .process: mut CapProcess; }
+CapProcess: ToIso[CapProcess], WidenTo[CapProcess]{
+  mut .run(main: Main): mut Action[Void];
+  mut .run(main: Main, attenuator: Attenuator): mut Action[Void];
+  }
+```
+`sys.process.run(SecondMain, OtherAttenuator)` gives an action. The `.run` of that action starts a new process of this program running `SecondMain`, waits for its end, and gives `.ok` when `SecondMain` completes, `.info` with the `Info` that `SecondMain` threw, deterministic or not.
+The new process applies the attenuators of this process, in their order, then `OtherAttenuator`: the authority of the new process is the authority of this one or less, and it can not be more. A one argument `.run` adds no attenuator.
+The new process starts as this one started: same input file, same data projects, same manager, same desk identity, same working folder; it prints to the output of this process. Files dropped on this process after its start are not input files of the new process.
+A `main` declared inside a method without `CaptureFree` has no instance of its own, so it has no name: the action gives an `Info` saying so.
+A process that can not start, or that ends before its main ends (a JVM error, a kill), is a non deterministic error of the `.run` of the action, as for `CapManager`.
+The process boundary is the deep membrane of this design: ending a process revokes everything it holds, also what came through a shallow forwarder.
+The end of a process also ends every process it started: a new process holds the parent lifeline of its parent, as every process the manager starts does.
+
+Runtime mechanics (an implementation decides these, the design only needs them to exist):
+- the attenuators of a process are the system property `fearlessAttenuators`, the qualified type names separated by commas; no property means no attenuator;
+- the `Main.java` of each package lists its mains and its attenuators, each name next to its instance, so the runtime goes from a name to the instance (in the new process) and from an instance to its name (in the calling process);
+- the new JVM is the `java` of `java.home` with the input arguments of this JVM, the class path of this JVM, the `Main` class of the package of the main and the name of the main; the properties `fearlessAttenuators`, `fearlessProcess.port` and `fearless.endMarker` are not inherited;
+- the result travels on a loopback port the calling process listens on: `ok` or `info` and the JSON text of the `Info`; the calling process reads it after the new process ended;
+- the standard output of this process is flushed before the new process starts, so the two outputs do not interleave out of order.
+
+### Manager
+
+Nothing below is implemented yet.
+
+The compiler records the attenuators of a project as it records its mains: `.fearless_out/<pkg>.attenuators.info` per compiled package, assembled into `.fearless_out/attenuators.info` after every compile, an Info object mapping each attenuator to its declaring file:
+```
+{
+  "hello.NoDownload": "_hello/attenuators.fear",
+  "hello.NoGui": "_hello/attenuators.fear"
+}
+```
+The attenuators of a code project are known exactly when its mains are known.
+
+`projects.info` gets, for a code project, `attenuators`: for each main, the ordered list of the attenuators the manager applies to it; a main absent from `attenuators` gets none:
+```
+"hello_world": {
+  "path": ...,
+  "kind": "code",
+  "mains": ["hello.Hello1"],
+  "attenuators": {"hello.Hello1": ["hello.NoDownload", "hello.NoGui"]},
+  ...
+```
+A `Run` starts each main with `-DfearlessAttenuators=` and its list, so the main sees what the attenuators give.
+A new verb, `Attenuate <name>`, sets the attenuators of one main: its second argument is the main, then the attenuator names, separated by spaces; no attenuator names removes the entry. `CapManager` gets `mut .attenuate(name: Str, main: Str, attenuators: List[Str]): mut Action[Void]`.
+Ill formed: an `Attenuate` naming a main that is not a main of the project, or an attenuator that is not an attenuator of the project (the message lists them), or the same attenuator twice; a `Run` of a main whose entry in `projects.info` names an attenuator that is not an attenuator of the project any more (the message names it: the list is edited, or the cache is out of date).
+The project area gets, for a code project with attenuators, an Attenuators collapsible area after the Output: one block per main, listing in order the attenuators applied to it, each with a Remove button and Up and Down buttons, and a drop down of the attenuators of the project with an Add button. Every change is an `Attenuate` of that main.
+The docs of the project (Open docs) show the attenuators as they show the mains, with their doc comments: a doc comment of an attenuator says what it revokes.
+
+### Properties
+
+- No recovery: an attenuator reaches only what it receives; a new process reaches only what its attenuators give; the real `System` is held by the runtime alone. The authority of a process is monotone along the tree of processes.
+- Deterministic reconstruction: the attenuated `System` of a new process is structurally equivalent to the one its parent would build with the same names, by Observable Determinism of the construction (see Deterministic reconstruction).
+- Fail loud: an attenuator calling the received `System` while it runs ends the process with a non deterministic error, in every process, at the first run.
+- An attenuator is static: the policy is in the names, chosen in `projects.info` or in the code of the calling main, never in a value computed at run time. This is what makes a list of names a faithful description of the authority.
+
+### Limits
+
+- State of an attenuator is per process. An attenuator counting calls (a download quota) starts from zero in every new process, so a main can get a fresh quota by starting a child. A quota attenuator that must hold across processes revokes `.process`, or counts the processes it starts and shares the quota among them.
+- A forwarder is shallow; revocation through a gate does not reach the capabilities obtained earlier through the forwarder. The deep revocation is ending the process.
+- A `Gui` is attenuated only as a whole (`.gui` throws or delegates): the `Gui` builder methods return `mut Gui`, so a Fearless literal attenuating part of a `Gui` must wrap every result, and `read .screenWidth` must be deterministic. A partial `Gui` attenuation is left for later.
+- Each `.run` starts a JVM: tenths of a second, not microseconds. A process is the unit of attenuation, not a function call.
+- The new process prints its own uncaught `Info` to its error output, as every process does, and the calling process receives the same `Info`: a calling process that rethrows it prints it twice.
+- The attenuated program sees the stack frames of the attenuator in the errors the attenuator throws.
+- Two mains of the same project started with the same desk identity: the desk shows the windows of the new process under the identity of the main the manager started. The manager could pass one identity per main of the project.
+
+### Open questions
+
+- Names. `Attenuator`, `Systems.revoked`, `Caretakers`, `CapProcess` follow the literature; `Caretakers#(gate)` could be `Forwarders#(gate)`.
+- Actions. `.run` gives an action, as every `CapManager` method does: the action carries the `Info` of the main, and `.run` of the action waits. A method that only starts something and can fail only because of the environment (`.start`, `.terminate` below) could be direct, throwing a non deterministic error, or an action for uniformity.
+- Where attenuators are applied in the portable Fearless: the portable runs every main with no attenuator; a project could carry a default list in a file the portable reads, or the portable stays plain.
+- Whether an anonymous capture free lambda `{u -> ...}` passed as an attenuator should be accepted: it has a name of its own (the backend names anonymous literals), so reconstruction works, but the manager can not list it. The current runtime accepts it.
+- Whether a revoked capability should throw a deterministic error instead: deterministic would let `Try#` catch a revocation anywhere, with no `CapTry`; non deterministic matches a gate changing under the program, which the program can not observe otherwise, and matches the errors of the environment.
+- The `Output` marks of a job: the manager marks where each main starts and ends; the output of a new process is inside the output of its parent main, with no mark of its own.
+
+### Second step: a process that runs beside its parent
+
+```
+CapProcess: ... {
+  mut .start(main: Main, attenuator: Attenuator): mut RunningMain;
+  }
+RunningMain: ToIso[RunningMain], WidenTo[RunningMain]{
+  mut .await: mut Action[Void];
+  mut .awaitUpTo(millis: Nat): mut Opt[mut Action[Void]];
+  mut .terminate: Void;
+  }
+```
+`.start` starts the process and returns at once. `.await` is the action of `.run`. `.awaitUpTo` gives the result when the process ends within the time, empty otherwise. `.terminate` ends the process and every process it started; a terminated process has `.await` giving a non deterministic error.
+Timeouts become deterministic from the point of view of the program: `start`, `awaitUpTo`, `terminate` is a computation whose result is the main completing or the main cut; the cut is clean because the process boundary is the membrane.
+
+### Third step: values across processes
+
+An `Info` is the one value with a text form that parses back, so it is the first value to cross:
+```
+InfoMain: { .main(sys: mut System, arg: Info): Info }
+CapProcess: ... {
+  mut .run(main: InfoMain, arg: Info, attenuator: Attenuator): mut Action[Info];
+  }
+```
+The argument travels to the new process with the names, the result travels back with the `ok` line. Any immutable value with `ToInfo` and a parser from `Info` crosses this way; a general `imm` transfer needs a serialization protocol for every immutable type, which Fearless does not have yet, and which `DataType.info` is a start of.
+
+### Related work and the paper
+
+Capability operating systems and sandboxes (KeyKOS, seL4, Capsicum, CloudABI, WebAssembly components) pass authority across process boundaries by transferring handles: the child receives objects. Here nothing is transferred: the child reconstructs its authority from names, and the reconstruction is correct because the type system makes the construction a deterministic computation. The new ingredient is a language whose Observable Determinism turns a description (a list of type names) into a faithful account of an object graph (the attenuated `System`): reconstruction is as good as transfer, and cheaper, since a name is portable and an object is not.
+The caretaker and the attenuating forwarder are Miller's; the membrane is Van Cutsem and Miller's; `CaptureFree` plays the role of E's `DeepFrozen` auditor, the guarantee that a value is closed. Erlang spawns by module, function and arguments rather than by closure for the same reason: a name travels, a closure does not. Fearless adds that the function named is pure by typing, so the spawned process is known to reach the same authority its parent describes.
+The claim to make: attenuation composed by reconstruction gives, for the first time, capability attenuation that is at the same time dynamic (chosen per run, per main, by the user or by the calling main) and statically known (the names are the whole policy), across operating system processes, with no serialization of capabilities.
