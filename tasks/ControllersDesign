@@ -6,31 +6,32 @@ Next to it, and independent from it, Controllers also holds:
 - `agentTools`: a library driving the real pointer and keyboard, for GUI tests of any program.
 - `benchmarks`: speed measures of Fearless programs against the runtime.
 
-The manager is an island: it behaves the same on every system, and this is its objective. A user moving from one system to another finds the very same manager.
-The manager never folds on the conventions of the system it runs on. When a part of the system (a tray, a dialog, a desktop shell) would make the manager behave differently than this design, the manager does not use that part that way: the design holds on every system.
-When the system does not offer what the manager needs (a display, a file system feature the manager relies on), the manager stops with a fatal error saying so.
-This is the only concept of 'fatal error'. The manager should attempt to discover if we are unsupported as early as possible, but may discover fatal errors while running. For example, the HD could stop working or the OS could start reporting we are headless from now on.
-Thus, the following are not fatal errors: calling the manager program with wrong arguments either wrong format or arguments pointing to non existing folders
-The problems of one project (bad file names, a bad icon, a missing folder, a failing compile) are not fatal errors, they are part of normally running the manager.
+The manager is an island: its objective is to behave the same on every system, so a user moving from one system to another finds the very same manager.
+The manager never bends to the conventions of the system it runs on: when a part of the system (a tray, a dialog, a desktop shell) would make the manager behave differently from this design, the manager does not use that part that way.
+A fatal error means that the system does not offer what the manager needs (a display, a file system feature the manager relies on), and the manager stops saying so.
+The manager looks for fatal errors as early as possible, but may find one while running: for example, the disk stops working, or the system starts reporting that it is headless.
+Not fatal errors: calling the manager program with wrong arguments (a wrong format, or a path to a missing folder), and the problems of one project (bad file names, a bad icon, a missing folder, a failing compile), which are part of normally running the manager.
 
-A fatal error is shown in a dialog listing the jobs that are running;
-closing the dialog ends the manager and every job it runs.
-When the manager ends for the fatal error, this happens in order:
--The dialog shows. Nothing below happens until the dialog has been closed.
--All the running jobs are terminated. Wait for confirmation of the termination.
--Delete the manager folder.
--Removes all the associations the manager took.
+On a fatal error, in order:
+1. A dialog shows the error and lists the running jobs. Nothing below happens until the dialog is closed.
+2. Every running job is terminated, and the manager waits until each one has ended.
+3. The manager folder is deleted.
+4. Every association the manager took is removed.
+5. The manager ends.
 
 Everything the manager is asked to do either happens or is refused with a message naming what was refused and why; nothing is silently skipped.
 
 ## Program and manager folder
 
 A manager is one program folder, `fearlessManaged<version>`, for example `fearlessManaged0_001`.
-Its manager folder is `fearless<version>`, next to the program folder, on every system. The manager folder holds everything the manager remembers; deleting it makes the manager start from nothing. That is, a starting manager detecting no manager folder should do the needed clean up, including icons and files associations.
+Its manager folder is `fearless<version>`, next to the program folder, on every system. The manager folder holds everything the manager remembers; deleting it makes the manager start from nothing: a manager starting with no manager folder first cleans up what the manager took outside it, such as icons and file associations.
 A manager folder that can not be created is a fatal error naming it.
 
-## Starting the 'single' manager.
-Starting the manager program leaves one message in the manager folder. There could be multiple parallel attempts to start the manager, and the 'single' manager could be already running. The manager that is recognized as the 'single' manager handle the messages, while the other manager processes terminate just after leaving their message in the manager folder.
+## The single manager
+
+Several runs of the manager program may start at the same time, and the single manager may already be running.
+Every run of the manager program leaves one message in the manager folder.
+One run is the single manager: it applies the messages, its own included. Every other run ends right after leaving its message.
 
 The manager program takes:
 - zero arguments: the message is `Show`: show the window, starting the single manager when none runs;
@@ -46,24 +47,21 @@ FearlessCommandRegister Base16:2F646174612F68656C6C6F
 ```
 (the last one registers `/data/hello` on Linux).
 A first argument starting with `FearlessCommand` is always a verb, never a path.
-Every run of the manager program writes its message file. A run that is not the single manager then ends; a run that becomes the single manager applies its own message file like every other message file.
-If a manager is called with bad arguments, it will leave the message `InvalidCall` with the details, and when the single manager take that message up, it will show the error in a dialog as for all the other dialogs and continue running.
-If a manager encounter some (fatal) error but in a set up where the single manager is likely to either be active or become active soon, it just leaves the message `FatalError` with the details and end normally. When possible, the single manager is the only thing taking actual actions.
-When the single manager handles `FatalError` it does treat it as a fatal error.
-If a manager encounters fatal errors likely to prevent a 'single' manager to emerge, it will delete the manager folder and remove all the associations the manager took. By definition there are no running fearless processes to terminate in this case.
+When possible, the single manager is the only one acting:
+- A run called with bad arguments leaves the message `InvalidCall` with the details; the single manager shows the details in a dialog and goes on running.
+- A run meeting a fatal error while the single manager runs, or is likely to start soon, leaves the message `FatalError` with the details and ends normally; the single manager handles `FatalError` as a fatal error.
+- A run meeting a fatal error likely to keep any single manager from starting deletes the manager folder and removes every association the manager took; in this case no job runs, so none is terminated.
 
-The single manager runs until Quit, or until a fatal error. Quit ends the manager and every job it runs.
+The single manager runs until `Quit`, or until a fatal error.
 
-Closing the window hides it, but we need to make sure something is left graphically to show the continued life of the `single` manager process.
-If an OS supports system tray/StatusNotifierItem, this is what we use.
-Clicking it, with any button, opens its menu: Show manager and Quit manager.
-
-On a system with no tray, the manager shows the icon itself.
-The manager window is closed and replaced with another window: a window of the size of a tray icon, with no title bar and no border, holding only the Fearless icon, in the bottom right corner of the screen and always above the other windows.
-Clicking that window, with any button, opens the menu of the tray icon.
+Closing the window hides it, and an icon shows that the single manager is still running.
+On a system with a tray (a system tray or a StatusNotifierItem), the icon is in the tray.
+Clicking the icon, with any button, opens its menu: Show manager and Quit manager.
+On a system with no tray, the manager shows the icon itself, in a stand-in window of the size of a tray icon, with no title bar and no border, holding only the Fearless icon, in the bottom right corner of the screen and always above the other windows.
+Clicking the stand-in window, with any button, opens the same menu.
 For half a second after that menu shows, a press or a release on its entries does nothing.
 An entry of that menu is chosen by a click: a press and a release of a button on that same entry.
-When the manager is 'shown again', the simulated tray icon window is removed and the manager window is shown again.
+Showing the manager again removes the stand-in window and shows the manager window.
 
 ## Requests and messages
 
@@ -74,11 +72,11 @@ A message is the file `messages/<time>-<id>.msg` in the manager folder: `<time>`
 Only the manager program writes message files: the manager program writes `messages/<time>-<id>.tmp`, then renames `messages/<time>-<id>.tmp` to `messages/<time>-<id>.msg`, so the single manager never reads a partial message. The single manager deletes every `.tmp` file older than 60 seconds.
 The single manager relies on the system telling it when a file appears in `messages`. When a run of the manager program becomes the single manager, it writes a `.tmp` file in `messages` and waits for that report; no report within 5 seconds is a fatal error. Some file systems, for example some network drives, do not report new files.
 Every other program commanding the manager (the Eclipse plugin, a script, a test) runs the manager program with the arguments `FearlessCommand<Verb>` and the arguments of the verb.
-Gui operations are just another way to command the manager, and they all go via the `FearlessCommand<Verb>` fearless manager parameter route:
-every gui operation has an equivalent message, and every message is either ill formed or has an equivalent gui operation.
+A GUI operation commands the manager through the same `FearlessCommand<Verb>` messages:
+every GUI operation has an equivalent message, and every message is either ill formed or has an equivalent GUI operation.
 A request changes files (those of the manager folder, those in the `.fearless_out` of a project, or the Fearless plugin of an Eclipse), or starts or ends jobs, or is one of the two requests about the manager itself: `Show` and `Quit`.
 The window actions that do none of this are not requests and have no message: Open docs, Base documentation, Browse and Logs, which open another program on a file, and the Clear button of an Output, which empties it. One that finds nothing to open says so in a dialog.
-Since all errors are caused by messages and all messages go via the single manager, a program that sends a message gets the potential error via the manager GUI. If the manager gui is not displayed, it is displayed first.
+Every error comes from a message, and the single manager applies every message: so a program sending a message sees its error in the manager window, which is shown first when hidden.
 Showing the window asks the desktop to bring the window to the front. A desktop that keeps windows from taking the focus, such as GNOME, may leave the window behind the window the user is working in; such a desktop tells the user in its own way, for example with a notification that Fearless Manager is ready.
 
 A message is a verb, then the arguments of the verb, one per line.
@@ -133,23 +131,20 @@ Ill formed messages:
 Whether a message is ill formed is decided when it arrives, from the message and the current state, before anything is compiled, run or written to the Output.
 An ill formed message is shown in a dialog, never in the Output: the Output of a project holds only the results of well formed requests. A failing compile is such a result: the request is right, the code is broken.
 
-The window's GUI elements should be designed with good GUI design with the principle of 'discoverability' in mind.
-This includes both display elements and buttons and menus allowing to send the messages described above.
+The elements of the window, both those displaying information and the buttons and menus sending the messages above, follow good GUI design, with discoverability in mind.
 
 ## Info files
 
 The files the manager and the compiler write for the manager and for Eclipse (`projects.info`, `manager.info`, `mains.info`) are Info files: text in the Fearless Str allowed character set.
-The Info format is a simplified Json format. 
-Infos are strings `"..."`, lists `[a, b]`, or objects `{"key": value, ...}` whose keys are distinct strings;
-Comments are not supported.
-Inside an info string, `\"` is a quote, `\\` a backslash and `\n` a newline; no other escape are present; thus `"\t"` would be an invalid Info.
+The Info format is a simplified JSON: an Info is a string `"..."`, a list `[a, b]`, or an object `{"key": value, ...}` whose keys are distinct strings; there are no comments.
+Inside an Info string, `\"` is a quote, `\\` a backslash and `\n` a newline; there is no other escape, so `"\t"` is an invalid Info.
 
 A text that may hold characters outside the Fearless character set is a tagged text:
-- `"Str:.."` then the text, when every character is in the Fearless character set: `"path": "Str:\"C:\\data\\hello\""`;
-We use this when the string is a valid Fearless Str. Note `\\` instead of `\\\\` in the example above. The fearless Str is `C:\data\hello` and prints as `"C:\data\hello"` (fearless code that would produce that same string content when parsed). This works since fearless strings do not use `\` for escapes at all.
-For example the string `Hello\nWorld` is produced from the fearless code `"Hello"|"World"` and thus it would be encoded as `"Str:\"Hello\"|\"World\""`
-- `"UStr:.."` then the text as `UStr.escape` prints it. We use this when the string would not be a valid Str but it would be a valid UStr. Refer to UStr.escape to understand this format.
-- `"Base16:.."` then the bytes. This is needed, for example, to represent arbitrary file system paths that may not be valid unicode. This encoding should faithfully represent the bytes that the current file system would be able to interpret as the specific file path.
+- `"Str:.."` then the Fearless code of a string literal giving the text, when the text is a valid Fearless `Str`.
+  Fearless strings use no `\` escapes, so the text `C:\data\hello` is the code `"C:\data\hello"`, and the Info string `"Str:\"C:\\data\\hello\""`: each `\` is doubled once, by the Info escape.
+  The text `Hello\nWorld` is the code `"Hello"|"World"`, and the Info string `"Str:\"Hello\"|\"World\""`.
+- `"UStr:.."` then the text as `UStr.escape` prints it, when the text is not a valid `Str` but is a valid `UStr`.
+- `"Base16:.."` then the bytes, for example for a file system path that is not valid Unicode: exactly the bytes the current file system reads as that path.
 
 
 ## Registered projects
@@ -185,10 +180,10 @@ Each project has:
 
 A code project whose links name a missing project, or a project of the wrong kind, or an invalid project, is invalid, and the message says which link and why.
 
-A `projects.info` that is not a valid Info file, or does not hold what is above, is a fatal error pointing at the offending text in the Frontend error message style. 
-A manager initiated action should never edit a project info file in a way that is invalid, thus the fatal error above shows either a manager bug or OS/user interference in the manager folder.
+A `projects.info` that is not a valid Info file, or does not hold what is above, is a fatal error pointing at the offending text in the Frontend error message style.
+The manager never writes an invalid `projects.info`, so this fatal error shows a bug of the manager, or the system or the user changing the manager folder.
 
-The whole file can be edited by hand from the GUI, or via a message naming a file (outside of the manager folder) with the intended new content.
+The whole file can be edited by hand in the GUI, or replaced by an `EditMetadata` naming a file outside the manager folder with the new content.
 The editor of the GUI remembers the content it opened; when the user commits, and `projects.info` no longer holds that content, the editor refuses the commit in a dialog, and the user edits the new content again; otherwise the commit is an `EditMetadata`.
 An edit is accepted only if the whole text is valid, and an error points at the offending text in the Frontend error message style.
 An accepted edit applies at once: projects it removes are forgotten, projects it adds are registered as they are, every project is checked again.
@@ -227,13 +222,13 @@ The mains of a code project are known when it is not out of date: the concrete m
 When reading them finds a package that compiling would compile, or reading them fails, the project state becomes out of date. A project whose files change while it is checked is checked again.
 
 While the window is shown, the manager notices changes made on disk by other programs: every three seconds it checks the selected project, and in turn one other project, and updates states, badges and buttons, including moving a project in and out of invalid. A project with a running job is checked when the job ends. Every request naming a project checks it.
-The manager does not check for changes when the window is not shown. This include the tray, true or emulated, and minimization.
+While the window is not shown (hidden behind the tray icon or the stand-in window, or minimised), the manager does not check for changes.
 
 The icon of a project is the only PNG file in the folder `.config/icon` of the project, or, with no such folder, an icon generated from the project name. More than one PNG, or a PNG that can not be read, makes the project invalid.
 
 Kinds change request: from idle to any kind, from any kind back to idle. Changing kind keeps `mains`, `reads` and `edits`: they have no effect while the project is not code, and come back if it becomes code again.
 
-## General Gui shape:
+## The window
 Dropping files or folders on the window is `Register` of each of them.
 
 A menu bar at the top, with the Manager menu: Add folder (`Register`, through a file picker), Edit project metadata (`EditMetadata`), Connect Eclipse (`ConnectEclipse`), Base documentation, Reset (`Reset`, after a confirmation dialog saying what Reset does, with the buttons Reset and Cancel, Cancel preselected), Quit (`Quit`).
@@ -244,7 +239,10 @@ A busy project (compiling or running) shows an animated badge.
 Clicking an icon is `Show` with the name of its project.
 Double clicking an icon of a project in the state `code: compiled` is `Run` of that project naming its only main, or, for a project with several mains, its selected mains (`mains` in `projects.info`). For any other project, and for a project with several mains and no selected main, a double click is a click.
 
-## Project area contains, top to bottom:
+## Project area
+
+The project area holds, top to bottom: the header, the shortcut files, the Output, the Extensions area, the Links area and the Logs.
+The Output and every area after it are collapsible, with vertical scroll bars, and at most half the height of the window.
 
 A header on one line: the project icon, the project name, and the following buttons:
 - The main button, by the state of the project:
@@ -258,27 +256,24 @@ for an idle project "Become data", "Become editable data" and "Become code".
 - Browse, opening the project folder in the file explorer, Forget, and for a code project Delete cache (`DeleteCache`).
 The kind buttons, Forget and Delete cache are greyed out while the project has a job.
 
-For a code project, if there is more than one main
-we see "Run 'V'" where V is some arrow down signalling that there is more than just running.
-When Run V is pressed, it behaves like a drop-down menu showing the available mains, with a checkbox near their names, the selected mains checked, and a 'Run' button at the end of the checkbox list, disabled if nothing is checked. That 'Run' button is `Run` naming the checked mains; the Run button of a project with one main is `Run` naming that main.
-  
-For a code project whose mains have a `Shortcut`, after the header we see each shortcut file as the simplified desktop shows a project: the icon of its `Shortcut`, with the name of the shortcut file under it.
+Run V, for a code project with more than one main, is Run followed by a down arrow, showing that it offers more than running.
+Pressing Run V opens a drop-down menu: the mains, each with a checkbox, the selected mains checked, then a Run button, disabled while nothing is checked. That Run button is `Run` naming the checked mains; the Run button of a project with one main is `Run` naming that main.
+
+The shortcut files, for a code project whose mains have a `Shortcut`: each shortcut file is shown as the simplified desktop shows a project, the icon of its `Shortcut` with the name of the shortcut file under it.
 Double clicking on it is `OpenWithOrShortcut` with the path of its shortcut file: the very message a double click on that file on the desktop sends.
 
+The Output, for every project, with a Clear button on its title. What the main button produces always goes there, and the Output keeps all of it until it is cleared.
 
-For every project, we have an Output collapsible area with vertical scroll bars and max size of 1/2 of the gui height, and a Clear button on its title. What the main button produces always goes there, and the Output keeps all of it until it is cleared.
-
-For a code project whose mains open extensions (`OpenWith`), after the Output we see a collapsible area with vertical scroll bars and max size of 1/2 of the gui height, one block per main opening extensions:
+The Extensions area, for a code project whose mains open extensions (`OpenWith`), with one block per main opening extensions:
   "Extensions this main opens:" (each extension with its icon),
   "Conflicting extensions:" (each extension another main also opens, naming that main).
 
-For a data project we see a similar collapsible area with vertical scroll bars and max size of 1/2 of the gui height, listing in editable format the code projects that can see this data, how and under what aliases; another code project can be added there.
+The Links area, listing in editable form, each with how and under what aliases:
+- for a data project, the code projects that can see this data; another code project can be added there;
+- for a code project, the data projects this project can see; another data project can be added there.
+The code project holds the link (`reads` and `edits` in `projects.info`), and is the one that becomes invalid when the link is broken: an edit from either side is a `Link` of the code project, validated when received like every message.
 
-For a code project, the same area lists in editable format the data projects this project can see, how and under what aliases; another data project can be added there.
-
-The code project holds the link (`reads` and `edits` in `projects.info`), and is the one that becomes invalid when the link is broken: an edit from either side is a `Link` of the code project. As usual, every edit goes via the messages and is validated when received.
-
-For a code project we have Logs; collapsible area with vertical scroll bars and max size of 1/2 of the gui height; showing the log files the mains wrote in .out/logs, with a Logs button opening that folder in the file explorer.
+The Logs, for a code project: the log files the mains wrote in .out/logs, with a Logs button opening that folder in the file explorer.
 
 
 ## Jobs
@@ -331,7 +326,7 @@ Mechanically `OpenWith` and `Shortcut` are the same: both claim an extension for
 
 The manager registers every claimed extension to itself. The desktop starts the manager on the double clicked file; the manager looks up which mains claim that extension and runs the right one.
 
-A missing extension is chosen by the manager. In this case, extensions are meant to be hidden or ignored by users, who recognise their files by the icon.
+A missing extension is chosen by the manager; such an extension is meant to be hidden or ignored by users, who recognise their files by the icon.
 
 ### Base
 
@@ -420,7 +415,7 @@ For each shortcut claim, a file `<name>.<extension>` in the top level of the pro
 Since every file name in a project is lowercase, `fooBar.png` is not a valid asset name, so `foo_bar` is the only name that autoloading turns into `FooBar`. The inverse does not exist for every type name: type names can end in primes (`Foo'`), and can contain `_` followed by a lowercase letter (`Foo_bar`), which autoloading never produces. Such a main, one whose name turns into a Windows reserved name (`Con`), or two shortcut mains of the project giving the same file name and extension (`a.Bar` and `b.Bar`), fail the compile:
 `Main "hello.Foo'" can not have a Shortcut: its name has no matching file name. A main with a Shortcut has a name that can be mapped to a file name like "FooBar" can be mapped to "foo_bar".`
 
-The shortcut file is a visible file of the project: it follows the project file rules, and the project checks see it. Creating it must not make the project read as modified: this is not a problem: the file is at top level and all the source and autoloaded assets must be inside some folder structure. A shortcut file the user deleted is created again by the next compile; one the user moved out of the project stays where it is, and a new one appears.
+The shortcut file is a visible file of the project: it follows the project file rules, and the project checks see it. Creating it does not make the project out of date: it is at the top level, outside every package, where no source file or autoloaded asset is. A shortcut file the user deleted is created again by the next compile; one the user moved out of the project stays where it is, and a new one appears.
 
 ### Reconciling
 
@@ -429,11 +424,9 @@ Reconcile takes the whole wanted set at once, so after each change of the captur
 The checks of `reconcile` change nothing when they fail, so the previous associations stay in place. A failing `reconcile` after a compile makes that compile fail, and the in memory map goes back to the previous `mains.info` of that project (the manager keeps it until reconcile succeeded). The error names the failing extension, the main claiming it and the program holding it.
 
 The manager settles conflicts among the Fearless apps it manages; with the OS and every other program it needs a clear yes or no, and the two kinds of extension get different answers.
-- `.fearless` belongs to the Fearless family alone. A program outside the Fearless family opening it, or the user's own choice of a program for it (a Windows UserChoice, even when it names this manager, or a Linux `[Default Applications]` entry), refuses it. Only one Fearless program at a time opens Fearless extensions: taking `.fearless` replaces the Fearless program that had it (another manager, the portable Fearless).
+- `.fearless` belongs to the Fearless family alone. A program outside the Fearless family opening it, or the user's own choice of a program for it (a Windows UserChoice, even when it names this manager, or a Linux `[Default Applications]` entry), refuses it. Only one member of the Fearless family at a time opens `.fearless` (see File associations).
 - A Fearless extension (`fappNNN`, `ffileNNN`) gets the very same setup as `.fearless`, and is checked like it. These extensions are invented by Fearless, so on a machine where one of them is set up in any other way than the manager's own, the setup was tampered with: a captured one lost is a fatal error, and a new one refused fails the compile.
 - A system extension gets the same setup as `.fearless` too, but the manager takes it over from whatever program opens it: the user allowed it on purpose, so other programs registered for it do not refuse it. A Windows UserChoice still does, as for `.fearless`: the user pinned that extension to a program, and the manager does not undo the user's own choice. When an extension leaves `systemExtensions`, the manager removes its own setup only, and the previous program opens those files again.
-
-The portable Fearless reconciles `.fearless` under its own identity at every start, removing the manager's associations, and a running manager quits. That is accepted: at its next start the manager takes back every extension it manages.
 
 #### Extensions on Linux
 
@@ -503,13 +496,11 @@ It is the autoloaded type `base.IconsConflict`. `base` autoloads its assets as i
 
 ## Eclipse
 
-Connect Eclipse asks for Eclipse: its program, a file next to it, its folder, or the folder Eclipse was unzipped into. The Eclipse folder is the one folder holding `.eclipseproduct`.
-The connect eclipse operation uses a file picker and do some heuristics to find the eclipse folder from the chosen file.
-The accepted cases are as follows:
--we select a file that is the eclipse folder.
--we select a file that is directly inside the eclipse folder.
--we select a file whose direct parent folder is inside the eclipse folder.
--we select a folder that contains only the eclipse folder.
+Connect Eclipse asks for Eclipse with a file picker. The Eclipse folder is the one folder holding `.eclipseproduct`, and the picked path finds it when the picked path is:
+- the Eclipse folder;
+- directly inside the Eclipse folder, as the program of Eclipse or a file next to it;
+- directly inside a folder directly inside the Eclipse folder;
+- a folder holding only the Eclipse folder, as the folder Eclipse was unzipped into.
 Connect Eclipse puts the plugin in the Eclipse folder, with `manager.info` next to it: the path of the manager program folder. From that path the plugin finds the manager program, the manager folder and the compiled standard library.
 
 Plugin design: Eclipse reads `projects.info` and follows up into the `.fearless_out` files when needed to recover information and display the state.
@@ -517,13 +508,20 @@ The Output of a running program has no bound on its size, so the manager does no
 Eclipse shows a refused `Run` or `Compile` only through the dialog of the manager: the Output view stays empty.
 Eclipse follows exactly one job: the job of its last `Run` or `Compile`; Eclipse sends no other `Run` or `Compile` until that job ends, except for a save. Everything else Eclipse shows (the error of the last compile, the unit test log) is read from files.
 
-Eclipse commands the manager by running the manager program with the arguments `FearlessCommand<Verb>` and the arguments of the verb. If a message ends up in error, the manager shows the error as usual.
+Eclipse commands the manager as every other program does, and the manager shows the error of a message as usual.
 
 Saving a file of a code project in Eclipse compiles the project. Users save often, and a compile near its end should not be thrown away:
 - if the followed job is a compile of that project that started more than 15 seconds ago, the save is ignored: the files stay unsaved in their editors;
 - otherwise Eclipse sends `Terminate` of the project (a run is always ended, and so is a younger compile), saves every open file of the project together, and sends `Compile` of the project.
 
-The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and writes into a project folder only the files and folders the user saves or creates; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not its mirror is an error. Every two seconds it reflects `projects.info` and the `.fearless_out` folders: the error of the last compile (`compile_error.txt`) in the Problems view, on its file at its line, or on the project while that file does not exist, and the error of the last check (`check_error.txt`) on the project, each while it is not out of date, and in the JUnit view the unit test log the running main writes in `.out/logs`: its complete records, its lines up to the last newline, without a test case whose closing line is not written yet. It shows the followed job in the Output view, emptied when a job starts, like the Output area of the manager: a view with no buttons, where a stack frame and the header of a compile error are links opening that file at that line. Fearless files show with syntax highlighting. Build (`Compile` for a code project with valid content, `Check` for any other), Clean (`DeleteCache`), the main button below, the kind switches of the Fearless menu of a project, New Project (`Register`), Show in manager (`Show` with the name of the project) and Forget project are messages to the manager.
+The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and writes into a project folder only the files and folders the user saves or creates; a project the manager forgets is removed from the workspace.
+A workspace project named like a registered project that is not its mirror is an error.
+Every two seconds the plugin reflects `projects.info` and the `.fearless_out` folders:
+- in the Problems view, the error of the last compile (`compile_error.txt`) on its file at its line, or on the project while that file does not exist, and the error of the last check (`check_error.txt`) on the project, each while it is not out of date;
+- in the JUnit view, the unit test log the running main writes in `.out/logs`: its complete records, its lines up to the last newline, without a test case whose closing line is not written yet.
+The plugin shows the followed job in the Output view, emptied when a job starts, like the Output area of the manager: a view with no buttons, where a stack frame and the header of a compile error are links opening that file at that line.
+Fearless files show with syntax highlighting.
+Build (`Compile` for a code project with valid content, `Check` for any other), Clean (`DeleteCache`), the main button below, the kind switches of the Fearless menu of a project, New Project (`Register`), Show in manager (`Show` with the name of the project) and Forget project are messages to the manager.
 The toolbar of the Fearless perspective holds the main button of the manager for the project of the active editor or of the selection. It shows what pressing it does, each with an image of its own: Check, Compile, Run, Run V, or Terminate while Eclipse follows a job of that project. Run V asks which mains to run, with the selected mains checked. Besides it, the toolbar of the Fearless perspective holds only the buttons of text editing (Save, Undo, Redo, Search, the toggles of the editor and the navigation in the text); a button that does nothing for Fearless or repeats another is hidden, and so is the Run menu, in the Fearless perspective only. Eclipse finds the state from the files, as the manager does: the kind and the links in `projects.info`, the marker, the packages and their rank files, and whether compiling would compile some package. A project whose content is invalid in another way shows Compile, and the manager refuses that `Compile`, saying why.
 The toolbar of the Fearless perspective also holds New Package and New Type, for the project of the active editor or of the selection; each asks for a path inside the project folder and refuses a path that is not valid, saying why:
 - New Package takes a path like `lib/_beer`, and makes the package folder `_beer` with the folders holding it;
@@ -552,8 +550,8 @@ The text is read with the tokens of the compiler. The expression before the curs
 A type declared in the edited file that the last compile does not know has every method of its supertypes: when supertypes have methods with the same name and number of parameters, all of them are proposed.
 
 ## Error management
-Errors are present in Coordinator (`Report`, `Violation`) when shared with portableFearless, and in Controllers when unique to the manager.
-Controllers must have a similar (`Report`, `Violation`) classification inside it.
+
+An error shared with the portable Fearless is in Coordinator (`Report`, `Violation`); an error of the manager only is in Controllers, which has its own `Report` and `Violation`.
 
 ## Future design
 
