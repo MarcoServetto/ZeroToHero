@@ -977,6 +977,145 @@ A program can not set the scroll position of a Pane, so it can not scroll a tile
 Graphics draws lines one virtual pixel wide and no arcs, so the spinner of testGuiTiles is eight dots of fading alpha, drawn with .oval.
 .text shapes its text at each call, and a painter runs at each repaint tick: a cache of shaped lines in the library would cost the program nothing.
 
+Sections
+========
+
+    Pane:_Container[Pane]{ ... mut .sections(mut Scope[Sections]):mut Pane; }
+    Border:_Container[Border]{ ... mut .northSections(mut Scope[Sections]):mut Border; ...southSections, eastSections, westSections, centerSections }
+    Split:Widget[Split]{ ... mut .firstSections(mut Scope[Sections]):mut Split; mut .secondSections(mut Scope[Sections]):mut Split; }
+    Sections:_Container[Sections]{
+      mut .section(name: Str, title: mut Scope[Pane]): mut NewSection;
+      mut .column: mut Sections;
+      mut .tabs: mut Sections;
+      mut .autoCollapse(Bool): mut Sections;
+      mut .scroll(Bool): mut Sections;
+      mut .expand(name: Str): mut Sections;
+      mut .collapse(name: Str): mut Sections;
+      mut .index(name: Str, index: Nat): mut Sections;
+      mut .remove(name: Str): mut Sections;
+      mut .onToggle(mut SectionHandler): mut Sections;
+      mut .onClose(mut SectionHandler): mut Sections;
+      read .names: List[Str];
+      read .index(name: Str): Nat;
+      read .isExpanded(name: Str): Bool;
+      }
+    NewSection:{
+      mut .content(mut Scope[Pane]): mut Sections;
+      mut .contentB(mut Scope[Border]): mut Sections;
+      mut .contentS(mut Scope[Split]): mut Sections;
+      }
+    SectionHandler:{ mut #(sections: mut Sections, name: Str): Void; }
+
+A Sections is a list of sections.
+A section has a name, a title and a content.
+Tabs and accordions are two ways to show the same list: .tabs and .column.
+
+Words:
+A section is expanded when its content shows, and collapsed when it does not.
+Expand and collapse are about the content only: the title always shows.
+Close is only what the x of a title asks for: to take the section out of the list.
+Remove is what the program does to take a section out of the list.
+So no word means "hide the content" in one way of showing and "take the section out" in the other.
+
+Names and indexes:
+The name identifies the section.
+Every section of a Sections has its own name: adding a section with a name already in the list is a deterministic error.
+The index of a section is its position in the list, from 0; it changes when the program adds, moves or removes a section.
+Every method takes a name; .names gives the name at each index, .index(name) gives the index of a name.
+A name that is not in the list is a deterministic error that lists the names in the list.
+.index(name, index) moves the section to the position index, counted after the move: then .index(name) is index.
+An index past the last position is a deterministic error.
+
+Adding a section:
+.section(name, title) runs the scope title on a new Pane and returns a NewSection: an object with only .content, .contentB and .contentS.
+The content method runs its scope on a new Pane, Border or Split, and adds the section at the end of the list.
+So every section has a title and a content: a .section without its content does not typecheck, and two lists, one of titles and one of contents, never need to match.
+The title is a Pane, so a title holds what a Pane holds (a Label, a Picture, Buttons), laid out as in any Pane.
+A new section is collapsed.
+
+    .sections{:: .tabs
+      .section("readme", {:: .label{:: .text "readme.txt"}}).content{:: ...}
+      .section("main", {:: .label{:: .text "main.fear"}}).content{:: ...}
+      .expand "readme"
+      }
+
+autoCollapse:
+With .autoCollapse(True), the default, at most one section is expanded: expanding a section collapses the expanded one.
+With .autoCollapse(False), any number of sections can be expanded.
+.autoCollapse(True) on a Sections with more than one expanded section keeps expanded only the first of them in the list.
+The user can expand any number of sections, so this setter never fails because of what the user did.
+No section expanded is a normal state, also with .autoCollapse(True).
+
+Column and tabs:
+.column, the default, shows the sections one under the other: each title, and under it its content when the section is expanded.
+.tabs shows the titles in one row, and the content of the expanded section in the space below the row.
+.tabs shows the content of at most one section, so .tabs needs .autoCollapse(True): .tabs after .autoCollapse(False), and .autoCollapse(False) after .tabs, are deterministic errors of the second setter.
+.column and .tabs can be called at any time, and the expanded section stays expanded.
+
+The user:
+A click on a title expands its section when the section is collapsed, and collapses it when it is expanded, in a column and in tabs.
+So a click on the title of the expanded tab collapses it, and the space below the row is empty.
+A click on a title is a press and a release on the same title.
+A click on a widget inside the title that takes clicks (a Button with an action, a widget with a .clicked or .doubleClicked handler) is a click on that widget, not on the title.
+A Button with no action lets the click reach the title, as it lets a click reach its parent everywhere else.
+The two clicks of a double click are two clicks on the title.
+After a click on a title, .onToggle runs with the name of the clicked section, on the model queue, like a Button action.
+.onClose shows an x at the end of every title.
+A click on the x runs the handler of .onClose with the name of the section, on the model queue; the section stays until the program removes it:
+
+    .onClose{s, n -> Block#(s.remove n, Void)}
+
+A program asking "save changes?" shows its question instead, and removes the section later or never.
+The handlers run only for clicks of the user: .expand, .collapse, .index and .remove never run them.
+A new .onToggle or .onClose replaces the earlier one.
+
+A collapsed content:
+A collapsed content is not drawn, takes no mouse events, and the Tab key does not move the keyboard into it.
+It keeps its widgets and their state, for example the text of a TextField and the scroll position of a Pane.
+The program changes it as any widget in the window: a log grows while its section is collapsed.
+Collapsing a section takes the keyboard from a TextField or TextArea of its content, as removing the section does.
+.remove takes the title and the content out of the window, as .clear takes out the children of a Pane.
+
+Layout:
+The head of a section is the row of its title.
+In a column, a head spans the width of the Sections inside the insets, and is as tall as its title.
+The title stands after a mark 16 virtual pixels wide and a widthGap, at its own size; with .fill it takes the head up to the x.
+With .onClose, the x takes the last 16 virtual pixels of the head, after a widthGap.
+The content of an expanded section is under its head, after a heightGap, placed as a child in a line of a Pane: at its own size and centered, and with .fill as wide as the head.
+A heightGap separates a section from the next one.
+In tabs, the heads stand in one row from the left, separated by a widthGap; a head is its title at its own size and the x, and the row is as tall as the tallest title.
+The content space is below the row after a heightGap, down to the bottom inset.
+The expanded content takes the content space as a child takes the center of a Border: at its own size and centered, or filling it with .fill, and it is clipped to it.
+A row wider than the Sections is clipped, with a warning.
+
+The size of a Sections is state, as the size of every widget: expanding and collapsing never change it.
+A new section grows the Sections to fit that section alone: its head, a heightGap and its content, plus the insets.
+.pack fits every section as if all of them were expanded at once: in a column all the heads and all the contents, in tabs the row, a heightGap and the largest content.
+So the size of a Sections never depends on what the user expanded.
+A column taller than the Sections is clipped, with a warning.
+.scroll(True) shows a vertical scroll bar, as .stackScroll(True) on a Pane, and the column scrolls instead.
+In tabs, the row and the content space always fit the Sections, so the bar has nothing to scroll.
+The scroll position stays the same number of virtual pixels when a section expands or collapses.
+
+Drawing:
+Each head is a band in the faint color of a scroll track, darker when the section is expanded.
+In a column, the mark is an arrow that points right for a collapsed section and down for an expanded one.
+The mark and the x are drawn in the foreground color of the Sections.
+
+Why a click on the expanded tab collapses it.
+A click on a title does the same in a column and in tabs: .column and .tabs change where the titles and the contents are, never what a click does.
+
+Why the x only asks.
+The program owns the list: a section leaves the list only when the program removes it.
+Toolkits where the x removes the tab by itself need a second mechanism to refuse it, and an event after the tab is gone.
+
+Why the handlers do not run for the calls of the program.
+A handler that runs for the calls of the program runs in the middle of building the sections, and a handler that expands a section runs itself again.
+
+Why names.
+An index changes when the list changes, so an index saved by the program, or a handler queued before a removal, can point to another section.
+A name points to the same section for as long as the section is in the list.
+
 Tooltips
 ========
 
