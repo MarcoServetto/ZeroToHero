@@ -60,8 +60,8 @@ Attenuators compose by application: `NoGui#(NoInput#(sys))` gives a `System` wit
 
 ```
 ErrorSystem: System { ...every method throws...; .iso -> ErrorSystem; .close -> this; }
-Revocation: { mut #: Void; mut .iso: iso Revocation; mut .close: mut Revocation; }
-RevocationRoot: Revocation{ mut .start: Void; mut .revoke: Void; mut .iso: iso RevocationRoot; mut .close: mut RevocationRoot; }
+Revocation: ToIso[Revocation]{ mut #: Void; }
+RevocationRoot: Revocation, ToIso[RevocationRoot]{ mut .start: Void; mut .revoke: Void; }
 System: ... { ...; mut .revocation: mut RevocationRoot; }
 RevokableSystem: { #(r: mut Revocation, sys: mut System): mut System -> {
   .try->Block#(r#,RevokableTry#(r,sys.try));
@@ -76,7 +76,8 @@ A `Revocation` is a flag in one of three states, in this order and with no way b
 `sys.revocation` gives a new `RevocationRoot`, with `.start` and `.revoke`.
 `Revocation` needs magic/native implementation: `r.iso` gives a copy sharing the flag of `r`; the copy of a root is a root, the copy of a check only `Revocation` checks only.
 Copies of the same root can reach a parallel flow stage as iso elements or as the iso `ctx` of a stage.
-Thus we can have code that runs multiple `.revoke` and `#` at the same time, and the holder of a root is not the only one changing its flag: `.start` on a started or revoked root, and `.revoke` on one not started or already revoked, are non deterministic errors. Note that this is the same for two capabilities trying to write on a file. All those kinds of capabilities need some native syncronization to not step on each other: here one volatile field.
+Thus we can have code that runs multiple `.revoke` and `#` at the same time: there is no single holder of the root. Note that this is the same for two capabilities trying to write on a file. All those kinds of capabilities need some native syncronization to not step on each other: here one volatile field.
+`.start` on a started or revoked root, and `.revoke` on one not started or already revoked, are errors; we keep them non deterministic, since the holder of a copy has no way to know the state. A root is an object capability, so a deterministic error there would be allowed too.
 A `Revocation` holds no value and has no `read` method: the copies share the flag and nothing else, so a copy promoted to `imm` is inert.
 
 `RevokableSystem#(r,sys)` wraps `sys` by calling `r#` at every delegation, and returning revocable versions of all the other capabilities, transitively: one wrapper type per capability type, each as long as the type.
