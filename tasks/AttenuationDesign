@@ -60,25 +60,28 @@ Attenuators compose by application: `NoGui#(NoInput#(sys))` gives a `System` wit
 
 ```
 ErrorSystem: System { ...every method throws...; .iso -> ErrorSystem; .close -> this; }
-Revocation: ToIso[Revocation]{ mut #: Void; }
-RevocationRoot: Revocation{ mut .start: Void; mut .revoke: Void; }
+Revocation: { mut #: Void; mut .iso: iso Revocation; mut .close: mut Revocation; }
+RevocationRoot: Revocation{ mut .start: Void; mut .revoke: Void; mut .iso: iso RevocationRoot; mut .close: mut RevocationRoot; }
 System: ... { ...; mut .revocation: mut RevocationRoot; }
-RevokableSystem: { #(r: mut RevocationRoot, sys: mut System): mut System -> {
+RevokableSystem: { #(r: mut Revocation, sys: mut System): mut System -> {
   .try->Block#(r#,RevokableTry#(r,sys.try));
   ...
-  .iso->RevokableSystem#(r.iso,sys.iso);
+  .iso->RevokableSystem#(r.iso.close,sys.iso.close);
   } }
 ```
 `ErrorSystem` is a `System` with no authority: every method throws the non deterministic error `System.<method> is revoked.`, `.iso` gives another `ErrorSystem` and `.close` gives itself.
 
 A `Revocation` is a flag in one of three states, in this order and with no way back: not started, started, revoked.
 `r#` returns when started; otherwise it throws the non deterministic error `Revocation.start was not called yet.` or `Revocation.revoke was called.`.
-`sys.revocation` gives a new `RevocationRoot`, the one object that can change the flag, with `.start` and `.revoke`; `.start` on a started or revoked root, and `.revoke` on one not started or already revoked, are deterministic errors.
-`Revocation` needs magic/native implementation: `r.iso` gives a copy sharing the flag of `r`, and a copy can only check the flag.
-Multiple copies from the same r using r.iso can reach a parallel flow stage as an iso element
-Thus we can have code that runs multiple `.revoke` and # at the same time. Note that this is the same for two capabilities trying to write on a file. All those kinds of capabilities need some native syncronization to not step on each other.
+`sys.revocation` gives a new `RevocationRoot`, with `.start` and `.revoke`.
+`Revocation` needs magic/native implementation: `r.iso` gives a copy sharing the flag of `r`; the copy of a root is a root, the copy of a check only `Revocation` checks only.
+Copies of the same root can reach a parallel flow stage as iso elements or as the iso `ctx` of a stage.
+Thus we can have code that runs multiple `.revoke` and `#` at the same time, and the holder of a root is not the only one changing its flag: `.start` on a started or revoked root, and `.revoke` on one not started or already revoked, are non deterministic errors. Note that this is the same for two capabilities trying to write on a file. All those kinds of capabilities need some native syncronization to not step on each other: here one volatile field.
+A `Revocation` holds no value and has no `read` method: the copies share the flag and nothing else, so a copy promoted to `imm` is inert.
 
-`RevokableSystem#(r,sys)` wraps `sys` by calling `r#` at every delegation, and returning revocable versions of all the other capabilities, transtively.
+`RevokableSystem#(r,sys)` wraps `sys` by calling `r#` at every delegation, and returning revocable versions of all the other capabilities, transitively: one wrapper type per capability type, each as long as the type.
+The wrapper of `Gui` stops at `.run`: the `Frame` and widgets `.run` gives are not wrapped.
+`.iso` does not check the flag: the copy it gives checks the flag at every call, so a revoked `System` gives images that are revoked too.
 
 ### Deterministic reconstruction
 
@@ -123,8 +126,8 @@ Implementation details:
 the qualified type names separated by commas; no property means no attenuator;
 - the `Main.java` of each package can trivially use reflection to summon the instance of the needed attenuators from their names.
 - the new JVM is the `java` of `java.home` with the input arguments of this JVM, the class path of this JVM, the `Main` class of the package of the main and the name of the main; the properties `fearlessAttenuators`, `fearlessProcess.port` and `fearless.endMarker` are not inherited;
-- the result travels on the same port mechanism a main called directly from the manager/eclipse communicate its stdoutput. The calling process listens on: `ok`, or `det` or `nondet` followed by the JSON text of the `Info`; the calling process reads it after the new process ended and rethrows the `Info` with the same kind. Extra care need to be placed to be able to contactenate the two stack frames.
-- the standard output of this process is pushed via the port as well as the error info. This is the same exact behaviour the main started from eclipse uses to beam its output and errors to eclipse via the open port.
+- the result travels on a loopback port the calling process listens on: `ok`, or `det` or `nondet` followed by the JSON text of the `Info`, with the stack frames of the new process as `CapTry` records them; the calling process reads it after the new process ended and rethrows the `Info` with the same kind, so a `CapTry` of the calling process appends its own frames: the two stacks concatenate. The uncaught `Info` of a process with a port goes on the port, not on its error output, so an `Info` is printed once, by the process it escapes from.
+- the new process uses its standard output and error as the calling process does; the calling process reads them and pushes them to its own standard output and error, as the manager reads the output of the main it started. Making this scale over several levels of processes may need a refactor.
 
 ### Manager
 
@@ -146,8 +149,8 @@ The compiler records the attenuators of a project where it records its mains: `.
   ...
 ```
 A `Run` starts each main with `-DfearlessAttenuators=` and its list, so the main sees what the attenuators give.
-Verb `Attenuate <name> <main> <attenuator1>...<attenuatorn>`, sets the list of attenuators of `main` to the attenuators given, in that order; with no attenuator the list is empty. `CapManager` gets `mut .attenuate(name: Str, main: Str, attenuators: List[Str]): mut Action[Void]`.
-//Why Action[Void]? this seems the same issue we just discussed is present in another capability.
+Verb `Attenuate <name> <main> <attenuator1>...<attenuatorn>`, sets the list of attenuators of `main` to the attenuators given, in that order; with no attenuator the list is empty. `CapManager` gets `mut .attenuate(name: Str, main: Str, attenuators: List[Str]): Void`, as every method of `CapManager` returns its value and throws (https://github.com/FearlessLang/StandardLibrary/pull/211 and its tests https://github.com/FearlessLang/Coordinator/pull/262).
+The manifest files are their own PRs (https://github.com/FearlessLang/Coordinator/pull/263, https://github.com/FearlessLang/Controllers/pull/144).
 Note that it is not ill formed to name a main that is not a main of the project, or an attenuator that is not an attenuator of the project. This makes for a more resilent set up.
 a `Run` on a project with non existing attenuators or non existing mains being attenuated (even if not part of the mains we are trying to run) is refused. The manager GUI will show some support to make it easy to rename them showing the valid list; this is a GUI only feture.
 
@@ -156,15 +159,11 @@ The project area gets an Attenuators collapsible area after the Output: one bloc
 ### Limits
 
 - State of an attenuator is per process. An attenuator counting calls (a download quota) starts from zero in every new process, so a main can get a fresh quota by starting a child.
-//- Two mains of the same project started with the same desk identity: the desk shows the windows of the new process under the identity of the main the manager started. The manager could pass one identity per main of the project.
-//I have no idea what the above means
+- The manager starts each main with `-DfearlessDesk.id=<id>`, one id per main of a project. The runtime sets the window class of every window of the program to that id (`WM_CLASS` on X11, the application user model id on Windows), and the manager writes a `.desktop` file (a shortcut on Windows) with that class, the name and the icon of the main: this is how the desk shows the windows of a main under its name and icon. A new process inherits the arguments of its parent JVM, so the desk shows its windows under the name and icon of the parent main. The parent could pass the id of the main it starts.
 
 ### Open questions
 
->`Gui` needs the `Frame` and widgets too, or stops at `.run`.
-Stops at run.
->the portable runs every main with no attenuator;
-Yes
+- The portable runs every main with no attenuator.
 >The `Output` marks of a job: the manager marks where each main starts and ends; the output of a new process is inside the output of its parent main, with no mark of its own.
 This all may have to be revisioned to make it more consistent now that we have subprocesses.
 
