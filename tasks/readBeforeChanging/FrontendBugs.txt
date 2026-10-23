@@ -1,106 +1,69 @@
 Good:
-  Inference only produces code that would be accepted if written by hand: every inferred
-  capability, type and annotation can be written in source with the same meaning.
-  A:{ read .b: mutH B -> {}; ... }   is inferred as   A:{ read .b: mutH B -> mut B; ... }
+  Inference produces only code that is accepted when written by hand.
+  A:{ read .b: mutH B -> {} }   infers   A:{ read .b: mutH B -> mut B }
 Bad:
-  A:{ read .b: mutH B -> {}; ... }   is inferred as   A:{ read .b: mutH B -> mutH B; ... }
-  (the parser rejects mutH and readH in front of a literal or a type expression, so a
-  hygienic capability on an inferred literal or type expression is a bug; the same holds for
-  any other inferred output that could not be written)
+  A:{ read .b: mutH B -> {} }   infers   A:{ read .b: mutH B -> mutH B }
+Why: the parser rejects mutH and readH in front of a literal or a type expression.
+
 Good:
-  base.BaseContainer, like base.Sealed, is a flag type: it is only implemented, never used
-  as a type. Code using it as a type may be rejected.
-  MyId:base.BaseId[base.BaseContainer[A],base.BaseContainer[B]]{ #(x)->x.as{::} }   is rejected
+  base.BaseContainer and base.Sealed are only implemented; code using them as a type may be rejected.
+
 Good:
-  An overriding method refines only nominal types: the reference capability of its result
-  and of each parameter stays as in the overridden method (X and rc X count as the same
-  when the bound of X is exactly {rc}).
+  An override refines only nominal types: X and rc X are the same when the bound of X is exactly {rc}.
   Sup:{ mut .h: mut P }  Sub:Sup{ mut .h: iso P }   is rejected
+
 Good:
-  A generic type can be implemented twice with type arguments differing in capabilities;
-  overriding decides whether its methods can be reconciled.
   Foo[T:*]:{}  A:Foo[imm Bar],Foo[mut Beer]{}   is accepted
-  Foo[T:*]:{ .get: T }  A:Foo[imm Bar],Foo[mut Beer]{}   is rejected, no .get can keep both capabilities
+  Foo[T:*]:{ .get: T }  A:Foo[imm Bar],Foo[mut Beer]{}   is rejected
+Why: overriding decides whether the methods of the two supertypes can be reconciled.
+
 Good:
-  Every instance of a base.CaptureFree type has an empty ROG: the type and all its subtypes
-  capture nothing, so a mut and an imm reference to the same instance cannot observe any
-  difference. The self name of a CaptureFree declaration, at top level or inside a method,
-  keeps the capability of the declaration (imm by default) in every method, even when the
-  declaration is created by name as mut.
-  A0:{.m:A->A:base.CaptureFree{'self read .get:imm A->self}}
-  B:{.m:mut A->mut A; .alias(a:mut A):imm A->a.get}   is accepted
+  The self name of a base.CaptureFree declaration, at top level or inside a method, has the capability of the declaration (imm by default) in every method, also when the declaration is created as mut.
   A:base.CaptureFree{ read .me: imm A -> this }   is accepted
+Why: an instance of a CaptureFree type has an empty ROG, so a mut and an imm reference to it observe the same.
+
 Good:
-  An object literal that captures only iso and imm values and has no abstract mut method is
-  born iso, whatever capability is written in front of it and whether or not it names itself.
-  Its self name keeps the written capability (imm by default) in every method.
+  A literal capturing only iso and imm values, with no abstract mut method, is born iso whatever capability is written in front of it; its self name has the written capability (imm by default).
   Make:{ #: iso A -> imm A{'self read .me: imm A -> self } }   is accepted
+
 Good:
-  The type system does not track objects that are guaranteed imm, or imm in practice, without
-  being typed imm (objects with no mutable state reachable, declarations none of whose
-  subtypes capture, ...): sound programs relying on that may be rejected, also where a similar
-  case is accepted. The standard library offers methods to turn such values into imm; those
-  are used instead of extending the type system.
+  Values imm in practice but not typed imm are not tracked; sound programs relying on them may be rejected, also where a similar case is accepted. Programs call the standard library methods that turn such values into imm.
   A:{ read .me: imm A -> this }   is rejected
+
 Good:
-  A generic method is type checked once, under the bounds of its type variables: the type
-  system does not reason about each capability of a bound separately. With a bound of more
-  than one capability, a program can be rejected although replacing the type variable by
-  each capability of its bound gives accepted programs. The paper and the language both
-  reject the programs below. These are accepted limitations: they keep the type system
-  performance under control and the formalism simple to reason about.
-  View[E:*]:{ read #(e: read E): read E }
-  U:{ .apply[E:*](v: View[E], e: read/imm E): read/imm E -> v#e }   is rejected
-    (with imm the promoted signature returns imm; with mut and read the declared one fits)
-  Clone[E]:{ read #(e: read E): mut E }
-  U:{ .dup[E:*](c: Clone[imm E], e: E): E -> c#e }   is rejected
-    (with imm the promoted signature returns iso; with mut and read the declared one fits)
-  Clone[E]:{ read #(e: read E): mut E }
-  U:{ .dup[E:*](c: Clone[imm E], e: E): E -> c#(c#e) }   is rejected
-  K[Y:iso,mut]:{ imm .m(a: Y): mut Y }
-  C:{ .c[Z:iso,mut](k: imm K[Z], a: Z): Z -> k.m(a) }   is rejected
-    (with iso the promoted signature returns iso; with mut the declared one fits)
-  K[Y:**]:{ imm .m(a: read/imm Y): Y }
-  C:{ .c[Z:iso,readH](k: iso K[Z], a: Z): Z -> k.m(a) }   is rejected
-    (with iso the declared signature fits; with readH only the readH promotion does)
+  A generic method is checked once, under the bounds of its type variables: with a bound of several capabilities a program may be rejected even if each single capability gives an accepted program. The paper agrees.
+  Clone[E]:{ read #(e: read E): mut E }  U:{ .dup[E:*](c: Clone[imm E], e: E): E -> c#e }   is rejected
   A:{ .m[Z:imm,readH](a: read/imm Z): Z -> a }   is rejected
-    (read/imm Z <= Z holds for imm and for readH, but not for both at once)
-  Get[Y:**]:{ read .get: Y }
-  A:{ .m[X:imm,readH](y: read/imm X): mut Get[X] -> mut Get[X]{ read .get: X -> y } }   is rejected
-  Box[T:**]:{}  Sub:{ .m[X:mut,read](x: Box[read X]): Box[read/imm X] -> x }   is rejected
-    (read/imm X is read for both mut and read, but type arguments are compared as written)
-  Box[T:**]:{}  Sub:{ .m[X:read,imm](x: Box[X]): Box[read/imm X] -> x }   is rejected
-  Get[Y:*]:{ mut .get: Y }
-  A:{ .m[X:iso,mut](x: X): mut Get[read/imm X] -> mut Get[read/imm X]{ mut .get: read/imm X -> x } }   is rejected
-    (the captured x is seen as read X in a mut method: imm for iso and mut for mut would fit)
+  Box[T:**]:{}  Sub:{ .m[X:mut,read](x: Box[read X]): Box[read/imm X] -> x }   is rejected, type arguments are compared as written
+  Get[Y:*]:{ mut .get: Y }  A:{ .m[X:iso,mut](x: X): mut Get[read/imm X] -> mut Get[read/imm X]{ mut .get: read/imm X -> x } }   is rejected, x is seen as read X in a mut method
+Why: checking each capability separately costs performance and complicates the formalism.
+
 Good:
-  An iso captured by an object literal is seen as imm inside the literal, whatever the
-  capability of the literal and however the literal uses it. A literal that has to hold an
-  iso as mut receives it opened as mut, through Block#.openIso.
-  H:{ mut .get: mut S }
+  An iso captured by a literal is imm inside the literal; Block#.openIso gives a literal a mut view.
   A:{ .mk(x: iso S): mut H -> mut H{ .get -> x } }   is rejected
-  A:{ .mk(x: iso S): mut H -> Block#.openIso y = x .return { mut H{ .get -> y } } }   is accepted
 Bad:
   A:{ .mk(x: iso S): mut H -> mut H{ .get -> x } }   is accepted, x captured as mut
-  (whether x needs to be mut or imm inside the literal depends on the types of the positions
-  it occupies, so a rule choosing mut by the shape of the code rejects literals that need x
-  as imm, and a rule choosing by need makes the capture depend on inference)
+Why: choosing mut by the shape of the code rejects literals that need imm; choosing by need makes capture depend on inference.
+
 Good:
-  The = sugar binds a name or a destructuring pattern, never _: the .let desugaring is not
-  worth it for a value that is not used.
   A:{ Block#.let _ = {5} .return {2} }   is rejected
-Bad:
-  A:{ Block#.let _ = {5} .return {2} }   is accepted, binding nothing
+Why: the .let desugaring is not worth it for an unused value.
+
 Good:
-  "::" is the only parameter of the method using it: a method using "::" declares no parameter.
-  A:{ .m(x: A): A; .m(x: A, y: A): A }  B:A{ .m -> :: }   is accepted, as .m(x) -> x
+  A:{ .m(x: A): A; .m(x: A, y: A): A }
+  B:A{ .m -> :: }   is accepted, as .m(x) -> x
   B:A{ .m(x) -> ::.foo(x) }   is rejected
 Bad:
   B:A{ .m(x) -> ::.foo(x) }   is accepted, as .m(x, y) -> y.foo(x)
+
 Good:
-  An input large enough to need a very deep recursion (a huge comment or string, deeply
-  nested expressions, a long chain of calls) may end in a StackOverflowError: recursion is
-  the natural shape of the parser, inference and the type system, and every recursive step
-  would otherwise be suspect. Catching the StackOverflowError and reporting a good error
-  message is the only improvement wanted.
-  A:{} /*  followed by 50 000 times *a  and */   may overflow the stack
+  A very deep input (a huge comment or string, deep nesting, a long call chain) may end in a StackOverflowError; catching it and reporting a good error is the only improvement wanted.
+Why: recursion is the natural shape of parser, inference and type system.
+
+Good:
+  A read or imm literal without a self name may implement a mut method; no dead code error.
+Why: the literal is promoted to iso before its methods are checked.
+
+Good:
+  A:{ mut .foo: A }  Need#(A{})   gives no hint to write mut A{}; read A{} gets that hint.
+Why: a literal without capability is imm by default, and mut A{} would also need .foo.
