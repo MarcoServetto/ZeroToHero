@@ -50,34 +50,44 @@ OnlyOutput: SystemAttenuator { u -> mut ErrorSystem{'s .try -> u.try; .out -> u.
 `NoDownload` revokes one capability and delegates the others; `OnlyOutput` keeps two and revokes the others by extending `ErrorSystem`, overriding `.iso` and `.close` too, since the `.iso` of `ErrorSystem` is an `ErrorSystem`.
 Attenuators compose by application: `NoManager#(NoDownload#(sys))` gives a `System` with neither capability, whatever the order; an outer attenuator reaches only what the inner one gives, so no attenuator recovers authority.
 
-### ErrorSystem and StartRevokeSystem
+### ErrorSystem, Revocation and StartRevokeSystem
 
 ```
 ErrorSystem: System { ...every method throws...; .iso -> ErrorSystem; .close -> this; }
+Revocation: ToIso[Revocation]{ mut #: Void; }
+RevocationRoot: Revocation{ mut .start: Void; mut .revoke: Void; }
+System: ... { ...; mut .revocation: mut RevocationRoot; }
 StartRevokeSystem: System {
   mut .start(sys: mut System): Void;
   mut .revoke: Void;
   }
-StartRevokeSystems: { #: mut StartRevokeSystem -> ... }
+StartRevokeSystems: { #(r: mut RevocationRoot): mut StartRevokeSystem -> ... }
 ```
 `ErrorSystem` is a `System` with no authority: every method throws the non deterministic error `System.<method> is revoked.`, `.iso` gives another `ErrorSystem` and `.close` gives itself.
 It is a type, not a value, so a test uses `ErrorSystem` as the `System` of a main that must not touch the world, and an attenuator that keeps a few capabilities extends it (`OnlyOutput` above).
 
-`StartRevokeSystems#` gives a `System` in one of three states, in this order and with no way back: not started, started, revoked.
-Not started: every method throws the non deterministic error `System.<method> is revoked: .start was not called yet.`.
-Started, by `.start(sys)`: every method delegates to `sys`.
-Revoked, by `.revoke`: every method throws the non deterministic error `System.<method> is revoked: .revoke was called.`.
-`.start` on a started or revoked `StartRevokeSystem`, and `.revoke` on one not started or already revoked, are deterministic errors: the holder of a `StartRevokeSystem` knows its state, since only its own calls change it.
-`StartRevokeSystems#` is written in Fearless: a `Var[mut Opt[mut System]]` and a `Var[Bool]` telling whether `.start` ran.
-`.iso` delegates as every other method: on a started `StartRevokeSystem` it gives the iso image of the `System` passed to `.start`.
-Revocation reaches the calls on the `StartRevokeSystem` itself. What its methods gave before `.revoke` (an `Output`, a `CapTry`, the iso image) belongs to the `System` passed to `.start` and stays usable. The open question 'Depth of revocation' below discusses reaching those too.
+A `Revocation` is a flag in one of three states, in this order and with no way back: not started, started, revoked.
+`r#` returns when started; otherwise it throws the non deterministic error `Revocation.start was not called yet.` or `Revocation.revoke was called.`.
+`sys.revocation` gives a new `RevocationRoot`, the one object that can change the flag, with `.start` and `.revoke`; `.start` on a started or revoked root, and `.revoke` on one not started or already revoked, are deterministic errors: the holder of a root knows its state, since only its own calls change it.
+`Revocation` is the one magic part of the design: `r.iso` gives a copy sharing the flag of `r`, and a copy can only check the flag.
+This is sound because a `Revocation` is created by a `System`, so its flag is part of the world: `.start` and `.revoke` write the world, `r#` reads it, and the answer is either a value or the non deterministic error of the world refusing.
+A pure Fearless program can already build this flag with a marker file written through `dataReadWrite` and read through the `iso` images of the `System`; the magic flag shares across `.iso` exactly what a file could share, and nothing more.
+In particular it holds no value: a value crossing `.iso` would be a mut alias across an iso boundary, since a `mut System` may be a user literal capturing a `Var`, as the mocks extending `ErrorSystem` are.
+A `Revocation` has no `read` or `imm` method: a copy promoted to `imm` is inert, so neither `Cache` nor imm promotion can observe the flag.
+A copy can reach a parallel flow stage as an iso element or as the iso `ctx` of `.map(ctx, f)`; the holder of the root is blocked in the flow terminal, so in pure code no `.revoke` runs concurrently with a check; a concurrent `.revoke` needs an asynchronous capability from a `System`, and the race surfaces only as value or non deterministic error, as two `System`s writing one file.
+
+`StartRevokeSystems#(r)` gives a `System` in the three states of the root `r` it receives.
+Not started, and revoked: every method throws the non deterministic error of `r#`.
+Started, by `.start(sys)`: every method checks `r#` and delegates to `sys`; `.start` stores `sys` in a `Var[mut Opt[mut System]]`, the one `Var` of the design.
+`.iso` gives `_Revocable#(r.iso.close, sys.iso.close)`: a pure Fearless `System` that holds a copy of the flag and the iso image, checks the copy before delegating every call, and makes its own `.iso` the same way. So revocation reaches every image, at every depth, including the `System` a `CapTry` body receives from `sys.try#(sys.iso.close, {s' -> ...})`.
+`.revoke` forwards to `r.revoke`. What the other methods gave before `.revoke` (an `Output`, a `CapTry`) belongs to the `System` passed to `.start` and stays usable: the open question 'Depth of revocation' below is about wrapping those too.
 
 ### Deterministic reconstruction
 
 The runtime applies attenuators as follows, in every process it starts for a main:
 ```
 Block#
-  .let s= {StartRevokeSystems#}
+  .let s= {StartRevokeSystems#(realSystem.revocation)}
   .let attenuated= {An#(...(A1#(s)))}
   .do{ s.start(realSystem) }
   .return{ main.main(attenuated) }
@@ -154,7 +164,7 @@ The docs of the project (Open docs) show the attenuators as they show the mains,
 ### Limits
 
 - State of an attenuator is per process. An attenuator counting calls (a download quota) starts from zero in every new process, so a main can get a fresh quota by starting a child. A quota attenuator that must hold across processes revokes `.process`, or counts the processes it starts and shares the quota among them.
-- Revocation through a `StartRevokeSystem` reaches the calls on that `StartRevokeSystem`; the deep revocation is ending the process.
+- Revocation through a `StartRevokeSystem` reaches the calls on that `StartRevokeSystem` and on its images; the capabilities it gave (an `Output`, a `CapTry`) stay usable; the deep revocation is ending the process.
 - An attenuator of `Gui` wraps every `mut Gui` the builder methods return, and the `Frame` and widgets `.run` gives: it is as long as the `Gui` API. The getters of `Gui` are mut methods (`mut .screenWidth`), so a `Gui` attenuator answers them as it likes.
 - Each `.run` starts a JVM: tenths of a second, not microseconds. A process is the unit of attenuation, not a function call.
 - The attenuated program sees the stack frames of the attenuator in the errors the attenuator throws, when a `CapTry` catches them.
@@ -162,8 +172,8 @@ The docs of the project (Open docs) show the attenuators as they show the mains,
 
 ### Open questions
 
-- Depth of revocation. With `.revoke` reaching only the calls on the `StartRevokeSystem`, a program that gave away `s.out` keeps printing after `s.revoke`. The deeper option: every method of a started `StartRevokeSystem` wraps what it gives in a literal of the same capability type that checks the state at every call, one level deep (an `Output` wrapper, a `CapTry` wrapper, ...), so `.revoke` reaches every capability obtained through `s`. The cost is one wrapper type per capability type, each as long as that type; `Gui` needs the `Frame` and widgets too, or stops at `.run`. The thorny part is `.iso`: an `iso System` is, by its type, disconnected from every mut of the program, and the state of `s` is a mut `Var`; a pure Fearless wrapper of `s.iso` can not share the state of `s`, so what `.iso` gives escapes revocation, and a `CapTry` body gets its `System` from `.iso` (`sys.try#(sys.iso.close, {s' -> ...})`): with deep wrappers and a pure Fearless `.iso`, revocation reaches nothing inside a `CapTry` body. A `.iso` that shares the state of `s` needs the runtime (`_Magic!`); it is sound from the point of view of the holder of the image, since every observation through a `System` is non deterministic and a revocation reads as the world refusing. The choice: (a) revocation at the `StartRevokeSystem` only, pure Fearless, as implemented; (b) deep wrappers with `.iso` escaping, pure Fearless, with the `CapTry` hole; (c) deep wrappers with a magic `.iso` sharing the state. The runtime needs only `.start`, which every option gives the same way.
-- Names. `Attenuator`, `SystemAttenuator`, `ErrorSystem`, `StartRevokeSystem`, `CapProcess`.
+- Depth of revocation. `.revoke` reaches the calls on the `StartRevokeSystem` and on every image, but a program that gave away `s.out` keeps printing after `s.revoke`. With `Revocation`, wrapping the other capabilities is pure Fearless: every method of a started `StartRevokeSystem` wraps what it gives in a literal of the same capability type that checks a copy of the flag before every call (`.out -> Block#(r#, u.out)`), and the `.iso` of each wrapper carries `r.iso.close` as `_Revocable` does. The cost is one wrapper type per capability type, each as long as that type; `Gui` needs the `Frame` and widgets too, or stops at `.run`.
+- Names. `Attenuator`, `SystemAttenuator`, `ErrorSystem`, `Revocation`, `RevocationRoot`, `StartRevokeSystem`, `CapProcess`.
 - Where attenuators are applied in the portable Fearless: the portable runs every main with no attenuator; a project could carry a default list in a file the portable reads, or the portable stays plain.
 - The `Output` marks of a job: the manager marks where each main starts and ends; the output of a new process is inside the output of its parent main, with no mark of its own.
 
