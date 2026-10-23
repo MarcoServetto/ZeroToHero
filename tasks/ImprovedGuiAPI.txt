@@ -999,6 +999,170 @@ The box stays where it appeared while the pointer rests on the widget.
 The library decides the timing and the look, not the desk, so a tooltip is the same on every desk.
 A new tooltip text shows at the next repaint.
 
+Menus
+=====
+
+    Widget[S]{ ...
+      mut .contextMenu(mut Scope[Menu]):mut S;
+      mut .openMenu(mut Scope[Menu]):Void;
+      }
+    Menu:_Styled[Menu]{ .self->this;
+      mut .item(mut Scope[MenuItem]):mut Menu;
+      mut .separator:mut Menu;
+      }
+    MenuItem:_Styled[MenuItem]{ .self->this;
+      mut .text(s:Str):mut MenuItem->this.uText(s.u);
+      mut .uText(UStr):mut MenuItem;
+      mut .enabled(Bool):mut MenuItem;
+      mut .check(Bool):mut MenuItem;
+      mut .radio(Bool):mut MenuItem;
+      mut .action(mut MF[Void]):mut MenuItem;
+      mut .submenu(mut Scope[Menu]):mut MenuItem;
+      }
+
+A menu is a column of items and separators.
+The library draws it inside the window, in virtual pixels, over every widget: a light box with a thin border, items 24 virtual pixels high, each text in the bundled fonts at text height 12.
+The library decides the look and the behaviour, not the desk, so a menu is the same on every desk.
+
+Opening a menu:
+w.openMenu(scope) builds a menu with the scope at once, and opens it below the widget w.
+w must be in the open window: .openMenu before the window is open, or on a widget that is not in the window, is a deterministic error.
+A program calls .openMenu from a Button action, a mouse handler, a key handler or a model tick.
+w.contextMenu(scope) gives w the menu that a click of the secondary mouse button opens at the pointer.
+That click goes to the deepest widget with a context menu under its press that contains its release, as a click of the primary button goes to the deepest widget that takes it.
+At each of those clicks the scope builds the menu as a task of the model queue, and the menu opens when the scope returns.
+No widget has a context menu by default; a new .contextMenu replaces the earlier one.
+A menu bar is a row of Buttons whose actions call .openMenu on themselves; a drop down is one such Button.
+The library has no widget for a menu bar.
+
+The scope of a menu:
+A menu exists only while it is open.
+Its scope builds it each time it opens, so the menu shows the state of the program when it opened.
+The items of a menu are fixed once its scope returns: a Menu or a MenuItem saved and changed later is a deterministic error.
+A menu with no item, with no separator or only separators, does not open, and leaves the open menu open.
+
+Items:
+The text of an item is one line, drawn as it is: a newline in it is a deterministic error, and no character of it has a special meaning.
+.enabled(False) shows the item in grey; it is never highlighted, the keys skip it, and choosing it does nothing: the menu stays open.
+.check(b) shows a check box, ticked when b is True; .radio(b) shows a radio button, filled when b is True.
+The library never changes a mark: choosing an item runs its action, the action changes the state of the program, and the next opening shows the new state.
+When any item of a menu has a mark, every text of that menu starts after a column for the marks.
+An item has an action or a submenu, never both; it shows a check box or a radio button, never both: the second of the two setters is a deterministic error.
+A new .action, .submenu, .check or .radio replaces the earlier one of the same setter.
+An item with no action and no submenu closes the menus and does nothing else.
+A separator is a thin line, shown exactly where the program adds it, also first, last, or next to another separator.
+An item with a submenu shows an arrow on its right.
+
+The open menus:
+A frame has at most one open menu, and the submenus opened from it, one inside the other: the open menus.
+Opening a menu, with .openMenu or a context menu, closes the open menus first.
+Once open, a menu stays where it is until it closes.
+Nothing the program does to the widgets moves it or closes it: not .clear, not a new .content, not a new virtual pixel space; the menu keeps its actions.
+The open menus close when the user chooses an item without a submenu, presses outside them, or presses the close key, when the window loses the focus, and when the program opens another menu.
+
+Where a menu opens:
+A menu opens against an anchor: the widget of .openMenu, the pointer for a context menu, the item for a submenu.
+A menu opens below its anchor, starting at its left edge; when it does not fit below and fits above, it opens above.
+When it does not fit starting at the left edge of its anchor and fits ending at the right edge, it ends at the right edge: a context menu opens left of the pointer.
+A submenu opens right of its menu, its first item beside its item; when it does not fit right and fits left, it opens left of its menu.
+Then the menu moves left and up by the least amount that keeps it inside the virtual pixel space.
+A menu taller than the virtual pixel space is as tall as the space and has a scroll bar on its right, drawn as the scroll bar of a Pane.
+The wheel over the menu, a drag of the thumb and a press on the track scroll its items; Up and Down scroll the highlighted item into view.
+A submenu opens beside the place its item has in the scrolled menu.
+A menu wider than the virtual pixel space starts at its left edge, and the part outside is clipped, with a warning.
+
+The mouse while a menu is open:
+The mouse reaches only the menus: no handler of a widget runs, no Button lights up, no tooltip shows, the wheel scrolls only a menu with a scroll bar under the pointer, the pointer is the default arrow.
+Moving the pointer highlights the enabled item under it.
+A click of the primary button on an item chooses it: the press and the release on the same item.
+A press on an item and a release on another item choose nothing.
+A press of any button outside the open menus closes them all, and that press, its drag and its release reach nothing else.
+The second click of a double click reaches nothing when a menu took its first click or opened after its first click.
+A press of another button on a menu does nothing.
+
+Choosing an item:
+Choosing an item without a submenu closes the open menus, then queues its action on the model queue, like the action of a Button.
+Choosing an item with a submenu closes the submenus opened after its menu, then its scope builds the submenu as a task of the model queue, and the submenu opens when the scope returns.
+Choosing that item again while its submenu is open closes its submenu.
+The item whose submenu is open is drawn highlighted in grey.
+A submenu opens only when its item is chosen: never when the pointer rests on its item, never after a delay.
+
+The keys while a menu is open:
+Every key reaches only the menus: no TextField or TextArea receives a key, no Frame.onKey handler runs.
+The text an input method commits reaches nothing.
+Up highlights the previous enabled item of the last open menu, and Down the next one; past the last item Down goes on from the first, and past the first item Up goes on from the last.
+With no item of that menu highlighted, Down highlights its first enabled item and Up its last.
+Enter chooses the highlighted item of the last open menu.
+The close key of the Gui closes the last open menu, and does not ask the window to close.
+The full screen key keeps its meaning.
+A key pressed before a menu opened sends its release to Frame.onKey as usual.
+Menus bind no keys: no accelerators and no mnemonics.
+A program binds keys with Frame.onKey, and a key handler can open a menu with .openMenu.
+
+Example, the menu bar of a program and the context menu of a tile:
+
+    .north{:: .fill
+      .button{b -> b .text "Manager" .action{b.openMenu{::
+        .item{:: .text "Add project" .action{m.add}}
+        .item{:: .text "Wrap lines" .check(m.wrap) .action{m.toggleWrap}}
+        .item{:: .text "Select" .submenu{s -> m.selectItems s}}
+        .separator
+        .item{:: .text "Close the window" .action{f.close}}
+        }}}
+      }
+    ...
+    .pane{:: .width 128 .height 88 .contextMenu{::
+      .item{:: .text("Run "+name) .action{m.run i}}
+      .item{:: .text "Forget" .enabled(m.size > 1) .action{m.forget i}}
+      }}
+
+Why a menu is built when it opens.
+A menu kept as a tree of items needs the program to keep each item enabled, ticked and named in step with its state; an item the program forgets shows a stale state.
+Toolkits that keep the tree add a second mechanism to refresh it just before it shows, or enable items on their own by rules the program does not see.
+A menu built when it opens has one source of truth, the state of the program.
+A check item that ticks itself holds a second copy of the state, which disagrees with the program when the action refuses the change.
+A group of radio items that untick each other needs the program to declare the group, and a forgotten group gives items that tick together.
+Here the program says which items are ticked, at each opening.
+
+Why a click, and never a press, a drag and a release.
+When a press opens a menu, the release of that press lands on the item that appeared under the pointer and chooses it.
+Here a menu opens on the release of a click, and an item is chosen by a whole click: no gesture both opens a menu and chooses an item.
+
+Why a press outside the menus reaches nothing.
+A press that closes a menu and also reaches the widget under it runs an action the user did not aim at: the user was aiming at the menu.
+The cost is that moving from one menu of a menu bar to the next takes two clicks.
+The same reason holds for the second click of a double click: a user who double clicks an item would click what is under the item once the menu closes.
+And a double click of a Button that opens a menu would close the menu or open it again, depending on how fast the model ran the action.
+
+Why nothing opens on hover.
+A submenu that opens when the pointer rests on its item closes when the pointer crosses another item on its way to the submenu.
+A menu bar that switches menus when the pointer moves gives a pointer move a meaning that depends on whether a menu is open.
+Here only a click opens a menu, and only a press closes one.
+
+Why the library decides the context click.
+Desks open a context menu on the press of the secondary button, or on its release; a program that checks one of the two shows no menu on the other desks.
+Here the context click is a whole click of the secondary button, on every desk.
+
+Why menus bind no keys.
+A menu exists only while it is open, so it can not hold a key binding.
+Key bindings held by menus work only while the menu is in the window, clash silently with other bindings, and show the names of the modifiers of each desk.
+Mnemonic markers take characters out of the text of an item.
+
+Why the close key closes the last open menu.
+The close key is Escape by default, the key a user presses to leave a menu: asking the window to close would end the program for the most common menu gesture.
+
+Open: what a menu does not offer.
+A menu wider than the virtual pixel space is clipped; a menu scrolls only up and down.
+An item has no icon, no key hint and no tooltip.
+No key opens the context menu of a widget; a program can bind a key with Frame.onKey to .openMenu.
+Choosing a check item closes the menu, so ticking several items takes several openings.
+The program can not close the open menus.
+Left and Right do nothing in a menu; Enter opens a submenu.
+
+Tests: integrationTests/testingStandardLibrary/_test/test_gui_menu.fear checks the deterministic errors, and opening menus from a model tick.
+integrationTests/testGuiTiles has a Manager menu with a submenu of radio items, a Run drop down with check items, and a context menu on each tile.
+The pointer and the keys on the open menus are for the agentTools tests.
+
 Removed
 =======
 
