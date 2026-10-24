@@ -12,7 +12,7 @@ Nothing is ever off screen, wrapped differently, or clipped because the screen i
 Game engines work this way: the author designs on a reference resolution, the engine maps it to the screen with one uniform scale, and the leftover of a screen with a different shape is a band.
 Browsers work the other way: the content adapts to the space it gets, so what is visible depends on the device.
 Predictability is the Fearless priority, so the Gui follows the game model.
-Layout helpers like the flow of Pane still exist, but they lay out inside the virtual pixel space, never against the window.
+Layout helpers like the flow of Pane lay out inside the virtual pixel space, never against the window.
 
 Fearless facts the design relies on
 ===================================
@@ -115,8 +115,8 @@ API
 ===
 
     Gui:{
-      read .screenWidth: WidthNat;
-      read .screenHeight: HeightNat;
+      mut .screenWidth: WidthNat;
+      mut .screenHeight: HeightNat;
       mut .name(s: Str): mut Gui -> this.uName(s.u);
       mut .uName(UStr): mut Gui;
       mut .icon(ImageFile): mut Gui;
@@ -142,7 +142,7 @@ API
       mut .onResize(mut Consumer[ResizeRequest]): mut Frame;
       mut .onClose(mut MF[Void]): mut Frame;
       mut .close: Void;
-      ...fps, elapsed, modelFps, content, contentB, onKey as today
+      ...fps, elapsed, modelFps, content, contentB, onKey
       }
     ResizeRequest: ScreenContext{ .aspectRatio: Float; }
     ScreenContext:{
@@ -495,7 +495,7 @@ Mouse handlers receive the position of the pointer in virtual pixels: the positi
 A click on virtual pixel (205, 85) reports X[+205] Y[+85] at every window size and on every desk.
 At scale 2, two screen pixels report the same virtual pixel.
 A press on a band, or on the Fearless corner, is outside every widget and reaches no handler.
-Painters draw in virtual pixels and are clipped to their widget, as today.
+Painters draw in virtual pixels and are clipped to their widget.
 
 Layout
 ======
@@ -519,7 +519,7 @@ Sizes:
       read .width:WidthNat;
       read .height:HeightNat;
       read .fill:Bool;
-      ...insets, radius, colors as today
+      ...insets, radius, colors
       }
 
 The width and the height include the insets; both start at 24.
@@ -592,7 +592,8 @@ The line axis runs along a line; the stack axis is the other one, where the line
       mut .maxPerLine(Nat): mut Pane;
       mut .lineScroll(Bool): mut Pane;
       mut .stackScroll(Bool): mut Pane;
-      ...children, gaps, mouse, paint as today
+      mut .centered(Bool): mut Pane;
+      ...children, gaps, mouse, paint
       }
 
 A line holds at least minPerLine children (default 1) and at most maxPerLine children (default Math.maxNat).
@@ -604,6 +605,11 @@ The lines break against the space the Pane is drawn in, never against a size its
 With .fill, a child takes the whole line axis of the Pane, and keeps its own size on the stack axis.
 So .horizontal .maxPerLine 1 with children with .fill is a list of rows as wide as the Pane, also after a new virtual pixel space.
 A child with .fill filling both axes of a Pane would be the center of a Border: the Pane does not offer it.
+
+Placement:
+centered(True), the default, centers each line on the line axis, the stack of lines on the stack axis, and each child on the stack axis of its line.
+centered(False) places them at the start of each axis: the left and the top.
+A grid of tiles uses centered(False): the grid starts at the top left, and a last line shorter than the others starts under the first tile of the line above.
 
 Scrolling:
 A line longer than the Pane comes from minPerLine, or from a single child longer than the Pane.
@@ -617,6 +623,7 @@ The wheel scrolls the innermost Pane under the pointer that scrolls on that axis
 A Pane keeps its scroll position in virtual pixels when its lines break again.
 So the lines always break against the same size, and a scroll bar can never change where they break.
 The layout never changes the size of a Pane, so a Pane with a scroll gets its scroll bars exactly when its content is bigger than the space it is drawn in.
+Open: a program can not set the scroll position of a Pane, so it can not scroll a child into view.
 
 A vertical list:
 .horizontal .maxPerLine 1 gives one row per line, and the rows fill the width of the Pane with .fill.
@@ -696,7 +703,7 @@ The user drags the divider to share the width in another way.
 Open: a widget larger than the space its parent gives.
 It is clipped by its parent.
 It could be an error instead, in the offensive style.
-Many other things clip as well (a long text in a region, a line forced by minPerLine), so clipping stays for now, and this point stays open.
+Many other things clip as well (a long text in a region, a line forced by minPerLine), so clipping stays, and this point is open.
 
 Text editing
 ============
@@ -704,7 +711,7 @@ Text editing
 A TextField holds one line of text; a TextArea holds any number of lines.
 The two share every rule below, and differ only where this section says so.
 
-    _Caption[S]:Widget[S]{ ...text, textHeight, aboveBaseline, belowBaseline as today }
+    _Caption[S]:Widget[S]{ ...text, textHeight, aboveBaseline, belowBaseline }
     Button:_Caption[Button]{ ... }
     Label:_Caption[Label]{ ... }
 
@@ -889,7 +896,8 @@ The same Graphics paints a container (.paint) and an image (Image.paint).
       mut .line(XInt, YInt): mut Graphics;
       mut .rect(WidthNat, HeightNat): mut Graphics;
       mut .oval(WidthNat, HeightNat): mut Graphics;
-      mut .image(Image): mut Graphics;
+      mut .image(image: Image): mut Graphics -> this.image(image, image.width, image.height);
+      mut .image(image: Image, width: WidthNat, height: HeightNat): mut Graphics;
       mut .textHeight(n: Nat): mut Graphics -> this.textHeight'(HeightNat#n);
       mut .textHeight'(HeightNat): mut Graphics;
       mut .text(s: Str): mut Graphics -> this.uText(s.u);
@@ -928,6 +936,11 @@ A Label with the same text and text height packs to that width plus its insets.
 The fonts are bundled, so the width is the same on every desk.
 A painter centers a text with .textWidth, and shortens a long text with "..." with .textWidth.
 
+g.image(image) draws the image at its own size: one pixel of the image on one virtual pixel.
+g.image(image, width, height) draws the image scaled to width x height virtual pixels, with its top left corner at the position.
+The image goes to the screen in one scaling step.
+So an image with more pixels than the virtual pixels it covers stays sharp on a window scaled up, and one Image serves every size a program draws it at.
+
 A program reacts to the mouse with the handlers of .mouse, one for each kind of event, for example .mouse{:: .clicked{x, y, elapsed, w, h -> ..}}.
 The handler that runs tells the kind of event.
 A handler takes the event as its parameters: the position of the pointer in the widget, .elapsed, and the size of the widget, as ScreenContext tells them.
@@ -937,44 +950,9 @@ A click is the second click of a double click when it is of the same mouse butto
 The library decides this, not the desk, so a double click is the same gesture on every desk.
 The double click on the Fearless corner is decided in the same way.
 
-A tile grid:
-A tile grid shows a list of items as a grid of tiles.
-A tile shows the icon of an item, the name of the item under the icon, and a flag over the bottom right of the icon for the state of the item.
-The flag of a busy item is animated.
-A click on a tile selects the item; a double click opens it.
-integrationTests/testGuiTiles draws this grid with the API above:
-
-    tile         a Pane of 128 x 88 with a painter, a .mouse and a .tooltip.
-                 Its painter draws the selection, the icon, the flag, and the name centered under the icon.
-                 Its tooltip shows the whole name of the item, which the painter shortens with "..." when it is wider than the tile.
-    grid         a Pane with .fill, .stackScroll(True) and gaps 0, holding the tiles.
-                 The grid breaks its lines against the space it is drawn in, and scrolls them.
-    icon         an Image of 48 x 48, painted once with Images# and Image.paint, and kept in the tile.
-    flag         a Painter drawn over the icon.
-                 An animated flag reads .elapsed: the frame paints at .fps, so the flag moves with no action of the program.
-                 A flag can also change with time alone: the busy flag draws a spinner until an Instant, and another flag after it.
-    hit testing  the .mouse of each tile: the library finds the tile under the pointer.
-    a change     the program replaces the tiles: .clear on the grid, then a new Pane for each tile.
-                 The grid keeps its scroll position.
-
-No widget has an absolute position, and no click is mapped back to a tile by the program.
-A tile is the unit of layout, of drawing and of hit testing.
-
-The tile grid as a widget of base:
-testGuiTiles uses only the public API of the library, so the tile grid can become Fearless code in base, with no runtime code:
-
-    Tile:{ .image: Image; .name: Str; .flag: Painter; }
-    TileGrids:{ #(grid: mut Pane, tiles: List[Tile], selected: Opt[Nat], clicked: mut TileClicked, doubleClicked: mut TileClicked): Void }
-    TileClicked:{ mut #(index: Nat, elapsed: Instant): Void }
-
-TileGrids# replaces the children of grid with one tile for each element of tiles.
-The flags of testGuiTiles (a colored dot with a letter, and the spinner) become constants of base next to it.
-
-Open: what the tile grid lacks.
-The lines of a Pane are centered, and so is the stack of lines; a tile grid starts at the top left.
-A Pane needs a setting that places its lines at the start of both axes.
-A program can not set the scroll position of a Pane, so it can not scroll a tile into view when the selection comes from outside the grid.
-Graphics draws lines one virtual pixel wide and no arcs, so the spinner of testGuiTiles is eight dots of fading alpha, drawn with .oval.
+Open: what Graphics does not offer.
+Graphics draws lines one virtual pixel wide and no arcs.
+The bundled fonts have one weight.
 .text shapes its text at each call, and a painter runs at each repaint tick: a cache of shaped lines in the library would cost the program nothing.
 
 Tooltips
@@ -1159,25 +1137,12 @@ Choosing a check item closes the menu, so ticking several items takes several op
 The program can not close the open menus.
 Left and Right do nothing in a menu; Enter opens a submenu.
 
-Tests: integrationTests/testingStandardLibrary/_test/test_gui_menu.fear checks the deterministic errors, and opening menus from a model tick.
-integrationTests/testGuiTiles has a Manager menu with a submenu of radio items, a Run drop down with check items, and a context menu on each tile.
-The pointer and the keys on the open menus are for the agentTools tests.
-
-Removed
-=======
-
-Gui.run(mut Consumer[mut Frame]) keeps its shape; the Gui setters come before it.
-Frame.title as the whole title: it is now the subtitle after the fixed name.
-Frame.undecorated, Frame.decorated, and a live Frame.fullScreen/Frame.windowed: the states belong to the user; the program only chooses what the window opens as.
-Frame.maximized, Frame.location, Frame.locationX, Frame.locationY, Frame.fixedSize and Frame.resizable in all their forms, Frame.screenWidth, Frame.screenHeight, ScreenContext.screenWidth, ScreenContext.screenHeight.
-The errors about a maximized window with an explicit size or location, and about a window larger than the screen, go with them.
-
 Implementation notes
 ====================
 
 Every pixel of a frame is drawn by Skia into one bitmap, with one canvas.scale call for the OS transform.
 The uniform scale multiplies into that call, the band offset translates it, and the clear color becomes the bands color.
-The Swing components keep bounds in virtual pixels: no component ever sees the scale, so the layout managers do not change.
+The Swing components keep bounds in virtual pixels: no component ever sees the scale.
 Mouse hit testing divides the content area point by the scale and subtracts the band offset before getDeepestComponentAt.
 Text stays sharp at every scale: glyph outlines are scaled, not pixels (hinting is already off).
 Images drawn by Graphics.image go through the same transform.
@@ -1196,7 +1161,7 @@ The library sends its X11 client messages on the toolkit's own connection: reque
 The restore size is set on Windows with SetWindowPlacement: the restore rectangle in work area coordinates and device pixels, with SW_SHOWMAXIMIZED when entering state 3 and SW_SHOWNORMAL after a compaction.
 SetWindowPlacement with the current rectangle also ends a snap: Windows keeps the size from before a snap as the restore size of the snapped window, and setBounds moves the window but keeps that size and the snap.
 The window handle is WComponentPeer.getHWnd of the frame's peer: the runtime opens java.desktop/java.awt and java.desktop/sun.awt.windows to the library.
-On X11 and macOS the request that sets the restore size is to be found on each desk; until then the desk maximizes the window itself and keeps the window before the maximize as the restore size, so a title bar drag out of state 3 gives the window before the maximize, and a compaction is setBounds alone.
+On X11 and macOS the library sets no restore size: the desk maximizes the window itself and keeps the window before the maximize as the restore size, so a title bar drag out of state 3 gives the window before the maximize, and a compaction is setBounds alone.
 A new frame mapped already maximized is no substitute: GNOME restores it to the size it was given, but at the top left of the work area.
 The toolkit reports a window the desk tiles to half the screen as MAXIMIZED_VERT: state 3 is exactly MAXIMIZED_BOTH.
 On a tiling desk the library asks the desk for full screen with the _NET_WM_STATE client message on the X11 root window, and reads _NET_WM_STATE_FULLSCREEN on the window at each repaint tick: the state is what the desk did, never what the library asked.
@@ -1236,7 +1201,7 @@ The Windows peer of the toolkit hands the desk the minimum size in user space wh
 Windows restores a maximized window to at least the desk's minimum size, and a ResizeRequest accepted in state 3 can raise the minimum size above the restore size: on Windows the library grows the restore size to the minimum size each time it sets the minimum size of a maximized window, so that the unmaximize still gives exactly the restore size.
 
 The opacity goes through setOpacity, which the toolkit allows only on an undecorated window that is not the full screen window: that is why only state 2 shows the opacity.
-Per-pixel translucency, which would keep the Fearless corner opaque while the content fades, is not used: under GNOME on XWayland a per-pixel translucent window that repaints continuously is shown or not at random (the window is mapped and focused, the toolkit paints into it, the compositor shows nothing and routes no clicks), reproduced with a forty line program, nine runs, three visible.
+Per-pixel translucency, which would keep the Fearless corner opaque while the content fades, is not used: under GNOME on XWayland a per-pixel translucent window that repaints continuously is shown or not at random (the window is mapped and focused, the toolkit paints into it, the compositor shows nothing and routes no clicks).
 An opaque Fearless corner over a fading content would need a second, shaped window owned by the main one.
 On macOS, Cmd+Q ends the process without a windowClosing unless the quit strategy is CLOSE_ALL_WINDOWS; the runtime sets it, so Cmd+Q is a close request.
 
@@ -1254,20 +1219,3 @@ This frame opens as state 4, titled Nap, its content area covering 30% of the sc
 In full screen on a 16:9 screen the handler widens the virtual pixel space to 604x340 and there are no bands.
 A frame with no .onResize keeps its 520x340 virtual pixel space and shows deepNapBlue bands in full screen.
 Pressing esc closes it, since no .onClose replaced the default {f.close}.
-
-Demo
-====
-
-https://github.com/marcoautomation2/fearless_gui_demo is a Swing program that behaves as this document says, with a launcher for the fixed settings; its demo release has a Linux and a Windows build.
-The launcher logs every transition, request, desk report and uncaught exception, and shows each window as the program sees it.
-The transitions of the floating desk state machine have been tried by hand on Windows at 150% scale, and at 100% scale on GNOME on Wayland, GNOME on X11 (Debian), GNOME on Wayland (Fedora), Cinnamon (Debian), MATE (Debian), Xfce (Xubuntu), LXQt with Openbox (Lubuntu), COSMIC (Fedora COSMIC) and KDE Plasma on Wayland (Kubuntu, openSUSE); the tiling desk state machine on Hyprland (Omarchy), sway and i3 (Void), with tiled and floating windows on Hyprland and i3.
-
-Tests to update
-===============
-
-integrationTests/testingStandardLibrary/_test/test_gui_frame.fear: the location, maximized, fixedSize, undecorated and decorated checks go; new checks for virtualWidth/Height, the initialArea range error, the minArea range error, the initialArea < minArea and minArea > initialArea errors at the second setter, the close key equal to the full screen key, the blank name error, the opacity floor error, a setter leaving its Gui unchanged, a window opened with each start but startAsWindow, the title as name plus subtitle and the virtual pixels of panelWidth/panelHeight under a scale.
-The transitions driven by the user (maximize, the keys, the Fearless corner) are for the agentTools tests, not for the standard library tests.
-integrationTests/testTicTacToe: gui_frozen.fear, gui_resizable.fear and gui_chunk.fear become one game on a square virtual pixel space; the resizable one keeps a square virtual pixel space whatever the request, so the board stays square.
-integrationTests/testGui1, testGui2, testGuiLive, testGuiImg: the Gui setters replace .fixedSize/.resizable/.undecorated/.decorated calls.
-integrationTests/testingStandardLibrary/_test: new checks for the text editing errors (a newline in the text of a TextField, an .onInput result with a newline for a TextField), the committed text rules, .uAppend keeping the caret and the selection, and .textClearsUndo.
-The keys, the pointer, the clipboard and the input methods are for the agentTools tests, not for the standard library tests.
