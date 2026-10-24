@@ -142,7 +142,7 @@ API
       mut .onResize(mut Consumer[ResizeRequest]): mut Frame;
       mut .onClose(mut MF[Void]): mut Frame;
       mut .close: Void;
-      ...fps, elapsed, modelFps, content, contentB, onKey
+      ...fps, elapsed, modelFps, content, onKey
       }
     ResizeRequest: ScreenContext{ .aspectRatio: Float; }
     ScreenContext:{
@@ -559,6 +559,34 @@ A size that is state costs nothing to read, and the program can always override 
 
 Every clipping prints a warning: a widget that does not fit in its parent, a text that does not fit in its widget, a painter that draws past the edges of its widget.
 
+Slots:
+A place for exactly one child is a slot: the five regions of a Border, the two regions of a Split, the content of a Frame, the title and the content of a section.
+A slot takes a mut Scope[Adder].
+An Adder has one method per kind of widget, taking the scope of that widget and returning Void.
+The scope of the slot calls exactly one of them: a second call is a deterministic error naming the slot, and a scope that returns without a call is a deterministic error naming the slot.
+
+    Adder:{
+      mut .pane(mut Scope[Pane]): Void;
+      mut .border(mut Scope[Border]): Void;
+      mut .split(mut Scope[Split]): Void;
+      mut .sections(mut Scope[Sections]): Void;
+      mut .button(mut Scope[Button]): Void;
+      mut .label(mut Scope[Label]): Void;
+      mut .picture(mut Scope[Picture]): Void;
+      mut .textField(mut Scope[TextField]): Void;
+      mut .textArea(mut Scope[TextArea]): Void;
+      }
+    Frame:{ ... mut .content(mut Scope[Adder]): Void; }
+    Border:_Container[Border]{ ... mut .north(mut Scope[Adder]):mut Border; ...south, east, west, center }
+    Split:Widget[Split]{ ... mut .first(mut Scope[Adder]):mut Split; mut .second(mut Scope[Adder]):mut Split; }
+
+    .north{::.label{:: .text "title"}}
+    .center{::.pane{:: .fill .button{:: .text "Run"} .button{:: .text "Stop"}}}
+
+A Pane holds any number of children, so a Pane has the same family of methods, each returning the Pane.
+The kinds of widget are listed in these two types only, Adder and Pane: a new kind of widget adds one method to each.
+Why: one method per kind of widget per slot grows with the product of the slots and the kinds; the Adder keeps that product at two.
+
 Border:
 A Border has five regions: north, south, west, east and center.
 The height of the north region is the height of its child, and the region spans the width of the Border; the same for south.
@@ -570,11 +598,11 @@ So a Border can have empty space: its children do not take all the space unless 
 
 Example, with the insets and gaps of the Border at 0:
 
-    f.virtualPixelSpace(Width#1000, Height#1000).contentB{::
-      .north{:: .fill .height 60 ...}
-      .west{:: .width 200 .height 300 ...}
-      .center{:: .width 400 .height 400 ...}
-      }
+    f.virtualPixelSpace(Width#1000, Height#1000).content{::.border{::
+      .north{::.pane{:: .fill .height 60 ...}}
+      .west{::.pane{:: .width 200 .height 300 ...}}
+      .center{::.pane{:: .width 400 .height 400 ...}}
+      }}
 
 The north Pane is 1000 x 60, at the top.
 The west region is 200 x 940; the west Pane is 200 x 300, centered vertically in it.
@@ -641,17 +669,13 @@ The axis of a Split is the width for .horizontal and the height for .vertical.
       read .dividerPosition: Nat;
       mut .draggable(b:Bool): mut Split;
       read .draggable: Bool;
-      mut .first(mut Scope[Pane]):mut Split;
-      mut .firstB(mut Scope[Border]):mut Split;
-      mut .firstS(mut Scope[Split]):mut Split;
-      mut .second(mut Scope[Pane]):mut Split;
-      mut .secondB(mut Scope[Border]):mut Split;
-      mut .secondS(mut Scope[Split]):mut Split;
+      mut .first(mut Scope[Adder]):mut Split;
+      mut .second(mut Scope[Adder]):mut Split;
       mut .mouse(mut Scope[Mouse]):mut Split;
       mut .paint(Painter):mut Split;
       }
     Pane:_Container[Pane]{ ... mut .split(mut Scope[Split]):mut Pane; }
-    Border:_Container[Border]{ ... mut .northS(mut Scope[Split]):mut Border; ...southS, eastS, westS, centerS }
+    Adder:{ ... mut .split(mut Scope[Split]): Void; }
 
 Every divider is 5 virtual pixels thick on the axis, as thick as a scroll bar, and spans the Split on the other axis.
 A Split has no gaps: it is not a _Container, and the divider is the only space between its two regions.
@@ -689,13 +713,13 @@ So the program that changes that space also sets the divider position it wants i
 
 Example, a grid of tiles beside the details of the selected tile:
 
-    f.contentB{::
-      .north{:: .fill ...}
-      .centerS{:: .fill .dividerPosition 320
-        .first{:: .fill .maxPerLine 1 .stackScroll(True) ...tiles}
-        .second{:: .fill ...the details of the selected tile}
-        }
-      }
+    f.content{::.border{::
+      .north{::.pane{:: .fill ...}}
+      .center{::.split{:: .fill .dividerPosition 320
+        .first{::.pane{:: .fill .maxPerLine 1 .stackScroll(True) ...tiles}}
+        .second{::.pane{:: .fill ...the details of the selected tile}}
+        }}
+      }}
 
 The tiles take 320 virtual pixels, and the details take the rest of the width.
 The user drags the divider to share the width in another way.
@@ -959,10 +983,9 @@ Sections
 ========
 
     Pane:_Container[Pane]{ ... mut .sections(mut Scope[Sections]):mut Pane; }
-    Border:_Container[Border]{ ... mut .northSections(mut Scope[Sections]):mut Border; ...southSections, eastSections, westSections, centerSections }
-    Split:Widget[Split]{ ... mut .firstSections(mut Scope[Sections]):mut Split; mut .secondSections(mut Scope[Sections]):mut Split; }
+    Adder:{ ... mut .sections(mut Scope[Sections]): Void; }
     Sections:_Container[Sections]{
-      mut .section(name: Str, title: mut Scope[Pane]): mut NewSection;
+      mut .section(mut Scope[Section]): mut Sections;
       mut .column: mut Sections;
       mut .tabs: mut Sections;
       mut .autoCollapse(Bool): mut Sections;
@@ -977,10 +1000,10 @@ Sections
       read .index(name: Str): Nat;
       read .isExpanded(name: Str): Bool;
       }
-    NewSection:{
-      mut .content(mut Scope[Pane]): mut Sections;
-      mut .contentB(mut Scope[Border]): mut Sections;
-      mut .contentS(mut Scope[Split]): mut Sections;
+    Section:{
+      mut .name(Str): mut Section;
+      mut .title(mut Scope[Adder]): mut Section;
+      mut .content(mut Scope[Adder]): mut Section;
       }
     SectionHandler:{ mut #(sections: mut Sections, name: Str): Void; }
 
@@ -1005,15 +1028,14 @@ A name that is not in the list is a deterministic error that lists the names in 
 An index past the last position is a deterministic error.
 
 Adding a section:
-.section(name, title) runs the scope title on a new Pane and returns a NewSection: an object with only .content, .contentB and .contentS.
-The content method runs its scope on a new Pane, Border or Split, and adds the section at the end of the list.
-So every section has a title and a content: a .section without its content does not typecheck, and two lists, one of titles and one of contents, never need to match.
-The title is a Pane, so a title holds what a Pane holds (a Label, a Picture, Buttons), laid out as in any Pane.
+.section runs its scope on a new Section, and adds the section at the end of the list when the scope returns.
+The scope gives the section its name, its title and its content; a section still missing one of them when the scope returns is a deterministic error naming what is missing.
+The title and the content are slots: a title is one widget, a Label alone or a Pane holding a Picture and a Label, laid out as in any Pane.
 A new section is collapsed.
 
     .sections{:: .tabs
-      .section("readme", {:: .label{:: .text "readme.txt"}}).content{:: ...}
-      .section("main", {:: .label{:: .text "main.fear"}}).content{:: ...}
+      .section{:: .name "readme" .title{::.label{:: .text "readme.txt"}} .content{::.pane{:: ...}}}
+      .section{:: .name "main" .title{::.label{:: .text "main.fear"}} .content{::.pane{:: ...}}}
       .expand "readme"
       }
 
