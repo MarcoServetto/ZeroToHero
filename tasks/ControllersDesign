@@ -87,7 +87,7 @@ A verb is one of the following, written in upper camel case. Verbs about the who
 - `Quit`: end the manager and every job the manager runs;
 - `Reset`: end the manager and every job the manager runs, remove every association the manager took, and delete the manager folder;
 - `ConnectEclipse <path>`, the path as a tagged text: connect the Eclipse found from the path, then say so in a dialog, asking to restart Eclipse if Eclipse is running and to open the Fearless perspective;
-- `EditMetadata <path>`, the path as a tagged text: replace `projects.info` with the content of the file at the path;
+- `EditMetadata <path>`, the path as a tagged text: replace `projects.info` with the content of the file at the path (see Registered projects for when the edit is refused);
 - `OpenWithOrShortcut <path>`, the path as a tagged text: open the file with the main whose `OpenWith` or `Shortcut` gives the extension of the file. Double clicking the file on the desktop is the GUI operation of `OpenWithOrShortcut <path>`.
 - `OpenWithOrShortcut <path> <name> <main>`: open the file with the main `<main>` of the project `<name>`, one of the mains claiming the extension of the file. When several mains claim that extension, `OpenWithOrShortcut <path>` shows a window listing them (see Opening a file); picking a main in that window is the GUI operation of `OpenWithOrShortcut <path> <name> <main>`, with the project and the main of the picked entry. Another program, for example an agent, sends `OpenWithOrShortcut <path> <name> <main>` to choose the main itself.
 Verbs about one project, taking the name of a registered project:
@@ -124,15 +124,12 @@ Ill formed messages:
 - an `OpenWithOrShortcut` whose path names no file, names an empty file, or names a file whose extension no main claims;
 - an `OpenWithOrShortcut <path> <name> <main>` where `<main>` of `<name>` is not one of the mains claiming the extension of the file, also when `<name>` is not a registered project (the error lists the mains claiming the extension);
 - a kind that is not one of the four, an ill formed link, and an `Attenuate` naming no main;
-- a request whose result would make `projects.info` invalid (the error is the error of the resulting `projects.info`);
+- an `EditMetadata` that Registered projects refuses, and a `Forget`, `Kind`, `Link` or `Attenuate` whose `EditMetadata` is refused (the error is the error of that `EditMetadata`);
 - `Run` and `Compile` of a project that is not code, naming the kind of the project;
 - `Run` of a project whose `attenuators` name a main that is not a main of the project, or an attenuator that is not an attenuator of the project (the error lists the mains, or the attenuators);
 - `Run` and `Compile` of a project with invalid content, saying why (for a broken link, naming the link and why);
 - `Run` of a project that is not compiled, naming the state of the project; `Run` naming no main, or a main that is not a main of the project (the error lists the mains of the project);
-- `Link` of a project that is not code;
-- `Run`, `Compile`, `DeleteCache`, `Kind` or `Forget` while the project has a job;
-- a `Kind` change that is not from idle or back to idle;
-- a request changing the data projects that a running main reads or writes (see Data projects of a running main).
+- `Run`, `Compile` or `DeleteCache` while the project has a job.
 
 Whether a message is ill formed is decided when the message arrives, from the message and the current state, before anything is compiled, run or written to the Output.
 The error of an ill formed message is shown in a dialog, never in the Output: the Output of a project holds only the results of well formed requests. A failing compile is the result of a well formed request: the request is right, the code is broken.
@@ -186,9 +183,9 @@ Each project has:
 - `path`: the absolute path of the project folder, any path the system allows, exactly as the current system and file system name the folder, separators included: the tagged text only picks the most readable form holding those exact bytes. Two projects never share a folder, and a project folder is never inside another project folder.
 - `kind`: `idle`, `code`, `data:readOnly` or `data:readWrite`.
 - `mains`: the selected mains: the mains the last `Run` ran, for a code project with several mains.
-- `reads` and `edits`: for a code project, the data projects the code project may read, and the data projects the code project may read and write, each with the type names the code uses for that data project. A project in `reads` is `data:readOnly` or `data:readWrite`; a project in `edits` is `data:readWrite`. A data project may be in both: the type names in `edits` read and write, those in `reads` only read. A type name is in one link only: the code reaches one data project through that type name. A link names at least one type name.
+- `reads` and `edits`: the data projects the code project may read, and the data projects the code project may read and write, each with the type names the code uses for that data project. A project in `reads` is `data:readOnly` or `data:readWrite`; a project in `edits` is `data:readWrite`. A data project may be in both: the type names in `edits` read and write, those in `reads` only read. A type name is in one link only: the code reaches one data project through that type name. A link names at least one type name.
 
-- `attenuators`: for a code project, for each main the attenuators the manager applies to that main, in order; a main absent from `attenuators` gets no attenuator. Naming a main or an attenuator the project does not have is well formed; a `Run` of the project is refused while `attenuators` names one.
+- `attenuators`: for each main the attenuators the manager applies to that main, in order; a main absent from `attenuators` gets no attenuator. Naming a main or an attenuator the project does not have is well formed; a `Run` of the project is refused while `attenuators` names one.
 
 A code project whose links name a missing project, or a project of the wrong kind, or an invalid project, is invalid, and the error says which link and why.
 
@@ -197,7 +194,11 @@ The manager never writes an invalid `projects.info`, thus the fatal error above 
 
 The whole `projects.info` can be edited by hand from the GUI, or via an `EditMetadata` naming a file (outside of the manager folder) with the intended new content.
 The editor of the GUI remembers the content the editor opened; when the user commits, and `projects.info` no longer holds that content, the editor refuses the commit in a dialog, and the user edits the new content again; otherwise the commit is an `EditMetadata`.
-An edit is accepted only if the whole text is valid; otherwise the error points at the offending text in the Frontend error message style.
+An edit is refused, and nothing changes, when:
+- the whole text is not valid: the error points at the offending text in the Frontend error message style;
+- the edit removes a project that has a job, or changes the kind of a project that has a job;
+- the edit changes the data projects that a running main reads or writes (see Data projects of a running main);
+- the edit adds to `systemExtensions` an extension reconcile refuses (see File associations).
 An accepted edit applies at once: projects the edit removes are forgotten, projects the edit adds are registered as they are, every project is checked again.
 
 
@@ -238,7 +239,7 @@ The manager does not check for changes while the manager window is hidden (the t
 
 The icon of a project is the only PNG file in the folder `.config/icon` of the project, or, with no such folder, an icon generated from the project name. More than one PNG file, or a PNG file that can not be read, makes the project invalid.
 
-A `Kind` request changes the kind from idle to any kind, or from any kind back to idle. Changing the kind keeps `mains`, `reads` and `edits`: those fields have no effect while the project is not code, and apply again when the project becomes code again.
+A kind changes to any other kind. Changing the kind keeps `mains`, `reads`, `edits` and `attenuators`: those fields have no effect while the project is not code, and apply again when the project becomes code again.
 
 ## General GUI shape:
 Dropping files or folders on the manager window is a `Register` of each file or folder dropped.
@@ -260,7 +261,7 @@ A header on one line: the project icon, the project name, and the following butt
   - Run, for a compiled code project with one main; Run V, for a compiled code project with several mains; Run greyed out, for a compiled code project with no main;
   - Terminate, while the project has a job.
 - The Open docs button (enabled once the mains are known), opening the docs in the default browser.
-- The kind buttons: only "Back to idle" for a project that is not idle; for an idle project "Become data", "Become editable data" and "Become code".
+- The kind buttons, one for each kind the project is not: "Back to idle", "Become data", "Become editable data" and "Become code".
 - Browse, opening the project folder in the file explorer, Forget (`Forget`), and for a code project Delete cache (`DeleteCache`).
 The kind buttons, Forget and Delete cache are greyed out while the project has a job.
 
@@ -273,7 +274,9 @@ Double clicking a shortcut file there is `OpenWithOrShortcut` with the path of t
 
 For every project, we have the Output, a 'collapsible area': an area with vertical scroll bars and a max size of 1/2 of the height of the manager window; the Output has a Clear button on the title of the Output. What the main button produces always goes to the Output, and the Output keeps everything until the Output is cleared.
 
-For a code project, after the Output we see the Attenuators collapsible area, one block per main: the attenuators applied to that main in order, each with Remove, Up and Down buttons, then a drop down of the attenuators of the project not yet applied with an Add button. Every change is an `Attenuate` of that main. A main or an attenuator the project does not have is marked as such, so that the user can remove that main or attenuator.
+Every entry of `projects.info` about a project shows in the project area of that project, and every entry has a GUI operation that removes it.
+
+For a code project, and for any project with `attenuators`, after the Output we see the Attenuators collapsible area, one block per main: the attenuators applied to that main in order, each with Remove, Up and Down buttons, then a drop down of the attenuators of the project not yet applied with an Add button. Every change is an `Attenuate` of that main. A main or an attenuator the project does not have is marked as such, so that the user can remove that main or attenuator.
 
 For a code project whose mains claim extensions (`OpenWith`), after the Attenuators we see a collapsible area, one block per main claiming extensions:
   "Extensions this main opens:" (each extension with its icon),
@@ -282,6 +285,7 @@ For a code project whose mains claim extensions (`OpenWith`), after the Attenuat
 For a data project we see a collapsible area listing in editable format the code projects linking this data project, read or write, and under what type names, with a control to add a link to another code project.
 
 For a code project, the same area lists in editable format the data projects this code project links, read or write, and under what type names, with a control to add a link to another data project.
+For any other project with `reads` or `edits`, the same area lists those links in editable format too.
 
 The code project holds the link (`reads` and `edits` in `projects.info`), and is the project that becomes invalid when the link is broken: an edit from either side is a `Link` of the code project. As usual, every edit goes via the messages and is validated when received.
 
@@ -303,7 +307,7 @@ A running main reads the data projects linked by its code project through `Syste
 The roots of `System.dataRead` are the type names in `reads` and in `edits`; the roots of `System.dataReadWrite` are the type names in `edits`: a main names a data project by a root of the capability the main uses. A type name is in one link only, so a root names one data project; one data project can still be linked under several type names, also in `reads` under one and in `edits` under another.
 When a `Run` starts, the manager gives each main of the run the folder of every data project the links of the code project name, by the type names of those links.
 Changes follow the dependencies of the projects:
-- what a running main depends on does not change: a `Link`, `Kind`, `Forget` or `EditMetadata` changing what the links of that project give, or the kind or the folder of a data project those links name, is refused, naming the project and the running main;
+- what a running main depends on does not change: an `EditMetadata` changing what the links of that project give, or the kind or the folder of a data project those links name, is refused, naming the project and the running main;
 - what a code project that is not running depends on can change: removing a data project the code project links, or changing the kind or the folder of that data project, is accepted, and the code project becomes invalid, naming the broken link.
 A data project that changes on disk while a main runs is not checked again: a read or a write that finds the files changed so that the read or the write can not be done is a non deterministic error of that main.
 A main does not see the marker of a data project or the files and folders whose name starts with "."; a path naming one of those is not valid.
