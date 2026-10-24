@@ -560,33 +560,46 @@ A size that is state costs nothing to read, and the program can always override 
 Every clipping prints a warning: a widget that does not fit in its parent, a text that does not fit in its widget, a painter that draws past the edges of its widget.
 
 Regions:
-A place for exactly one child is a region: the five regions of a Border, the two regions of a Split, the content of a Frame, the title and the content of a section.
-A region takes a mut Consumer[mut Adder].
-An Adder has one method per kind of widget, taking the scope of that widget and returning Void, so the lambda of a region returns Void and is a Consumer, not a Scope.
-An Adder is used exactly once: an Adder not used when the method that introduced it returns is a deterministic error naming the region, and an Adder used again is a deterministic error naming the region.
-So every region introduced is filled.
+A place for one child is a region: the five regions of a Border, the two regions of a Split, the content of a Frame, the title and the content of a section.
+A region is filled through a RegionFiller.
+A RegionFiller has one method per kind of widget, taking the scope of that widget.
+That method puts the widget in the region and returns the container of the region, so the chain goes on with the container.
 
-    Adder:{
-      mut .pane(mut Scope[Pane]): Void;
-      mut .border(mut Scope[Border]): Void;
-      mut .split(mut Scope[Split]): Void;
-      mut .sections(mut Scope[Sections]): Void;
-      mut .button(mut Scope[Button]): Void;
-      mut .label(mut Scope[Label]): Void;
-      mut .picture(mut Scope[Picture]): Void;
-      mut .textField(mut Scope[TextField]): Void;
-      mut .textArea(mut Scope[TextArea]): Void;
+    RegionFiller[S:*]:{
+      mut .pane(mut Scope[Pane]): S;
+      mut .border(mut Scope[Border]): S;
+      mut .split: mut RegionFiller[mut And[mut SplitWith[S]]];
+      mut .sections(mut Scope[Sections]): S;
+      mut .button(mut Scope[Button]): S;
+      mut .label(mut Scope[Label]): S;
+      mut .picture(mut Scope[Picture]): S;
+      mut .textField(mut Scope[TextField]): S;
+      mut .textArea(mut Scope[TextArea]): S;
       }
-    Frame:{ ... mut .content(mut Consumer[mut Adder]): Void; }
-    Border:_Container[Border]{ ... mut .north(mut Consumer[mut Adder]):mut Border; ...south, east, west, center }
-    Split:Widget[Split]{ ... mut .first(mut Consumer[mut Adder]):mut Split; mut .second(mut Consumer[mut Adder]):mut Split; }
+    Frame:{ ... mut .content: mut RegionFiller[Void]; }
+    Border:_Container[Border]{ ... mut .north: mut RegionFiller[mut Border]; ...south, east, west, center }
 
-    .north{::.label{:: .text "title"}}
-    .center{::.pane{:: .fill .button{:: .text "Run"} .button{:: .text "Stop"}}}
+    .north.label{:: .text "title"}
+    .center.pane{:: .fill .button{:: .text "Run"} .button{:: .text "Stop"}}
+
+Filling a region that holds a widget replaces that widget.
+A region never filled is empty: a Frame never given a content shows an empty window.
+Filling the content of a Frame returns Void, as the consumer given to Gui.run does.
+
+Mandatory regions:
+A widget with mandatory regions is created with them: the program never holds that widget before its regions are filled.
+The mandatory regions come in a fixed order, separated by .and.
+When the widget has methods of its own, .with follows the last region: its scope receives the complete widget, and .with returns the container.
+A Split has two mandatory regions; a section has two mandatory regions and no methods of its own.
+
+    And[T:*]:{ mut .and: mut RegionFiller[T]; }
+    SplitWith[S:*]:{ mut .with(mut Scope[Split]): S; }
+
+    .split.pane{:: ...}.and.label{:: ...}.with{:: .vertical .dividerPosition 30}
 
 A Pane holds any number of children, so a Pane has the same family of methods, each returning the Pane.
-The kinds of widget are listed in these two types only, Adder and Pane: a new kind of widget adds one method to each.
-Why: one method per kind of widget per region grows with the product of the regions and the kinds; the Adder keeps that product at two.
+The kinds of widget are listed in these two types only, RegionFiller and Pane: a new kind of widget adds one method to each.
+Why: one method per kind of widget per region grows with the product of the regions and the kinds; the RegionFiller keeps that product at two.
 
 Border:
 A Border has five regions: north, south, west, east and center.
@@ -599,11 +612,11 @@ So a Border can have empty space: its children do not take all the space unless 
 
 Example, with the insets and gaps of the Border at 0:
 
-    f.virtualPixelSpace(Width#1000, Height#1000).content{::.border{::
-      .north{::.pane{:: .fill .height 60 ...}}
-      .west{::.pane{:: .width 200 .height 300 ...}}
-      .center{::.pane{:: .width 400 .height 400 ...}}
-      }}
+    f.virtualPixelSpace(Width#1000, Height#1000).content.border{::
+      .north.pane{:: .fill .height 60 ...}
+      .west.pane{:: .width 200 .height 300 ...}
+      .center.pane{:: .width 400 .height 400 ...}
+      }
 
 The north Pane is 1000 x 60, at the top.
 The west region is 200 x 940; the west Pane is 200 x 300, centered vertically in it.
@@ -670,13 +683,13 @@ The axis of a Split is the width for .horizontal and the height for .vertical.
       read .dividerPosition: Nat;
       mut .draggable(b:Bool): mut Split;
       read .draggable: Bool;
-      mut .first(mut Consumer[mut Adder]):mut Split;
-      mut .second(mut Consumer[mut Adder]):mut Split;
       mut .mouse(mut Scope[Mouse]):mut Split;
       mut .paint(Painter):mut Split;
       }
-    Pane:_Container[Pane]{ ... mut .split(mut Scope[Split]):mut Pane; }
-    Adder:{ ... mut .split(mut Scope[Split]): Void; }
+    Pane:_Container[Pane]{ ... mut .split: mut RegionFiller[mut And[mut SplitWith[mut Pane]]]; }
+    RegionFiller[S:*]:{ ... mut .split: mut RegionFiller[mut And[mut SplitWith[S]]]; }
+
+.split fills the first region, .and the second region, and the scope of .with receives the Split with both.
 
 Every divider is 5 virtual pixels thick on the axis, as thick as a scroll bar, and spans the Split on the other axis.
 A Split has no gaps: it is not a _Container, and the divider is the only space between its two regions.
@@ -705,7 +718,8 @@ A new child grows the Split as a new child grows a Pane or a Border: to fit that
 .pack sets the length of the Split on the axis to the lengths of the two children plus the divider, plus the insets.
 On the other axis, .pack sets the length of the Split to the larger of the two children, plus the insets.
 .pack also sets the divider position to the length of the first child on the axis, so that neither child is clipped.
-The regions are replaceable, as the regions of a Border: a second .first replaces the first one, also when one is a Pane and the other a Border.
+The two regions of a Split keep their children for the life of the Split.
+A program that changes what a region of a Split shows puts a Pane or a Border in that region, and changes that Pane or Border.
 
 Why the divider stands where it is put.
 The program and the user put the divider at a position, and no layout moves it: predictability wins over convenience.
@@ -714,13 +728,13 @@ So the program that changes that space also sets the divider position it wants i
 
 Example, a grid of tiles beside the details of the selected tile:
 
-    f.content{::.border{::
-      .north{::.pane{:: .fill ...}}
-      .center{::.split{:: .fill .dividerPosition 320
-        .first{::.pane{:: .fill .maxPerLine 1 .stackScroll(True) ...tiles}}
-        .second{::.pane{:: .fill ...the details of the selected tile}}
-        }}
-      }}
+    f.content.border{::
+      .north.pane{:: .fill ...}
+      .center.split
+        .pane{:: .fill .maxPerLine 1 .stackScroll(True) ...tiles}
+        .and.pane{:: .fill ...the details of the selected tile}
+        .with{:: .fill .dividerPosition 320}
+      }
 
 The tiles take 320 virtual pixels, and the details take the rest of the width.
 The user drags the divider to share the width in another way.
@@ -984,9 +998,9 @@ Sections
 ========
 
     Pane:_Container[Pane]{ ... mut .sections(mut Scope[Sections]):mut Pane; }
-    Adder:{ ... mut .sections(mut Scope[Sections]): Void; }
+    RegionFiller[S:*]:{ ... mut .sections(mut Scope[Sections]): S; }
     Sections:_Container[Sections]{
-      mut .section(mut Scope[Section]): mut Sections;
+      mut .section: mut RegionFiller[mut And[mut Sections]];
       mut .column: mut Sections;
       mut .tabs: mut Sections;
       mut .autoCollapse(Bool): mut Sections;
@@ -998,10 +1012,6 @@ Sections
       mut .onClose(mut SectionHandler): mut Sections;
       read .size: Nat;
       read .isExpanded(index: Nat): Bool;
-      }
-    Section:{
-      mut .title(mut Consumer[mut Adder]): mut Section;
-      mut .content(mut Consumer[mut Adder]): mut Section;
       }
     SectionHandler:{ mut #(sections: mut Sections, index: Nat): Void; }
 
@@ -1022,14 +1032,14 @@ An index changes when the program adds or removes a section before it.
 An index that is not below .size is a deterministic error, also in a handler that runs after the program removed sections.
 
 Adding a section:
-.section runs its scope on a new Section, and adds the section at the end of the list when the scope returns.
-.section introduces the two regions of the section, its title and its content, which the scope fills through .title and .content.
+.section fills the title of a new section, .and fills its content, and filling the content adds the section at the end of the list.
+The title and the content of a section stay for the life of the section.
 A title is one widget: a Label alone, or a Pane holding a Picture and a Label, laid out as in any Pane.
 A new section is collapsed.
 
     .sections{:: .tabs
-      .section{:: .title{::.label{:: .text "readme.txt"}} .content{::.pane{:: ...}}}
-      .section{:: .title{::.label{:: .text "main.fear"}} .content{::.pane{:: ...}}}
+      .section.label{:: .text "readme.txt"}.and.pane{:: ...}
+      .section.label{:: .text "main.fear"}.and.pane{:: ...}
       .expand 0
       }
 
@@ -1230,7 +1240,7 @@ A program binds keys with Frame.onKey, and a key handler can open a menu with .o
 
 Example, the menu bar of a program and the context menu of a tile:
 
-    .north{:: .fill
+    .north.pane{:: .fill
       .button{b -> b .text "Manager" .action{b.openMenu{::
         .item{:: .text "Add project" .action{m.add}}
         .item{:: .text "Wrap lines" .check(m.wrap) .action{m.toggleWrap}}
@@ -1363,7 +1373,7 @@ Example
       .virtualPixelSpace(Width#520, Height#340)
       .bands(Color.deepNapBlue)
       .onResize{r -> Block#(f.virtualPixelSpace(Width#((+340.0 * (r.aspectRatio)).softRound.getNat), Height#340), Void)}
-      .content{:: ...}
+      .content.pane{:: ...}
       }
 
 This frame opens as state 4, titled Nap, its content area covering 30% of the screen area, with a 520x340 virtual pixel space.
