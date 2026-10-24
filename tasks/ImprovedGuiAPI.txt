@@ -559,11 +559,11 @@ A size that is state costs nothing to read, and the program can always override 
 
 Every clipping prints a warning: a widget that does not fit in its parent, a text that does not fit in its widget, a painter that draws past the edges of its widget.
 
-Slots:
-A place for exactly one child is a slot: the five regions of a Border, the two regions of a Split, the content of a Frame, the title and the content of a section.
-A slot takes a mut Scope[Adder].
+Regions:
+A place for exactly one child is a region: the five regions of a Border, the two regions of a Split, the content of a Frame, the title and the content of a section.
+A region takes a mut Scope[Adder].
 An Adder has one method per kind of widget, taking the scope of that widget and returning Void.
-The scope of the slot calls exactly one of them: a second call is a deterministic error naming the slot, and a scope that returns without a call is a deterministic error naming the slot.
+The scope of the region calls exactly one of them: a second call is a deterministic error naming the region, and a scope that returns without a call is a deterministic error naming the region.
 
     Adder:{
       mut .pane(mut Scope[Pane]): Void;
@@ -585,7 +585,7 @@ The scope of the slot calls exactly one of them: a second call is a deterministi
 
 A Pane holds any number of children, so a Pane has the same family of methods, each returning the Pane.
 The kinds of widget are listed in these two types only, Adder and Pane: a new kind of widget adds one method to each.
-Why: one method per kind of widget per slot grows with the product of the slots and the kinds; the Adder keeps that product at two.
+Why: one method per kind of widget per region grows with the product of the regions and the kinds; the Adder keeps that product at two.
 
 Border:
 A Border has five regions: north, south, west, east and center.
@@ -704,7 +704,7 @@ A new child grows the Split as a new child grows a Pane or a Border: to fit that
 .pack sets the length of the Split on the axis to the lengths of the two children plus the divider, plus the insets.
 On the other axis, .pack sets the length of the Split to the larger of the two children, plus the insets.
 .pack also sets the divider position to the length of the first child on the axis, so that neither child is clipped.
-The slots are replaceable, as the slots of a Border: a second .first replaces the first one, also when one is a Pane and the other a Border.
+The regions are replaceable, as the regions of a Border: a second .first replaces the first one, also when one is a Pane and the other a Border.
 
 Why the divider stands where it is put.
 The program and the user put the divider at a position, and no layout moves it: predictability wins over convenience.
@@ -825,7 +825,7 @@ The committed text is the text of the last commit or of the last .text, .uText o
 A commit runs .onCommit when the text differs from the committed text, and the text becomes the committed text.
 A commit happens on Enter and on Ctrl+Enter, and when the focus leaves the widget by a press elsewhere, Tab or Shift+Tab.
 A press elsewhere queues the commit first and the handlers of the press after it, so a Button action sees the committed text.
-A widget removed from the window (.clear, a replaced Border slot, a new .content) commits nothing.
+A widget removed from the window (.clear, a replaced Border region, a new .content) commits nothing.
 A new .onInput, .onEdit, .onCommit or .caret replaces the earlier one, as a new .action of a Button does.
 
 Focus:
@@ -990,25 +990,22 @@ Sections
       mut .tabs: mut Sections;
       mut .autoCollapse(Bool): mut Sections;
       mut .scroll(Bool): mut Sections;
-      mut .expand(name: Str): mut Sections;
-      mut .collapse(name: Str): mut Sections;
-      mut .index(name: Str, index: Nat): mut Sections;
-      mut .remove(name: Str): mut Sections;
+      mut .expand(index: Nat): mut Sections;
+      mut .collapse(index: Nat): mut Sections;
+      mut .remove(index: Nat): mut Sections;
       mut .onToggle(mut SectionHandler): mut Sections;
       mut .onClose(mut SectionHandler): mut Sections;
-      read .names: List[Str];
-      read .index(name: Str): Nat;
-      read .isExpanded(name: Str): Bool;
+      read .size: Nat;
+      read .isExpanded(index: Nat): Bool;
       }
     Section:{
-      mut .name(Str): mut Section;
       mut .title(mut Scope[Adder]): mut Section;
       mut .content(mut Scope[Adder]): mut Section;
       }
-    SectionHandler:{ mut #(sections: mut Sections, name: Str): Void; }
+    SectionHandler:{ mut #(sections: mut Sections, index: Nat): Void; }
 
 A Sections is a list of sections.
-A section has a name, a title and a content.
+A section has a title and a content.
 Tabs and accordions are two ways to show the same list: .tabs and .column.
 
 Words:
@@ -1018,25 +1015,21 @@ Close is only what the x of a title asks for: to take the section out of the lis
 Remove is what the program does to take a section out of the list.
 So no word means "hide the content" in one way of showing and "take the section out" in the other.
 
-Names and indexes:
-The name identifies the section.
-Every section of a Sections has its own name: adding a section with a name already in the list is a deterministic error.
-The index of a section is its position in the list, from 0; it changes when the program adds, moves or removes a section.
-Every method takes a name; .names gives the name at each index, .index(name) gives the index of a name.
-A name that is not in the list is a deterministic error that lists the names in the list.
-.index(name, index) moves the section to the position index, counted after the move: then .index(name) is index.
-An index past the last position is a deterministic error.
+Indexes:
+The index of a section is its position in the list, from 0; .size is the number of sections.
+An index changes when the program adds or removes a section before it.
+An index that is not below .size is a deterministic error, also in a handler that runs after the program removed sections.
 
 Adding a section:
 .section runs its scope on a new Section, and adds the section at the end of the list when the scope returns.
-The scope gives the section its name, its title and its content; a section still missing one of them when the scope returns is a deterministic error naming what is missing.
-The title and the content are slots: a title is one widget, a Label alone or a Pane holding a Picture and a Label, laid out as in any Pane.
+The scope gives the section its title and its content; a section still missing one of them when the scope returns is a deterministic error naming what is missing.
+The title and the content are regions: a title is one widget, a Label alone or a Pane holding a Picture and a Label, laid out as in any Pane.
 A new section is collapsed.
 
     .sections{:: .tabs
-      .section{:: .name "readme" .title{::.label{:: .text "readme.txt"}} .content{::.pane{:: ...}}}
-      .section{:: .name "main" .title{::.label{:: .text "main.fear"}} .content{::.pane{:: ...}}}
-      .expand "readme"
+      .section{:: .title{::.label{:: .text "readme.txt"}} .content{::.pane{:: ...}}}
+      .section{:: .title{::.label{:: .text "main.fear"}} .content{::.pane{:: ...}}}
+      .expand 0
       }
 
 autoCollapse:
@@ -1059,14 +1052,14 @@ A click on a title is a press and a release on the same title.
 A click on a widget inside the title that takes clicks (a Button with an action, a widget with a .clicked or .doubleClicked handler) is a click on that widget, not on the title.
 A Button with no action lets the click reach the title, as it lets a click reach its parent everywhere else.
 The two clicks of a double click are two clicks on the title.
-After a click on a title, .onToggle runs with the name of the clicked section, on the model queue, like a Button action.
+After a click on a title, .onToggle runs with the index of the clicked section, on the model queue, like a Button action.
 .onClose shows an x at the end of every title.
-A click on the x runs the handler of .onClose with the name of the section, on the model queue; the section stays until the program removes it:
+A click on the x runs the handler of .onClose with the index of the section, on the model queue; the section stays until the program removes it:
 
-    .onClose{s, n -> Block#(s.remove n, Void)}
+    .onClose{s, i -> Block#(s.remove i, Void)}
 
 A program asking "save changes?" shows its question instead, and removes the section later or never.
-The handlers run only for clicks of the user: .expand, .collapse, .index and .remove never run them.
+The handlers run only for clicks of the user: .expand, .collapse and .remove never run them.
 A new .onToggle or .onClose replaces the earlier one.
 
 A collapsed content:
@@ -1111,10 +1104,6 @@ Toolkits where the x removes the tab by itself need a second mechanism to refuse
 
 Why the handlers do not run for the calls of the program.
 A handler that runs for the calls of the program runs in the middle of building the sections, and a handler that expands a section runs itself again.
-
-Why names.
-An index changes when the list changes, so an index saved by the program, or a handler queued before a removal, can point to another section.
-A name points to the same section for as long as the section is in the list.
 
 Tooltips
 ========
