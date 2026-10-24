@@ -142,7 +142,7 @@ API
       mut .onResize(mut Consumer[ResizeRequest]): mut Frame;
       mut .onClose(mut MF[Void]): mut Frame;
       mut .close: Void;
-      ...fps, elapsed, modelFps, content, contentB, onKey
+      ...fps, elapsed, modelFps, content, onKey
       }
     ResizeRequest: ScreenContext{ .aspectRatio: Float; }
     ScreenContext:{
@@ -559,6 +559,35 @@ A size that is state costs nothing to read, and the program can always override 
 
 Every clipping prints a warning: a widget that does not fit in its parent, a text that does not fit in its widget, a painter that draws past the edges of its widget.
 
+Regions:
+A place for exactly one child is a region: the five regions of a Border, the two regions of a Split, the content of a Frame, the title and the content of a section.
+A region takes a mut Scope[Adder].
+An Adder has one method per kind of widget, taking the scope of that widget and returning Void.
+An Adder is used exactly once: an Adder not used when the method that introduced it returns is a deterministic error naming the region, and an Adder used again is a deterministic error naming the region.
+So every region introduced is filled.
+
+    Adder:{
+      mut .pane(mut Scope[Pane]): Void;
+      mut .border(mut Scope[Border]): Void;
+      mut .split(mut Scope[Split]): Void;
+      mut .sections(mut Scope[Sections]): Void;
+      mut .button(mut Scope[Button]): Void;
+      mut .label(mut Scope[Label]): Void;
+      mut .picture(mut Scope[Picture]): Void;
+      mut .textField(mut Scope[TextField]): Void;
+      mut .textArea(mut Scope[TextArea]): Void;
+      }
+    Frame:{ ... mut .content(mut Scope[Adder]): Void; }
+    Border:_Container[Border]{ ... mut .north(mut Scope[Adder]):mut Border; ...south, east, west, center }
+    Split:Widget[Split]{ ... mut .first(mut Scope[Adder]):mut Split; mut .second(mut Scope[Adder]):mut Split; }
+
+    .north{::.label{:: .text "title"}}
+    .center{::.pane{:: .fill .button{:: .text "Run"} .button{:: .text "Stop"}}}
+
+A Pane holds any number of children, so a Pane has the same family of methods, each returning the Pane.
+The kinds of widget are listed in these two types only, Adder and Pane: a new kind of widget adds one method to each.
+Why: one method per kind of widget per region grows with the product of the regions and the kinds; the Adder keeps that product at two.
+
 Border:
 A Border has five regions: north, south, west, east and center.
 The height of the north region is the height of its child, and the region spans the width of the Border; the same for south.
@@ -570,11 +599,11 @@ So a Border can have empty space: its children do not take all the space unless 
 
 Example, with the insets and gaps of the Border at 0:
 
-    f.virtualPixelSpace(Width#1000, Height#1000).contentB{::
-      .north{:: .fill .height 60 ...}
-      .west{:: .width 200 .height 300 ...}
-      .center{:: .width 400 .height 400 ...}
-      }
+    f.virtualPixelSpace(Width#1000, Height#1000).content{::.border{::
+      .north{::.pane{:: .fill .height 60 ...}}
+      .west{::.pane{:: .width 200 .height 300 ...}}
+      .center{::.pane{:: .width 400 .height 400 ...}}
+      }}
 
 The north Pane is 1000 x 60, at the top.
 The west region is 200 x 940; the west Pane is 200 x 300, centered vertically in it.
@@ -641,17 +670,13 @@ The axis of a Split is the width for .horizontal and the height for .vertical.
       read .dividerPosition: Nat;
       mut .draggable(b:Bool): mut Split;
       read .draggable: Bool;
-      mut .first(mut Scope[Pane]):mut Split;
-      mut .firstB(mut Scope[Border]):mut Split;
-      mut .firstS(mut Scope[Split]):mut Split;
-      mut .second(mut Scope[Pane]):mut Split;
-      mut .secondB(mut Scope[Border]):mut Split;
-      mut .secondS(mut Scope[Split]):mut Split;
+      mut .first(mut Scope[Adder]):mut Split;
+      mut .second(mut Scope[Adder]):mut Split;
       mut .mouse(mut Scope[Mouse]):mut Split;
       mut .paint(Painter):mut Split;
       }
     Pane:_Container[Pane]{ ... mut .split(mut Scope[Split]):mut Pane; }
-    Border:_Container[Border]{ ... mut .northS(mut Scope[Split]):mut Border; ...southS, eastS, westS, centerS }
+    Adder:{ ... mut .split(mut Scope[Split]): Void; }
 
 Every divider is 5 virtual pixels thick on the axis, as thick as a scroll bar, and spans the Split on the other axis.
 A Split has no gaps: it is not a _Container, and the divider is the only space between its two regions.
@@ -680,7 +705,7 @@ A new child grows the Split as a new child grows a Pane or a Border: to fit that
 .pack sets the length of the Split on the axis to the lengths of the two children plus the divider, plus the insets.
 On the other axis, .pack sets the length of the Split to the larger of the two children, plus the insets.
 .pack also sets the divider position to the length of the first child on the axis, so that neither child is clipped.
-The slots are replaceable, as the slots of a Border: a second .first replaces the first one, also when one is a Pane and the other a Border.
+The regions are replaceable, as the regions of a Border: a second .first replaces the first one, also when one is a Pane and the other a Border.
 
 Why the divider stands where it is put.
 The program and the user put the divider at a position, and no layout moves it: predictability wins over convenience.
@@ -689,13 +714,13 @@ So the program that changes that space also sets the divider position it wants i
 
 Example, a grid of tiles beside the details of the selected tile:
 
-    f.contentB{::
-      .north{:: .fill ...}
-      .centerS{:: .fill .dividerPosition 320
-        .first{:: .fill .maxPerLine 1 .stackScroll(True) ...tiles}
-        .second{:: .fill ...the details of the selected tile}
-        }
-      }
+    f.content{::.border{::
+      .north{::.pane{:: .fill ...}}
+      .center{::.split{:: .fill .dividerPosition 320
+        .first{::.pane{:: .fill .maxPerLine 1 .stackScroll(True) ...tiles}}
+        .second{::.pane{:: .fill ...the details of the selected tile}}
+        }}
+      }}
 
 The tiles take 320 virtual pixels, and the details take the rest of the width.
 The user drags the divider to share the width in another way.
@@ -801,7 +826,7 @@ The committed text is the text of the last commit or of the last .text, .uText o
 A commit runs .onCommit when the text differs from the committed text, and the text becomes the committed text.
 A commit happens on Enter and on Ctrl+Enter, and when the focus leaves the widget by a press elsewhere, Tab or Shift+Tab.
 A press elsewhere queues the commit first and the handlers of the press after it, so a Button action sees the committed text.
-A widget removed from the window (.clear, a replaced Border slot, a new .content) commits nothing.
+A widget removed from the window (.clear, a replaced Border region, a new .content) commits nothing.
 A new .onInput, .onEdit, .onCommit or .caret replaces the earlier one, as a new .action of a Button does.
 
 Focus:
@@ -954,6 +979,132 @@ Open: what Graphics does not offer.
 Graphics draws lines one virtual pixel wide and no arcs.
 The bundled fonts have one weight.
 .text shapes its text at each call, and a painter runs at each repaint tick: a cache of shaped lines in the library would cost the program nothing.
+
+Sections
+========
+
+    Pane:_Container[Pane]{ ... mut .sections(mut Scope[Sections]):mut Pane; }
+    Adder:{ ... mut .sections(mut Scope[Sections]): Void; }
+    Sections:_Container[Sections]{
+      mut .section(mut Scope[Section]): mut Sections;
+      mut .column: mut Sections;
+      mut .tabs: mut Sections;
+      mut .autoCollapse(Bool): mut Sections;
+      mut .scroll(Bool): mut Sections;
+      mut .expand(index: Nat): mut Sections;
+      mut .collapse(index: Nat): mut Sections;
+      mut .remove(index: Nat): mut Sections;
+      mut .onToggle(mut SectionHandler): mut Sections;
+      mut .onClose(mut SectionHandler): mut Sections;
+      read .size: Nat;
+      read .isExpanded(index: Nat): Bool;
+      }
+    Section:{
+      mut .title(mut Scope[Adder]): mut Section;
+      mut .content(mut Scope[Adder]): mut Section;
+      }
+    SectionHandler:{ mut #(sections: mut Sections, index: Nat): Void; }
+
+A Sections is a list of sections.
+A section has a title and a content.
+Tabs and accordions are two ways to show the same list: .tabs and .column.
+
+Words:
+A section is expanded when its content shows, and collapsed when it does not.
+Expand and collapse are about the content only: the title always shows.
+Close is only what the x of a title asks for: to take the section out of the list.
+Remove is what the program does to take a section out of the list.
+So no word means "hide the content" in one way of showing and "take the section out" in the other.
+
+Indexes:
+The index of a section is its position in the list, from 0; .size is the number of sections.
+An index changes when the program adds or removes a section before it.
+An index that is not below .size is a deterministic error, also in a handler that runs after the program removed sections.
+
+Adding a section:
+.section runs its scope on a new Section, and adds the section at the end of the list when the scope returns.
+.section introduces the two regions of the section, its title and its content, which the scope fills through .title and .content.
+A title is one widget: a Label alone, or a Pane holding a Picture and a Label, laid out as in any Pane.
+A new section is collapsed.
+
+    .sections{:: .tabs
+      .section{:: .title{::.label{:: .text "readme.txt"}} .content{::.pane{:: ...}}}
+      .section{:: .title{::.label{:: .text "main.fear"}} .content{::.pane{:: ...}}}
+      .expand 0
+      }
+
+autoCollapse:
+With .autoCollapse(True), the default, at most one section is expanded: expanding a section collapses the expanded one.
+With .autoCollapse(False), any number of sections can be expanded.
+.autoCollapse(True) on a Sections with more than one expanded section keeps expanded only the first of them in the list.
+The user can expand any number of sections, so this setter never fails because of what the user did.
+No section expanded is a normal state, also with .autoCollapse(True).
+
+Column and tabs:
+.column, the default, shows the sections one under the other: each title, and under it its content when the section is expanded.
+.tabs shows the titles in one row, and the content of the expanded section in the space below the row.
+.tabs shows the content of at most one section, so .tabs needs .autoCollapse(True): .tabs after .autoCollapse(False), and .autoCollapse(False) after .tabs, are deterministic errors of the second setter.
+.column and .tabs can be called at any time, and the expanded section stays expanded.
+
+The user:
+A click on a title expands its section when the section is collapsed, and collapses it when it is expanded, in a column and in tabs.
+So a click on the title of the expanded tab collapses it, and the space below the row is empty.
+A click on a title is a press and a release on the same title.
+A click on a widget inside the title that takes clicks (a Button with an action, a widget with a .clicked or .doubleClicked handler) is a click on that widget, not on the title.
+A Button with no action lets the click reach the title, as it lets a click reach its parent everywhere else.
+The two clicks of a double click are two clicks on the title.
+After a click on a title, .onToggle runs with the index of the clicked section, on the model queue, like a Button action.
+.onClose shows an x at the end of every title.
+A click on the x runs the handler of .onClose with the index of the section, on the model queue; the section stays until the program removes it:
+
+    .onClose{s, i -> Block#(s.remove i, Void)}
+
+A program asking "save changes?" shows its question instead, and removes the section later or never.
+The handlers run only for clicks of the user: .expand, .collapse and .remove never run them.
+A new .onToggle or .onClose replaces the earlier one.
+
+A collapsed content:
+A collapsed content is not drawn, takes no mouse events, and the Tab key does not move the keyboard into it.
+It keeps its widgets and their state, for example the text of a TextField and the scroll position of a Pane.
+The program changes it as any widget in the window: a log grows while its section is collapsed.
+Collapsing a section takes the keyboard from a TextField or TextArea of its content, as removing the section does.
+.remove takes the title and the content out of the window, as .clear takes out the children of a Pane.
+
+Layout:
+The head of a section is the row of its title.
+In a column, a head spans the width of the Sections inside the insets, and is as tall as its title.
+The title stands after a mark 16 virtual pixels wide and a widthGap, at its own size; with .fill it takes the head up to the x.
+With .onClose, the x takes the last 16 virtual pixels of the head, after a widthGap.
+The content of an expanded section is under its head, after a heightGap, placed as a child in a line of a Pane: at its own size and centered, and with .fill as wide as the head.
+A heightGap separates a section from the next one.
+In tabs, the heads stand in one row from the left, separated by a widthGap; a head is its title at its own size and the x, and the row is as tall as the tallest title.
+The content space is below the row after a heightGap, down to the bottom inset.
+The expanded content takes the content space as a child takes the center of a Border: at its own size and centered, or filling it with .fill, and it is clipped to it.
+A row wider than the Sections is clipped, with a warning.
+
+The size of a Sections is state, as the size of every widget: expanding and collapsing never change it.
+A new section grows the Sections to fit that section alone: its head, a heightGap and its content, plus the insets.
+.pack fits every section as if all of them were expanded at once: in a column all the heads and all the contents, in tabs the row, a heightGap and the largest content.
+So the size of a Sections never depends on what the user expanded.
+A column taller than the Sections is clipped, with a warning.
+.scroll(True) shows a vertical scroll bar, as .stackScroll(True) on a Pane, and the column scrolls instead.
+In tabs, the row and the content space always fit the Sections, so the bar has nothing to scroll.
+The scroll position stays the same number of virtual pixels when a section expands or collapses.
+
+Drawing:
+Each head is a band in the faint color of a scroll track, darker when the section is expanded.
+In a column, the mark is an arrow that points right for a collapsed section and down for an expanded one.
+The mark and the x are drawn in the foreground color of the Sections.
+
+Why a click on the expanded tab collapses it.
+A click on a title does the same in a column and in tabs: .column and .tabs change where the titles and the contents are, never what a click does.
+
+Why the x only asks.
+The program owns the list: a section leaves the list only when the program removes it.
+Toolkits where the x removes the tab by itself need a second mechanism to refuse it, and an event after the tab is gone.
+
+Why the handlers do not run for the calls of the program.
+A handler that runs for the calls of the program runs in the middle of building the sections, and a handler that expands a section runs itself again.
 
 Tooltips
 ========
