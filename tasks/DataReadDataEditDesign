@@ -1,0 +1,115 @@
+# DataRead DataEdit design
+
+How a Fearless main reads and edits the files of a data project.
+The code declares the types naming the data the code needs.
+The user of the manager mounts a data project on each of those types, picking the data project from a menu.
+
+### Terms
+
+- 'data project': a registered project of kind `dataRead` or `dataEdit`. No Fearless program writes a `dataRead` project; a main can read and write a `dataEdit` project.
+- 'DataRead type': a type implementing `base.DataRead`. 'DataEdit type': a type implementing `base.DataEdit`. Every DataEdit type is also a DataRead type.
+- 'mount': an entry of `mounts` in `projects.info` (see Registered projects in ControllersDesign): a data project mounted on a DataRead type of a code project.
+- 'broken mount': a mount naming a type that is not a DataRead type of the code project, a mount naming a project that is not registered or that is not a data project, and a mount of a `dataRead` project on a DataEdit type.
+
+## Base
+
+```
+DataRead: CaptureFree{}
+DataEdit: DataRead{}
+System: ... {
+  ...
+  mut .dataRead(data: DataRead): mut CapDataRead;
+  mut .dataEdit(data: DataEdit): mut CapDataEdit;
+  }
+CapDataRead: ToIso[CapDataRead], WidenTo[CapDataRead]{
+  mut .paths(path: List[Str]): List[Str];
+  mut .read(path: List[Str]): mut InputCursorNode;
+  }
+CapDataEdit: ToIso[CapDataEdit], WidenTo[CapDataEdit]{
+  mut .paths(path: List[Str]): List[Str];
+  mut .read(path: List[Str]): mut InputCursorNode;
+  mut .writeStrUtf8(path: List[Str], content: Str): Void;
+  mut .writeUStrUtf8(path: List[Str], content: UStr): Void;
+  mut .writeStrUtf16Le(path: List[Str], content: Str): Void;
+  mut .writeUStrUtf16Le(path: List[Str], content: UStr): Void;
+  mut .writeStrUtf32Le(path: List[Str], content: Str): Void;
+  mut .writeUStrUtf32Le(path: List[Str], content: UStr): Void;
+  mut .writeStrUtf16Be(path: List[Str], content: Str): Void;
+  mut .writeUStrUtf16Be(path: List[Str], content: UStr): Void;
+  mut .writeStrUtf32Be(path: List[Str], content: Str): Void;
+  mut .writeUStrUtf32Be(path: List[Str], content: UStr): Void;
+  mut .writeStrAscii(path: List[Str], content: Str): Void;
+  mut .writeUStrAscii(path: List[Str], content: UStr, recover: mut UnencodableRecover): Void;
+  mut .writeStrLatin1(path: List[Str], content: Str): Void;
+  mut .writeUStrLatin1(path: List[Str], content: UStr, recover: mut UnencodableRecover): Void;
+  mut .writeBytes(path: List[Str], content: List[Byte]): Void;
+  mut .writeImagePng(path: List[Str], content: Image): Void;
+  mut .delete(path: List[Str]): Void;
+  }
+```
+Each method of `CapDataRead` and of `CapDataEdit` does what the method with the same name of `CapDataReadWrite` in `data_projects.fear` does, errors included, on the data project mounted on the DataRead type.
+
+Example:
+```
+Diary: DataEdit{}
+Pub: DataRead{}
+ShowDiary: Main{ sys -> ... sys.dataEdit(Diary).read(List#(`2026`, `today.txt`)) ... sys.dataRead(Pub).paths(List#) ... }
+```
+`sys.dataRead(Pub)` gives the capability to read the data project mounted on `Pub`.
+`sys.dataEdit(Diary)` gives the capability to read and write the data project mounted on `Diary`.
+`sys.dataRead(Diary)` gives the capability to only read the data project mounted on `Diary`.
+`sys.dataEdit(Pub)` is a type error: `Pub` is not a DataEdit type.
+
+The DataRead types of a code project are the concrete DataRead types of every package of the code project.
+`base` declares no DataRead type.
+
+A program started by the portable Fearless has no mount: every `sys.dataRead` and every `sys.dataEdit` is a non deterministic error.
+
+## What the compiler records
+
+The manifest of each package (see Info files in ControllersDesign) lists under `dataRead` the concrete DataRead types of the package that are not DataEdit types, and under `dataEdit` the concrete DataEdit types of the package:
+```
+{
+  "mains": { "hello.ShowDiary": [...] },
+  "attenuators": [ "hello.NoGui" ],
+  "dataRead": [ "hello.Pub" ],
+  "dataEdit": [ "hello.Diary" ]
+}
+```
+
+## Mounts
+
+A data project can be mounted on several DataRead types, of one code project or of several code projects.
+A broken mount is well formed; a `Run` of a code project with a broken mount is ill formed (see Ill formed messages in ControllersDesign).
+
+## Data projects of a running main
+
+When a `Run` starts, the manager gives each main of that `Run` the folder of every data project mounted on a DataRead type of the project, by the qualified name of that DataRead type.
+A process started by `CapProcess` has the mounts of the parent process (see Processes in AttenuationDesign).
+A data project that changes on disk while a main runs is not checked again: a read or a write that finds the files changed so that the read or the write can not be done is a non deterministic error of that main.
+A main does not see the marker of a data project or the files and folders whose name starts with "."; a path naming one of those is not valid.
+A write keeps the data project valid: a write writes only valid names, never at the place of the marker, and a delete removes the folders and the zip files the delete leaves empty.
+
+## GUI
+
+For a code project, and for any other project with `mounts`, the Data collapsible area has one row for each DataRead type in the manifests of the project and one row for each mount:
+- the qualified name of the DataRead type, and `DataRead` or `DataEdit`;
+- a drop down holding "not mounted" and every data project whose mount on this DataRead type is not a broken mount, the current mount selected; choosing an entry is a `Mount`.
+A broken mount shows the mark of an invalid attenuator (see the Attenuators collapsible area in ControllersDesign), the text naming what makes the mount broken, and an Unmount button: a `Mount` with no data project.
+When the project has no manifest, the DataRead types of the project are not known: the rows show the mounts, and a mount shows as broken only when the mount names a project that is not registered or that is not a data project.
+
+For a data project, the Data collapsible area lists the mounts on that data project, each as `project::type` with an Unmount button.
+Under that list, a drop down holds the DataRead types with no mount, of the compiled code projects, on which a mount of this data project is not a broken mount; choosing an entry is a `Mount` of the code project of that DataRead type.
+
+## Attenuation
+
+An attenuator forwards `.dataRead` and `.dataEdit` as the other methods of `System`: `.dataRead d -> u.dataRead d; .dataEdit d -> u.dataEdit d;`.
+
+## TODO
+
+- `Named: { .name: Str -> Magic! }`: a type implementing `Named` gets `.name`, with a default implementation returning the qualified name of the concrete type of the object.
+  Open: whether `Named` violates a property of Fearless. With `Named`, the names the compiler infers for the types declared inside method bodies (`FreshPrefix.freshTopType`) become observable, and so do the names of the private types of a package.
+  With `DataRead: Named`, an attenuator can revoke the data project mounted on one DataRead type, by the name of that DataRead type.
+  `Enum` can be simplified with `Named`: an enum value can take `.str` from `.name`.
+- The manifest records the doc comment of each DataRead type, and the Data collapsible area shows that doc comment next to the DataRead type.
+- The portable Fearless asks the user for a folder, with a folder picker, for each DataRead type of the program.

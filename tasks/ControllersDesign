@@ -31,7 +31,7 @@ Starting the manager program leaves one message in the manager folder. Several r
 
 The manager program takes:
 - zero arguments: the message is `Show`: show the window, starting the single manager when none runs;
-- a first argument `FearlessCommand<Verb>`, then the arguments of the verb: the message is the verb `<Verb>` with those arguments. A project name, a main, a kind and a type name are written as they are. A path is written as a tagged text in its `Base16:` form, `Base16:` then the bytes naming the path, so every argument is plain ASCII on every system. A port is written `Port:` then its number. The words after the project name of `Run` and `Link` form their second argument, separated by single spaces, except a last `Port:` word, the port;
+- a first argument `FearlessCommand<Verb>`, then the arguments of the verb: the message is the verb `<Verb>` with those arguments. A project name, a main, a kind and a type name are written as they are. A path is written as a tagged text in its `Base16:` form, `Base16:` then the bytes naming the path, so every argument is plain ASCII on every system. A port is written `Port:` then its number. The words after the project name of `Run`, `Mount` and `Attenuate` form their second argument, separated by single spaces, except a last `Port:` word, the port;
 - one argument not starting with `FearlessCommand`: the path of a file or a folder, as the system passes the path when the file is opened (for example by a double click); the message is `Register` with that path for a folder or a `.fearless` file, and `OpenWithOrShortcut` with that path for any other file.
 For example:
 ```
@@ -93,11 +93,11 @@ Verbs about one project, taking the name of a registered project:
 - `Check <name>`: select the project and report in the Output of the project the problem of the project, or that the project is out of date, or that the project is neither invalid nor out of date; the problem is also written to `.fearless_out/check_error.txt`, and a `Check` of a valid project deletes `.fearless_out/check_error.txt`;
 - `Terminate <name>`: select the project and end the main or the compilation of the project currently running, if any;
 - `DeleteCache <name>`: select the project and delete the compiled cache of the project;
-- `Kind <name>`: set the kind of the project to the second argument (`idle`, `code`, `data:readOnly`, `data:readWrite`);
+- `Kind <name>`: set the kind of the project to the second argument (`idle`, `code`, `dataRead`, `dataEdit`);
 - `Forget <name>`: forget the project.
-- `Link <name>`: set a link of the code project to a data project to the second argument: the name of the data project, then `read` or `write`, then the type names the code uses for the data project, separated by spaces; no type names removes that link;
+- `Mount <name>`: set the mount of a DataRead type of the code project to the second argument: the qualified name of the DataRead type, then the name of the data project; no data project removes the mount of that DataRead type (see DataReadDataEditDesign);
 - `Attenuate <name>`: set the attenuators of a main of the code project to the second argument: the name of the main, then the attenuators applied to that main in order, separated by spaces; no attenuator removes all the attenuators of that main (see the Manager section of AttenuationDesign);
-`Forget <name>`, `Kind <name>`, `Link <name>` and `Attenuate <name>` are special cases of `EditMetadata`: each one is `EditMetadata` with the current `projects.info` changed in one place (the project removed, the `kind` of the project replaced, one link of the project replaced, the attenuators of one main replaced).
+`Forget <name>`, `Kind <name>`, `Mount <name>` and `Attenuate <name>` are special cases of `EditMetadata`: each one is `EditMetadata` with the current `projects.info` changed in one place (the project removed, the `kind` of the project replaced, the mount of one DataRead type replaced, the attenuators of one main replaced).
 Such a verb is applied, or is ill formed with the same error, exactly as that `EditMetadata` is.
 Every verb takes a port as its last argument, when present.
 Before applying the request, the manager connects to that port of this machine.
@@ -120,10 +120,11 @@ Ill formed messages:
 - a `ConnectEclipse` whose path leads to no Eclipse folder, and an `EditMetadata` whose path names no file;
 - an `OpenWithOrShortcut` whose path names no file, names an empty file, or names a file whose extension no main claims;
 - an `OpenWithOrShortcut <path> <name> <main>` where `<main>` of `<name>` is not one of the mains claiming the extension of the file, also when `<name>` is not a registered project (the error lists the mains claiming the extension);
-- a kind that is not one of the four, an ill formed link, and an `Attenuate` naming no main;
+- a kind that is not one of the four, a `Mount` naming no type, and an `Attenuate` naming no main;
 - an `EditMetadata` that Registered projects refuses;
 - `Run` and `Compile` of a project that is not code, naming the kind of the project;
 - `Run` of a project whose `attenuators` name a main that is not a main of the project, or an attenuator that is not an attenuator of the project (the error lists the mains, or the attenuators);
+- `Run` of a project with a broken mount, or with a DataRead type with no mount (see DataReadDataEditDesign; the error lists each broken mount, naming what makes that mount broken, and each DataRead type with no mount);
 - `Run` and `Compile` of a project with invalid content (the error is the problem of the project);
 - `Run` of a project that is not compiled, naming the state of the project; `Run` naming no main, or a main that is not a main of the project (the error lists the mains of the project);
 - `Run`, `Compile` or `DeleteCache` while a main or a compilation of the project is currently running.
@@ -134,7 +135,7 @@ The error of an ill formed message is shown in a dialog, never in the Output: th
 ## Info files
 
 The files the manager and the compiler write for the manager and for Eclipse (`projects.info`, `manager.info`, `<pkg>_manifest.info`) are Info files: text in the Fearless character set (the characters a Fearless `Str` allows).
-The 'manifest' of a compiled package `<pkg>` of a project is the file `.fearless_out/<pkg>_manifest.info` of the project, written by the compiler when compiling the package: the mains of the package, with the claims and the preloaded icons of each main, and the attenuators of the package (see What the compiler records). The manifests of a project are the manifests of the packages of the project.
+The 'manifest' of a compiled package `<pkg>` of a project is the file `.fearless_out/<pkg>_manifest.info` of the project, written by the compiler when compiling the package: the mains of the package, with the claims and the preloaded icons of each main, the attenuators of the package and the DataRead types of the package (see What the compiler records). The manifests of a project are the manifests of the packages of the project.
 An Info is a string `"..."`, a list `[a, b]`, or an object `{"key": value, ...}` whose keys are distinct strings.
 Inside an Info string, `\"` is a quote, `\\` a backslash and `\n` a newline; there is no other escape: `"\t"` is an invalid Info.
 
@@ -147,7 +148,7 @@ The text is the Fearless code of the `Str`: `"C:\data\hello"` for the path `C:\d
 
 ## Registered projects
 
-The manager folder holds `projects.info`, the record of every registered project: the path, the kind, the selected mains, and the data projects the project may read and write.
+The manager folder holds `projects.info`, the record of every registered project: the path, the kind, the selected mains, and the mounts.
 The manager is the only program writing `projects.info`: the manager writes the new content to another file in the manager folder, then renames that file to `projects.info`, so a reader such as Eclipse never reads a partial `projects.info`.
 
 `projects.info` is an Info file: an object with `projects`, mapping each project name to its metadata, and `systemExtensions`:
@@ -158,13 +159,12 @@ The manager is the only program writing `projects.info`: the manager writes the 
       "path": "Str:\"C:\\data\\01_hello_world\"",
       "kind": "code",
       "mains": ["hello.Hello1", "hello.Hello3"],
-      "reads": {"pub": ["Pub"], "notes": ["OldNotes"]},
-      "edits": {"notes": ["Notes", "Diary"]},
+      "mounts": {"hello.Diary": "diary"},
       "attenuators": {"hello.Hello1": ["base.NoManagerQuit", "hello.NoGui"]}
     },
     "diary": {
       "path": "UStr:\"C:\\Users\\Jos\".u\"00E9\"+(\"\\da\".u\"1F600\")+(\"ta\".u)",
-      "kind": "data:readWrite"
+      "kind": "dataEdit"
     }
   },
   "systemExtensions": ["htm"]
@@ -173,13 +173,11 @@ The manager is the only program writing `projects.info`: the manager writes the 
 - `systemExtensions`: the system extensions this manager takes, whether or not a main claims those extensions. A system extension is an extension a main names in the `OpenWith` of the main, like `htm` in `base.OpenWith[icon,"htm"]`; every other `OpenWith` and `Shortcut` gets an extension the manager makes (`ffile000` to `ffile999`, `fapp000` to `fapp999`). A compile whose mains name a system extension missing from `systemExtensions` fails, naming the extension.
 Each project has:
 - `path`: the absolute path of the project folder, any path the system allows, exactly as the current system and file system name the folder, separators included: the tagged text only picks the most readable form holding those exact bytes. Two projects never share a folder, and a project folder is never inside another project folder.
-- `kind`: `idle`, `code`, `data:readOnly` or `data:readWrite`.
+- `kind`: `idle`, `code`, `dataRead` or `dataEdit`.
 - `mains`: the selected mains: the mains the last `Run` ran, for a code project with several mains.
-- `reads` and `edits`: the data projects the code project may read, and the data projects the code project may read and write, each with the type names the code uses for that data project. A project in `reads` is `data:readOnly` or `data:readWrite`; a project in `edits` is `data:readWrite`. A data project may be in both: the type names in `edits` read and write, those in `reads` only read. A type name is in one link only: the code reaches one data project through that type name. A link names at least one type name.
+- `mounts`: for each DataRead type, the name of the data project mounted on that DataRead type (see DataReadDataEditDesign).
 
 - `attenuators`: for each main the attenuators the manager applies to that main, in order; a main absent from `attenuators` gets no attenuator. Naming a main or an attenuator the project does not have is well formed.
-
-A code project whose links name a missing project, or a project of the wrong kind, or an invalid project, is invalid: such a link is 'broken'.
 
 A `projects.info` that is not a valid Info file, or does not hold what is above, is a fatal error pointing at the offending text in the Frontend error message style.
 
@@ -188,7 +186,7 @@ The editor of the GUI remembers the content the editor opened; when the user com
 An edit is refused, and nothing changes, when:
 - the whole text is not valid: the error points at the offending text in the Frontend error message style;
 - the edit removes a project, or changes the kind of a project, while a main or a compilation of that project is currently running;
-- the edit changes the data projects that a running main reads or writes (see Data projects of a running main);
+- the edit changes the mounts of a project, or the kind or the folder of a data project mounted on a DataRead type of that project, while a main of that project is currently running;
 - the edit adds to `systemExtensions` an extension reconcile refuses (see File associations).
 An accepted edit applies at once: projects the edit removes are forgotten, projects the edit adds are registered as they are, every project is checked again.
 
@@ -211,15 +209,15 @@ Forgetting a project removes the project from `projects.info`; nothing in the pr
 ## Project states
 
 Each project is in one of these states, shown as a badge on the tile of the project:
-- `code: invalid content`, `data: invalid content`: the project folder is missing, the file names of the project are not valid Fearless file names (for code, also the package structure), the marker is missing or is not the only top level `.fearless` file, a link of the project is broken, or the manager can not display the icon of the project;
+- `code: invalid content`, `data: invalid content`: the project folder is missing, the file names of the project are not valid Fearless file names (for code, also the package structure), the marker is missing or is not the only top level `.fearless` file, or the manager can not display the icon of the project;
 - `idle`;
-- `data: read only`, `data: read write`;
+- `dataRead`, `dataEdit`;
 - `code: not compiled (no cache)`: no package is compiled, even if `.fearless_out` exists and holds the error of the last check or compile;
 - `code: not compiled (cache out of date)`: a compiled cache that does not match the sources;
 - `code: compiled`;
 - `code: busy`: a main or a compilation of the project is currently running.
 
-The 'problem' of a project with invalid content is the error naming which of the causes above holds; for a broken link, the problem names the link and what makes the link broken (a missing project, a project of the wrong kind, an invalid project).
+The 'problem' of a project with invalid content is the error naming which of the causes above holds.
 
 A code project is out of date exactly when compiling the project would compile some package: when the compiled cache of a package does not list exactly the current files of that package, or is older than one of those files. Files outside every package (a readme, the marker) never make a project out of date.
 
@@ -231,7 +229,7 @@ The manager does not check for changes while the manager window is hidden (the t
 
 The icon of a project is the only PNG file in the folder `.config/icon` of the project, or, with no such folder, an icon generated from the project name. More than one PNG file, or a PNG file that can not be read, makes the project invalid.
 
-A kind changes to any other kind. Changing the kind keeps `mains`, `reads`, `edits` and `attenuators`: those fields have no effect while the project is not code, and apply again when the project becomes code again.
+A kind changes to any other kind. Changing the kind keeps `mains`, `mounts` and `attenuators`: those fields have no effect while the project is not code, and apply again when the project becomes code again.
 
 ## General GUI shape:
 Dropping files or folders on the manager window is a `Register` of each file or folder dropped.
@@ -253,7 +251,7 @@ A header on one line: the project icon, the project name, and the following butt
   - Run, for a compiled code project with one main; Run V (V an arrow down), for a compiled code project with several mains; Run greyed out, for a compiled code project with no main;
   - Terminate, while a main or a compilation of the project is currently running.
 - The Open docs button (enabled once the mains are known), opening the docs in the default browser.
-- The kind buttons, one for each kind the project is not: "Back to idle", "Become data", "Become editable data" and "Become code".
+- The kind buttons, one for each kind the project is not: "Back to idle", "Become dataRead", "Become dataEdit" and "Become code".
 - Browse, opening the project folder in the file explorer, Forget (`Forget`), and for a code project Delete cache (`DeleteCache`).
 The kind buttons, Forget and Delete cache are greyed out while a main or a compilation of the project is currently running.
 
@@ -273,12 +271,7 @@ For a code project whose mains claim extensions (`OpenWith`), after the Attenuat
   "Extensions this main opens:" (each extension with its icon),
   "Conflicting extensions:" (each extension another main also claims, naming that main).
 
-For a data project we see a collapsible area listing in editable format the code projects linking this data project, read or write, and under what type names, with a control to add a link to another code project.
-
-For a code project, the same area lists in editable format the data projects this code project links, read or write, and under what type names, with a control to add a link to another data project.
-For any other project with `reads` or `edits`, the same area lists those links in editable format too.
-
-The code project holds the link (`reads` and `edits` in `projects.info`): an edit from either side is a `Link` of the code project.
+For a code project, for a data project, and for any project with `mounts`, we see the Data collapsible area (see DataReadDataEditDesign).
 
 For a code project we have the Logs collapsible area, showing the log files the mains wrote in `.out/logs`, with a Logs button opening that folder in the file explorer.
 
@@ -292,18 +285,6 @@ Every `Run`, `Compile` and `Check` starts with an empty Output. Everything a run
 - Run (code projects): a `Run` runs the mains the `Run` names, in the order of the mains of the project. Each main runs in its own JVM, one after the other.
 - Terminate ends the running main or compilation: the JVM of that main or compilation ends, and no further main of that `Run` starts.
 - A main or a compilation that crashes, or that takes all the memory, ends alone: the manager and the mains and compilations of the other projects keep running.
-
-### Data projects of a running main
-
-A running main reads the data projects linked by its code project through `System.dataRead` of the standard library, and reads and writes those data projects through `System.dataReadWrite`.
-The roots of `System.dataRead` are the type names in `reads` and in `edits`; the roots of `System.dataReadWrite` are the type names in `edits`: a main names a data project by a root of the capability the main uses.
-When a `Run` starts, the manager gives each main of that `Run` the folder of every data project the links of the code project name, by the type names of those links.
-Changes follow the dependencies of the projects:
-- what a running main depends on does not change: an `EditMetadata` changing what the links of that project give, or the kind or the folder of a data project those links name, is refused, naming the project and the running main;
-- what a code project that is not running depends on can change: removing a data project the code project links, or changing the kind or the folder of that data project, is accepted, and the code project becomes invalid, naming the broken link.
-A data project that changes on disk while a main runs is not checked again: a read or a write that finds the files changed so that the read or the write can not be done is a non deterministic error of that main.
-A main does not see the marker of a data project or the files and folders whose name starts with "."; a path naming one of those is not valid.
-A write keeps the data project valid: a write writes only valid names, never at the place of the marker, and a delete removes the folders and the zip files the delete leaves empty.
 
 An error file (`compile_error.txt`, `check_error.txt`) is out of date once a file or folder of the project outside `.fearless_out`, or `projects.info`, is modified after the error file, as the compiled cache of a package is out of date once one of the files of the package is modified after the compiled cache. An error file that is out of date is shown nowhere: the error file says why the project was broken, not why the project is broken now.
 
@@ -357,14 +338,16 @@ The extensions are of two kinds:
 
 The portable Fearless does nothing with `OpenWith`/`Shortcut`; the compiler is shared, so the compiler records the claims in either case, and only the manager reads the claims.
 
-The manifest of a package is an object with `mains` and `attenuators` (see the Manager section of AttenuationDesign for `attenuators`): `mains` maps each concrete main of the package to the file declaring the main, the list of the `Shortcut` claims of the main, the list of the `OpenWith` claims of the main, and the list of the icons the main preloads: the icons of the `Shortcut` claims, `base.IconsFearless`, the icons of the `PreLoadIcon` of the main and the icons of the `OpenWith` claims. A claim is the icon type, where the image of the icon is (the `.diskPath`, `.zipSteps` and `.zipEntry` of the asset, relative to the root of the project owning the package of the icon, the stdLib folder for `base`), then the extension, `""` when the main wrote none; a preloaded icon is written as a claim with `""` as the extension:
+The manifest of a package is an object with `mains`, `attenuators`, `dataRead` and `dataEdit` (see the Manager section of AttenuationDesign for `attenuators`, and DataReadDataEditDesign for `dataRead` and `dataEdit`): `mains` maps each concrete main of the package to the file declaring the main, the list of the `Shortcut` claims of the main, the list of the `OpenWith` claims of the main, and the list of the icons the main preloads: the icons of the `Shortcut` claims, `base.IconsFearless`, the icons of the `PreLoadIcon` of the main and the icons of the `OpenWith` claims. A claim is the icon type, where the image of the icon is (the `.diskPath`, `.zipSteps` and `.zipEntry` of the asset, relative to the root of the project owning the package of the icon, the stdLib folder for `base`), then the extension, `""` when the main wrote none; a preloaded icon is written as a claim with `""` as the extension:
 ```
 {
   "mains": {
     "hello.Bar": ["_hello/bar.fear", [["hello.IconsShortcut", "_hello/icons/shortcut.png", "", "", ""]], [["hello.IconsDoc", "_hello/icons/doc.png", "", "", "htm"]], [["hello.IconsShortcut", "_hello/icons/shortcut.png", "", "", ""], ["base.IconsFearless", "icons/fearless.png", "", "", ""], ["hello.IconsDoc", "_hello/icons/doc.png", "", "", ""]]],
     "hello.Beer": ["_hello/beer.fear", [], [], [["base.IconsFearless", "icons/fearless.png", "", "", ""]]]
   },
-  "attenuators": []
+  "attenuators": [],
+  "dataRead": [],
+  "dataEdit": []
 }
 ```
 The manager reads the manifests of every package of the project, merged, and the `base_manifest.info` of the base cache.
@@ -468,7 +451,8 @@ An input file offers the reading methods of the autoloaded `TxtFile` and `ImageF
 A running main sends messages to the manager through `System.manager` of the standard library, the capability `CapManager`.
 Each method of `CapManager` sends one message, as Eclipse does: the method listens on a port, runs the manager program with `FearlessCommand<Verb>`, the arguments of the verb and that port, and returns when the manager ends the connection.
 So a method of `CapManager` returns once the manager has applied the message of the method: `.run` and `.compile` return once the mains or the compilation end, and return the Output of the mains or of the compilation, the text the manager sent on the port after the line `Applied`; the other methods return `Void`.
-A kind is a method of its own (`.kindIdle`, `.kindCode`, `.kindDataReadOnly`, `.kindDataReadWrite`), and so is a link for reading or for writing (`.linkRead`, `.linkWrite`): a message of a running main can not hold a kind that is not one of the four, or a link that is neither `read` nor `write`.
+A kind is a method of its own (`.kindIdle`, `.kindCode`, `.kindDataRead`, `.kindDataEdit`): a message of a running main can not hold a kind that is not one of the four.
+`Mount` is `.mount(name, type, data)`, and `Mount` with no data project is `.unmount(name, type)`.
 A path is the list of the bytes naming the path, the bytes of the `Base16:` form of the path. A path that is not absolute is a deterministic error of the running main: no message is sent.
 The manager shows a refused message in a dialog, as for every other message, and the method is a non deterministic error holding the text after the line `Refused`.
 `.quit`, `.reset` and `.terminate` of the project of the running main end the running main before the method returns.
@@ -500,7 +484,7 @@ Saving a file of a code project in Eclipse compiles the project. Users save ofte
 - otherwise Eclipse sends `Terminate` of the project (a running main is always ended, and so is a younger compilation), saves every open file of the project together, and sends `Compile` of the project.
 
 The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and writes into a project folder only the files and folders the user saves or creates; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not the mirror of that project is an error. Every two seconds the plugin reflects `projects.info` and the `.fearless_out` folders: the error of the last compile (`compile_error.txt`) in the Problems view, on the file and at the line the error names, or on the project while that file does not exist, and the error of the last check (`check_error.txt`) on the project, each while that error file is not out of date, and in the JUnit view the unit test log the running main writes in `.out/logs`: the complete records of the log, the lines of the log up to the last newline, without a test case whose closing line is not written yet. The plugin shows the followed mains or compilation in the Output view, emptied when the mains of a `Run` or a compilation start, like the Output area of the manager: a view with no buttons, where a stack frame and the header of a compile error are links opening that file at that line. Fearless files show with syntax highlighting. Build (`Compile` for a code project with valid content, `Check` for any other), Clean (`DeleteCache`), the main button below, the kind switches of the Fearless menu of a project, New Project (`Register`), Show in manager (`Show` with the name of the project) and Forget project are messages to the manager.
-The toolbar of the Fearless perspective holds the main button of the manager for the project of the active editor or of the selection. The main button shows what pressing the main button does, each with an image of its own: Check, Compile, Run, Run V, or Terminate while Eclipse follows a run or a compilation of that project. Run V asks which mains to run, with the selected mains checked. Besides the main button, the toolbar of the Fearless perspective holds only the buttons of text editing (Save, Undo, Redo, Search, the toggles of the editor and the navigation in the text); a button that does nothing for Fearless or repeats another is hidden, and so is the Run menu, in the Fearless perspective only. Eclipse finds the state from the files, as the manager does: the kind and the links in `projects.info`, the marker, the packages and the rank files of the packages, and whether compiling would compile some package. A project whose content is invalid in another way shows Compile, and the manager refuses that `Compile` with the problem of the project.
+The toolbar of the Fearless perspective holds the main button of the manager for the project of the active editor or of the selection. The main button shows what pressing the main button does, each with an image of its own: Check, Compile, Run, Run V, or Terminate while Eclipse follows a run or a compilation of that project. Run V asks which mains to run, with the selected mains checked. Besides the main button, the toolbar of the Fearless perspective holds only the buttons of text editing (Save, Undo, Redo, Search, the toggles of the editor and the navigation in the text); a button that does nothing for Fearless or repeats another is hidden, and so is the Run menu, in the Fearless perspective only. Eclipse finds the state from the files, as the manager does: the kind in `projects.info`, the marker, the packages and the rank files of the packages, and whether compiling would compile some package. A project whose content is invalid in another way shows Compile, and the manager refuses that `Compile` with the problem of the project.
 The toolbar of the Fearless perspective also holds New Package and New Type, for the project of the active editor or of the selection; each asks for a path inside the project folder and refuses a path that is not valid, naming the rule of the Fearless file names the path breaks:
 - New Package takes a path like `lib/_beer`, and makes the package folder `_beer` with the folders holding the package folder;
 - New Type takes a path like `lib/_beer/point`, and makes the file `point.fear` holding the type `Point`. The option Rank file makes the rank file of that package instead, `_rank_app.fear` or the rank chosen, holding the usual `use` lines of the standard library. The option Example tests adds a test suite checking some arithmetic: a project runs the tests of the project more than a bare main.
@@ -538,8 +522,7 @@ What the design will cover later; nothing in this section is current behaviour.
 - A later double click on a file for a main already running adds that file to the input files of the running main.
 - A double click for a main already running signals the running main to wake up, for example bringing the window of the running main to the front.
 - A captured extension that no main claims gets an icon of its own, showing that the manager holds the extension, instead of the conflict icon.
-- The fields of the Links area show what the fields take and complete what is typed: the type names the code uses for that data project, separated by spaces.
-- Removing or changing a data project that a code project links shows a confirmation dialog in the GUI, naming the code projects that become invalid.
+- Removing or changing a data project mounted on a DataRead type of a code project shows a confirmation dialog in the GUI, naming the code projects that get a broken mount.
 - A data project folder can be deleted when the folder is left empty, and so can a zip, since a zip is a folder for a main. Deleting something and writing it again "the same" can then give another structure on disk: what was a zip can come back as a plain folder. How to handle this is to be discussed.
 - A main learns the extensions the main claims, for example through a `System` method. A main with `OpenWith[I]` gets an extension such as `ffile042`, chosen by the manager and varying between machines and compile orders; to save a document the user can later double click, the program must name the document `<something>.ffile042`.
 
@@ -549,7 +532,6 @@ What a rewrite needs that neither this design nor the other repositories say.
 
 An implementation decides alone every detail the design leaves open below the concepts of the design: wire formats, encodings, intervals, the library calls, the content of the files the design names (information for Eclipse can be added to `manager.info`). An implementation never adds what the user or another program can observe and the design does not describe: a file in the manager folder or in a project, a verb, a GUI element, a message, a fallback. Those go into the design first.
 
-- A field of the Links area sends the edit of the field, a `Link`, on the first of: a click anywhere outside the field, the field losing the keyboard focus, Enter, Tab, Esc, a typed character that no type name holds (that character is not added), and one second with no key typed.
 - The stand-in for the tray: under Wayland a program can not place the windows of the program, but AWT on Linux is an X11 client (through XWayland under Wayland), so the manager places the window itself.
   The stand-in is an AWT window of type popup. On X11 the window manager does not manage a popup window: no taskbar lists a popup window, and a popup window stays where the manager places the popup window.
 - A double click on a button presses the button twice, and the second press comes before the request of the first press changes the window, so the second press sends the same request again. Every button is disabled for half a second after it is pressed.
