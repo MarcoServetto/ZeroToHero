@@ -1442,6 +1442,7 @@ So every stage of both flows has finished with every element before any method o
 A merge is a source, and it records `Seq` and `.hintSequential`, as `.seqFlow` does.
 The lambda of a merge receives the elements of each channel with the capability of that channel, `mut` included: a merge over a `mut Map[Str, mut Person]` hands each `mut Person` to its lambda.
 A merge takes no mode, so no type checks that its elements can be processed in parallel: the stages after a merge run with the sequential strategy.
+This holds also for an `imm` map, whose channels are `imm`: the lambda of a merge can return a fresh `mut` object, so `imm` channels do not make the results of the merge `imm`.
 `.recoverFlow(mode)` gives the parallelism back.
 The lambda of the merge puts what it needs of each index into a single result, and `.recoverFlow(mode)` checks the type of those results, as `.flow(mode)` checks the type of the elements of a list.
 The stages after `.recoverFlow(mode)` can then run with the parallel strategies.
@@ -2646,6 +2647,6 @@ The type system blocks what is subtly unsound for exactly the reasons this docum
 - a fence that runs its lambda as it receives the elements (**for and forEach**) is making speculative calls, whose exceptions are held like any other.
 - an empty literal `{}` where a `ToFlow` is expected is an instance of `ToFlow` itself, which is sealed and has no body: the empty branch of `filter` names its type, `?[mut List[E]]`;
 - the methods of `KeyElemMapper` are `imm`, so `mapping` takes it `imm`, not `read`;
-- a signature that compiles can still promise too much: `read .flow(mode): mut Flow[KeyElem[K,read/imm E]]` on `Map` compiles, and so does a client taking an `imm` element out of a `read` map of `mut` elements through it; only compiling such a client shows it.
+- a signature that compiles can still promise too much: a `read .flow` on `Map` returning `mut Flow[KeyElem[K,read/imm E]]` compiles, and so does a client taking an `imm` element out of a `read` map of `mut` elements through it, since a `KeyElem` written with no capability is `imm`; only compiling such a client shows it. `Map.flow` returns a `BiFlow`, so the capability of each element is written directly in the type of its channel.
 Each rule above came out of writing the desugaring in Fearless and compiling it; the shapes that compile are in `test_max_shapes.fear` and `flow_actor_shapes.fear` of the standard library.
 It works the other way round too: a scenario claimed to break the design is written in Fearless and compiled before the design changes for it. A `mut CapTry` whose body mutates a captured list, read by the catcher while a speculative call still writes to it, does not compile: the body of `CapTry` is a `read` lambda, as the one of `Try#`. A scenario reasoned about without compiling it can make the design grow a mechanism that answers nothing, as the busy marking of **Notes**.
