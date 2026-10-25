@@ -19,10 +19,8 @@ Fearless facts the design relies on
 
 The Gui is an object capability: s.gui from mut System.
 A Frame is a window; its content is a tree of widgets drawn by the standard library itself, with bundled fonts and its own colors.
-The desk's fonts, theme and scale setting play no part in how a Fearless Gui looks.
 Button actions and mouse handlers run on the model queue, one at a time, in order.
 The frame has a repaint timer (.fps) that runs on the toolkit thread.
-Gui.run returns when the window is closed; the program continues after it.
 
 Terms
 =====
@@ -45,20 +43,15 @@ Terms
 
     virtual pixel space  a rectangle of W x H virtual pixels, chosen by the program.
                          Every length and position the program uses is in virtual pixels.
-                         The program can choose a new one at any time.
                          The program never learns the size or the position of the window.
     picture              what the program draws in its virtual pixel space, as shown on the screen:
                          uniformly scaled to the largest size that fits the content area,
                          and centered in it.
-                         The picture always fits inside the content area.
     bands                the part of the content area that the picture does not cover.
                          They are painted with the bands color.
 
     ResizeRequest        the library tells the program a new desired aspect ratio:
                          the aspect ratio of a content area whose size the desk has chosen.
-                         The program can do what it wants with it.
-                         One thing it can do is choose a new virtual pixel space,
-                         with that aspect ratio or not.
                          Each time the desk gives the content area a new size,
                          the library queues one ResizeRequest.
                          A ResizeRequest still waiting is replaced by the new one.
@@ -69,20 +62,17 @@ Terms
                          with the aspect ratio of the virtual pixel space that fits inside it:
                          the same amount is removed on the left and on the right,
                          or the amount is removed from the bottom.
-                         The picture then fills the content area.
 
-The scale is computed in screen pixels, so the OS scale setting does not change what the user sees.
+The scale is computed in screen pixels.
 
 Fixed and dynamic
 =================
 
-Platforms that run code the user did not choose to trust (browsers, mobile systems, wayland) all follow one principle: what tells the user WHO they are talking to, and the way OUT, is not under the program's control.
-The Fearless Gui follows the same principle.
 What identifies the window is fixed before the window opens: the program sets it on Gui, and Gui.run locks it for the life of the window.
 What the user sees inside the picture is dynamic: the program sets it on Frame, at any time.
 The way out is the user's: the desk border or the Fearless corner, the close key and the Manager.
 
-Fixed on Gui, each with a default, so that s.gui.run{f -> ...} is a complete program:
+Fixed on Gui, each with a default:
 
     name            the identity shown by the task switcher, the taskbar and the title bar.
                     Default "Fearless App". A blank name is a deterministic error.
@@ -153,18 +143,13 @@ API
 
 Gui.run(consumer):
 Opens the window with the settings of this Gui, gives the frame to the consumer, and returns when the window is closed.
-The window keeps the settings this Gui has when run is called: the frame remembers them for the life of the window.
 
 Gui setters:
 A Gui is the capability that makes windows, not a widget: each setter returns a new Gui with the new setting, and leaves the Gui it is called on unchanged.
-One Gui can make many independent windows, each with its own settings: with g the Gui s.gui.name "Game", g.run{...} and g.startFullScreen.run{...} open two windows that differ only in the state they open in.
 A setter that contradicts an earlier setting of the same Gui is a deterministic error: the second of the two calls throws it, and names the setting to change first.
 
 Gui.name, Frame.title:
 The title bar shows the name, then four spaces, then the subtitle set with Frame.title; with no subtitle it shows the name alone.
-The name is the fixed part: a window can not stop looking like the program that opened it.
-The subtitle is the dynamic part, for what the window shows now: a document, a level, a count.
-The title bar and the task switcher are painted by the desk from one plain string, so the two parts can not differ in font; the four spaces are the only separation.
 
 Gui.icon(ImageFile):
 The argument is an autoloaded image, the same value a main names in Shortcut[I] and OpenWith[I]: s.gui.icon(IconsFoo) for _pkg/icons/foo.png.
@@ -173,7 +158,6 @@ A main preloads the icon I of each Shortcut[I], OpenWith[I] and PreLoadIcon[I] i
 PreLoadIcon[I] is a claim like Shortcut[I] and OpenWith[I]: only a main can implement it, and the manager accepts only a square PNG image with a side from 64 to 1024 pixels.
 The compiler gives each generated main the list of its preloaded icons, so the check is the same with and without the manager.
 A main implementing Shortcut[I] gives the icon I to every Gui it runs; with more than one Shortcut, the first one declared.
-The image is scaled by the desk to each place it shows in.
 The title bar and the task switcher show the icon on every desk.
 The desks that show the icon of an installed program instead of the icon of the window (GNOME, COSMIC, the Windows taskbar) show it for a main the manager runs: the manager installs the preloaded icons of every main (below).
 A program the manager does not run shows its icon only where the desk shows the icon of the window.
@@ -190,26 +174,19 @@ A deterministic error is thrown unless 0 < minArea <= 1, and when minArea > init
 
 Gui.screenWidth, Gui.screenHeight:
 The resolution of the default screen, in screen pixels.
-Only the capability knows the screen: a program holding a Frame and not the Gui can not recover the screen resolution.
 
 Gui.opacityFloor(Alpha), Frame.opacity(Alpha):
 The window opens opaque.
 Frame.opacity sets the opacity of the whole window, Fearless corner included; below the floor is a deterministic error.
-A pulsating effect ranges between the floor and opaque.
 Only state 2 shows the opacity; the other states are painted opaque while the window is in them.
 
 Gui.closeKey(KeyStroke), Frame.onClose(action), Frame.close:
 The close key and the close button of the desk border both run the onClose action on the model queue, like a button action.
 The default action is {f.close}: the window closes and Gui.run returns.
-A program that asks "save changes?" replaces the action, shows its question inside the picture, and calls f.close later or never.
 The close key reaches no onKey handler.
-Closing the window is not ending the program: the code after Gui.run runs.
-The Manager is the way to see which programs are alive and to end one that ignores its close requests.
 
 Gui.startFullScreen, Gui.fullScreenKey(KeyStroke):
 Full screen is the full screen state of the desk, asked of the window manager as such, with no mode switch of the display.
-A borderless window merely sized like the screen is not full screen: GNOME keeps it inside the work area, under the bars.
-The program chooses only whether the window opens in full screen; after that, the state belongs to the user (below).
 The full screen key reaches no onKey handler.
 
 Frame.virtualPixelSpace(w, h), Frame.virtualWidth, Frame.virtualHeight:
@@ -358,7 +335,7 @@ The program chooses the state the window opens in (Gui.startAsWindow, Gui.startM
                      4. the content area covers the same fraction of the screen area.
 
     Close key, desk close button
-      in every state: the program's onClose action runs. This is not a transition.
+      in every state: the program's onClose action runs.
 
 
     THE EDGE RULE (corner drag and resize handle drag, state 2)
@@ -480,7 +457,7 @@ After that the state belongs to the user.
       in 1, M:  the library computes the new bands.
 
     Close key, desk close
-      in every state: the program's onClose action runs. This is not a transition.
+      in every state: the program's onClose action runs.
 
 Why a tiling desk has two states.
 A tiling desk owns the size of every window: it ignores the bounds set on a tiled window, so a compaction or a move by the library changes nothing.
@@ -492,8 +469,6 @@ Coordinates
 ===========
 
 Mouse handlers receive the position of the pointer in virtual pixels: the position in the content area minus the bands, divided by the scale, rounded down.
-A click on virtual pixel (205, 85) reports X[+205] Y[+85] at every window size and on every desk.
-At scale 2, two screen pixels report the same virtual pixel.
 A press on a band, or on the Fearless corner, is outside every widget and reaches no handler.
 Painters draw in virtual pixels and are clipped to their widget.
 
@@ -503,8 +478,6 @@ Layout
 The size of a widget is state: a number for the width and one for the height, held by the widget.
 It changes only when the program acts on the widget, never when the layout runs.
 The layout only places widgets: a parent places each child at its size, or larger with .fill.
-No size is ever computed from a size that depends on it.
-A layout where a parent measures its children, the children adapt to the parent and the parent measures them again has no predictable result; it does not exist here.
 
 Sizes:
 
@@ -534,15 +507,13 @@ The last action on a widget decides its size:
 A new content never shrinks a widget: a shorter text leaves a Button as wide as before, until .pack.
 A child added to a container grows the container to fit that child alone, plus the insets.
 A child that changes after it is added does not change its parent.
-In the builder the scope of a child runs before the child is added, so nested widgets grow from the inside out in one pass: a Pane around a Label fits the Label.
-Setting a size after adding the children overrides what the children grew: .pane{:: .label{...} .width 10} is 10 wide, and the Label is clipped.
+In the builder the scope of a child runs before the child is added.
 
 .pack fits all the current content with the current size of each child:
   a Button or a Label fits its text;
   a TextField or a TextArea fits its text with its scroll bars, one displayed line for each line of the text;
   a Pane fits its lines, broken only at maxPerLine: one line by default, a column with .maxPerLine 1;
   a Border fits its regions: north, the row of west, center and east, and south, one above the other.
-A Pane holding two Labels grows to fit the larger one; .pack makes it fit both side by side.
 
 .fill places a widget larger than its size, on the axes its parent allows: the space a Border gives its region, the space a Pane gives its line.
 .noFill is the default.
@@ -563,7 +534,7 @@ Regions:
 A place for one child is a region: the five regions of a Border, the two regions of a Split, the content of a Frame, the title and the content of a section.
 A region is filled through a RegionFiller.
 A RegionFiller has one method per kind of widget, taking the scope of that widget.
-That method puts the widget in the region and returns the container of the region, so the chain goes on with the container.
+That method puts the widget in the region and returns the container of the region.
 
     RegionFiller[S:*]:{
       mut .pane(mut Scope[Pane]): S;
@@ -579,23 +550,8 @@ That method puts the widget in the region and returns the container of the regio
     Frame:{ ... mut .content: mut RegionFiller[Void]; }
     Border:_Container[Border]{ ... mut .north: mut RegionFiller[mut Border]; ...south, east, west, center }
 
-    .north.label{:: .text "title"}
-    .center.pane{:: .fill .button{:: .text "Run"} .button{:: .text "Stop"}}
-
 Filling a region that holds a widget replaces that widget.
 A region never filled is empty: a Frame never given a content shows an empty window.
-Filling the content of a Frame returns Void, as the consumer given to Gui.run does.
-
-Mandatory regions:
-A widget with mandatory regions is created with them: the program never holds that widget before its regions are filled.
-The mandatory regions come in a fixed order, separated by .and.
-When the widget has methods of its own, .with follows the last region: its scope receives the complete widget, and .with returns the container.
-A Split has two mandatory regions; a section has two mandatory regions and no methods of its own.
-
-    And[T:*]:{ mut .and: mut RegionFiller[T]; }
-    SplitWith[S:*]:{ mut .with(mut Scope[Split]): S; }
-
-    .split.pane{:: ...}.and.label{:: ...}.with{:: .vertical .dividerPosition 30}
 
 A Pane holds any number of children, so a Pane has the same family of methods, each returning the Pane.
 The kinds of widget are listed in these two types only, RegionFiller and Pane: a new kind of widget adds one method to each.
@@ -608,19 +564,6 @@ The width of the west region is the width of its child, and the region spans the
 The center region is the rest.
 With .fill, the child of center fills both axes, the children of north and south fill the width, the children of west and east fill the height.
 A child smaller than its region is centered in the region, on both axes.
-So a Border can have empty space: its children do not take all the space unless they have .fill.
-
-Example, with the insets and gaps of the Border at 0:
-
-    f.virtualPixelSpace(Width#1000, Height#1000).content.border{::
-      .north.pane{:: .fill .height 60 ...}
-      .west.pane{:: .width 200 .height 300 ...}
-      .center.pane{:: .width 400 .height 400 ...}
-      }
-
-The north Pane is 1000 x 60, at the top.
-The west region is 200 x 940; the west Pane is 200 x 300, centered vertically in it.
-The center region is 800 x 940; the center Pane is 400 x 400, centered in it.
 
 Pane:
 A Pane is .horizontal or .vertical.
@@ -640,36 +583,22 @@ The line axis runs along a line; the stack axis is the other one, where the line
 
 A line holds at least minPerLine children (default 1) and at most maxPerLine children (default Math.maxNat).
 Between the two, a child that would make the line longer than the Pane starts a new line.
-With width 10 and minPerLine 2, children of width 100 and 235 stay on one line.
-With width 10 and maxPerLine 5, children of width 1, 2, 1 and 34 make the line 1 2 1, and 34 starts the next line.
 A minPerLine more than the maxPerLine is an error at the second setter.
 The lines break against the space the Pane is drawn in, never against a size its children report.
 With .fill, a child takes the whole line axis of the Pane, and keeps its own size on the stack axis.
-So .horizontal .maxPerLine 1 with children with .fill is a list of rows as wide as the Pane, also after a new virtual pixel space.
-A child with .fill filling both axes of a Pane would be the center of a Border: the Pane does not offer it.
 
 Placement:
 centered(True), the default, centers each line on the line axis, the stack of lines on the stack axis, and each child on the stack axis of its line.
 centered(False) places them at the start of each axis: the left and the top.
-A grid of tiles uses centered(False): the grid starts at the top left, and a last line shorter than the others starts under the first tile of the line above.
 
 Scrolling:
-A line longer than the Pane comes from minPerLine, or from a single child longer than the Pane.
-Lines that do not fit on the stack axis come from the number of lines.
 lineScroll(True) scrolls the line axis, stackScroll(True) scrolls the stack axis; with False, what does not fit is clipped.
 A scroll bar is shown whenever its setting is True, and always takes its space, also when everything fits.
 Every scroll bar of the library, on a Pane, a TextField or a TextArea, is 5 virtual pixels thick; with nothing to scroll, the thumb is as long as its track and drawn in the faint color of the track, so it reads as disabled.
-A new child grows a scrolling Pane as it grows any Pane: the size of a scrolling Pane is set before its children are added, and is larger than each child, so adding a child leaves it unchanged; it is the children together that do not fit, and scroll.
 A press on a scroll bar scrolls and reaches no handler: on the thumb it starts a drag, on the track it moves by one view.
 The wheel scrolls the innermost Pane under the pointer that scrolls on that axis and can still move; shift makes the wheel scroll sideways.
 A Pane keeps its scroll position in virtual pixels when its lines break again.
-So the lines always break against the same size, and a scroll bar can never change where they break.
-The layout never changes the size of a Pane, so a Pane with a scroll gets its scroll bars exactly when its content is bigger than the space it is drawn in.
 Open: a program can not set the scroll position of a Pane, so it can not scroll a child into view.
-
-A vertical list:
-.horizontal .maxPerLine 1 gives one row per line, and the rows fill the width of the Pane with .fill.
-.vertical with a large minPerLine gives one column; its line axis is the height, so its children can fill the height, not the width.
 
 Split:
 A Split has two regions and a divider between them.
@@ -685,18 +614,23 @@ The axis of a Split is the width for .horizontal and the height for .vertical.
       read .draggable: Bool;
       mut .mouse(mut Scope[Mouse]):mut Split;
       mut .paint(Painter):mut Split;
+      mut .first: mut RegionFiller[mut Split];
+      mut .second: mut RegionFiller[mut Split];
       }
     Pane:_Container[Pane]{ ... mut .split: mut RegionFiller[mut And[mut SplitWith[mut Pane]]]; }
     RegionFiller[S:*]:{ ... mut .split: mut RegionFiller[mut And[mut SplitWith[S]]]; }
+    And[T:*]:{ mut .and: mut RegionFiller[T]; }
+    SplitWith[S:*]:{ mut .with(mut Scope[Split]): S; }
 
-.split fills the first region, .and the second region, and the scope of .with receives the Split with both.
+    .split.pane{:: ...}.and.label{:: ...}.with{:: .vertical .dividerPosition 30}
+
+.split fills the first region, .and the second region, and the scope of .with receives the Split with both; .with returns the container of the Split.
 
 Every divider is 5 virtual pixels thick on the axis, as thick as a scroll bar, and spans the Split on the other axis.
 A Split has no gaps: it is not a _Container, and the divider is the only space between its two regions.
 The divider position is a distance in virtual pixels on the axis: from the start of the Split, after the left inset for .horizontal and after the top inset for .vertical, to the divider.
 The first region goes from that start to the divider.
 The second region goes from the end of the divider to the end of the Split, before the right inset or the bottom inset.
-So the divider position is the length of the first region.
 The default divider position is 0.
 
 The divider stands at the divider position, whatever the size of the children and of the space the Split is drawn in.
@@ -717,27 +651,12 @@ A press on that divider is a press on the Split.
 A new child grows the Split as a new child grows a Pane or a Border: to fit that child alone, plus the insets.
 .pack sets the length of the Split on the axis to the lengths of the two children plus the divider, plus the insets.
 On the other axis, .pack sets the length of the Split to the larger of the two children, plus the insets.
-.pack also sets the divider position to the length of the first child on the axis, so that neither child is clipped.
-The two regions of a Split keep their children for the life of the Split.
-A program that changes what a region of a Split shows puts a Pane or a Border in that region, and changes that Pane or Border.
+.pack also sets the divider position to the length of the first child on the axis.
 
 Why the divider stands where it is put.
 The program and the user put the divider at a position, and no layout moves it: predictability wins over convenience.
 The space a Split is drawn in changes only when the program acts: a new virtual pixel space, a new size of a widget.
 So the program that changes that space also sets the divider position it wants in the new space, for example in its .onResize handler; the user can always drag the divider.
-
-Example, a grid of tiles beside the details of the selected tile:
-
-    f.content.border{::
-      .north.pane{:: .fill ...}
-      .center.split
-        .pane{:: .fill .maxPerLine 1 .stackScroll(True) ...tiles}
-        .and.pane{:: .fill ...the details of the selected tile}
-        .with{:: .fill .dividerPosition 320}
-      }
-
-The tiles take 320 virtual pixels, and the details take the rest of the width.
-The user drags the divider to share the width in another way.
 
 Open: a widget larger than the space its parent gives.
 It is clipped by its parent.
@@ -748,7 +667,6 @@ Text editing
 ============
 
 A TextField holds one line of text; a TextArea holds any number of lines.
-The two share every rule below, and differ only where this section says so.
 
     _Caption[S]:Widget[S]{ ...text, textHeight, aboveBaseline, belowBaseline }
     Button:_Caption[Button]{ ... }
@@ -790,9 +708,6 @@ The two share every rule below, and differ only where this section says so.
     CaretGraphics:Graphics{ read .sinceMove:Duration; read .lineHeight:HeightNat; }
     Pane:_Container[Pane]{ ... mut .textField(mut Scope[TextField]):mut Pane; mut .textArea(mut Scope[TextArea]):mut Pane; }
 
-A Button and a Label grow to fit a new text; a TextField and a TextArea never change size because of their text.
-That is why they are not _Caption: they share only the three font settings with it.
-
 The text:
 The text of a TextField has no newline: a .text or .uText with a newline on a TextField is a deterministic error.
 The lines of a TextArea are its text split on newline: "a" newline has two lines, the second one empty, and the caret can stand on it.
@@ -803,9 +718,7 @@ The offsets:
 The selection is the text between .anchor and .caret; nothing is selected when they are equal.
 The user moves the caret and the anchor only to the boundaries of grapheme clusters.
 The program reads the caret and the anchor in a TextEvent, and has no way to set them.
-The grapheme cluster rules come from the Unicode version of the runtime, so a new Fearless release can move a boundary; with no way to set an offset, the program can not depend on where the boundaries are.
 A program .text or .uText erases the caret and the selection: the caret goes to the end of the new text and nothing is selected.
-So a program that rewrites the text in .onEdit sends the caret to the end at every key; a correction that keeps the caret belongs in .onInput.
 
 Incoming text:
 Every text the user adds goes through .onInput before it reaches the widget: a typed text, a pasted text, a text an input method commits.
@@ -815,9 +728,7 @@ The default reduces the incoming text to Str:
   each scalar value is decomposed (NFKD), so an accented letter becomes its letter;
   what is still not in Str is dropped;
   in a TextField, newline becomes space.
-A program that wants any UStr, or another correction, sets its own .onInput.
 A result with a newline for a TextField is a deterministic error.
-With the default, .text never throws unless the program itself gave a text that is not a Str.
 
 Open: the keys a desk turns into text.
 The program never sees the keys pressed inside a TextField or a TextArea, only the text that comes out of them.
@@ -833,15 +744,14 @@ The library tells the input method where the caret is, so that its list of choic
 Events:
 Each action of the user is one model task, queued with the clicks and the keys: one key, one paste, one cut, one undo.
 The task changes the text and the caret, runs .onEdit if the text changed, and the frame shows the result only when the task ends.
-So the text a handler receives is the current text, a key typed while the model is busy shows up late and is never lost, and a handler that changes the text never shows the text in between.
 .onEdit runs for every change of the text the user makes, with the text after the change; a move of the caret or of the selection alone runs nothing.
-A .text, .uText or .uAppend of the program never runs .onEdit or .onCommit, so a handler that sets the text can not loop.
+A .text, .uText or .uAppend of the program never runs .onEdit or .onCommit.
 The committed text is the text of the last commit or of the last .text, .uText or .uAppend of the program.
 A commit runs .onCommit when the text differs from the committed text, and the text becomes the committed text.
 A commit happens on Enter and on Ctrl+Enter, and when the focus leaves the widget by a press elsewhere, Tab or Shift+Tab.
-A press elsewhere queues the commit first and the handlers of the press after it, so a Button action sees the committed text.
+A press elsewhere queues the commit first and the handlers of the press after it.
 A widget removed from the window (.clear, a replaced Border region, a new .content) commits nothing.
-A new .onInput, .onEdit, .onCommit or .caret replaces the earlier one, as a new .action of a Button does.
+A new .onInput, .onEdit, .onCommit or .caret replaces the earlier one.
 
 Focus:
 At most one TextField or TextArea of a frame has the focus; it receives the keys and shows the caret.
@@ -855,7 +765,7 @@ The caret is shown only while the window has the keyboard.
 
 Keys:
 While a widget has the focus, the keys below and the keys that type text are used by it and never reach Frame.onKey, whether the widget is editable or not.
-Every other key reaches Frame.onKey: the function keys, Escape, Insert, and Shift, Ctrl and Alt themselves, so that a program can bind Ctrl+S.
+Every other key reaches Frame.onKey: the function keys, Escape, Insert, and Shift, Ctrl and Alt themselves.
 A key held when the focus changes sends its release where its press went.
 The close key and the full screen key keep their meaning.
 
@@ -901,7 +811,6 @@ With .textClearsUndo(False), it is one step of the history like a user action.
 Scrolling and wrapping:
 A TextField always has a horizontal scroll bar.
 A TextArea always has a vertical scroll bar, and a horizontal one exactly when .wrap is False.
-So whether a scroll bar is there depends on the kind of widget and on .wrap, never on the text.
 With .wrap(True), the default, a line of the text longer than the widget goes on over more displayed lines; the breaks fall between words when a line has a break, inside a word only when the word is longer than the widget, and never change the text.
 After every move of the caret by the user, the view scrolls by the least amount that shows the caret.
 A .text or .uText scrolls the view to show the caret at the end.
@@ -910,9 +819,8 @@ If the view showed the last displayed line before .uAppend, it shows the last di
 
 The caret:
 The caret painter draws the caret with its origin at the top of the caret position, clipped to the widget, every repaint tick.
-.sinceMove is the time since the caret last moved or the text last changed, so a caret always shows right after a key.
+.sinceMove is the time since the caret last moved or the text last changed.
 The default caret is a line 2 virtual pixels wide and .lineHeight high, in the foreground color, shown for the first 500 milliseconds of every second of .sinceMove.
-An animated caret picks an image from .sinceMove and draws it with .image.
 
 Why the user actions are model tasks.
 A text that the toolkit changes at once and reports to the program later loses keys: a handler that sets the text from an old event overwrites what the user typed since, and the caret jumps.
@@ -963,30 +871,23 @@ The same Graphics paints a container (.paint) and an image (Image.paint).
 Graphics has three settings: the color, the position and the text height.
 The color starts as the foreground of the widget, or as opaque black for an image; the position starts at (0, 0) and the text height at 12.
 Each drawing call uses the settings and leaves them unchanged.
-.color, .positionX, .positionY and .textHeight tell the current settings.
 
 .text draws one line of text in the color.
 The top left corner of the line is the position.
 The baseline is textHeight below the position, and the line is one and a half textHeight high: the line of a Label with the default .aboveBaseline and .belowBaseline.
-The text uses the fonts bundled in the library, as every text of the library.
 
 g.textWidth(text) is the width of the text drawn by .text at the current text height, rounded up to a whole virtual pixel.
 A Label with the same text and text height packs to that width plus its insets.
-The fonts are bundled, so the width is the same on every desk.
-A painter centers a text with .textWidth, and shortens a long text with "..." with .textWidth.
 
 g.image(image) draws the image at its own size: one pixel of the image on one virtual pixel.
 g.image(image, width, height) draws the image scaled to width x height virtual pixels, with its top left corner at the position.
 The image goes to the screen in one scaling step.
-So an image with more pixels than the virtual pixels it covers stays sharp on a window scaled up, and one Image serves every size a program draws it at.
 
-A program reacts to the mouse with the handlers of .mouse, one for each kind of event, for example .mouse{:: .clicked{x, y, elapsed, w, h -> ..}}.
-The handler that runs tells the kind of event.
+A program reacts to the mouse with the handlers of .mouse, one for each kind of event.
 A handler takes the event as its parameters: the position of the pointer in the widget, .elapsed, and the size of the widget, as ScreenContext tells them.
-No event object is made for a handler.
 On a widget with a .doubleClicked, the second click of a double click runs .doubleClicked instead of .clicked; a click after a double click is a single click again.
 A click is the second click of a double click when it is of the same mouse button as the click before, pressed at most 500 milliseconds after it, and at most 4 pixels of the screen away from it.
-The library decides this, not the desk, so a double click is the same gesture on every desk.
+The library decides this, not the desk.
 The double click on the Fearless corner is decided in the same way.
 
 Open: what Graphics does not offer.
@@ -1008,6 +909,8 @@ Sections
       mut .expand(index: Nat): mut Sections;
       mut .collapse(index: Nat): mut Sections;
       mut .remove(index: Nat): mut Sections;
+      mut .title(index: Nat): mut RegionFiller[mut Sections];
+      mut .content(index: Nat): mut RegionFiller[mut Sections];
       mut .onToggle(mut SectionHandler): mut Sections;
       mut .onClose(mut SectionHandler): mut Sections;
       read .size: Nat;
@@ -1017,37 +920,26 @@ Sections
 
 A Sections is a list of sections.
 A section has a title and a content.
-Tabs and accordions are two ways to show the same list: .tabs and .column.
 
 Words:
 A section is expanded when its content shows, and collapsed when it does not.
 Expand and collapse are about the content only: the title always shows.
 Close is only what the x of a title asks for: to take the section out of the list.
 Remove is what the program does to take a section out of the list.
-So no word means "hide the content" in one way of showing and "take the section out" in the other.
 
 Indexes:
 The index of a section is its position in the list, from 0; .size is the number of sections.
-An index changes when the program adds or removes a section before it.
 An index that is not below .size is a deterministic error, also in a handler that runs after the program removed sections.
 
 Adding a section:
 .section fills the title of a new section, .and fills its content, and filling the content adds the section at the end of the list.
-The title and the content of a section stay for the life of the section.
-A title is one widget: a Label alone, or a Pane holding a Picture and a Label, laid out as in any Pane.
+.title(index) and .content(index) replace the title and the content of the section at that index; the section keeps its place in the list and stays expanded or collapsed.
 A new section is collapsed.
-
-    .sections{:: .tabs
-      .section.label{:: .text "readme.txt"}.and.pane{:: ...}
-      .section.label{:: .text "main.fear"}.and.pane{:: ...}
-      .expand 0
-      }
 
 autoCollapse:
 With .autoCollapse(True), the default, at most one section is expanded: expanding a section collapses the expanded one.
 With .autoCollapse(False), any number of sections can be expanded.
 .autoCollapse(True) on a Sections with more than one expanded section keeps expanded only the first of them in the list.
-The user can expand any number of sections, so this setter never fails because of what the user did.
 No section expanded is a normal state, also with .autoCollapse(True).
 
 Column and tabs:
@@ -1058,27 +950,21 @@ Column and tabs:
 
 The user:
 A click on a title expands its section when the section is collapsed, and collapses it when it is expanded, in a column and in tabs.
-So a click on the title of the expanded tab collapses it, and the space below the row is empty.
 A click on a title is a press and a release on the same title.
 A click on a widget inside the title that takes clicks (a Button with an action, a widget with a .clicked or .doubleClicked handler) is a click on that widget, not on the title.
-A Button with no action lets the click reach the title, as it lets a click reach its parent everywhere else.
+A Button with no action lets the click reach the title.
 The two clicks of a double click are two clicks on the title.
 After a click on a title, .onToggle runs with the index of the clicked section, on the model queue, like a Button action.
 .onClose shows an x at the end of every title.
-A click on the x runs the handler of .onClose with the index of the section, on the model queue; the section stays until the program removes it:
-
-    .onClose{s, i -> Block#(s.remove i, Void)}
-
-A program asking "save changes?" shows its question instead, and removes the section later or never.
+A click on the x runs the handler of .onClose with the index of the section, on the model queue; the section stays until the program removes it.
 The handlers run only for clicks of the user: .expand, .collapse and .remove never run them.
 A new .onToggle or .onClose replaces the earlier one.
 
 A collapsed content:
 A collapsed content is not drawn, takes no mouse events, and the Tab key does not move the keyboard into it.
-It keeps its widgets and their state, for example the text of a TextField and the scroll position of a Pane.
-The program changes it as any widget in the window: a log grows while its section is collapsed.
+It keeps its widgets and their state.
 Collapsing a section takes the keyboard from a TextField or TextArea of its content, as removing the section does.
-.remove takes the title and the content out of the window, as .clear takes out the children of a Pane.
+.remove takes the title and the content out of the window.
 
 Layout:
 The head of a section is the row of its title.
@@ -1095,10 +981,8 @@ A row wider than the Sections is clipped, with a warning.
 The size of a Sections is state, as the size of every widget: expanding and collapsing never change it.
 A new section grows the Sections to fit that section alone: its head, a heightGap and its content, plus the insets.
 .pack fits every section as if all of them were expanded at once: in a column all the heads and all the contents, in tabs the row, a heightGap and the largest content.
-So the size of a Sections never depends on what the user expanded.
 A column taller than the Sections is clipped, with a warning.
 .scroll(True) shows a vertical scroll bar, as .stackScroll(True) on a Pane, and the column scrolls instead.
-In tabs, the row and the content space always fit the Sections, so the bar has nothing to scroll.
 The scroll position stays the same number of virtual pixels when a section expands or collapses.
 
 Drawing:
@@ -1131,11 +1015,10 @@ An empty tooltip shows nothing.
 When the pointer rests for 500 milliseconds on a widget with a tooltip, the library shows the tooltip of the deepest widget with a tooltip under the pointer.
 The pointer rests on that widget while it moves inside it, also over its children.
 The tooltip hides when the pointer leaves that widget, or when a mouse button is pressed.
-After a press the tooltip stays hidden until the pointer moves, and shows again when the pointer then rests for 500 milliseconds: a press often makes the program replace the widget under the pointer, and the tooltip of the new widget stays hidden as well.
+After a press the tooltip stays hidden until the pointer moves, and shows again when the pointer then rests for 500 milliseconds; the tooltip of a widget that replaces the widget under the pointer stays hidden as well.
 The tooltip is drawn by the library inside the window, in virtual pixels, over every widget: a light box with a thin border, holding each line of the text in the bundled fonts at text height 12.
 The top left corner of the box is 20 virtual pixels below the pointer; the box moves left to stay inside the content, and above the pointer when there is no room below it.
 The box stays where it appeared while the pointer rests on the widget.
-The library decides the timing and the look, not the desk, so a tooltip is the same on every desk.
 A new tooltip text shows at the next repaint.
 
 Menus
@@ -1161,22 +1044,18 @@ Menus
 
 A menu is a column of items and separators.
 The library draws it inside the window, in virtual pixels, over every widget: a light box with a thin border, items 24 virtual pixels high, each text in the bundled fonts at text height 12.
-The library decides the look and the behaviour, not the desk, so a menu is the same on every desk.
 
 Opening a menu:
 w.openMenu(scope) builds a menu with the scope at once, and opens it below the widget w.
 w must be in the open window: .openMenu before the window is open, or on a widget that is not in the window, is a deterministic error.
-A program calls .openMenu from a Button action, a mouse handler, a key handler or a model tick.
 w.contextMenu(scope) gives w the menu that a click of the secondary mouse button opens at the pointer.
 That click goes to the deepest widget with a context menu under its press that contains its release, as a click of the primary button goes to the deepest widget that takes it.
 At each of those clicks the scope builds the menu as a task of the model queue, and the menu opens when the scope returns.
 No widget has a context menu by default; a new .contextMenu replaces the earlier one.
-A menu bar is a row of Buttons whose actions call .openMenu on themselves; a drop down is one such Button.
-The library has no widget for a menu bar.
 
 The scope of a menu:
 A menu exists only while it is open.
-Its scope builds it each time it opens, so the menu shows the state of the program when it opened.
+Its scope builds it each time it opens.
 The items of a menu are fixed once its scope returns: a Menu or a MenuItem saved and changed later is a deterministic error.
 A menu with no item, with no separator or only separators, does not open, and leaves the open menu open.
 
@@ -1184,7 +1063,7 @@ Items:
 The text of an item is one line, drawn as it is: a newline in it is a deterministic error, and no character of it has a special meaning.
 .enabled(False) shows the item in grey; it is never highlighted, the keys skip it, and choosing it does nothing: the menu stays open.
 .check(b) shows a check box, ticked when b is True; .radio(b) shows a radio button, filled when b is True.
-The library never changes a mark: choosing an item runs its action, the action changes the state of the program, and the next opening shows the new state.
+The library never changes a mark.
 When any item of a menu has a mark, every text of that menu starts after a column for the marks.
 An item has an action or a submenu, never both; it shows a check box or a radio button, never both: the second of the two setters is a deterministic error.
 A new .action, .submenu, .check or .radio replaces the earlier one of the same setter.
@@ -1237,23 +1116,6 @@ The full screen key keeps its meaning.
 A key pressed before a menu opened sends its release to Frame.onKey as usual.
 Menus bind no keys: no accelerators and no mnemonics.
 A program binds keys with Frame.onKey, and a key handler can open a menu with .openMenu.
-
-Example, the menu bar of a program and the context menu of a tile:
-
-    .north.pane{:: .fill
-      .button{b -> b .text "Manager" .action{b.openMenu{::
-        .item{:: .text "Add project" .action{m.add}}
-        .item{:: .text "Wrap lines" .check(m.wrap) .action{m.toggleWrap}}
-        .item{:: .text "Select" .submenu{s -> m.selectItems s}}
-        .separator
-        .item{:: .text "Close the window" .action{f.close}}
-        }}}
-      }
-    ...
-    .pane{:: .width 128 .height 88 .contextMenu{::
-      .item{:: .text("Run "+name) .action{m.run i}}
-      .item{:: .text "Forget" .enabled(m.size > 1) .action{m.forget i}}
-      }}
 
 Why a menu is built when it opens.
 A menu kept as a tree of items needs the program to keep each item enabled, ticked and named in step with its state; an item the program forgets shows a stale state.
@@ -1323,7 +1185,6 @@ The restore size is set on Windows with SetWindowPlacement: the restore rectangl
 SetWindowPlacement with the current rectangle also ends a snap: Windows keeps the size from before a snap as the restore size of the snapped window, and setBounds moves the window but keeps that size and the snap.
 The window handle is WComponentPeer.getHWnd of the frame's peer: the runtime opens java.desktop/java.awt and java.desktop/sun.awt.windows to the library.
 On X11 and macOS the library sets no restore size: the desk maximizes the window itself and keeps the window before the maximize as the restore size, so a title bar drag out of state 3 gives the window before the maximize, and a compaction is setBounds alone.
-A new frame mapped already maximized is no substitute: GNOME restores it to the size it was given, but at the top left of the work area.
 The toolkit reports a window the desk tiles to half the screen as MAXIMIZED_VERT: state 3 is exactly MAXIMIZED_BOTH.
 On a tiling desk the library asks the desk for full screen with the _NET_WM_STATE client message on the X11 root window, and reads _NET_WM_STATE_FULLSCREEN on the window at each repaint tick: the state is what the desk did, never what the library asked.
 A window that opens as state 1 sends the message once the desk manages the window, which the desk marks with the WM_STATE property: a message sent before is ignored, and a _NET_WM_STATE set before mapping does not survive the mapping.
@@ -1340,7 +1201,7 @@ On Windows the library sets the restore size itself (SetWindowPlacement), and a 
 On X11 the library takes both the maximized state and the geometry from the X server (_NET_WM_STATE, XGetGeometry), in the order the desk sets them: the state changes first, the geometry follows.
 The toolkit is no source for this decision: it reports the state change after the X server has the new geometry, and under KDE Plasma it keeps the bounds of a maximized window at the restore bounds, with guessed borders.
 GNOME maximizes a window that maps wider than 80% of the width and taller than 80% of the height of the work area, and gives that maximized state back when the window leaves full screen.
-That is why the leaving bounds of state 1 fit 77% of each side of the work area, and why, off Windows, the library maps a window entering state 1 at those bounds before asking for full screen.
+Off Windows, the library maps a window entering state 1 at the leaving bounds of state 1 before asking for full screen.
 Leaving full screen, Cinnamon can give the window its size from before full screen after the library has set the new one: a corner drag takes the size of the window from the bounds the library set last, not from the toolkit.
 KDE Plasma marks a window without the desk border that covers the height of the work area as maximized (_NET_WM_STATE_MAXIMIZED_VERT and _HORZ), and keeps the mark after the window shrinks: the maximized state of the toolkit means state 3 only for a window with the desk border.
 KDE Plasma on Wayland honours the position the library sets, publishes _NET_WORKAREA and _NET_FRAME_EXTENTS, and shows the icon of the window in its taskbar.
@@ -1356,27 +1217,9 @@ Without the manager the library leaves WM_CLASS and the AppUserModelID as the to
 
 A size the library sets comes back from the toolkit up to one pixel different on a desk scaled above 100%: a content area within one pixel of the size the library chose is the library's, and sends no ResizeRequest.
 The pointer buttons are read from the platform on each repaint tick, through the Java foreign function API (the runtime enables native access for the library module): GetAsyncKeyState of the left, right and middle buttons on Windows, the button mask of XQueryPointer on the root window on X11, CGEventSourceButtonState on macOS.
-The toolkit does not offer them: AWT reports the buttons only for events inside its own windows.
 The desk's minimum size is setMinimumSize: the smallest window whose content area holds the rectangle with the aspect ratio of the virtual pixel space that covers minArea, desk border included.
 The Windows peer of the toolkit hands the desk the minimum size in user space while the desk reads it in device pixels; on Windows the frame reports the minimum multiplied by the display scale to the peer, and the plain minimum inside Window.reshape, which checks in user space every size given to the window, the growth by setMinimumSize included.
 Windows restores a maximized window to at least the desk's minimum size, and a ResizeRequest accepted in state 3 can raise the minimum size above the restore size: on Windows the library grows the restore size to the minimum size each time it sets the minimum size of a maximized window, so that the unmaximize still gives exactly the restore size.
 
-The opacity goes through setOpacity, which the toolkit allows only on an undecorated window that is not the full screen window: that is why only state 2 shows the opacity.
-Per-pixel translucency, which would keep the Fearless corner opaque while the content fades, is not used: under GNOME on XWayland a per-pixel translucent window that repaints continuously is shown or not at random (the window is mapped and focused, the toolkit paints into it, the compositor shows nothing and routes no clicks).
-An opaque Fearless corner over a fading content would need a second, shaped window owned by the main one.
+The opacity goes through setOpacity, which the toolkit allows only on an undecorated window that is not the full screen window.
 On macOS, Cmd+Q ends the process without a windowClosing unless the quit strategy is CLOSE_ALL_WINDOWS; the runtime sets it, so Cmd+Q is a close request.
-
-Example
-=======
-
-    s.gui.name("Nap").startAsWindow(0.3).run{f -> f
-      .virtualPixelSpace(Width#520, Height#340)
-      .bands(Color.deepNapBlue)
-      .onResize{r -> Block#(f.virtualPixelSpace(Width#((+340.0 * (r.aspectRatio)).softRound.getNat), Height#340), Void)}
-      .content.pane{:: ...}
-      }
-
-This frame opens as state 4, titled Nap, its content area covering 30% of the screen area, with a 520x340 virtual pixel space.
-In full screen on a 16:9 screen the handler widens the virtual pixel space to 604x340 and there are no bands.
-A frame with no .onResize keeps its 520x340 virtual pixel space and shows deepNapBlue bands in full screen.
-Pressing esc closes it, since no .onClose replaced the default {f.close}.
