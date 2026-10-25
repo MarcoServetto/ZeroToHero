@@ -71,12 +71,12 @@ Kinds of stages/terminals:
 - 'elementwise' stage: `map`, `filter`, `flatMap`, `flatMapMut`, `peek`, `mapFilter`.
 - 'streaming stateful' stage: `limit`, `scan`, `actor`, `actorMut`, map with context, `distinct`.
 - 'fence': a stage/terminal that sends nothing downstream, and lets no exception of its own propagate, until every stage before it has finished with every element: the stages `allToAll`, `sort`, `sortDistinct`, `max`, `min`, `distinctMut` and `++`, and the terminal `for`. Not: fence operation, barrier.
-- 'consuming terminal': `list`, `eList`, `set`, `eSet`, `mapping`, `for`, `forEach`, `fold`, `foldAcc`, `size`, `isEmpty`, `get`, `getOpt`, `join`, `sum`, `last`, `with`, `withBoth`, `withAll`. Every element passes the whole chain.
+- 'consuming terminal': `list`, `eList`, `set`, `eSet`, `mapping`, `for`, `forEach`, `fold`, `foldAcc`, `size`, `isEmpty`, `get`, `getOpt`, `join`, `sum`, `last`, `Flow.with`, `Flow.withBoth`, `Flow.withAll`. Every element passes the whole chain.
 - 'utility method': a flow method that is neither a stage nor a terminal: it calls a terminal and continues with ordinary code, so the flow expression ends at that terminal. `let` is the only one.
 - 'short-circuit terminal': `first`, `any`, `all`, `none`, `findFirst`, `findMap`. They can decide before the end, leaving the elements after the decision in flow order never processed.
 
 Multi flows:
-- 'multi flow': a `BiFlow`, `TriFlow` or `QuadFlow`. Not: zipped flow, tuple flow.
+- 'multi flow': a `BiFlow`, `TriFlow` or `QuadFlow`. A multi flow is not a flow: it is a flow factory, as `Flows` is. It has no stages, no terminals, no mode and no chain. Not: zipped flow, tuple flow.
 - 'channel': one of the two, three or four lists of elements a multi flow holds. The element at index `i` of a channel goes with the element at index `i` of every other channel.
 - 'merge': `getMerge`, `tryGetMerge`, `merge` or `mergeOpts`: a multi flow method returning a fresh `mut Flow`, directly or inside an `Action` or an `Opt`. A merge is the source of that flow.
 
@@ -434,7 +434,7 @@ _BiMappingStep: { #[K,E:*](m: mut Map[K,E], k: K, e: E): mut Map[K,E] ->
     .then -> Error.msg`BiFlow.mapping: two pairs have the same key`;
     .else -> m.with(k, e)
   }}
-BiFlow[A:*,B:*]: {
+BiFlow[A:*,B:*]: {//not a flow: a flow factory, as `Flows` is
   //core methods
   mut .with[C:*](flow: mut Flow[C]): mut TriFlow[A,B,C];
   mut .withBoth[C:*,D:*](flows: mut BiFlow[C,D]): mut QuadFlow[A,B,C,D];
@@ -526,14 +526,14 @@ The stages after it run in the mode passed, with no hint. It is not a fence.
 for(E e: <the elements of the receiver, in its order>){ out.send(e); }
 ```
 
-**multi flows**: a multi flow holds its channels `c1, .., cn` as lists. `Map.flow` makes a `BiFlow` whose channels are the keys and the elements of the map, in insertion order; `_BiFlows` makes a multi flow from the lists and the channels it receives, in order.
+**multi flow methods**: a multi flow is not a flow, so its methods are not stages or terminals. A multi flow holds its channels `c1, .., cn` as lists. `Map.flow` makes a `BiFlow` whose channels are the keys and the elements of the map, in insertion order; `_BiFlows` makes a multi flow from the lists and the channels it receives, in order.
 `tryGetMerge(f)` returns an `Action` holding a message with the sizes of the channels when the channels differ in size, before any call of `f`; otherwise it returns `.ok` of the flow whose source is:
 ```
 for(Nat i: 0 ..< c1.size){ out.send(f#(c1.get i, .., cn.get i)); }
 ```
 `mergeOpts(f)` runs over the indexes of the longest channel, handing `f` `.some` of the element of each channel at that index, or `.empty` past the end of that channel.
 `tryGetFold`, `foldOpts`, `tryGetFoldUntil` and `foldOptsUntil` run the same loops as `fold` does, and the `Until` forms stop as soon as `pred` returns `True` for the accumulator, checked before each index.
-`fillA`, `fillB`, `fillC`, `fillD`, `cutToSmallest` and `limit` change the channels and return the multi flow; `with`, `withBoth` and `enumerate` return a multi flow with more channels. Every multi flow method consumes the multi flow, except `fillA`, `fillB`, `fillC`, `fillD`, `cutToSmallest` and `limit`.
+`fillA`, `fillB`, `fillC`, `fillD`, `cutToSmallest` and `limit` change the channels and return the multi flow; `BiFlow.with`, `BiFlow.withBoth`, `TriFlow.with`, `BiFlow.enumerate` and `TriFlow.enumerate` return a multi flow with more channels. Every multi flow method consumes the multi flow, except `fillA`, `fillB`, `fillC`, `fillD`, `cutToSmallest` and `limit`.
 
 **Lazy:** The user provided lambdas are not run until the terminal is called.
 
@@ -1434,9 +1434,15 @@ Composing `f` with `.not` changes no call and no order, so `.none f` throws the 
 
 ### Multi flows
 
-`Flow.with`, `Flow.withBoth` and `Flow.withAll` are consuming terminals of the receiver and of the argument.
-Each of the two flows is a whole flow expression, with its own mode and its own checks, and its elements become one channel of the multi flow.
-So every stage of both flows has finished with every element before any method of the multi flow runs.
+A multi flow is not a flow.
+It is a flow factory, as `Flows` is: it holds its channels as lists, and its merges make a fresh flow out of them.
+A multi flow has no stages, no terminals, no mode and no chain, and the misuse exceptions do not look at it.
+Its folds and `BiFlow.mapping` compute their result directly from the channels, with no flow.
+
+`Flow.with` is a consuming terminal of the receiver and of the argument: the two flows are two whole flow expressions, each with its own mode and its own checks, and the elements of each become one channel.
+`Flow.withBoth` and `Flow.withAll` consume their receiver in the same way, and add the channels of the multi flow they receive as argument.
+`BiFlow.with` and `TriFlow.with` consume the flow they receive in the same way, and `BiFlow.withBoth` adds the channels of the multi flow it receives.
+So every stage of every flow has finished with every element before any method of the multi flow runs.
 `Map.flow` makes a `BiFlow` directly: its first channel is the keys and its second channel is the elements, in insertion order.
 
 A merge is a source, and it records `Seq` and `.hintSequential`, as `.seqFlow` does.
