@@ -18,7 +18,7 @@ A fatal error ends the manager. This happens in order:
 -The manager deletes the manager folder.
 -The manager removes all the associations the manager took.
 
-Everything the manager is asked to do either happens or is refused with a message naming what was refused and why; nothing is silently skipped.
+Everything the manager is asked to do either happens or is refused with an error naming what was refused and the reason of the refusal; nothing is silently skipped.
 
 ## Program and manager folder
 
@@ -90,7 +90,7 @@ A verb is one of the following, written in upper camel case. Verbs about the who
 Verbs about one project, taking the name of a registered project:
 - `Run <name>`: select the project and run the mains of the second argument, separated by spaces, in the order of the mains of the project; they become the selected mains;
 - `Compile <name>`: select the project and compile the project if the project needs compiling;
-- `Check <name>`: select the project and report in the Output of the project why the project is invalid or out of date, or that it is neither; why it is invalid is also written to `.fearless_out/check_error.txt`, and a `Check` of a valid project deletes `.fearless_out/check_error.txt`;
+- `Check <name>`: select the project and report in the Output of the project the problem of the project, or that the project is out of date, or that the project is neither invalid nor out of date; the problem is also written to `.fearless_out/check_error.txt`, and a `Check` of a valid project deletes `.fearless_out/check_error.txt`;
 - `Terminate <name>`: select the project and end the main or the compilation of the project currently running, if any;
 - `DeleteCache <name>`: select the project and delete the compiled cache of the project;
 - `Kind <name>`: set the kind of the project to the second argument (`idle`, `code`, `data:readOnly`, `data:readWrite`);
@@ -124,7 +124,7 @@ Ill formed messages:
 - an `EditMetadata` that Registered projects refuses;
 - `Run` and `Compile` of a project that is not code, naming the kind of the project;
 - `Run` of a project whose `attenuators` name a main that is not a main of the project, or an attenuator that is not an attenuator of the project (the error lists the mains, or the attenuators);
-- `Run` and `Compile` of a project with invalid content, saying why (for a broken link, naming the link and why);
+- `Run` and `Compile` of a project with invalid content (the error is the problem of the project);
 - `Run` of a project that is not compiled, naming the state of the project; `Run` naming no main, or a main that is not a main of the project (the error lists the mains of the project);
 - `Run`, `Compile` or `DeleteCache` while a main or a compilation of the project is currently running.
 
@@ -179,7 +179,7 @@ Each project has:
 
 - `attenuators`: for each main the attenuators the manager applies to that main, in order; a main absent from `attenuators` gets no attenuator. Naming a main or an attenuator the project does not have is well formed.
 
-A code project whose links name a missing project, or a project of the wrong kind, or an invalid project, is invalid, and the error says which link and why.
+A code project whose links name a missing project, or a project of the wrong kind, or an invalid project, is invalid: such a link is 'broken'.
 
 A `projects.info` that is not a valid Info file, or does not hold what is above, is a fatal error pointing at the offending text in the Frontend error message style.
 
@@ -218,6 +218,8 @@ Each project is in one of these states, shown as a badge on the tile of the proj
 - `code: not compiled (cache out of date)`: a compiled cache that does not match the sources;
 - `code: compiled`;
 - `code: busy`: a main or a compilation of the project is currently running.
+
+The 'problem' of a project with invalid content is the error naming which of the causes above holds; for a broken link, the problem names the link and what makes the link broken (a missing project, a project of the wrong kind, an invalid project).
 
 A code project is out of date exactly when compiling the project would compile some package: when the compiled cache of a package does not list exactly the current files of that package, or is older than one of those files. Files outside every package (a readme, the marker) never make a project out of date.
 
@@ -468,7 +470,7 @@ Each method of `CapManager` sends one message, as Eclipse does: the method liste
 So a method of `CapManager` returns once the manager has applied the message of the method: `.run` and `.compile` return once the mains or the compilation end, and return the Output of the mains or of the compilation, the text the manager sent on the port after the line `Applied`; the other methods return `Void`.
 A kind is a method of its own (`.kindIdle`, `.kindCode`, `.kindDataReadOnly`, `.kindDataReadWrite`), and so is a link for reading or for writing (`.linkRead`, `.linkWrite`): a message of a running main can not hold a kind that is not one of the four, or a link that is neither `read` nor `write`.
 A path is the list of the bytes naming the path, the bytes of the `Base16:` form of the path. A path that is not absolute is a deterministic error of the running main: no message is sent.
-The manager shows a refused message in a dialog, as for every other message, and the method is a non deterministic error saying why, the text after the line `Refused`.
+The manager shows a refused message in a dialog, as for every other message, and the method is a non deterministic error holding the text after the line `Refused`.
 `.quit`, `.reset` and `.terminate` of the project of the running main end the running main before the method returns.
 A program started by the portable Fearless has no manager: every method of `CapManager` is a non deterministic error.
 
@@ -498,12 +500,12 @@ Saving a file of a code project in Eclipse compiles the project. Users save ofte
 - otherwise Eclipse sends `Terminate` of the project (a running main is always ended, and so is a younger compilation), saves every open file of the project together, and sends `Compile` of the project.
 
 The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and writes into a project folder only the files and folders the user saves or creates; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not the mirror of that project is an error. Every two seconds the plugin reflects `projects.info` and the `.fearless_out` folders: the error of the last compile (`compile_error.txt`) in the Problems view, on the file and at the line the error names, or on the project while that file does not exist, and the error of the last check (`check_error.txt`) on the project, each while that error file is not out of date, and in the JUnit view the unit test log the running main writes in `.out/logs`: the complete records of the log, the lines of the log up to the last newline, without a test case whose closing line is not written yet. The plugin shows the followed mains or compilation in the Output view, emptied when the mains of a `Run` or a compilation start, like the Output area of the manager: a view with no buttons, where a stack frame and the header of a compile error are links opening that file at that line. Fearless files show with syntax highlighting. Build (`Compile` for a code project with valid content, `Check` for any other), Clean (`DeleteCache`), the main button below, the kind switches of the Fearless menu of a project, New Project (`Register`), Show in manager (`Show` with the name of the project) and Forget project are messages to the manager.
-The toolbar of the Fearless perspective holds the main button of the manager for the project of the active editor or of the selection. The main button shows what pressing the main button does, each with an image of its own: Check, Compile, Run, Run V, or Terminate while Eclipse follows a run or a compilation of that project. Run V asks which mains to run, with the selected mains checked. Besides the main button, the toolbar of the Fearless perspective holds only the buttons of text editing (Save, Undo, Redo, Search, the toggles of the editor and the navigation in the text); a button that does nothing for Fearless or repeats another is hidden, and so is the Run menu, in the Fearless perspective only. Eclipse finds the state from the files, as the manager does: the kind and the links in `projects.info`, the marker, the packages and the rank files of the packages, and whether compiling would compile some package. A project whose content is invalid in another way shows Compile, and the manager refuses that `Compile`, saying why.
-The toolbar of the Fearless perspective also holds New Package and New Type, for the project of the active editor or of the selection; each asks for a path inside the project folder and refuses a path that is not valid, saying why:
-- New Package takes a path like `lib/_beer`, and makes the package folder `_beer` with the folders holding it;
-- New Type takes a path like `lib/_beer/point`, and makes the file `point.fear` holding the type `Point`. Rank file makes the rank file of that package instead, `_rank_app.fear` or the rank chosen, holding the usual `use` lines of the standard library. Example tests adds a test suite checking some arithmetic: a project runs its tests more than a bare main.
-New Folder and New File of the Fearless perspective warn when the name is not a valid name of a Fearless project, saying why, and create it anyway.
-New Fearless Project registers a folder, made if missing (`Register`). It can first write a demo into a new or empty folder, then make the project code (`Kind`) once the manager lists it: Hello world; Simple GUI, a window with a button; Shortcut and OpenWith, a main started by its shortcut file and a main opening the files of its extension, each with its icon. The OpenWith main of this demo is a window showing the text of the file it is opened with; every file dropped on that window adds its text at the end.
+The toolbar of the Fearless perspective holds the main button of the manager for the project of the active editor or of the selection. The main button shows what pressing the main button does, each with an image of its own: Check, Compile, Run, Run V, or Terminate while Eclipse follows a run or a compilation of that project. Run V asks which mains to run, with the selected mains checked. Besides the main button, the toolbar of the Fearless perspective holds only the buttons of text editing (Save, Undo, Redo, Search, the toggles of the editor and the navigation in the text); a button that does nothing for Fearless or repeats another is hidden, and so is the Run menu, in the Fearless perspective only. Eclipse finds the state from the files, as the manager does: the kind and the links in `projects.info`, the marker, the packages and the rank files of the packages, and whether compiling would compile some package. A project whose content is invalid in another way shows Compile, and the manager refuses that `Compile` with the problem of the project.
+The toolbar of the Fearless perspective also holds New Package and New Type, for the project of the active editor or of the selection; each asks for a path inside the project folder and refuses a path that is not valid, naming the rule of the Fearless file names the path breaks:
+- New Package takes a path like `lib/_beer`, and makes the package folder `_beer` with the folders holding the package folder;
+- New Type takes a path like `lib/_beer/point`, and makes the file `point.fear` holding the type `Point`. The option Rank file makes the rank file of that package instead, `_rank_app.fear` or the rank chosen, holding the usual `use` lines of the standard library. The option Example tests adds a test suite checking some arithmetic: a project runs the tests of the project more than a bare main.
+New Folder and New File of the Fearless perspective warn when the name is not a valid file name of a Fearless project, naming the rule the name breaks, and create the folder or the file anyway.
+New Fearless Project registers a folder, made if missing (`Register`). New Fearless Project can first write a demo into a new or empty folder, then make the project code (`Kind`) once the manager lists the project: Hello world; Simple GUI, a window with a button; Shortcut and OpenWith, a main started by the shortcut file of the main and a main claiming an extension, each with an icon of its own. The OpenWith main of this demo is a window showing the text of the file the main is opened with; every file dropped on that window adds the text of that file at the end.
 A missing or malformed file of the manager is an error shown in Eclipse, and the plugin stops following the manager until Eclipse starts again.
 
 ## Content assist
