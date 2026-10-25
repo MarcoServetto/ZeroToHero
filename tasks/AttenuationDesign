@@ -177,19 +177,19 @@ Back to the default is `EditMetadata` removing the entry, or `Attenuate` with th
 
 ```
 CapProcess: ... {
-  mut .start(main: Main, attenuators: List[SystemAttenuator]): mut RunningMain;
+  mut .start(main: Main, attenuators: List[SystemAttenuator]): mut RunningMain[Void];
   }
-RunningMain: ToIso[RunningMain], WidenTo[RunningMain]{
-  mut .await: Void;
-  mut .awaitUpTo(time: Duration): Bool;
+RunningMain[R]: ToIso[RunningMain[R]], WidenTo[RunningMain[R]]{
+  mut .await: R;
+  mut .awaitUpTo(time: Duration): Opt[R];
   mut .terminate: Void;
   }
 ```
 `.start` starts the process and returns at once.
-`.await` returns when the process ends: the `Void` of the main, or its Info as a deterministic or non deterministic error, as `.run`.
-`.awaitUpTo` is `.await` when the process ends within `time`, and returns false otherwise.
+`.await` returns when the process ends: the result of the main, or its Info as a deterministic or non deterministic error, as `.run`.
+`.awaitUpTo` is `.await` when the process ends within `time`, giving the result in the `Opt`, and gives the empty `Opt` otherwise.
 `.terminate` ends the process and every process it started. When the process ended by itself, `.terminate` throws its Info, as `.await` would.
-A `RunningMain` is `running` or `surely terminated`: `.start` gives a running one; `.await`, `.terminate` and an `.awaitUpTo` that returns true or throws make it surely terminated.
+A `RunningMain` is `running` or `surely terminated`: `.start` gives a running one; `.await`, `.terminate` and an `.awaitUpTo` that gives a result or throws make it surely terminated.
 A call on a surely terminated `RunningMain` is a deterministic error.
 An error of the system in working with processes is a non deterministic error.
 `.run` is `.start` then `.await`.
@@ -201,14 +201,18 @@ TODO: capture: `.start` takes a callback called with each chunk the process prod
 
 ### Third step: values across processes
 
-An `Info` is the one value with a text form that parses back, so it is the first value to cross:
 ```
-InfoMain: CaptureFree { .main(sys: mut System, arg: Info): Info }
+InfoMain: CaptureFree{ .main(sys: mut System, arg: Info): Info }
 CapProcess: ... {
   mut .run(main: InfoMain, arg: Info, attenuators: List[SystemAttenuator]): Info;
+  mut .start(main: InfoMain, arg: Info, attenuators: List[SystemAttenuator]): mut RunningMain[Info];
   }
 ```
-The argument travels to the new process with the names, the result travels back with the `ok` line. Any immutable value with `ToInfo` and a parser from `Info` crosses this way; a general `imm` transfer needs a serialization protocol for every immutable type, which Fearless does not have yet, and which `DataType.info` is a start of.
+An `Info` is the one value with a text form that parses back: `Info.str` and `Infos.fromStr`.
+`sys.process.run(Compute, arg, as)` behaves as `Compute.main(An#(...A1#(sys)), arg)` in a process of its own, as `.run` of a `Main` does, and gives the `Info` the main returns.
+The text of `arg` is the first line on the standard input of the new process, before the parent lifeline; the text of the result follows the `ok` line on its standard error.
+An `InfoMain` is not a main of the project: the manager and the portable do not list it or run it.
+Any immutable value with `ToInfo` and `FromInfo` crosses as an `Info`. A transfer of every `imm` value needs a serialization for every immutable type, which Fearless does not have.
 
 ### Related work and the paper
 
