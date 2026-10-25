@@ -26,7 +26,7 @@ const MetaData= {
   str: (t, str) => {
     //console.log("["+t.dataset[str]+"]");
     Utils.check(str === str.toLowerCase(),
-      "metadata can not be case sensitive");
+      "metadata cannot be case sensitive");
     return t.dataset[str];//.replace(/\\n/g, '\n');
     },
   int: (t, str) => parseInt(MetaData.str(t,str), 10),         
