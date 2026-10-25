@@ -71,9 +71,14 @@ Kinds of stages/terminals:
 - 'elementwise' stage: `map`, `filter`, `flatMap`, `flatMapMut`, `peek`, `mapFilter`.
 - 'streaming stateful' stage: `limit`, `scan`, `actor`, `actorMut`, map with context, `distinct`.
 - 'fence': a stage/terminal that sends nothing downstream, and lets no exception of its own propagate, until every stage before it has finished with every element: the stages `allToAll`, `sort`, `sortDistinct`, `max`, `min`, `distinctMut` and `++`, and the terminal `for`. Not: fence operation, barrier.
-- 'consuming terminal': `list`, `eList`, `set`, `eSet`, `mapping`, `for`, `forEach`, `fold`, `foldAcc`, `size`, `isEmpty`, `get`, `getOpt`, `join`, `sum`, `last`. Every element passes the whole chain.
+- 'consuming terminal': `list`, `eList`, `set`, `eSet`, `mapping`, `for`, `forEach`, `fold`, `foldAcc`, `size`, `isEmpty`, `get`, `getOpt`, `join`, `sum`, `last`, `with`, `withBoth`, `withAll`. Every element passes the whole chain.
 - 'utility method': a flow method that is neither a stage nor a terminal: it calls a terminal and continues with ordinary code, so the flow expression ends at that terminal. `let` is the only one.
 - 'short-circuit terminal': `first`, `any`, `all`, `none`, `findFirst`, `findMap`. They can decide before the end, leaving the elements after the decision in flow order never processed.
+
+Multi flows:
+- 'multi flow': a `BiFlow`, `TriFlow` or `QuadFlow`. Not: zipped flow, tuple flow.
+- 'channel': one of the two, three or four lists of elements a multi flow holds. The element at index `i` of a channel goes with the element at index `i` of every other channel.
+- 'merge': `getMerge`, `tryGetMerge`, `merge` or `mergeOpts`: a multi flow method returning a fresh `mut Flow`, directly or inside an `Action` or an `Opt`. A merge is the source of that flow.
 
 Results and exceptions:
 - 'returns': includes the result value, deterministic exceptions and non termination. Do not use 'produces' 'evaluate into'.
@@ -315,15 +320,21 @@ EList[E]: {
   }
 Set[E]:  ToFlow[E] { .flow: mut Flow[E]; }
 ESet[E]: { mut .flow: mut Flow[E]; mut .seqFlow: mut Flow[E]; }//mut .seqFlow and mut .flow consume the ESet
-Map[K,E]: ToFlow[mut KeyElem[K,E]] {
-  mut  .flow(mode: FlowMode[mut KeyElem[K,E]]): mut Flow[mut KeyElem[K,E]];
-  read .flow(mode: FlowMode[read KeyElem[K,E]]): mut Flow[read KeyElem[K,E]];
-  imm  .flow: mut Flow[KeyElem[K,imm E]];
-  mut  .flow[R:*](mode: FlowMode[R], f: read F[K,E,R]): mut Flow[R];
-  read .flow[R:*](mode: FlowMode[R], f: read F[K,read/imm E,R]): mut Flow[R];
-  imm  .flow[R:*](mode: FlowMode[R], f: read F[K,imm E,R]): mut Flow[R];
+Map[K,E:*]: {//the two channels of `.flow` have the same size, so the `get` methods never throw
+  mut  .flow: mut BiFlow[K,E];
+  read .flow: mut BiFlow[K,read/imm E];
+  imm  .flow: mut BiFlow[K,imm E];
+  mut  .flow[R:*](f: read F[K,E,R]): mut Flow[R] -> this.flow.getMerge f;
+  read .flow[R:*](f: read F[K,read/imm E,R]): mut Flow[R] -> this.flow.getMerge f;
+  imm  .flow[R:*](f: read F[K,imm E,R]): mut Flow[R] -> this.flow.getMerge f;
+  mut  .fold[R:*](acc: iso MF[R], f: read F[R,K,E,R]): R -> this.flow.getFold(acc, f);
+  read .fold[R:*](acc: iso MF[R], f: read F[R,K,read/imm E,R]): R -> this.flow.getFold(acc, f);
+  imm  .fold[R:*](acc: iso MF[R], f: read F[R,K,imm E,R]): R -> this.flow.getFold(acc, f);
+  mut  .foldUntil[R:*](acc: iso MF[R], f: read F[R,K,E,R], pred: read F[R,Bool]): R -> this.flow.getFoldUntil(acc, f, pred);
+  read .foldUntil[R:*](acc: iso MF[R], f: read F[R,K,read/imm E,R], pred: read F[R,Bool]): R -> this.flow.getFoldUntil(acc, f, pred);
+  imm  .foldUntil[R:*](acc: iso MF[R], f: read F[R,K,imm E,R], pred: read F[R,Bool]): R -> this.flow.getFoldUntil(acc, f, pred);
   read .keys: mut Flow[K];
-  read .elems(mode: FlowMode[read/imm E]): mut Flow[read/imm E];
+  read .elems: mut Flow[read/imm E];
   }
 Range[N]: ToFlow[N] { .flow: mut Flow[N]; .flow(stepSize: N): mut Flow[N]; }
 Opt[E]: ToFlow[E] {}
@@ -401,6 +412,9 @@ Flow[E:*]: {
   mut .getOpt: mut Opt[E] -> this.tryGetOpt!;
   mut .let[DR:*,R:*](x: read F[mut List[E],DR], cont: mut FlowContinuation[E,DR,R]): R ->
     this.list |> {xs -> cont#(x#xs, xs)};
+  mut .with[B:*](flow: mut Flow[B]): mut BiFlow[E,B] -> _BiFlows#(this.list, flow.list);
+  mut .withBoth[B:*,C:*](flows: mut BiFlow[B,C]): mut TriFlow[E,B,C] -> _BiFlows.tri(this.list, flows);
+  mut .withAll[B:*,C:*,D:*](flows: mut TriFlow[B,C,D]): mut QuadFlow[E,B,C,D] -> _BiFlows.quad(this.list, flows);
   mut .first: mut Opt[E] -> this.limit 1 .getOpt;
   mut .findFirst(f: read F[E, Bool]): mut Opt[E] -> this.filter f .first;
   mut .findMap[R:*](f: read F[E, mut Opt[R]]): mut Opt[R] -> this.mapFilter f .first;
@@ -408,11 +422,53 @@ Flow[E:*]: {
   mut .none(f: read F[E, Bool]): Bool -> this.any f .not;
   mut .all(f: read F[E, Bool]): Bool -> this.none{e -> f#e .not};
   }
+
+_BiFlows: Sealed {//the lists become the channels, in order
+  #[A:*,B:*](a: mut List[A], b: mut List[B]): mut BiFlow[A,B] -> _Magic!;
+  .tri[A:*,B:*,C:*](a: mut List[A], bc: mut BiFlow[B,C]): mut TriFlow[A,B,C] -> _Magic!;
+  .quad[A:*,B:*,C:*,D:*](a: mut List[A], bcd: mut TriFlow[B,C,D]): mut QuadFlow[A,B,C,D] -> _Magic!;
+  }
+BiKeyElemMapper[A:*,B:*,K,E:*]: { .key(a: A, b: B): K; .elem(a: A, b: B): E; }
+_BiMappingStep: { #[K,E:*](m: mut Map[K,E], k: K, e: E): mut Map[K,E] ->
+  m.containsKey(k) ?[mut Map[K,E]]{
+    .then -> Error.msg`BiFlow.mapping: two pairs have the same key`;
+    .else -> m.with(k, e)
+  }}
+BiFlow[A:*,B:*]: {
+  //core methods
+  mut .with[C:*](flow: mut Flow[C]): mut TriFlow[A,B,C];
+  mut .withBoth[C:*,D:*](flows: mut BiFlow[C,D]): mut QuadFlow[A,B,C,D];
+  mut .enumerate: mut TriFlow[Nat,A,B];
+  mut .tryGetMerge[R:*](f: read F[A,B,R]): mut Action[mut Flow[R]];
+  mut .mergeOpts[R:*](f: read F[mut Opt[A],mut Opt[B],R]): mut Flow[R];
+  mut .tryGetFold[R:*](acc: iso MF[R], f: read F[R,A,B,R]): mut Action[R];
+  mut .foldOpts[R:*](acc: iso MF[R], f: read F[R,mut Opt[A],mut Opt[B],R]): R;
+  mut .tryGetFoldUntil[R:*](acc: iso MF[R], f: read F[R,A,B,R], pred: read F[R,Bool]): mut Action[R];
+  mut .foldOptsUntil[R:*](acc: iso MF[R], f: read F[R,mut Opt[A],mut Opt[B],R], pred: read F[R,Bool]): R;
+  mut .fillA(f: read F[Nat,A]): mut BiFlow[A,B];
+  mut .fillB(f: read F[Nat,B]): mut BiFlow[A,B];
+  mut .cutToSmallest: mut BiFlow[A,B];
+  mut .limit(n: Nat): mut BiFlow[A,B];
+  //desugared methods
+  mut .getMerge[R:*](f: read F[A,B,R]): mut Flow[R] -> this.tryGetMerge(f)!;
+  mut .merge[R:*](f: read F[A,B,R]): mut Opt[mut Flow[R]] -> this.tryGetMerge(f).ok;
+  mut .getFold[R:*](acc: iso MF[R], f: read F[R,A,B,R]): R -> this.tryGetFold(acc, f)!;
+  mut .fold[R:*](acc: iso MF[R], f: read F[R,A,B,R]): mut Opt[R] -> this.tryGetFold(acc, f).ok;
+  mut .getFoldUntil[R:*](acc: iso MF[R], f: read F[R,A,B,R], pred: read F[R,Bool]): R -> this.tryGetFoldUntil(acc, f, pred)!;
+  mut .foldUntil[R:*](acc: iso MF[R], f: read F[R,A,B,R], pred: read F[R,Bool]): mut Opt[R] -> this.tryGetFoldUntil(acc, f, pred).ok;
+  mut .mapping[K,K0,E0:*](by: OrderHashBy[K,K0], kem: BiKeyElemMapper[A,B,K,E0]): mut Map[K,E0] ->
+    this.getFold({Maps#(by)}, {m, a, b -> _BiMappingStep#(m, kem.key(a, b), kem.elem(a, b))});
+  }
+TriFlow[A:*,B:*,C:*]: {//the methods of `BiFlow` over three channels, except `.withBoth` and `.mapping`, and `.fillC`
+  mut .with[D:*](flow: mut Flow[D]): mut QuadFlow[A,B,C,D];
+  mut .enumerate: mut QuadFlow[Nat,A,B,C];
+  }
+QuadFlow[A:*,B:*,C:*,D:*]: {}//the methods of `TriFlow` over four channels, except `.with` and `.enumerate`, and `.fillD`
 ```
 
 ### Modes
 
-Every source records a mode: `.seqFlow` and `Flows#` record `Seq`, `.flow` with no argument records `ParImm`, and `.flow(mode)` records the mode passed. The mode changes nothing a flow expression returns: it only selects which misuse exceptions of **Misuse exceptions** apply.
+Every source records a mode: `.seqFlow`, `Flows#`, `Map.elems` and the merges record `Seq`, `.flow` with no argument records `ParImm`, and `.flow(mode)` records the mode passed. The mode changes nothing a flow expression returns: it only selects which misuse exceptions of **Misuse exceptions** apply.
 
 ### Core methods
 
@@ -469,10 +525,15 @@ The stages after it run in the mode passed, with no hint. It is not a fence.
 ```
 for(E e: <the elements of the receiver, in its order>){ out.send(e); }
 ```
-`Map.flow(mode, f)`:
+
+**multi flows**: a multi flow holds its channels `c1, .., cn` as lists. `Map.flow` makes a `BiFlow` whose channels are the keys and the elements of the map, in insertion order; `_BiFlows` makes a multi flow from the lists and the channels it receives, in order.
+`tryGetMerge(f)` returns an `Action` holding a message with the sizes of the channels when the channels differ in size, before any call of `f`; otherwise it returns `.ok` of the flow whose source is:
 ```
-for(K k, E e: <the entries of the map, in its order>){ out.send(f#(k, e)); }
+for(Nat i: 0 ..< c1.size){ out.send(f#(c1.get i, .., cn.get i)); }
 ```
+`mergeOpts(f)` runs over the indexes of the longest channel, handing `f` `.some` of the element of each channel at that index, or `.empty` past the end of that channel.
+`tryGetFold`, `foldOpts`, `tryGetFoldUntil` and `foldOptsUntil` run the same loops as `fold` does, and the `Until` forms stop as soon as `pred` returns `True` for the accumulator, checked before each index.
+`fillA`, `fillB`, `fillC`, `fillD`, `cutToSmallest` and `limit` change the channels and return the multi flow; `with`, `withBoth` and `enumerate` return a multi flow with more channels. Every multi flow method consumes the multi flow, except `fillA`, `fillB`, `fillC`, `fillD`, `cutToSmallest` and `limit`.
 
 **Lazy:** The user provided lambdas are not run until the terminal is called.
 
@@ -491,7 +552,7 @@ Misuse exceptions are thrown by the terminals, so the code implementing the term
 
 Every terminal starts with `checkMisuse(c)`, where `c` is its chain:
 - `c.mode`, `c.source` (the elements of the source), `c.stages` (in order, indexed from `0`), `c.terminal`;
-- `c.parts`: the chain cut at each `.recoverFlow`; `p.hints` are the `.hintSequential` and `.hintParallel` of the part `p`, in order, starting with one `.hintSequential` when `p` starts at a `.seqFlow` or `Flows#`; a hint is not in `c.stages`;
+- `c.parts`: the chain cut at each `.recoverFlow`; `p.hints` are the `.hintSequential` and `.hintParallel` of the part `p`, in order, starting with one `.hintSequential` when `p` starts at a source of mode `Seq`; a hint is not in `c.stages`;
 - `c.lambdas`: every lambda of the chain; `l.owner` is the stage/terminal `l` is an argument of;
 - `l.onlyImmCapture`: `l` captures only `imm` values; a top level declaration used as a value and every `imm` lambda carry it.
 
@@ -575,7 +636,7 @@ ReadsFirst=  {map, readOnly, ++, scan, distinct, distinctMut, limit}* .first
 ```
 Void checkShape(Chain c){
   for(Part p: c.parts){ if(p.hints.size > 1){ throw
-    "A flow takes at most one of `.hintSequential` and `.hintParallel` in each part between `.recoverFlow` calls, but this part has "+p.hints.size+". A flow started with `.seqFlow` or `Flows#` already has `.hintSequential`. Keep only one."; } }
+    "A flow takes at most one of `.hintSequential` and `.hintParallel` in each part between `.recoverFlow` calls, but this part has "+p.hints.size+". A flow started with `.seqFlow`, `Flows#`, `Map.elems` or a merge of a `BiFlow`, `TriFlow` or `QuadFlow` already has `.hintSequential`. Keep only one."; } }
   match c.shape{
     .. s[i] rest with s in {sort}, rest in ReadsEmpty | ReadsCount | ReadsElems
     .. s[i] rest with s in {map, scan}, rest in ReadsEmpty | ReadsCount
@@ -919,15 +980,16 @@ The mode decides which strategies the terminal may pick:
 - `ParRepr` over `mut Repr[T]` and `ParPod` over `mut IsoPod[T]`: the parallel strategies too, over elements each owning its mutable state.
 
 The source records the mode:
-- `.flow` with no argument exists only where the type of the receiver shows that every element is `imm`, and records `ParImm`: `.flow` on an imm `List`, `EList` or `Map`, on a `Set` and an `ESet`, `.keys` of a `Map`, `UStr`, and the ranges (`0 =~~= 199`, `.flow(step)`).
+- `.flow` with no argument exists only where the type of the receiver shows that every element is `imm`, and records `ParImm`: `.flow` on an imm `List` or `EList`, on a `Set` and an `ESet`, `.keys` of a `Map`, `UStr`, and the ranges (`0 =~~= 199`, `.flow(step)`).
 - `.seqFlow`, on every `ToFlow`, records `Seq` and `.hintSequential`.
-- `xs.flow(mode)` on a read or mut `List`, `EList` or `Map` records the mode passed; the type of `mode` checks the elements: `ParImm[T:imm]`, `ParRead[T:imm,read]`, `ParRepr[T]` over `mut Repr[T]`, `ParPod[T]` over `mut IsoPod[T]`. The flow object keeps the mode passed, and the checks tell the modes apart by its type.
+- `.elems` of a `Map` and the merges record `Seq` and `.hintSequential`; **Multi flows** says why for the merges.
+- `xs.flow(mode)` on a read or mut `List` or `EList` records the mode passed; the type of `mode` checks the elements: `ParImm[T:imm]`, `ParRead[T:imm,read]`, `ParRepr[T]` over `mut Repr[T]`, `ParPod[T]` over `mut IsoPod[T]`. The flow object keeps the mode passed, and the checks tell the modes apart by its type.
 - `Flows#` records `Seq` and `.hintSequential`.
 - `.recoverFlow(mode)` records the mode passed for the stages after it, with no hint; the type of `mode` checks the elements, as for `.flow(mode)`. In `persons.seqFlow.map{p -> p.computeDNA}.recoverFlow(ParImm#).map{..}.list`, with `persons` a `mut List[mut Person]` and `computeDNA` returning an `imm` value, the second `map` can run in parallel. After a `++`, a `flatMap`, a `distinct`, an `actor` or a `scan` the elements are `read` or `imm`, so `.recoverFlow(ParRead#)` fits there. An `Opt` offers only `.seqFlow`, since a flow of at most one element has nothing to run in parallel: in `opt.seqFlow.flatMap f .recoverFlow(ParRead#).map g .list`, `g` can run in parallel over the elements `f` returns.
 
 A mode is what the chain records, not a Fearless type: `ParImm`, `ParRead`, `ParRepr` and `ParPod` are also the types of the argument of `.flow(mode)`, while `Seq` has no type and is recorded by `.seqFlow` and `Flows#`.
 
-`ToFlow` is the finished collections: `List`, `Set`, `Map`, `Opt`, the ranges and `UStr`. `EList` and `ESet` are not: their `mut .seqFlow` consumes them, and a `ToFlow` never does. `ToFlow` is sealed, and `Flow` is not a `ToFlow`. So `{}` is never an empty `ToFlow`: `++ List[E]` is a fence appending nothing, and `.readOnly` sends the elements downstream as `read` or `imm` with no fence. The lambdas of `flatMap` and `flatMapMut` return a `ToFlow`, and `++` takes one, so a `Set` or an `Opt` needs no `.list` first; the runtime can iterate a `ToFlow` it receives directly, with no flow object and no copy. `Map` is a `ToFlow[mut KeyElem[K,E]]`: through a `read` map the entries are `read KeyElem`s, whose `.elem` is `read/imm E`; a `KeyElem[K,E]` written with no capability is `imm`, so as a `ToFlow[KeyElem[K,E]]`, or with `Flow[KeyElem[K,read/imm E]]` from `read .flow(mode)`, a `read` map would give `imm` entries whose `imm .elem` is an `imm` view of an element others may mutate; the `read` and `mut` variants of `.flow(mode)` give `read KeyElem` and `mut KeyElem` for the same reason.
+`ToFlow` is the finished collections: `List`, `Set`, `Opt`, the ranges and `UStr`. `EList` and `ESet` are not: their `mut .seqFlow` consumes them, and a `ToFlow` never does. `ToFlow` is sealed, and `Flow` is not a `ToFlow`. So `{}` is never an empty `ToFlow`: `++ List[E]` is a fence appending nothing, and `.readOnly` sends the elements downstream as `read` or `imm` with no fence. The lambdas of `flatMap` and `flatMapMut` return a `ToFlow`, and `++` takes one, so a `Set` or an `Opt` needs no `.list` first; the runtime can iterate a `ToFlow` it receives directly, with no flow object and no copy. `Map` is not a `ToFlow`: a `ToFlow` sends downstream one element for each element of the collection, while a map holds a key and an element for each entry. `Map.flow` returns a `BiFlow` whose channels are the keys and the elements, so no entry object is ever made, and the capability of each element is the one `.flow` gives to its channel: `read/imm E` through a `read` map, `imm E` through an `imm` one.
 
 Whether an element is `imm` or only `read` is known to the type system alone: the runtime can not tell them apart. So `ParImm` is never discovered from the elements: it comes from `.flow` with no argument, where the type of the receiver shows it, or from `ParImm#`, where the type of `mode` checks it.
 
@@ -1369,6 +1431,49 @@ Where `x` only reads, `let` does what `allToAll` does, but outside the flow expr
 On an empty flow the actor of `.limit 1` never runs, so `.first` is the empty `Opt`, `.any` is `False` and `.all` is `True`.
 Composing `f` with `.not` changes no call and no order, so `.none f` throws the same exception at the same element as `.any f`, and `.all f` throws the same exception at the same element as `.any{e -> f#e .not}`. `.all f` and `.any f` stop at different elements: `.any f` at the element where `f` completes successfully with `True`, `.all f` at the element where `f` completes successfully with `False`.
 `.findFirst` returns `mut Opt[E]`, as `.first` does: the element may be `mut`.
+
+### Multi flows
+
+`Flow.with`, `Flow.withBoth` and `Flow.withAll` are consuming terminals of the receiver and of the argument.
+Each of the two flows is a whole flow expression, with its own mode and its own checks, and its elements become one channel of the multi flow.
+So every stage of both flows has finished with every element before any method of the multi flow runs.
+`Map.flow` makes a `BiFlow` directly: its first channel is the keys and its second channel is the elements, in insertion order.
+
+A merge is a source, and it records `Seq` and `.hintSequential`, as `.seqFlow` does.
+The lambda of a merge receives the elements of each channel with the capability of that channel, `mut` included: a merge over a `mut Map[Str, mut Person]` hands each `mut Person` to its lambda.
+A merge takes no mode, so no type checks that its elements can be processed in parallel: the stages after a merge run with the sequential strategy.
+`.recoverFlow(mode)` gives the parallelism back.
+The lambda of the merge puts what it needs of each index into a single result, and `.recoverFlow(mode)` checks the type of those results, as `.flow(mode)` checks the type of the elements of a list.
+The stages after `.recoverFlow(mode)` can then run with the parallel strategies.
+
+**From a map:**
+```
+people.flow{name, p -> Samples#(name, p.computeDNA)}
+  .recoverFlow(ParImm#)
+  .map{s -> s.matchScore(target)}
+  .filter{m -> m.isClose}
+  .list
+```
+with `people` a `mut Map[Str, mut Person]`, `computeDNA` returning an `imm DNA`, `Samples#` returning an `imm Sample`, and `target` an `imm DNA`.
+`people.flow f` is `people.flow.getMerge f`.
+The lambda of `getMerge` calls `computeDNA` on each `mut Person`, one at a time, in insertion order.
+Each `Sample` is `imm`, so `.recoverFlow(ParImm#)` fits: the `map` stage and the `filter` stage can run with data parallelism.
+
+**More channels:**\
+The same holds for every multi flow.
+Two maps aligned by insertion order:
+```
+left.flow.withBoth(right.flow)
+  .getMerge{k1, p1, k2, p2 -> Couples#(k1, p1.computeDNA, k2, p2.computeDNA)}
+  .recoverFlow(ParImm#)
+  .map{c -> c.similarity}
+  .list
+```
+with `left` and `right` two `mut Map[Str, mut Person]`, and `Couples#` returning an `imm Couple`.
+`left.flow.withBoth(right.flow)` is a `QuadFlow` whose channels are the keys of `left`, the elements of `left`, the keys of `right` and the elements of `right`.
+The lambda of `getMerge` puts the two keys and the two `DNA` of each index into a single `imm Couple`, so `.recoverFlow(ParImm#)` fits, and the `map` stage can run with data parallelism.
+`getMerge` throws when `left` and `right` differ in size, before any call of its lambda.
+`mergeOpts` hands `.empty` past the end of the smaller map instead, and `.cutToSmallest` before `getMerge` drops the entries past the size of the smaller map.
 
 ## Examples
 
