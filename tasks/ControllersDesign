@@ -313,7 +313,7 @@ On Windows and Linux the single manager makes the launcher of the manager the pr
 
 ## OpenWith and Shortcut
 
-A main can ask the Fearless manager to make the desktop of the system start the main: on a double click on any file with a given extension (`OpenWith`), or on a small file the manager creates for the main (`Shortcut`).
+A main can ask the manager to make the desktop of the system start the main: on a double click on any file with a given extension (`OpenWith`), or on a small file the manager creates for the main (`Shortcut`).
 
 ```
 Foo: Main, OpenWith[IconsFoo, "foo"]{ s -> ... }
@@ -322,9 +322,9 @@ Baz: Main, OpenWith[IconsBaz]{ s -> ... }
 Qux: Main, Shortcut[IconsQux]{ s -> ... }
 ```
 
-`IconsFoo` and the others are types the compiler generates for image files recognised as autoloaded assets (here `_pkg/icons/foo.png` becomes `IconsFoo`). They can come from any package the main can see, including `base` once `base` offers autoloaded icons.
+`IconsFoo`, `IconsBar`, `IconsBaz` and `IconsQux` are types the compiler generates for image files recognised as autoloaded assets (here `_pkg/icons/foo.png` becomes `IconsFoo`). Those types can come from any package the main can see, including `base`.
 
-Informally: `Foo` wants every `.foo` file to show the `IconsFoo` image and to open `Foo` on a double click. `Bar` wants a file `bar.fapp123` in the top level of its project, showing the `IconsBar` image, that starts `Bar` on a double click; that file carries no information, it is only a handle to start the main, and it keeps working when moved anywhere else.
+Informally: `Foo` wants every `.foo` file to show the `IconsFoo` image and to open `Foo` on a double click. `Bar` wants a file `bar.fapp123` in the top level of the project of `Bar`, showing the `IconsBar` image, that starts `Bar` on a double click; that file carries no information, the file is only a handle to start the main, and the file keeps working when moved anywhere else.
 
 Mechanically `OpenWith` and `Shortcut` are the same: both claim an extension for a main. `Shortcut` additionally creates the shortcut file.
 
@@ -339,25 +339,25 @@ Shortcut[I]: {}
 
 `Shortcut` does not extend `OpenWith`.
 
-A main can implement several of them at once, for example `OpenWith[Icon1,"a"]` and `OpenWith[Icon2,"b"]` to open two extensions; the icons can differ or be the same. Several `Shortcut` produce several shortcut files for the same main. Implementing the same type twice (`Shortcut[I]` inherited along two paths) counts once.
+A main can implement several of those four types at once, for example `OpenWith[Icon1,"a"]` and `OpenWith[Icon2,"b"]` to claim two extensions; the icons can differ or be the same. Several `Shortcut` produce several shortcut files for the same main. Implementing the same type twice (`Shortcut[I]` inherited along two paths) counts once.
 
 ### Well formedness
 
-The compiler checks every compiled literal whose supertypes contain a claim, before generating code, with errors worded like the Frontend errors and pointing at the declaration.
+The compiler checks every compiled literal whose supertypes contain `OpenWith` or `Shortcut`, before generating code, with errors worded like the Frontend errors and pointing at the declaration.
 
-1. Every declaration whose supertype closure contains `base.OpenWith[_]`, `base.OpenWith[_,_]`, `base.Shortcut[_]` or `base.Shortcut[_,_]` also has `base.Main` in its supertype closure. Since the closure is transitive, the declaration blamed is the one that first adds `OpenWith`/`Shortcut` without `Main`, even when it is meant to be mixed into a main later. The four base declarations themselves are exempt.
+1. Every declaration whose supertype closure contains `base.OpenWith[_]`, `base.OpenWith[_,_]`, `base.Shortcut[_]` or `base.Shortcut[_,_]` also has `base.Main` in its supertype closure. Since the closure is transitive, the declaration blamed is the one that first adds `OpenWith`/`Shortcut` without `Main`, even when that declaration is meant to be mixed into a main later. The four base declarations themselves are exempt.
    Wording:
    `Type "Assoc" implements "base.OpenWith[_,_]".`
    `Only a main can open files: "Assoc" must also implement "base.Main", directly or through one of its supertypes.`
 2. The arguments are concrete: the first is a type name with no generic arguments, the second a `base` string literal type.
-3. The extension literal: the text between the delimiters, with `"txt"` and `` `txt` `` meaning the same extension `txt`. The two are different type names, so the rule compares the text, and a main claiming both `OpenWith[I,"txt"]` and `` OpenWith[I,`txt`] `` is claiming `txt` twice (rule 5).
-   The text follows the rule for a single extension segment of a file in a project: 1 to 16 characters, each `a-z` or `0-9`; no leading dot; no multi dot extensions such as `tar.gz` (a project may hold `tar.gz` files, but Windows opens a file by the text after its last dot, so a claim of `tar.gz` would really be a claim of `gz`). `fearless` is reserved. A text breaking this rule is an invalid extension, refused here.
+3. The extension literal: the text between the delimiters, with `"txt"` and `` `txt` `` meaning the same extension `txt`. `"txt"` and `` `txt` `` are different type names, so the rule compares the text, and a main claiming both `OpenWith[I,"txt"]` and `` OpenWith[I,`txt`] `` is claiming `txt` twice (rule 5).
+   The text follows the rule for a single extension segment of a file in a project: 1 to 16 characters, each `a-z` or `0-9`; no leading dot; no multi dot extensions such as `tar.gz` (a project may hold `tar.gz` files, but Windows opens a file by the text after the last dot of the file name, so a claim of `tar.gz` would really be a claim of `gz`). `fearless` is reserved. A text breaking this rule is an invalid extension, refused here.
    Every other text is one of two kinds:
-   - A Fearless extension: `fapp[0-9][0-9][0-9]` (shortcuts) or `ffile[0-9][0-9][0-9]` (files). The manager owns these outright: it takes them with no question asked.
-   - A system extension: any other valid text, `htm`, `pdf`, `notes` alike. Only `OpenWith` can claim one, and only once the user allowed it in `systemExtensions`.
-   A `Shortcut` claims only a Fearless extension: its extension, when written, is a `fapp[0-9][0-9][0-9]`. An `OpenWith` written with a `fapp[0-9][0-9][0-9]` is refused too: those name shortcut files.
+   - A Fearless extension: `fapp[0-9][0-9][0-9]` (shortcuts) or `ffile[0-9][0-9][0-9]` (files). The manager owns the Fearless extensions outright: the manager takes a Fearless extension with no question asked.
+   - A system extension: any other valid text, `htm`, `pdf`, `notes` alike. Only `OpenWith` can claim a system extension, and only once the user allowed that extension in `systemExtensions`.
+   A `Shortcut` claims only a Fearless extension: its extension, when written, is a `fapp[0-9][0-9][0-9]`. An `OpenWith` written with a `fapp[0-9][0-9][0-9]` is refused too: `fapp` extensions name shortcut files.
 4. The icon is a type generated by the autoloading of an image file: one error covers every other icon (`base.Str`, `base.ImageFile` itself, a hand written `ImageFile`, a `.txt` asset). Whether the image is a usable PNG is checked by the manager after the compile.
-5. One main claims each extension at most once, across all its `OpenWith` and `Shortcut`: `Foo: Main, OpenWith[I1,"a"], Shortcut[I2,"a"]` is refused, since one extension has one icon.
+5. One main claims each extension at most once, across all the `OpenWith` and `Shortcut` of the main: `Foo: Main, OpenWith[I1,"a"], Shortcut[I2,"a"]` is refused, since one extension has one icon.
 
 Only mains the manager can run take part: the concrete mains of the highest rank of the project. `OpenWith`/`Shortcut` on a main of a lower rank is legal and has no effect.
 
