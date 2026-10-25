@@ -133,7 +133,7 @@ The error of an ill formed message is shown in a dialog, never in the Output: th
 
 ## Info files
 
-The files the manager and the compiler write for the manager and for Eclipse (`projects.info`, `manager.info`, `mains.info`) are Info files: text in the Fearless character set (the characters a Fearless `Str` allows).
+The files the manager and the compiler write for the manager and for Eclipse (`projects.info`, `manager.info`, `<pkg>_manifest.info`) are Info files: text in the Fearless character set (the characters a Fearless `Str` allows).
 An Info is a string `"..."`, a list `[a, b]`, or an object `{"key": value, ...}` whose keys are distinct strings.
 Inside an Info string, `\"` is a quote, `\\` a backslash and `\n` a newline; there is no other escape: `"\t"` is an invalid Info.
 
@@ -285,7 +285,7 @@ For a code project we have the Logs collapsible area, showing the log files the 
 A project runs at most one thing at a time: a compilation, or the mains of one `Run`, one after the other.
 Every `Run`, `Compile` and `Check` starts with an empty Output. Everything a running main or a compilation prints goes to the Output, and the Output marks where each main and the compilation start and end, and how each of them ended, so that Eclipse and the user know when the mains of a `Run` or the compilation are over.
 
-- Compile (code projects): the compiler runs in its own JVM; what the compiler prints goes to the Output. A compile that ends with the mains known removes from the selected mains those that are no longer mains. A compile that fails leaves the project out of date: the packages the compile did not compile stay out of date, and a compile that fails after compiling the packages (on an icon, an extension or a shortcut file) deletes `mains.info`, so reading the mains fails. A compile that fails writes the error to `.fearless_out/compile_error.txt`, and a compile that succeeds deletes `.fearless_out/compile_error.txt`.
+- Compile (code projects): the compiler runs in its own JVM; what the compiler prints goes to the Output. A compile that ends with the mains known removes from the selected mains those that are no longer mains. A compile that fails leaves the project out of date: the packages the compile did not compile stay out of date, and a compile that fails after compiling the packages (on an icon, an extension or a shortcut file) deletes the manifests of the project, so reading the mains fails. A compile that fails writes the error to `.fearless_out/compile_error.txt`, and a compile that succeeds deletes `.fearless_out/compile_error.txt`.
 - Run (code projects): a `Run` runs the mains the `Run` names, in the order of the mains of the project. Each main runs in its own JVM, one after the other.
 - Terminate ends the running main or compilation: its JVM ends, and no further main of that `Run` starts.
 
@@ -343,21 +343,11 @@ A main can implement several of those four types at once, for example `OpenWith[
 
 ### Well formedness
 
-The compiler checks every compiled literal whose supertypes contain `OpenWith` or `Shortcut`, before generating code, with errors worded like the Frontend errors and pointing at the declaration.
+The Frontend checks the claims of every declaration as well formedness errors, before generating code: a declaration with `OpenWith`, `Shortcut` or `PreLoadIcon` among its supertypes also has `Main` among its supertypes; the icon is a type name with no generic arguments; the extension is a string literal type (`"txt"` and `` `txt` `` are the same extension) holding 1 to 16 characters, each `a-z` or `0-9`, not `fearless`; the extension of a `Shortcut` is `fapp` and three digits, and the extension of an `OpenWith` is not; one main claims each extension at most once, across all the `OpenWith` and `Shortcut` of the main. The Coordinator checks that the icon is the type generated for an image file. The exact rules and errors are those of `inject.Methods.checkClaims` of Frontend and of the doc comments of `OpenWith`, `Shortcut` and `PreLoadIcon` in `base`.
 
-1. Every declaration whose supertype closure contains `base.OpenWith[_]`, `base.OpenWith[_,_]`, `base.Shortcut[_]` or `base.Shortcut[_,_]` also has `base.Main` in its supertype closure. Since the closure is transitive, the declaration blamed is the one that first adds `OpenWith`/`Shortcut` without `Main`, even when that declaration is meant to be mixed into a main later. The four base declarations themselves are exempt.
-   Wording:
-   `Type "Assoc" implements "base.OpenWith[_,_]".`
-   `Only a main can open files: "Assoc" must also implement "base.Main", directly or through one of its supertypes.`
-2. The arguments are concrete: the first is a type name with no generic arguments, the second a `base` string literal type.
-3. The extension literal: the text between the delimiters, with `"txt"` and `` `txt` `` meaning the same extension `txt`. `"txt"` and `` `txt` `` are different type names, so the rule compares the text, and a main claiming both `OpenWith[I,"txt"]` and `` OpenWith[I,`txt`] `` is claiming `txt` twice (rule 5).
-   The text follows the rule for a single extension segment of a file in a project: 1 to 16 characters, each `a-z` or `0-9`; no leading dot; no multi dot extensions such as `tar.gz` (a project may hold `tar.gz` files, but Windows opens a file by the text after the last dot of the file name, so a claim of `tar.gz` would really be a claim of `gz`). `fearless` is reserved. A text breaking this rule is an invalid extension, refused here.
-   Every other text is one of two kinds:
-   - A Fearless extension: `fapp[0-9][0-9][0-9]` (shortcuts) or `ffile[0-9][0-9][0-9]` (files). The manager owns the Fearless extensions outright: the manager takes a Fearless extension with no question asked.
-   - A system extension: any other valid text, `htm`, `pdf`, `notes` alike. Only `OpenWith` can claim a system extension, and only once the user allowed that extension in `systemExtensions`.
-   A `Shortcut` claims only a Fearless extension: its extension, when written, is a `fapp[0-9][0-9][0-9]`. An `OpenWith` written with a `fapp[0-9][0-9][0-9]` is refused too: `fapp` extensions name shortcut files.
-4. The icon is a type generated by the autoloading of an image file: one error covers every other icon (`base.Str`, `base.ImageFile` itself, a hand written `ImageFile`, a `.txt` asset). Whether the image is a usable PNG is checked by the manager after the compile.
-5. One main claims each extension at most once, across all the `OpenWith` and `Shortcut` of the main: `Foo: Main, OpenWith[I1,"a"], Shortcut[I2,"a"]` is refused, since one extension has one icon.
+The extensions are of two kinds:
+- A Fearless extension: `fapp[0-9][0-9][0-9]` (shortcuts) or `ffile[0-9][0-9][0-9]` (files). The manager owns the Fearless extensions outright: the manager takes a Fearless extension with no question asked.
+- A system extension: any other valid text, `htm`, `pdf`, `notes` alike. Only `OpenWith` can claim a system extension, and only once the user allowed that extension in `systemExtensions`.
 
 Only mains the manager can run take part: the concrete mains of the highest rank of the project. `OpenWith`/`Shortcut` on a main of a lower rank is legal and has no effect.
 
@@ -365,27 +355,30 @@ Only mains the manager can run take part: the concrete mains of the highest rank
 
 The portable Fearless does nothing with `OpenWith`/`Shortcut`; the compiler is shared, so the compiler records the claims in either case, and only the manager reads the claims.
 
-The compiler writes `.fearless_out/mains.info`, an Info file mapping each main to the file declaring the main, the list of the `Shortcut` claims of the main, then the list of the `OpenWith` claims of the main. A claim is the icon type, where the image of the icon is (the `.diskPath`, `.zipSteps` and `.zipEntry` of the asset, relative to the root of the project owning the package of the icon, the stdLib folder for `base`), then the extension, `""` when the main wrote none:
+The compiler writes `.fearless_out/<pkg>_manifest.info` for each compiled package, the 'manifest' of the package (see the Manager section of AttenuationDesign for `attenuators`): `mains` maps each concrete main of the package to the file declaring the main, the list of the `Shortcut` claims of the main, the list of the `OpenWith` claims of the main, and the list of the icons the main preloads: the icons of the `Shortcut` claims, `base.IconsFearless`, the icons of the `PreLoadIcon` of the main and the icons of the `OpenWith` claims. A claim is the icon type, where the image of the icon is (the `.diskPath`, `.zipSteps` and `.zipEntry` of the asset, relative to the root of the project owning the package of the icon, the stdLib folder for `base`), then the extension, `""` when the main wrote none; a preloaded icon is written as a claim with `""` as the extension:
 ```
 {
-  "hello.Bar": ["_hello/bar.fear", [["hello.IconsShortcut", "_hello/icons/shortcut.png", "", "", ""]], [["hello.IconsDoc", "_hello/icons/doc.png", "", "", "htm"]]],
-  "hello.Beer": ["_hello/beer.fear", [], []]
+  "mains": {
+    "hello.Bar": ["_hello/bar.fear", [["hello.IconsShortcut", "_hello/icons/shortcut.png", "", "", ""]], [["hello.IconsDoc", "_hello/icons/doc.png", "", "", "htm"]], [["hello.IconsShortcut", "_hello/icons/shortcut.png", "", "", ""], ["base.IconsFearless", "icons/fearless.png", "", "", ""], ["hello.IconsDoc", "_hello/icons/doc.png", "", "", ""]]],
+    "hello.Beer": ["_hello/beer.fear", [], [], [["base.IconsFearless", "icons/fearless.png", "", "", ""]]]
+  },
+  "attenuators": []
 }
 ```
-Each compiled package records the mains of the package in `.fearless_out/<pkg>.mains.info` (same format), a cache like `<pkg>.json`; after every compile, `mains.info` is assembled from the parts of the top rank packages, so a package becoming top rank needs no recompilation. The manager reads only `mains.info`. An icon from another package of the project is resolved from the autoloaded assets of that package.
+The manager reads the manifests of every package of the project, merged, and the `base_manifest.info` of the base cache.
 
 ### What the manager does after a compile
 
 Everything below runs in the manager after the compiler succeeded, because the steps below need the claims of every other project.
 
-1. Read the claims of the project from the `mains.info` of the project.
-2. **Checking the icon.** Each icon must be a PNG file (autoloading also accepts jpg, gif and bmp; jpg, gif and bmp are refused here), square, with a side from 64 to 1024 pixels. A failure is reported as the compile failing, worded like a Frontend error and naming the main, the icon type and the image file:
+1. Read the claims and the preloaded icons of the project from the manifests of the project.
+2. **Checking the icon.** Each icon, of a claim or preloaded, must be a PNG file (autoloading also accepts jpg, gif and bmp; jpg, gif and bmp are refused here), square, with a side from 64 to 1024 pixels. A failure is reported as the compile failing, worded like a Frontend error and naming the main, the icon type and the image file:
    `The icon "hello.IconsBar" in "base.Shortcut[hello.IconsBar,\"bar\"]" of main "hello.Bar" is 300x200 pixels (from "_hello/icons/bar.png"): an icon must be a square PNG image with a side from 64 to 1024 pixels.`
    The portable Fearless ignores icons, so the portable Fearless does not run this check: a project with such an icon compiles there and fails only in the manager.
 3. Choose the missing extensions.
-The manager writes each chosen extension into `mains.info`, in place of `""`.
+The manager writes each chosen extension into the manifest of the package of the main, in place of `""`.
 4. Materialise every icon in `.fearless_out/icons/`: the PNG copied out (the PNG may be inside a zip, and the desktop needs a plain file), and on Windows an `.ico` made from the PNG. Two claims with the same icon type share the files. Every compile also removes from `.fearless_out/icons/` the files of icons no longer claimed.
-The name of an icon in `.fearless_out/icons/` follows from the path of the image of the icon, so `mains.info` does not record the name.
+The name of an icon in `.fearless_out/icons/` follows from the path of the image of the icon, so the manifest does not record the name.
 
 5. Rebuild the in memory map and reconcile.
 6. Create the missing shortcut files.
@@ -394,7 +387,7 @@ The name of an icon in `.fearless_out/icons/` follows from the path of the image
 
 ### The in memory map
 
-The manager keeps `extension -> list of (project, main, icon)` in memory only. The manager builds the map at start up from the `mains.info` of every registered `code` project, and rebuilds the map after every compile, `DeleteCache` (the `.fearless_out` of the project is gone, so the project claims nothing), forget, and kind change away from `code`. A project whose `mains.info` is missing claims nothing.
+The manager keeps `extension -> list of (project, main, icon)` in memory only. The manager builds the map at start up from the manifests of every registered `code` project, and rebuilds the map after every compile, `DeleteCache` (the `.fearless_out` of the project is gone, so the project claims nothing), forget, and kind change away from `code`. A project with no manifest claims nothing.
 
 ### Autoselected extensions
 
