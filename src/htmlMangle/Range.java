@@ -1,5 +1,7 @@
 package htmlMangle;
 
+import java.util.Locale;
+
 record Range(double minX, double maxX, double minY, double maxY){
   static boolean checkPercent(double x){
     assert x>=0;
@@ -16,7 +18,7 @@ record Range(double minX, double maxX, double minY, double maxY){
     assert checkRange(minY, maxY);
   }
   String asStyle(){
-    return String.format(
+    return String.format(Locale.ROOT,
       "style=\"top:%.2f%%;left:%.2f%%;width:%.2f%%;height:%.2f%%;\"",
         minX,
         minY,

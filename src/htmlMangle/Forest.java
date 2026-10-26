@@ -232,7 +232,7 @@ public final class Forest{
     public String build(){
       return """
         <circle class="%s"
-          cx="%d" cy="%d"
+          cx="%s" cy="%s"
           r="15"
           fill="%s"
         />""".formatted(elementClass, position.x(), position.y(), fill);
