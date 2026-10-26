@@ -850,15 +850,26 @@ The same Graphics paints a container (.paint) and an image (Image.paint).
       mut .image(image: Image, width: WidthNat, height: HeightNat): mut Graphics;
       mut .textHeight(n: Nat): mut Graphics -> this.textHeight'(HeightNat#n);
       mut .textHeight'(HeightNat): mut Graphics;
+      mut .aboveBaseline(f: Float): mut Graphics -> this.aboveBaseline'(TextRatio#f);
+      mut .aboveBaseline'(TextRatio): mut Graphics;
+      mut .belowBaseline(f: Float): mut Graphics -> this.belowBaseline'(TextRatio#f);
+      mut .belowBaseline'(TextRatio): mut Graphics;
       mut .text(s: Str): mut Graphics -> this.uText(s.u);
       mut .uText(text: UStr): mut Graphics;
+      mut .text(s: Str, width: WidthNat, height: HeightNat): mut Graphics -> this.uText(s.u, width, height);
+      mut .uText(text: UStr, width: WidthNat, height: HeightNat): mut Graphics;
       read .color: Color;
       read .positionX: XInt;
       read .positionY: YInt;
       read .textHeight: HeightNat;
-      read .textWidth(text: Str): WidthNat -> this.uTextWidth(text.u);
-      read .uTextWidth(text: UStr): WidthNat;
+      read .aboveBaseline: TextRatio;
+      read .belowBaseline: TextRatio;
+      read .textRoom(text: Str): TextRoom -> this.uTextRoom(text.u);
+      read .uTextRoom(text: UStr): TextRoom;
+      read .textLines(text: Str, width: WidthNat): List[Str] -> this.uTextLines(text.u, width).flow.map{::.getStr}.list;
+      read .uTextLines(text: UStr, width: WidthNat): List[UStr];
       }
+    TextRoom:{ read .width: WidthNat; read .height: HeightNat; read .baseline: HeightNat; }
     Mouse:_Styled[Mouse]{ .self->this;
       mut .clicked(mut MouseHandler):mut Mouse;
       mut .doubleClicked(mut MouseHandler):mut Mouse;
@@ -871,16 +882,30 @@ The same Graphics paints a container (.paint) and an image (Image.paint).
       }
     MouseHandler:{ mut #(x: XInt, y: YInt, elapsed: Instant, panelWidth: WidthNat, panelHeight: HeightNat): Void; }
 
-Graphics has three settings: the color, the position and the text height.
-The color starts as the foreground of the widget, or as opaque black for an image; the position starts at (0, 0) and the text height at 12.
+Graphics has three kinds of settings: the color, the position and the text settings.
+The color starts as the foreground of the widget, or as opaque black for an image; the position starts at (0, 0).
+The text settings are .textHeight, .aboveBaseline and .belowBaseline, and start as the defaults of a Label: 12, +1.0 and +0.5.
 Each drawing call uses the settings and leaves them unchanged.
 
-.text draws one line of text in the color.
-The top left corner of the line is the position.
-The baseline is textHeight below the position, and the line is one and a half textHeight high: the line of a Label with the default .aboveBaseline and .belowBaseline.
+Every line of text the library draws, in a widget or with Graphics, is drawn in its room.
+The line box of a text is textHeight times aboveBaseline + belowBaseline high, rounded to the nearest virtual pixel, and as wide as the advance of the text.
+The ink of the text may go past the line box: stacked combining marks, tall scripts, glyphs that overhang.
+The room of the text is the line box, grown on each axis by twice the largest part of the ink past the line box on that axis.
+The text is drawn centered in its room, so no ink is clipped.
 
-g.textWidth(text) is the width of the text drawn by .text at the current text height, rounded up to a whole virtual pixel.
-A Label with the same text and text height packs to that width plus its insets.
+g.textRoom(text) is the room of one line of text with the current text settings: .width, .height, and .baseline, the distance from the top of the room to the baseline, rounded to the nearest virtual pixel.
+A Label with the same text and text settings packs to that room plus its insets.
+
+g.text(text) draws one line of text in the color, in its room, with the top left corner of the room at the position.
+g.text(text, width, height) draws one line of text in the color, centered in the box of width x height whose top left corner is the position, as a Label draws its text in its content box.
+A box smaller than the room does not clip the text.
+With the room and the box, a program aligns text as it needs: left at x, right at x - room.width, centered on a point, centered in a cell.
+A decoration goes with the room: a highlight is a .rect of the room, an underline is a .line a little below room.baseline.
+
+g.textLines(text, width) is the text broken into lines whose rooms are at most width wide, as a TextArea wraps its text.
+A line break of the text ends a line.
+A line breaks after a word; a word wider than width breaks between characters; a single character wider than width is a line alone.
+The spaces where a line breaks are not part of the line.
 
 g.image(image) draws the image at its own size: one pixel of the image on one virtual pixel.
 g.image(image, width, height) draws the image scaled to width x height virtual pixels, with its top left corner at the position.
@@ -1008,7 +1033,7 @@ When the pointer rests for 500 milliseconds on a widget with a tooltip, the libr
 The pointer rests on that widget while it moves inside it, also over its children.
 The tooltip hides when the pointer leaves that widget, or when a mouse button is pressed.
 After a press the tooltip stays hidden until the pointer moves, and shows again when the pointer then rests for 500 milliseconds; the tooltip of a widget that replaces the widget under the pointer stays hidden as well.
-The tooltip is drawn by the library inside the window, in virtual pixels, over every widget: a light box with a thin border, holding each line of the text in the bundled fonts at text height 12.
+The tooltip is drawn by the library inside the window, in virtual pixels, over every widget: a light box with a thin border, holding each line of the text in its room, in the bundled fonts at text height 12.
 The top left corner of the box is 20 virtual pixels below the pointer; the box moves left to stay inside the content, and above the pointer when there is no room below it.
 The box stays where it appeared while the pointer rests on the widget.
 A new tooltip text shows at the next repaint.
@@ -1035,7 +1060,7 @@ Menus
       }
 
 A menu is a column of items and separators.
-The library draws it inside the window, in virtual pixels, over every widget: a light box with a thin border, items 24 virtual pixels high, each text in the bundled fonts at text height 12.
+The library draws it inside the window, in virtual pixels, over every widget: a light box with a thin border, each item as high as the room of its text plus 6 virtual pixels (24 for a text whose ink fits its line box), each text in the bundled fonts at text height 12.
 
 Opening a menu:
 w.openMenu(scope) builds a menu with the scope at once, and opens it below the widget w.
