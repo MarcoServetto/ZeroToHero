@@ -1,6 +1,7 @@
 package htmlMangle;
 
 import java.util.stream.Collectors;
+import java.util.Locale;
 
 public final class Escape{
   public static String norm(String s){
@@ -45,7 +46,7 @@ public final class Escape{
         case '\t' -> res.append("\\t");
         case '<'  -> res.append("\\u003C");
         default -> {
-          if (c < 32) res.append("\\u%04X".formatted((int)c));
+          if (c < 32) res.append(String.format(Locale.ROOT, "\\u%04X", (int)c));
           else res.append(c);
          }
        }
