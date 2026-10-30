@@ -1,0 +1,165 @@
+# Coordinator design
+
+How the Coordinator compiles a Fearless project, and what the Coordinator keeps in the folder `.fearless_out` of the project.
+The Coordinator alone writes `.fearless_out`. The manager (see ControllersDesign) reaches `.fearless_out` only through the methods of `Coordinator` below. Eclipse, another process, reads the files of `.fearless_out` as described below.
+
+### The data
+
+`Path` is a path inside a project, `FsPath` a path of the file system.
+```
+File: { .path: Path; .time: Time; .content: Content }
+Package: { .name: Name; .rank: Nat; .files: List[File] }
+Project: {
+  .folder: FsPath;
+  .files: List[File] ->
+    Coordinator.sourceOracle(this.folder).allFiles;
+  .packages: List[Package] ->
+    Helper.pkgMap(this.files) + (Lists#(Base));
+  .problem: Opt[Error] ->
+    the error the checks of Coordinator.sourceOracle(this.folder) and of Helper.pkgMap raise, if any;
+  }
+Base: Package{
+  .name -> "base";
+  .rank -> 0;
+  .files -> the source files of the package base
+  }
+```
+The `.path` of a file is the path inside the project folder; a zip `x.zip` stands for a folder `x` holding the entries of the zip, and every entry has the `.time` of `x.zip`: the entry `a.fear` of `lib/x.zip` has the path `lib/x/a.fear`.
+`Helper.pkgMap` gives the packages of the project: the `.files` of the package named `pkg` are the files under any folder `_pkg`, and the `.rank` is the rank of the rank file of the package.
+`Base` is a package of every project, with a lower rank than every other package.
+
+### The content of `.fearless_out`
+
+For each package `<pkg>` of the project:
+- `<pkg>.json`: an `Api` (below): the types of the package, the inputs of the package at its last compile (`._inputs` below), and the manifest of the package (see What the compiler records in ControllersDesign);
+- `<pkg>.jar`: the compiled code of the package;
+- `<pkg>.html` and `<pkg>.txt`: the documentation of the package, for a browser and for agents.
+For the project:
+- `error.txt`: the error of the last `.check` that found the project 'invalid', or of the last `.compile` that failed;
+- `icons`: the icons of the claims of the mains, as the desktop reads them.
+`.fearless_out` holds nothing else.
+The `<pkg>.json` and the `<pkg>.jar` of `Base` are in the base cache, written already compiled by the installation of Fearless: `._upToDate(sys, Base)` holds in every project.
+
+### The Coordinator
+
+```
+Icon: { .name: Name; .image: Path }
+Claim: { .kind: ClaimKind; .icon: Icon; .named: Opt[FileExtension] }   // as the source writes the claim; .kind is shortcut or openWith
+ChosenClaim: Claim{ .extension: FileExtension }                         // as <pkg>.json stores the claim: .named when present, else the extension ._extension chose
+Main[C]: { .name: Name; .file: Path; .claims: List[C]; .preloaded: List[Icon] }
+Manifest[C]: { .mains: List[Main[C]]; .attenuators: List[Name]; .dataRead: List[Name]; .dataEdit: List[Name] }
+Api: { .types: Types; .inputsSnapshot: Content; .manifest: Manifest[ChosenClaim] }     // the content of <pkg>.json; two Api are == when their .types, .inputsSnapshot and .manifest are
+ApiFile: File, Api{}
+Cache: {
+  mut .api: Opt[ApiFile];
+  mut .jar: Opt[File];
+  mut .writeApi(api: Api, writtenAfter: Time): Void;                          // waits until the clock is after writtenAfter, then writes api into <pkg>.json
+  mut .writeJar(content: Content, writtenAfter: Time, thenWait: Time): Void;   // waits until the clock is after writtenAfter, writes content into <pkg>.jar, then waits until the clock is after the modification time of <pkg>.jar plus thenWait
+  mut .deleteJar: Void;
+  }
+Project: {
+  ...
+  mut ._cacheOf(sys: mut System, package: Package): mut Cache ->
+    the files package.name+".json" and package.name+".jar" of .fearless_out; for the package base, the files base.json and base.jar of the base cache;
+  ._lower(package: Package): List[Package] ->
+    this.packages.flow
+      .filter{p -> p.rank < (package.rank)}
+      .list;
+  mut ._inputTime(sys: mut System, package: Package): Time ->
+    package.files.flow.map{::.time}.list
+      + (this._lower(package).flow.map{p -> this._cacheOf(sys, p).api!.time}.list)
+      .flow
+      .max{::}
+      .getFirst;
+  ._mapDirectives(package: Package): Map[Name,Name] ->
+    Helper.rankMap(this.files).getOrEmpty(package.name);
+  ._inputs(package: Package): Content ->
+    package.files.flow.map{::.path}.sortBy{::}.join(""|)
+    | (this._lower(package).flow.map{::.name}.sortBy{::}.join(""|))
+    | (this._mapDirectives(package).flow.map{in, out -> in + " " + out}.join(""|));
+  mut ._upToDate(sys: mut System, package: Package): Bool -> Block#
+    .let cache= {this._cacheOf(sys, package)}
+    .if {cache.api.isEmpty} .return {False}
+    .if {cache.jar.isEmpty} .return {False}
+    .return{cache.api!.inputsSnapshot == (this._inputs package)
+      .and (cache.jar!.time >= (this._inputTime(sys, package)))};
+  mut ._outOfDate(sys: mut System): Bool ->
+    this.packages.flow.any{p -> this._upToDate(sys, p).not};
+  mut ._compilePackage(sys: mut System, package: Package, name: Name, freeExtension: mut F[FileExtension,Bool]): Void -> Block#
+    .let time= {this._inputTime(sys, package)}
+    .let cache= {this._cacheOf(sys, package)}
+    .let core= {Coordinator.frontend(package, this._lower(package))}
+    .let last= {cache.api.map{::.manifest}}
+    .let manifest= {core.manifest.withExtensions{main, claim -> this._extension(sys, name, main, claim, freeExtension, last)}}
+    .let api= {Api{.types -> core.types; .inputsSnapshot -> this._inputs package; .manifest -> manifest}}
+    .do{this._writeIcons(sys, manifest)}
+    .do{cache.api.map{a -> a == api}.getOr(False) .not
+      .thenDo{cache.writeApi(api, writtenAfter: time)}}
+    .do{cache.writeJar(Coordinator.backend(package, core), writtenAfter: time, thenWait: the time step of the file system holding the project)}
+    .return{Void};
+  mut ._namedExtensions(sys: mut System): List[FileExtension] ->
+    this.packages.flow
+      .flatMap{p -> this._cacheOf(sys, p).api.flow}
+      .flatMap{a -> a.manifest.mains.flow}
+      .flatMap{m -> m.claims.flow}
+      .flatMap{c -> c.named.flow}
+      .list;
+  mut ._extension(sys: mut System, name: Name, main: Main[Claim], claim: Claim, freeExtension: mut F[FileExtension,Bool], last: Opt[Manifest[ChosenClaim]]): FileExtension -> Block#
+    .if {claim.named.isSome} .return {claim.named!}
+    .let prefix= {(claim.kind == ClaimKind.shortcut).if{.then -> "fapp"; .else -> "ffile"}}
+    .let kept= {last.flow
+      .flatMap{m -> m.mains.flow.filter{n -> n.name == (main.name)}}
+      .flatMap{n -> n.claims.flow}
+      .filter{c -> c.kind == (claim.kind) .and (c.icon == (claim.icon))}
+      .map{::.extension}
+      .filter{e -> e.startsWith(prefix) .and (this._namedExtensions(sys).contains(e).not)}
+      .first}
+    .if {kept.isSome} .return {kept!}
+    .let start= {(name + "::" + main.name + "::" + claim.icon.name).hashCode.floorMod 1000}
+    .return{0 =~~= 1000 .flow
+      .map{i -> prefix + ((start + i) % 1000).threeDigits}
+      .first{e -> freeExtension#e}
+      .match{
+        .some e -> e;
+        .empty -> Error.noFreeExtension(main.name, claim)
+        }};
+  mut ._writeIcons(sys: mut System, manifest: Manifest[ChosenClaim]): Void ->
+    checks that every icon of manifest is a square PNG with a side from 64 to 1024 pixels, and writes every icon into .fearless_out/icons, with an .ico of the icon on Windows;
+  mut ._fail(sys: mut System, error: Error): Opt[Error] -> Block#
+    .do{this.packages.flow.forEach{p -> this._cacheOf(sys, p).deleteJar}}
+    .do{write error into .fearless_out/error.txt}
+    .return{Opt#error};
+  }
+Coordinator: {
+  mut .check(sys: mut System, folder: FsPath): State -> Block#
+    .let project= {Project{.folder -> folder}}
+    .if {project.problem.isSome} .return {Block#
+      .do{write project.problem! into .fearless_out/error.txt}
+      .return{State.invalid(project.problem!)}}
+    .if {project._outOfDate(sys)} .return {State.outOfDate(project.packages.flow.any{p -> project._cacheOf(sys, p).jar.isSome})}
+    .return{State.compiled(project.packages.flow.map{p -> project._cacheOf(sys, p).api!.manifest}.list.merged)};
+  mut .compile(sys: mut System, folder: FsPath, name: Name, freeExtension: mut F[FileExtension,Bool]): Opt[Error] -> Block#
+    .let project= {Project{.folder -> folder}}
+    .return{sys.try{project.packages.flow
+        .sortBy{::.rank}
+        .forEach{p -> project._upToDate(sys, p).not
+          .thenDo{project._compilePackage(sys, p, name, freeExtension)}}}
+      .match{
+        .error e -> project._fail(sys, e);
+        .ok -> project._outOfDate(sys).if{
+          .then -> project._fail(sys, Error.filesUpdated(name));
+          .else -> Block#.do{delete .fearless_out/error.txt}.return{Opt#}}
+        }};
+  mut .deleteCache(sys: mut System, folder: FsPath): Void -> deletes the folder .fearless_out of folder;
+  .docs(folder: FsPath, package: Name): FsPath -> the file <pkg>.html of .fearless_out, for the package named package;
+  }
+```
+`name` is the name of the project in `projects.info`; `freeExtension` is the manager answering whether an extension is free, and an extension `freeExtension` answers True for is taken from that moment (see Autoselected extensions in ControllersDesign).
+`.hashCode` is the `hashCode` of a Java `String`, so `start` is the same on every machine; the icon is part of it, so that `Shortcut[I1]` and `Shortcut[I2]` of one main start apart. Which project compiles first can decide which claim gets a number. This is accepted.
+The error `Error.noFreeExtension(main, claim)` is
+`No free extension is left for "base.Shortcut[hello.IconsBar]" of main "hello.Bar": all the 1000 extensions "fapp000" to "fapp999" are used by the projects of this manager.`
+and, for an `OpenWith`, adds that a system extension can be claimed instead, for example `"base.OpenWith[hello.IconsFoo,\"foo\"]"`.
+
+We chose not to sign the state of the files in the cache. Any (mis)behaviour that could only be fixed by signing the state of the files to guarantee that the cache is in sync is not a bug. It is the intended design.
+For example: an edited `<pkg>.jar` or `<pkg>.json` is used as it is; an edited `<pkg>.json` with a newer time compiles the packages of higher rank against that API;
+a file of a package replaced by a file with a time older than the `<pkg>.jar` of the package (a copy keeping the time, an unzip, a restore from a backup) is not seen as a change in the project.
