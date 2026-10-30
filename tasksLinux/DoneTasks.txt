@@ -3340,3 +3340,368 @@ Prototype: base/attenuation.fear (Attenuator: CaptureFree, F[mut System, mut Sys
 The determinism claim holds: attenuators are capture free and run against a revoked System, so the construction is a muted computation and is reproduced identically in the child process.
 TestAllFrontendCoordinatorIntegration and TestAllController pass.
 Left for discussion: the manager side and steps 2 and 3 (start/await/terminate, Info across processes) are designed only; attenuator state is per process; forwarders are shallow; partial Gui attenuation is hard; the task sketch should pass ss, not realSys, to the new main; naming, action versus direct method, and the other open questions listed in the design.
+
+Task:
+For each of the following perform a task
+
+Delegated task: "LinuxBugHunt<N>" (Opus 5.5, high)
+  search for (1)bugs, (2)simplifications in the logic, (3)todos or things we should clearly do or improve.
+  inside the code relate to <N>
+  If possible add failing tests showing either the bug, the complex logic or the missing feature.
+  Open a Pr with the name of the task reporting your findings.
+  You are the only active agent, so you can take control of the screen/mouse etc without interference. 
+
+01 map and use
+02 separate compilation of different packages and the package cache
+03 generation of Java code from the core representation
+04 the numbers in the standard library (Nat, Int, Byte, Float, Num, ranges)
+05 standard library lists, editable lists and sparse lists
+06 standard library sets and maps
+07 standard library strings and unicode strings
+08 standard library the info data type, its extraction and validation
+09 standard library the unit testing framework and the assertions library
+10 standard library errors, Try and Fearless stack traces
+11 standard library System, capability attenuation and capabilities in general
+12 standard library logging and log reading
+13 caching and memoization
+14 interaction between file system access and data projects
+15 network downloads
+16 the gui standard library rendering text and fonts
+17 the gui standard library layout and widgets
+18 the gui standard library input events, keyboard focus and editing text
+19 the gui standard library menus and sections
+20 the gui standard library images, icons and tiles
+21 the generated API documentation (pkg.txt and html)
+22 the managed Fearless GUI
+23 the messaging protocol between manager and running programs
+24 the eclipse plugin, code suggestions and autocompletion
+25 OS file associations and desktop integration
+26 type inference
+27 the wording, English correctness and precision of frontend error messages
+
+Report:
+Night of 2026-10-27: the 27 delegated tasks opened 35 PRs named LinuxBugHunt<N> in Frontend, Coordinator, StandardLibrary and Controllers (none in Commons).
+Each hunt PR adds only failing tests: a failing test is a known bug, and the PR body lists the bugs, simplifications and todos of its topic.
+Day of 2026-10-28: the small bugs with an obvious correct behaviour were fixed by the fix PRs below; each fix PR moved the failing tests of its bugs from the hunt branch into main.
+After each merge the hunt branch was rebased or rebuilt on main to keep only the failing tests of the bugs still open, and a comment on the hunt PR says what was fixed and what the branch still holds.
+A hunt PR with nothing left was closed with a comment: Coordinator#310, Controllers#170, Frontend#310; StandardLibrary#271, #273, #274 and Frontend#315 are closed too.
+On 2026-10-28 every open hunt PR applies to main with no conflict, and every test on a hunt branch fails, for its own bug only (checked by running the suites with all the hunt tests together: 4 Commons, 8 Frontend, 32 Coordinator, 21 StandardLibrary and 15 Controllers failing tests).
+
+Decisions taken while fixing (they change what some hunt bodies say):
+- A type implements at most one cache: the 8 cache types implement Final["._uniqueCache"] (StandardLibrary#301); a subtype of a cache type is another singleton with a cache of its own.
+- InMemoryLog and FileLog are Named: the name of a log is the name of its type and a log declaration holds no name string (StandardLibrary#302); an anonymous log keeps the private name of its literal, as attenuators do.
+- An object literal never has the self name this: a doc comment refers to a literal through its self name, like `self.bar` (Coordinator#331, #332).
+- Inside a package with map a as c, the package a is not visible by its name: no error suggests a.A, and a is not listed as a visible package (Frontend#331).
+- Scaling an image ends with a Catmull-Rom pass, so an image scaled to its own size keeps its pixels (StandardLibrary#296).
+- Error texts write cannot, Duplicate supertype, and capability for one capability (Frontend#329).
+
+To continue: pick a hunt PR, read its last comment and the tests on its branch; a fix PR takes the failing tests of the bugs it fixes from the hunt branch; after the merge, trim the hunt branch and comment on the hunt PR.
+Most of what is still open needs a design decision or is larger: the inference bugs, the compilation cache, the GUI hunts, logs written by two processes, the manager protocol.
+
+Fix PRs (merged on 2026-10-28):
+  Commons#112
+  Frontend#316, #325, #327, #329, #331, #332
+  Coordinator#317, #318, #320, #321, #322, #323, #324, #325, #326, #328, #329, #330, #331, #332, #333
+  StandardLibrary#283, #284, #285, #287, #288, #289, #290, #292, #293, #294, #295, #296, #297, #298, #299, #300, #301, #302, #303, #304, #305
+  Controllers#175, #176, #177, #178, #179, #180
+  FearlessTour#93, #94
+
+Status of each hunt on 2026-10-28:
+
+LinuxBugHunt01: map and use directives
+  PRs: Frontend#303 (open), Coordinator#305 (open)
+  Fixed: bug 2 by Frontend#331
+  Still open:
+    bug 1: typing context of an error drops a supertype written through the second of two maps/uses
+    bug 3: map a as pka in pkb with pka of higher rank is accepted; error says pka does not exist
+    bug 4: map directive inside a package that does not exist is silently ignored
+    bug 5: map directive inside base is silently ignored
+    bug 6: qualified name of a higher rank package reports "Package does not exist" instead of a rank error
+    Plus 3 simplifications and 4 todos
+  Failing tests on the branch: Frontend#303: 2 (last trim comment); Coordinator#305: as in the PR body (4)
+
+LinuxBugHunt02: separate compilation and package cache
+  PRs: Coordinator#306 (open)
+  Fixed: bug 5 by Coordinator#324; bug 4 by Coordinator#328
+  Still open:
+    bug 1: a file whose mtime moves back is not compiled again
+    bug 2: a project opened with another Fearless installation is not compiled against its base
+    bug 3: a lower package looks different (infName) whether compiled in this build or read from api json
+    bug 6: a removed package keeps its mains until the next compile
+    Plus 3 simplifications and 3 todos
+  Failing tests on the branch: 6 (4 RecompilationCacheTest, 2 RunIntegration)
+
+LinuxBugHunt03: Java generation from core (naive backend)
+  PRs: Coordinator#307 (open)
+  Fixed: bug 4 by Coordinator#317; bugs 3 and 7 by Coordinator#323 and StandardLibrary#294; bug 2 by Coordinator#329
+  Still open:
+    bug 1: concrete method implementing the abstract method of another supertype gives javac crash
+    bug 5: stack trace loses or misnames frames of names ending with a prime
+    bug 6: class compiled from a hand written rt file gets source file and lines of the replaced generated file
+    Plus 5 simplifications and 3 todos
+  Failing tests on the branch: 3
+
+LinuxBugHunt04: numbers of base (Nat, Int, Byte, Float, Num, Math)
+  PRs: StandardLibrary#271 (closed)
+  Fixed: B2, B6, B7, B8 by StandardLibrary#283; B1 (Nat to Float), B3 and B4 (Float **), B5 (Num **) by StandardLibrary#284
+  Still open:
+    B9: error texts of the number parsers in Str (no test)
+    B10: doc examples that check a different method than the one documented (no test)
+    B11: doc comments that say something false (no test)
+    Plus 13 simplifications and 7 todos
+  Failing tests on the branch: 0 (closed)
+
+LinuxBugHunt05: List, EList, ESparseList
+  PRs: StandardLibrary#272 (open)
+  Fixed: the List and ESparseList error texts that name the wrong method (B1, B2, B6, 9 checks) by StandardLibrary#283
+  Still open:
+    B3: draining an EList with an eView leaks the view storage into the drained List
+    B4: using an invalidated eView fails with a Java ConcurrentModificationException
+    B5: EList.addAll/removeAll throw ClassCastException for an EList implemented outside base
+    B7: backedWithSparseSegmentTree keeps every allocated leaf until clear/trimTo/reverse (no test)
+    B8: stray /// on List.get becomes the doc of List.get in base.txt (no test)
+    Plus 4 simplifications and 8 todos
+  Failing tests on the branch: 4 (the checks of test_elist.fear)
+
+LinuxBugHunt06: Set, ESet, Map
+  PRs: StandardLibrary#273 (closed)
+  Fixed: bug 10 by StandardLibrary#283; bugs 1 to 9 by StandardLibrary#292
+  Still open:
+    bug 11: chains of hideKey wrappers make Set operators quadratic (no test)
+    bug 12: Map.with copies the whole map, building a map is quadratic (no test)
+    Plus 9 simplifications and 8 todos
+  Failing tests on the branch: 0 (branch equal to main, closed)
+
+LinuxBugHunt07: Str and UStr
+  PRs: StandardLibrary#274 (closed)
+  Fixed: bug 3 by StandardLibrary#283; bugs 1, 2, 4 by StandardLibrary#285 (the cut text inputs of the tests of bug 2 are written by Coordinator#320)
+  Still open: no bug listed as open
+    Plus 10 simplifications and 8 todos
+  Failing tests on the branch: 0 (closed)
+
+LinuxBugHunt08: Info, extraction and validation
+  PRs: StandardLibrary#275 (open)
+  Fixed: bugs 3, 4, 5, 6 by StandardLibrary#288; bugs 1 and 2 by StandardLibrary#289
+  Still open: no bug; the branch holds the checks of two todos (Infos.fromStr of prettyStr, the text of Info.getMsg)
+    Plus 9 simplifications and 6 todos
+  Failing tests on the branch: 2
+
+LinuxBugHunt09: unit testing framework and assertions
+  PRs: Coordinator#308 (open), StandardLibrary#276 (open)
+  Fixed: bugs 2, 3, 4, 7, 8, 9, 10, 11 and todo 1 by StandardLibrary#290 (with Coordinator#321)
+  Still open:
+    bug 1: name of a Test declared inside a suite is never reported
+    bug 5: error while registering checks gives a report of tests="0" failures="0"
+    bug 6: failing check with a .list or .empty Info mixes the Info with the stack trace (no test)
+    bug 12: failure text line starting with PLAN|... is read as a plan line (no test)
+    Plus 8 simplifications and 9 todos
+  Failing tests on the branch: Coordinator#308: 2 (bugs 1, 5); StandardLibrary#276: 1 (todo 2, assertContains 7)
+
+LinuxBugHunt10: errors, Try, stack traces
+  PRs: Coordinator#309 (open), StandardLibrary#277 (open)
+  Fixed: bug 7 by StandardLibrary#303 (test via Coordinator#330); bug 2 by StandardLibrary#305; bug 3 by StandardLibrary#300
+  Still open:
+    bug 1: Try#(data, f) gives the same iso object to f at every run, so an imm object can change
+    bug 4: with a Java stack deeper than 1024 frames, a caught Info lists frames of callers of the try
+    bug 5: uncaught error whose Info is not a .msg prints an empty line
+    bug 6: uncaught rethrown error prints only the frames of !, not of the first throw
+    bug 8: error thrown on the EDT inside onEdtAndWait loses half of its frames (no test)
+    Plus 5 simplifications and 7 todos
+  Failing tests on the branch: Coordinator#309: 2 (bugs 5, 6); StandardLibrary#277: 3
+
+LinuxBugHunt11: System, attenuation, capabilities
+  PRs: Coordinator#310 (closed), StandardLibrary#278 (open)
+  Fixed: bug 1 by StandardLibrary#283; bug 4 by Coordinator#318; bug 3 by StandardLibrary#303
+  Still open:
+    bug 2: an attenuator applied in the program does not reach processes started through its .process
+    Plus 4 simplifications and 6 todos
+  Failing tests on the branch: StandardLibrary#278: 2 (the NoManager and NoManagerQuit checks of test_capabilities.fear); Coordinator#310: 0 (closed)
+
+LinuxBugHunt12: logging and log reading
+  PRs: Coordinator#311 (open), Frontend#310 (closed)
+  Fixed: bug 3 by Coordinator#325; bugs 4 and 7 by StandardLibrary#295
+  Still open:
+    bug 1: a process started by a main, using the same log, corrupts the log of that main
+    bug 5: AppLog.open archives err.log at each first use of each log type (race, no test)
+    bug 6: AppLog.shutdown archives err.log before late appends (race, no test)
+    Plus 7 simplifications and 4 todos
+  Not a bug (decision of 2026-10-28): bug 2, an anonymous log keeps the private name of its literal, as attenuators do; Frontend#310 closed.
+  Failing tests on the branch: Coordinator#311: 1 (bug 1)
+
+LinuxBugHunt13: caching and memoization
+  PRs: Coordinator#312 (open)
+  Fixed: bug 2 resolved by design by Coordinator#329 and StandardLibrary#301 (a type implementing two caches is refused at compile time)
+  Still open:
+    bug 1: a StackOverflowError inside a cached body stays in the cache
+    bug 3: Cache.flush does not reach a method returning a cached result through "once"
+    Plus 5 simplifications and 5 todos (todo 1, a Norm made by a memo, also has a failing test)
+  Failing tests on the branch: 3 (bugs 1, 3 and todo 1)
+
+LinuxBugHunt14: file system access and data projects
+  PRs: Controllers#168 (open), Coordinator#313 (open)
+  Fixed: bug 2 by Controllers#180
+  Still open:
+    bug 1: a node from .read(path) keeps the disk place of the first read, not the path
+    bug 3: a data project holding a file dated in the future is invalid
+    bug 4: a zip entry name that is not UTF-8 gives a problem blaming folder access
+    bug 5: steps of a write are visible to the manager scan; a stopped write leaves the project invalid (no test)
+    Plus 4 simplifications and 4 todos
+  Failing tests on the branch: Controllers#168: 2 (bugs 3, 4); Coordinator#313: as in the PR body (1, bug 1)
+
+LinuxBugHunt15: network downloads
+  PRs: Coordinator#314 (open)
+  Fixed: bugs 1, 2, 3, 4, 9 by StandardLibrary#293 (tests via Coordinator#322)
+  Still open:
+    bug 5: the reason in a failed download text is the toString of a Java exception
+    bug 6: body still arriving at the 30s timeout is "Download failed." not "Download timed out." (no test)
+    bug 7: redirect from https to http is followed (no test)
+    bug 8: text of an undecodable downloadImage is the text of an image asset
+    Plus 6 simplifications and 4 todos
+  Failing tests on the branch: 2 (bugs 5, 8)
+
+LinuxBugHunt16: GUI text and fonts
+  PRs: StandardLibrary#279 (open)
+  Fixed: bugs 1 and 2 by StandardLibrary#297; the RTL caret and click part of bug 4 by the text code of StandardLibrary#286; bug 6 probably fixed by #286 (not run)
+  Still open:
+    bug 3: TextArea and tooltip end a line only at U+000A
+    bug 4 (selection part): RTL selection drawn as one rectangle
+    bug 5: wrapping RTL text is quadratic in paragraph length (no test)
+    bug 6: keycap emoji draws nothing (comment: probably fixed by #286, not run)
+    bug 7: combining mark missing from the base font is drawn as a box (no test)
+    Plus 1 simplification and 7 todos (the todo on menus closing TextLines is obsolete per the comment)
+  Failing tests on the branch: 2 (bug 3: U+2028 and U+000D in a TextArea)
+
+LinuxBugHunt17: GUI layout and widgets
+  PRs: StandardLibrary#280 (open)
+  Fixed: bugs 1, 3 and the Border and Split part of 6 by StandardLibrary#299
+  Still open:
+    bug 2: collapsing a section keeps the rollover and pressed look of its Buttons (no test)
+    bug 4: new second child of a Split is clipped by the divider width
+    bug 5: scroll bar with track below 20 looks disabled and a drag jumps to the end (no test)
+    bug 6 (_Picture part): refused .width/.height of a Picture still changes byHeight (no test)
+    bug 7: size reached by growth or .pack goes past 32767
+    Plus 5 simplifications and 4 todos
+  Failing tests on the branch: 2 (bugs 4, 7)
+
+LinuxBugHunt18: GUI input, focus, text editing
+  PRs: StandardLibrary#281 (open)
+  Fixed: bugs 1, 2, 6, 8, 9 by StandardLibrary#298
+  Still open:
+    bug 3: on macOS text typed with Option never reaches the widget (no test)
+    bug 4: End on a line broken inside a word puts the caret before the last character (no test)
+    bug 5: KeyAction of a replaced Keys or of a closed window accepts keys and actions that never run
+    bug 7: key held in a TextField reaches Frame.onKey once focus leaves (no test)
+    Plus 4 simplifications and 6 todos
+  Failing tests on the branch: 2 (bug 5)
+
+LinuxBugHunt19: GUI menus and sections
+  PRs: StandardLibrary#282 (open)
+  Fixed: bug 5 by StandardLibrary#283; bugs 1 and 9 by StandardLibrary#299 (bug 9: the corner is still drawn over a menu at the top left corner)
+  Still open:
+    bug 2: section of a click is decided at the release from the press point
+    bug 3: in a column a title reaching the x is drawn over it; clicking the title end closes the section
+    bug 4: a reused And of .section puts one title widget in two sections
+    bug 6: .openMenu on a widget of a collapsed content opens below an undrawn widget
+    bug 7: held close key closes menus then asks the window to close (no test)
+    bug 8: a Button lit when a menu opens stays lit (no test)
+    bug 9 (drawing part): Fearless corner drawn over a menu at the top left corner
+    bug 10: full screen key closes menus only when it replaces the window (no test)
+    Plus 6 simplifications and 4 todos
+  Failing tests on the branch: 3 (bugs 3, 4, 6)
+
+LinuxBugHunt20: GUI images, icons, tiles
+  PRs: Coordinator#315 (open)
+  Fixed: bugs 1 and 2 by StandardLibrary#296 (tests via Coordinator#326); bug 5 by StandardLibrary#304 (test via Coordinator#333)
+  Still open:
+    bug 3: every image drawn at less than half its size is aliased
+    bug 4: JPEG with EXIF orientation is read on its side
+    bug 6: Picture with .fill shows a blurred strip of its image (no test)
+    bug 7: a blank image allocates a new raster at each draw (no test)
+    bug 8: Image.paint prints its clipping warning on every call (no test)
+    bug 9: undecodable image error text holds a Java exception (no test)
+    bug 10: testGuiTiles keeps tooltip "code: busy" after busy ends (no test)
+    bug 11: refused .width/.height of a Picture still changes byHeight (no test)
+    Plus 4 simplifications and 3 todos
+  Failing tests on the branch: 2 (bugs 3, 4)
+
+LinuxBugHunt21: generated API documentation
+  PRs: Coordinator#316 (open), Controllers#170 (closed)
+  Fixed: B8 by Controllers#176; B5 by Coordinator#331; B4 by Coordinator#332
+  Still open:
+    B1: bare selector reference offers every type inheriting the method, not only declarations
+    B2: two options of one "Several match" page can show the same text
+    B3: option on a method of an anonymous literal shows the generated name
+    B6: fenced code block rendered as prose in the html
+    B7: runnable example on a method of an anonymous literal never runs
+    Plus 4 simplifications and 4 todos (todo T2, type sort order, also has a failing test)
+  Failing tests on the branch: Coordinator#316: 6
+
+LinuxBugHunt22: managed Fearless GUI
+  PRs: Controllers#171 (open)
+  Fixed: bug 1 by Controllers#177; bug 2 by Controllers#180
+  Still open:
+    bug 3: a press beside the tiles highlights the nearest tile without a Show
+    bug 4: a log written while reading the mains makes the manager read the mains again and again
+    bug 5: a Check while a main runs writes its report to the connection following the Run
+    bug 6: a blank argument registers the working folder of the manager (no test)
+    bug 7: tray click on no screen or two screens is a fatal error that deletes the manager folder (no test)
+    bug 8: Tray.install makes Swing components off the EDT (no test)
+    bug 9: after the follower closes the connection the manager keeps queuing the Output (no test)
+    Plus 6 simplifications and 4 todos
+  Failing tests on the branch: 3 (bugs 3, 4, 5)
+
+LinuxBugHunt23: manager messaging protocol
+  PRs: Controllers#172 (open)
+  Fixed: nothing (no comment)
+  Still open:
+    bug 1: a message whose argument holds a newline never answers its port
+    bug 2: empty argument of Mount/Attenuate/Run is dropped; an argument with a space becomes two
+    bug 3: .quit and .reset can return while the calling main still runs
+    bug 4: Eclipse plugin freezes the Eclipse UI until the manager quits (no test)
+    Plus 3 simplifications and 6 todos (todo 1, the Check report on the connection, also has a failing test)
+  Failing tests on the branch: as in the PR body (4)
+
+LinuxBugHunt24: Eclipse content assist
+  PRs: Controllers#173 (open)
+  Fixed: bugs 8 and 9 by Controllers#175
+  Still open:
+    bug 1: content assist throws for any method listed once per receiver capability
+    bug 2: package folder not directly in the project folder gets a wrong package name (no test)
+    bug 3: supertype proposal from another package inserts a name that does not resolve (no test)
+    bug 4: supertype proposals throw for a type unknown to the last compile (no test)
+    bug 5: content assist throws when .fearless_out has no _map.json (no test)
+    bug 6: literal argument of an argument does not get the type the outer call expects
+    bug 7: expected type at an argument without parenthesis is the method result type
+    Plus 3 simplifications and 5 todos (todos 1 and 2 also have failing tests)
+  Failing tests on the branch: 5
+
+LinuxBugHunt25: OS file associations, desktop integration
+  PRs: Frontend#312 (open), Controllers#174 (open)
+  Fixed: bugs 4 and 6 by Commons#112 (tests via Frontend#332)
+  Still open:
+    bug 1: portable Fearless refuses to compile and run when reconcile refuses .fearless (no test)
+    bug 2: the two launchers of one Fearless are two identities; the other launcher deletes the manager folder
+    bug 3: on Linux any [Default Applications] entry refuses the type, ignoring choice file priority
+    bug 5: on Linux a failed database rebuild is never done again
+    bug 7: commandOf reads only the Exec= line reconcile writes (crash or wrong path)
+    Plus 6 simplifications and 5 todos
+  Failing tests on the branch: Frontend#312: 4 (last trim comment); Controllers#174: as in the PR body (1, bug 2)
+
+LinuxBugHunt26: type inference
+  PRs: Frontend#313 (open)
+  Fixed: nothing (no comment)
+  Still open:
+    bug 1: App:{ .m: base.Nat -> {}.a } crashes with AssertionError in inject.Methods.register
+    bug 2: unknown type argument inside a known one becomes imm base.Void outside its bound
+    bug 3: type parameter returned by two methods with unrelated bodies takes the type of the first
+    bug 4: two types with a common generic supertype at different arguments join to the first
+    bug 5: lambda parameter type depends on the order of its uses (capture first)
+    Plus 4 simplifications and 5 todos
+  Failing tests on the branch: as in the PR body (6: 5 new tests and FuzzTest.mutatedTestProgramsNeverCrash)
+
+LinuxBugHunt27: wording of frontend error messages
+  PRs: Frontend#315 (closed; its body still lists the simplifications and todos)
+  Fixed: bugs 1 to 10 and 14 by Frontend#316; bug 12 by Frontend#325; bugs 11 and 13 by Frontend#327; todos 2, 9, the second half of 14 and the first item of 15 by Frontend#329
+  Still open: no bug
+    Plus 4 simplifications and 18 todos (Frontend#329 addresses parts of 4 of the todos)
+  Failing tests on the branch: 0 (branch equal to main)
