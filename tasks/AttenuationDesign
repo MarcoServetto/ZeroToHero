@@ -20,7 +20,7 @@ From the object capability literature, used here with one meaning each:
 - 'object capability': an object that can do a privileged thing; holding a reference to it is the permission to do that thing. `System` and every capability it gives are object capabilities.
 - 'authority': what a program can do to the world. A capability carries authority; a `mut System` carries all of it.
 - 'attenuation': deriving from a capability a capability with less authority. An 'attenuator' of a capability type `C` is a function from a `mut C` to a `mut C` with less authority. Not: limiter, watchdog, restriction, filter.
-- 'revoke': to take the authority away from a capability already given. A capability 'revoked' is one with no authority: every method of it throws (.iso still produces a iso copy that would equally throw).
+- 'revoke': to take the authority away from a capability already given. A capability 'revoked' is one with no authority: every method of it throws (.iso still produces an iso copy that would equally throw).
 - 'reconstruction': building in a new process the attenuated `System` of another process from the names of its attenuators, instead of transferring any object.
 
 ## Current design
@@ -32,10 +32,10 @@ Attenuator[C]: CaptureFree, F[mut C, mut C]{}
 SystemAttenuator: Attenuator[System]{}
 ```
 An attenuator of `System` receives a `mut System` and gives a `mut System` whose methods reach the world only through the received one.
-Attenuator implements CaptureFree; so even an attenuator declared inside of a method body has a clear unique instance that can be summoned by its name. Even if it is anonymous in the original source, the inference does chose a name for it, and the manager can use it.
+Attenuator implements CaptureFree; so even an attenuator declared inside of a method body has a clear unique instance that can be summoned by its name. Even if it is anonymous in the original source, the inference chooses a name for it, and the manager can use it.
 Note that a top level attenuator may have abstract methods and thus not be summonable by name.
 
-We expect attenuators to return a wrapper around the paramerer, propagating some methods (`.out -> u.out`),
+We expect attenuators to return a wrapper around the parameter, propagating some methods (`.out -> u.out`),
 revoking some (`.out -> Error...`) or any other kind of custom behaviour and protocol.
 Each attenuator has to decide what errors should be deterministic or non deterministic on a case by case basis.
 
@@ -76,7 +76,7 @@ A `Revocation` is a flag in one of three states, in this order and with no way b
 `sys.revocation` gives a new `RevocationRoot`, with `.start` and `.revoke`.
 `Revocation` needs magic/native implementation: `r.iso` gives a copy sharing the flag of `r`; the copy of a root is a root, the copy of a check only `Revocation` checks only.
 Copies of the same root can reach a parallel flow stage as iso elements or as the iso `ctx` of a stage.
-Thus we can have code that runs multiple `.revoke` and `#` at the same time: there is no single holder of the root. Note that this is the same for two capabilities trying to write on a file. All those kinds of capabilities need some native syncronization to not step on each other: here one volatile field.
+Thus we can have code that runs multiple `.revoke` and `#` at the same time: there is no single holder of the root. Note that this is the same for two capabilities trying to write on a file. All those kinds of capabilities need some native synchronization to not step on each other: here one volatile field.
 `.start` on a started or revoked root, and `.revoke` on one not started or already revoked, are errors; we keep them non deterministic, since the holder of a copy has no way to know the state. A root is an object capability, so a deterministic error there would be allowed too.
 A `Revocation` holds no value and has no `read` method: the copies share the flag and nothing else, so a copy promoted to `imm` is inert.
 
@@ -96,7 +96,7 @@ Block#
   .return{ main.main(attenuated) }
 ```
 `A1`...`An` are the attenuators of the process, in order; `A1` is applied first, so it is the closest to the real `System`, and `An` is what the main sees.
-While the attenuators run, `s` is not started: every call on it throws a non deterministic error, and nothing in the process holds a `CapTry` yet, since every `System` reachable by the attenuators is `s` or something built from it, and `s.try` throws. So an attenuator either does not call `s` while it runs, or ends the process.
+While the attenuators run, `s` is not started: every call on it but `.iso` throws a non deterministic error, and nothing in the process holds a `CapTry` yet, since every `System` reachable by the attenuators is `s` or something built from it, and `s.try` throws. So an attenuator either does not call `s` while it runs, or ends the process.
 By Observable Determinism, the `System` the attenuators build is structurally equivalent in every process applying the same names in the same order: the construction is a deterministic computation, with the one mut input muted.
 The real `System` becomes active only after the construction, through `.start`
 Consequences:
@@ -118,7 +118,7 @@ The new process applies the attenuators of this process, in their order, then `a
 
 The new process starts as this one started: same first input file, same data projects, same manager, same desk identity, same working folder; it prints to the output of this process. Each process may open guis it owns: a file dropped on a gui of the new process arrives on the `InputCursor` of the new process, as a file dropped on a gui of this process arrives on this one.
 Every main is capture free, so as for attenuators, we can just summon them by name.
-`.run` accepts any main (with no abstrac methods) of every package included, not only the mains of the highest ranking package.
+`.run` accepts any main (with no abstract methods) of every package included, not only the mains of the highest ranking package.
 A process that can not start, or that ends before its main ends (a JVM error, a kill), is a non deterministic error of `.run`.
 The end of a process also ends every process it started: a new process holds the parent lifeline of its parent, as every process the manager starts does.
 
@@ -151,10 +151,10 @@ The compiler records the attenuators of a project where it records its mains: `.
 ```
 The attenuators of `base` are attenuators of every project: the base cache holds `base_manifest.info`, with no main and the attenuators of `base`, and the manager reads it with the manifests of the project.
 A `Run` starts each main with `-DfearlessAttenuators=` and its list, so the main sees what the attenuators give.
-Verb `Attenuate <name> <main> <attenuator1>...<attenuatorn>`, sets the list of attenuators of `main` to the attenuators given, in that order; with no attenuator the list is empty.
-An attenuator may be listed more than once: attenuators are functions, and applying one twice may do more than applying it once. `CapManager` gets `mut .attenuate(name: Str, main: Str, attenuators: List[Str]): Void`: as every method of `CapManager`, it returns its value and throws.
-Note that it is not ill formed to name a main that is not a main of the project, or an attenuator that is not an attenuator of the project. This makes for a more resilent set up.
-a `Run` on a project with non existing attenuators or non existing mains being attenuated (even if not part of the mains we are trying to run) is refused. The manager GUI will show some support to make it easy to rename them showing the valid list; this is a GUI only feture.
+Verb `Attenuate <name> <main> <attenuator1>..<attenuatorn>`, sets the list of attenuators of `main` to the attenuators given, in that order; with no attenuator the list is empty.
+An attenuator may be listed more than once: attenuators are functions, and applying one twice may do more than applying it once. `CapManager` gets `mut .attenuate(name: Str, main: Str, attenuators: List[Str]): Void`: as every method of `CapManager`, `.attenuate` returns once the manager has applied the message, and a refused message is a non deterministic error (see Messages from a running main in ControllersDesign).
+Note that it is not ill formed to name a main that is not a main of the project, or an attenuator that is not an attenuator of the project.
+a `Run` on a project with non existing attenuators or non existing mains being attenuated (even if not part of the mains we are trying to run) is refused.
 
 The project area gets an Attenuators collapsible area after the Output: one block per main, listing in order the attenuators applied to it, each with a Remove button and Up and Down buttons, and a drop down of the attenuators of the project with an Add button. Every change is an `Attenuate` of that main.
 
@@ -170,7 +170,7 @@ Back to the default is `EditMetadata` removing the entry, or `Attenuate` with th
 ### Open questions
 
 - The portable runs every main with no attenuator.
-- The `Output` marks: the manager marks where each main starts and ends; the output of a new process is inside the output of its parent main, with no mark of its own. A parent that wants a mark prints it.
+- The Output marks: the manager marks where each main starts and ends; the output of a new process is inside the output of its parent main, with no mark of its own. A parent that wants a mark prints it.
 - TODO: an automated test of a process started from a deployed image, so that the `java.management` requirement of the images is tested on every system. The manager is controlled by messages, so a Controllers test can run the deployed manager on a project whose main calls `sys.process.run`: `FearlessCommandRegister`, `FearlessCommandKind`, `FearlessCommandCompile` and `FearlessCommandRun` with a port, reading the Output from the port and comparing it with the expected text. The portable image can be tested the same way, running it on that project and comparing its output. A `TestAgentTools` scenario on a desk is the alternative that also tests the window.
 
 ### Second step: a process that runs beside its parent
