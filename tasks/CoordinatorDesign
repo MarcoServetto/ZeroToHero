@@ -1,0 +1,208 @@
+# Coordinator design
+
+How the Coordinator compiles a Fearless project, and what the Coordinator keeps in the folder `.fearless_out` of the project.
+The Coordinator alone writes `.fearless_out`, and the Coordinator writes no file outside `.fearless_out`. The manager (see ControllersDesign) reaches `.fearless_out` only through the methods of `Coordinator` below; the manager, the Reconciliator (see ReconciliatorDesign), the desktop on Windows and a running main also read the files of `.fearless_out/icons`. Eclipse, another process, reads the files of `.fearless_out` as described in ControllersDesign (Eclipse, Content assist).
+
+### The data
+
+`Path` is a path inside a project folder or inside the folder of `base`, `FsPath` a path of the file system.
+```
+File: { .path: Path; .time: Time; .content: Content }
+Package: { .name: Name; .rank: Nat; .files: List[File] }
+Project: {
+  .folder: FsPath;
+  .files: List[File];
+  .optProblem: Opt[Error];
+  .ownPackages: List[Package] ->
+    Helper.pkgMap(this.files).flow.sort{::.rank}.list;
+  .packages: List[Package] ->
+    Lists#(Base) ++ (this.ownPackages);
+  }
+Base: Package{
+  .name -> "base";
+  .rank -> 0;
+  .files -> the source files of the package base
+  }
+```
+The `.files` of a project are the files of the project folder whose path holds no file name or folder name starting with `.`.
+The `.path` of a file is the path inside the project folder; a zip `x.zip` stands for a folder `x` holding the entries of the zip, and every entry has the `.time` of `x.zip`: the entry `a.fear` of `lib/x.zip` has the path `lib/x/a.fear`.
+`Helper.pkgMap` gives the packages of the project: the `.files` of the package named `pkg` are the files under any folder `_pkg`, and the `.rank` is the rank of the rank file of the package.
+`Helper.rankMap` gives, for each package, the map directives that apply to that package, from the rank files of every package of the project.
+The rules of a valid project are the checks of `Helper.pkgMap` and `Helper.rankMap` in `Coordinator/src/coordinator/Coordinator.java`, and the checks of `Coordinator/src/realSourceOracle` on the files, the zips and the times of the project folder.
+
+### The content of `.fearless_out`
+
+For each package `<pkg>` of the project:
+- `<pkg>.json`: an `Api` (below);
+- `<pkg>.jar`: the compiled code of the package;
+- `<pkg>.html` and `<pkg>.txt`: the documentation of the package, for a browser and for agents.
+For the project:
+- `_error.txt`: the error `.writeError` writes;
+- `icons`: the icons of the `.preloaded` of the mains;
+- `_unfinished.txt`: see `.check`, `.compile`, `.finish`, `.dropUnfinished` and `.deleteCache`.
+The files of `Base` listed above are in the base cache, written already compiled by the installation of Fearless.
+
+### The Coordinator
+
+A method whose name starts with `_` is private to this file.
+To 'replace' a file is to write a new file in the same folder, then to rename the new file to the name of that file, so a reader of that file never finds a file written in part.
+```
+Icon: { .name: Name; .image: Path }
+Claim: { .kind: ClaimKind; .icon: Icon; .optNamedExtension: Opt[FileExtension] }                           // as the source writes the claim; .kind is shortcut or openWith
+Main: { .name: Name; .claims: List[Claim]; .preloaded: List[Icon] }  // .preloaded: the icons of the Shortcut claims, base.IconsFearless, the icons of the PreLoadIcon of the main and the icons of the OpenWith claims, each icon once, at its first place
+Manifest: {
+  .mains: List[Main]; .attenuators: List[Name]; .dataRead: List[Name]; .dataEdit: List[Name];   // .mains: each concrete main of the package; .attenuators: AttenuationDesign; .dataRead, .dataEdit: DataReadDataEditDesign
+  .withExtensions(f: mut MF[Main, Claim, FileExtension]): ChosenManifest;   // every claim c of every main m becomes the ChosenClaim with the fields of c and .extension f#(m, c)
+  }
+ChosenClaim: { .kind: ClaimKind; .icon: Icon; .optNamedExtension: Opt[FileExtension]; .extension: FileExtension }
+ChosenMain: { .name: Name; .claims: List[ChosenClaim]; .preloaded: List[Icon] }
+ChosenManifest: { .mains: List[ChosenMain]; .attenuators: List[Name]; .dataRead: List[Name]; .dataEdit: List[Name] }
+Core: { .types: Types; .manifest: Manifest }                                    // .types also holds the tests Coordinator._frontend generates in memory from the doc examples of the package, none for a package in a zip
+Compiled: { .jar: Content; .html: Content; .txt: Content }
+Api: { .types: Types; .inputsSnapshot: Content; .manifest: ChosenManifest }
+TakeFreeExtension: MF[List[FileExtension],Opt[FileExtension]]{}               // answered by the manager, see Autoselected extensions in ControllersDesign
+State: { .invalid(problem: Error) | .outOfDate | .compiled(manifest: ChosenManifest, packages: List[Name]) }
+Launch: { .attenuators: List[Name]; .mounts: Map[Name,FsPath]; .optInputFile: Opt[FsPath]; .deskId: Str }   // what the manager gives a main: the attenuators of the main in order (AttenuationDesign), the folder of each mounted data project by the qualified name of its DataRead type (DataReadDataEditDesign), the first input file (Input files in ControllersDesign), the desk id (Desk ids and icons in ControllersDesign)
+Project: {
+  ...
+  mut ._optApi(sys: mut System, package: Package): Opt[Api] ->
+    reads the file package.name+".json" of Coordinator._outFolder(this.folder, package.name), if present;
+  mut ._optJarTime(sys: mut System, package: Package): Opt[Time] ->
+    the modification time of the file package.name+".jar" of Coordinator._outFolder(this.folder, package.name), if present;
+  mut ._writeCompiled(sys: mut System, package: Package, compiled: Compiled): Void ->
+    writes compiled.html and compiled.txt into the files package.name+".html" and package.name+".txt" of .fearless_out;
+    then waits until the clock of the file system holding the project is after this._newestFileTime(package), writes compiled.jar into the file package.name+".jar" of .fearless_out, and waits until that clock is after the modification time of that file plus the timestamp resolution of that file system;
+  ._lowerPackages(package: Package): List[Package] ->
+    this.packages.flow
+      .filter{p -> p.rank < (package.rank)}
+      .list;
+  mut ._inputsSnapshot(sys: mut System, package: Package): Content ->
+    package.files.flow.map{::.path}.sort{::}.join(""|)
+    | (this._lowerPackages(package).flow.map{p -> p.name + " " + (this._optJarTime(sys, p)!.str)}.sort{::}.join(""|))
+    | (Helper.rankMap(this.files).getOrEmpty(package.name).flow{in, out -> in + " " + out}.sort{::}.join(""|));
+  ._newestFileTime(package: Package): Time ->
+    package.files.flow.map{::.time}.max{::}.first!;
+  mut ._upToDate(sys: mut System, package: Package): Bool -> Block#
+    .let[Opt[Api]] optApi= {this._optApi(sys, package)}
+    .let[Opt[Time]] optJarTime= {this._optJarTime(sys, package)}
+    .if {optApi.isEmpty .or (optJarTime.isEmpty)} .return {False}
+    .return{optApi!.inputsSnapshot == (this._inputsSnapshot(sys, package))
+      .and (optJarTime! >= (this._newestFileTime(package)))};
+  mut ._compilePackage(sys: mut System, package: Package, projectName: Name, takeFreeExtension: mut TakeFreeExtension): Void -> Block#
+    .let[Core] core= {Coordinator._frontend(sys, this, package)}
+    .do{this._writeIcons(sys, core.manifest)}
+    .let[ChosenManifest] manifest= {core.manifest.withExtensions{main, claim -> claim.optNamedExtension.orLazy{this._autoselect(sys, package, core.manifest, projectName, main, claim, takeFreeExtension)}}}
+    .do{replace the file package.name+".json" of .fearless_out with Api{.types -> core.types; .inputsSnapshot -> this._inputsSnapshot(sys, package); .manifest -> manifest}}
+    .let[Compiled] compiled= {Coordinator._backend(sys, this, package, core)}
+    .do{this._writeCompiled(sys, package, compiled)}
+    .return{Void};
+  mut ._autoselect(sys: mut System, package: Package, manifest: Manifest, projectName: Name, main: Main, claim: Claim, takeFreeExtension: mut TakeFreeExtension): FileExtension -> Block#
+    .let[List[FileExtension]] namedExtensions= {manifest.mains.flow.flatMap{m -> m.claims}.flatMap{c -> c.optNamedExtension}.list
+      ++ (this._lowerPackages(package).flow
+        .flatMap{p -> this._optApi(sys, p)!.manifest.mains}
+        .flatMap{m -> m.claims}
+        .flatMap{c -> c.optNamedExtension}
+        .list)}
+    .let[Opt[FileExtension]] optPreviousExtension= {this._optApi(sys, package).seqFlow
+      .flatMap{a -> a.manifest.mains}
+      .filter{m -> m.name == (main.name)}
+      .flatMap{m -> m.claims}
+      .filter{c -> c.optNamedExtension.isEmpty .and (c.kind == (claim.kind)) .and (c.icon.name == (claim.icon.name))}
+      .map{::.extension}
+      .filter{e -> namedExtensions.flow.none{n -> n == e}}.getOpt}
+    .if {optPreviousExtension.isSome} .return {optPreviousExtension!}
+    .let[Str] prefix= {claim.kind == (ClaimKind.shortcut) .if{.then -> "fapp"; .else -> "ffile"}}
+    .let[Nat] firstNumber= {projectName + "::" + (main.name) + "::" + (claim.icon.name) .hashCode .floorMod 1000}
+    .let[List[FileExtension]] candidates= {0 =~~ 1000 .flow
+      .map{i -> prefix + (firstNumber + i % 1000 .threeDigits)}
+      .filter{e -> namedExtensions.flow.none{n -> n == e}}
+      .list}
+    .return{takeFreeExtension#candidates .orLazy{Error!(Error.noFreeExtension(main.name, claim))}};
+  mut ._mergedManifest(sys: mut System): ChosenManifest ->
+    this.packages.flow.map{p -> this._optApi(sys, p)!.manifest}.list.merged;   // .merged: the ChosenManifest holding the .mains, .attenuators, .dataRead and .dataEdit of every ChosenManifest of the list
+  mut ._writeIcons(sys: mut System, manifest: Manifest): Void ->
+    checks every icon of the .preloaded of every main of manifest, and replaces the files Coordinator.iconFiles(this.folder, icon) of every such icon with a copy of the PNG of icon and, on Windows, the .ico made from that PNG;
+  mut ._otherFiles(sys: mut System): List[FsPath] ->
+    the files and folders of .fearless_out other than _error.txt, _unfinished.txt, icons, and the files <pkg>.json, <pkg>.jar, <pkg>.html and <pkg>.txt of the packages of this.ownPackages;
+  mut ._fail(sys: mut System, error: Error): Opt[Error] -> Block#
+    .do{Coordinator.writeError(sys, this.folder, error)}
+    .return{Opt#error};
+  }
+Coordinator: {
+  mut ._frontend(sys: mut System, project: Project, package: Package): Core -> parses and type checks the files of package, against the Api of the lower packages and with the map directives Helper.rankMap(project.files).getOrEmpty(package.name), and checks that the icon of every claim and of every PreLoadIcon is the type autoloading generates for an image file;
+  mut ._backend(sys: mut System, project: Project, package: Package, core: Core): Compiled -> compiles core, with the jars of the lower packages, and renders the documentation of package;
+  mut ._project(sys: mut System, folder: FsPath): Project ->
+    the Project with .folder folder, .files the files of the project folder at the time of the call, and .optProblem the error the rules of a valid project (The data above) raise on those files, if any; .files is empty when .optProblem is present;
+  mut .check(sys: mut System, folder: FsPath): State -> Block#
+    .let[Project] project= {this._project(sys, folder)}
+    .if {project.optProblem.isSome} .return {State.invalid(project.optProblem!)}
+    .if {.fearless_out holds _unfinished.txt} .return {State.outOfDate}
+    .if {project._otherFiles(sys).isEmpty.not} .return {State.outOfDate}
+    .if {project.ownPackages.flow.any{p -> project._upToDate(sys, p).not}} .return {State.outOfDate}
+    .return{State.compiled(project._mergedManifest(sys), project.packages.flow.map{::.name}.list)};
+  mut .compile(sys: mut System, folder: FsPath, projectName: Name, takeFreeExtension: mut TakeFreeExtension): Opt[Error] -> Block#
+    .let[Project] project= {this._project(sys, folder)}
+    .if {project.optProblem.isSome} .return {project._fail(sys, project.optProblem!)}
+    .do{.fearless_out holds _unfinished.txt .thenDo{delete every file of .fearless_out with the extension jar}}   // a <pkg>.jar written by the .compile that wrote _unfinished.txt may be written in part, hold the code of files changed during that .compile, or be older than its <pkg>.json
+    .do{write .fearless_out/_unfinished.txt}
+    .do{project._otherFiles(sys).flow.for{f -> delete f}}
+    .let[Opt[Error]] optError= {sys.try#{project.ownPackages.flow.for{p -> project._upToDate(sys, p).not
+        .thenDo{project._compilePackage(sys, p, projectName, takeFreeExtension)}}}.info}
+    .if {this._project(sys, folder).files == (project.files) .not} .return {project._fail(sys, Error.filesUpdated(projectName))}
+    .if {optError.isSome} .return {project._fail(sys, optError!)}
+    .do{delete .fearless_out/_error.txt}
+    .return{Opt#};
+  mut .finish(sys: mut System, folder: FsPath): Void -> Block#
+    .do{delete the files of .fearless_out/icons not in this.cachedMains(sys, folder).flow.flatMap{m -> m.preloaded}.flatMap{i -> this.iconFiles(folder, i)}.list}
+    .do{delete .fearless_out/_unfinished.txt}
+    .return{Void};
+  mut .dropUnfinished(sys: mut System, folder: FsPath): Void ->
+    .fearless_out holds _unfinished.txt .thenDo{this.deleteCache(sys, folder)};
+  mut .writeError(sys: mut System, folder: FsPath, error: Error): Void -> replaces the file _error.txt of the folder .fearless_out of folder with error;
+  mut .deleteCache(sys: mut System, folder: FsPath): Void -> Block#
+    .do{write .fearless_out/_unfinished.txt}
+    .do{delete every file and folder of .fearless_out other than _unfinished.txt}
+    .do{delete .fearless_out/_unfinished.txt}
+    .do{delete the empty folder .fearless_out}
+    .return{Void};
+  mut .run(sys: mut System, folder: FsPath, main: Name, launch: Launch): Process -> starts the main named main of the project in folder, in a JVM of its own, on the <pkg>.jar files of .fearless_out and the base.jar of the base cache, with launch;
+  ._outFolder(folder: FsPath, packageName: Name): FsPath -> the base cache for the package base, else the folder .fearless_out of folder;
+  .docs(folder: FsPath, packageName: Name): FsPath -> the file packageName+".html" of this._outFolder(folder, packageName);
+  .iconFiles(folder: FsPath, icon: Icon): List[FsPath] -> the PNG and, on Windows, the .ico of icon, in the folder .fearless_out/icons of folder;
+  mut .cachedMains(sys: mut System, folder: FsPath): List[ChosenMain] -> the .manifest.mains of every <pkg>.json of .fearless_out;
+  }
+```
+`projectName` is the name of the project in `projects.info`.
+`optPreviousExtension` keeps the shortcuts and the file associations on the desktop valid across `.compile` calls.
+The second wait of `._writeCompiled` gives the next `<pkg>.jar` of the package a different time, so the `._inputsSnapshot` of every package of higher rank changes; it also gives a file edited after `.compile` ends a time after every `<pkg>.jar`.
+`._inputsSnapshot` holds the time of the `<pkg>.jar` of each lower package, not the `Api` of that package: the compiled code of a package can depend on more than the `Api` of the lower packages (a Java compiler inlines constants).
+So a change of white space or of a doc comment in a package compiles again every package of higher rank. This is intended.
+When `Coordinator._backend` or `._writeCompiled` fails, a later `.compile` with no `.deleteCache` in between finds the extensions `takeFreeExtension` gave in `<pkg>.json`, and takes no new ones.
+`.hashCode` is the `hashCode` of a Java `String`, so `firstNumber` is the same on every machine; the name of the icon is part of the hashed text, so that `Shortcut[I1]` and `Shortcut[I2]` of one main start apart. Which project compiles first can decide which claim gets a number. This is accepted.
+A package of the same rank or of a higher rank can name an extension this package autoselected: those two claims then clash like claims of two projects (the conflict icon in ControllersDesign). This is accepted.
+`._writeIcons`: each icon of the `.preloaded` of a main must be a PNG file (autoloading also accepts jpg, gif and bmp), square, with a side from 64 to 1024 pixels. A failure makes `.compile` fail, with an error worded like a Frontend error and naming the main, the icon type and the image file:
+`The icon "hello.IconsBar" in "base.Shortcut[hello.IconsBar,\"fapp123\"]" of main "hello.Bar" is 300x200 pixels (from "_hello/icons/bar.png"): an icon must be a square PNG image with a side from 64 to 1024 pixels.`
+`._writeIcons` copies the PNG because the PNG may be inside a zip, and the desktop needs a plain file.
+The error `Error.filesUpdated(projectName)` is
+`Some files inside the project "hello" were updated while the project was compiling.`
+The error `Error.noFreeExtension(main.name, claim)` is, for a `Shortcut`,
+`No free extension is left for "base.Shortcut[hello.IconsBar]" of main "hello.Bar": all the 1000 extensions "fapp000" to "fapp999" are used by the projects of this manager.`
+and, for an `OpenWith`,
+`No free extension is left for "base.OpenWith[hello.IconsFoo]" of main "hello.Foo": all the 1000 extensions "ffile000" to "ffile999" are used by the projects of this manager. A system extension can be claimed instead, for example "base.OpenWith[hello.IconsFoo,\"foo\"]".`
+
+The Coordinator does not search for corrupted files.
+A file of `.fearless_out` that an operation of the Coordinator reads and that does not hold what the Coordinator writes there (a `<pkg>.json` that does not hold an `Api`, a `<pkg>.jar` the backend can not read) is `Error.cacheCorrupted`:
+`Fearless crashed: either this project's compilation cache was corrupted, or this is a Fearless bug.`
+The JVM that `.run` starts reads the `<pkg>.jar` files, `.run` does not: a `<pkg>.jar` that JVM can not read is a crash of the main, not `Error.cacheCorrupted`.
+
+We chose not to sign the state of the files in the cache. Any (mis)behaviour that could only be fixed by signing the state of the files to guarantee that the cache is in sync is not a bug. It is the intended design.
+For example: an edited `<pkg>.jar` or `<pkg>.json` is used as it is; an edited `<pkg>.jar` with a different time compiles again every package of higher rank;
+a file of a package replaced by a file with a time older than the `<pkg>.jar` of the package (a copy keeping the time, an unzip, a restore from a backup) is not seen as a change in the project.
+
+### Notes
+
+- The checks of the icons of `._writeIcons` are today in `Controllers/src/controller/ClaimIcons.java` (`Report.iconRefused`). Once those checks are in the Coordinator, the icon rule of `._writeIcons` above becomes a pointer to that code.
+- The code has no `_unfinished.txt`, `.finish` or `.dropUnfinished` yet.
+- The manager writes `check_error.txt` and `compile_error.txt` (`Manager.errorFile`), where the design has `_error.txt` written by `.writeError`.
+- The manager autoselects the extensions (`Project.filled`), where the design has `._autoselect`.
+- The manager writes and deletes the files of `.fearless_out/icons` (`ClaimIcons.materialise`, `Manager.unclaimedIcons`), where the design has `._writeIcons` and `.finish`.

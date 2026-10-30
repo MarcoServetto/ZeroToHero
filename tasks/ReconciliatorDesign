@@ -1,0 +1,64 @@
+# Reconciliator design
+
+How a program of the Fearless family makes the desktop of the system open a set of extensions with that program, and show the icons of those extensions and of the windows of that program.
+The manager (see ControllersDesign) and the portable Fearless call the Reconciliator. The Reconciliator knows nothing of projects and mains: the caller gives the extensions, the icons and the windows.
+
+### The data
+
+The 'identity' of a program is the file name of the launcher of that program, without extension.
+The 'Fearless family' is the set of the identities holding the text `earless`.
+Each version of the manager and each version of the portable Fearless has an identity of its own.
+The kind of an extension follows from the text of the extension: `.fearless`, `.fapp` and three digits, and `.ffile` and three digits are Fearless extensions; every other extension is a system extension.
+```
+ExtensionIcon: { .extension: FileExtension; .icon: FsPath }    // the .ico on Windows, the PNG on Linux
+WindowIcon: { .windowClass: Str; .name: Str; .target: FsPath; .png: FsPath }  // Linux only
+Reconciliator: {
+  mut .reconcile(sys: mut System, identity: Str, command: FsPath, extensions: List[ExtensionIcon], windows: List[WindowIcon], programIcon: FsPath, replaced: mut MF[FsPath, Void]): Void;
+  mut .eradicateAll(sys: mut System): Void;      // deletes the setup of every identity of the Fearless family, with no check
+  }
+```
+`.reconcile` makes `command` the program opening exactly `extensions`, under `identity`, each extension with its icon, and installs the icons of `windows`.
+`programIcon` is the icon of `command` itself: the `.ico` on Windows, the PNG on Linux.
+The 'setup' of an identity is every registry key and file `.reconcile` writes for that identity.
+The setup of every other identity of the Fearless family, and the setup of `identity` when that setup has another command, is deleted, after `replaced` is called on the command of that setup. So only one member of the Fearless family at a time opens `.fearless`, and a program that takes `.fearless` from another member of the Fearless family releases every extension of that other member.
+`.reconcile` takes the whole wanted set at once. Reconciling an unchanged set changes no setup.
+Every `.reconcile` that passes its checks ends with one refresh of the desktop (`SHChangeNotify` on Windows, the MIME and desktop databases on Linux), also when no setup changed: a changed image at the same path then shows too.
+The checks of `.reconcile` change nothing when the checks fail, so the previous setup stays in place.
+An extension left out of a `.reconcile` loses the setup of the identity only, and the previous program opens the files of that extension again.
+
+### Refusals
+
+- `.fearless` belongs to the Fearless family alone. A program outside the Fearless family opening `.fearless`, or the own choice of the user of a program for `.fearless` (a Windows UserChoice, even when the UserChoice names this identity, or a Linux `[Default Applications]` entry naming another program), makes `.reconcile` refuse `.fearless`.
+- A Fearless extension other than `.fearless` gets the very same setup as `.fearless`, and is checked like `.fearless`. Fearless extensions are invented by Fearless, so a Fearless extension set up in any other way than the setup of the Fearless family was tampered with.
+- A system extension gets the same setup as `.fearless` too, but `.reconcile` takes a system extension over from whatever program opens the extension: the user allowed the extension on purpose, so other programs registered for the extension do not make `.reconcile` refuse the extension. A Windows UserChoice or a Linux `[Default Applications]` entry naming another program still does, as for `.fearless`: the user pinned that extension to a program, and `.reconcile` does not undo the own choice of the user.
+More than one identity of the Fearless family already on the system makes `.reconcile` refuse.
+A refusal raises an error holding each refused extension with the programs holding that extension, or, for more than one identity of the Fearless family, the list of those identities.
+
+### Extensions on Linux
+
+On Linux a program opens MIME types, not extensions; the shared MIME database turns a file name into a type through name patterns (globs). Several extensions can share one type (`*.htm` and `*.html` are both `text/html`), so taking over a type would take over all the extensions of that type. `.reconcile` never takes over a type: `.reconcile` gives each extension a type of its own, in the MIME package of the identity (the file `$XDG_DATA_HOME/mime/packages/<identity>.xml`, which only `.reconcile` writes):
+```
+<mime-type type="application/x-fearless-htm">
+  <glob pattern="*.htm" weight="100"/>
+  <sub-class-of type="text/html"/>
+  <sub-class-of type="application/xhtml+xml"/>
+</mime-type>
+```
+- The glob weight is 100, above every glob shipped by the systems we target (at most 80), so the name `x.htm` turns into the type of the identity and `x.html` stays `text/html`.
+- When a system glob also matches the name, GIO and Qt look at the file content to choose, and text content would go to the system type. The `sub-class-of` entries, one for each type the system database gives to `*.htm`, make the content of those types count as the type of the identity. A file whose content is unmistakably another format (a `.htm` file starting with `<?php`) still gets that other type; this is accepted.
+- The `.desktop` of the identity lists the types of the identity; no other program lists those types, so a double click on a `.htm` file reaches `command`, and every other program opening `text/html` stays in the "open with" choices.
+- `.fearless` keeps its type `application/x-fearless`. A Fearless extension gets `application/x-fearless-<ext>` like a system extension; no system glob can match it.
+- Nothing outside the files of the identity changes. Releasing an extension rewrites the MIME package of the identity without that extension, and the system types are back as they were.
+
+### Icons on the desktop
+
+On Windows the registry names an icon by its path, so the desktop reads the `.icon` of each `ExtensionIcon` from that path. On Linux a MIME type names its icon, and the desktop looks names up only in icon theme folders: `$XDG_DATA_HOME/icons` of the user, `$XDG_DATA_DIRS/icons` of the system (root only) and the legacy `~/.icons`. `.reconcile` installs each icon as `$XDG_DATA_HOME/icons/hicolor/256x256/mimetypes/<identity>-<hash>.png`; the hash gives a changed image a new name, past the icon cache of the desktop. Every file there named `<identity>-<hash>.png` belongs to that identity: each `.reconcile` deletes the files of that identity not in the wanted set, and deleting the setup of an identity deletes all the files of that identity together with the `apps/<identity>.png`, the `.desktop` files and the MIME package of that identity.
+On Linux each window class of `windows` gets a `.desktop` file with `NoDisplay=true`, holding `.name` as its name, `command` followed by `.target` as its command, the installed icon as its icon and the window class as its `StartupWMClass`: GNOME and COSMIC show that icon for every window of that window class.
+
+### Notes
+
+- The code of the Reconciliator is today the package `fileAssociations` of Commons (`FileAssociations`, `WindowsAssociations`, `LinuxAssociations`, `Ico`, `Icon`, `WindowIcon`, `Shell`, `Xdg`), called by `Controllers/src/controller/Association.java` and by `offerAssociation` of `Coordinator/src/mainCoordinator/Main.java`. That code becomes a component of its own, called from the repositories Controllers and Coordinator.
+- The exact checks and steps of `.reconcile` are those of the doc comment of `FileAssociations` in Commons.
+- `Ico` makes the `.ico` of an icon from the PNG of the icon; `._writeIcons` of CoordinatorDesign and the manager (Conflict icon in ControllersDesign) need `Ico`.
+- The code passes both an `.ico` and a PNG for each extension and for the program (`Icon`, `programIco`, `programPng`), where the design passes only the file the system reads.
+- The code refreshes the desktop only when the setup changes (step 5 of the doc comment of `FileAssociations`, `WindowsAssociations.alreadyMatches`), where the design refreshes on every `.reconcile`.

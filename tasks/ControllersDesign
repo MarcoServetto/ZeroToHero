@@ -1,38 +1,39 @@
 # Controllers design
 
-Controllers holds the Fearless manager: a desktop program that keeps a set of project folders, compiles those projects, runs the mains of those projects, and connects those projects to the desktop and to various IDEs, for now just Eclipse.
+Controllers holds the Fearless manager: a desktop program that keeps a set of project folders, compiles those projects, runs the mains of those projects, and connects those projects to the desktop and to Eclipse.
 Next to the manager, and independent from the manager, Controllers also holds:
-- `fearlessPluginProject`: the Eclipse plugin showing the projects of a manager inside Eclipse, with the content assist of `suggest`.
+- `fearlessPluginProject`: the Eclipse plugin showing the projects of a manager inside Eclipse, with content assist (see Content assist).
 - `agentTools`: a library driving the real pointer and keyboard, for GUI tests of any program.
 - `benchmarks`: speed measures of Fearless programs against the runtime.
 
 The manager is an island: the manager behaves the same on every system, and this is the objective of the manager.
 When a part of the system (a tray, a dialog, a desktop shell) would make the manager behave differently than this design, the manager does not use that part that way.
-When the system does not offer what the manager needs (a display, a file system feature the manager relies on), the manager stops with a 'fatal error' saying so.
-This is the only concept of 'fatal error'. The manager should attempt to discover 'fatal errors' as early as possible, but may discover 'fatal errors' while running.
+When the system does not offer what the manager needs (a display, a file system feature the manager relies on, `.fearless`, or an extension that neither a compilation nor an `EditMetadata` brings (see Reconciling)), or the manager folder exists and does not hold what the manager wrote there, the manager stops with a 'fatal error' saying so.
+This is the only concept of 'fatal error'.
 
-A 'fatal error' is shown in a dialog listing the mains and the compilations that are currently running.
+A 'fatal error' is shown in a dialog listing the mains and the compilations that are currently running; with no display, the error goes to the standard error of the manager program instead, and no step below waits for a dialog.
 A 'fatal error' ends the manager. This happens in order:
 -The dialog shows. Nothing below happens until the dialog has been closed.
 -All the running mains and compilations are terminated. The manager waits until every main and compilation has terminated.
 -The manager deletes the manager folder.
--The manager removes all the associations the manager took.
+-The manager removes the setup of every identity of the Fearless family (`.eradicateAll`, see ReconciliatorDesign).
 
 Everything the manager is asked to do either happens or is refused with an error naming what was refused and the reason of the refusal; nothing is silently skipped.
 
 ## Program and manager folder
 
 A manager is one program folder, `fearlessManaged<version>`, for example `fearlessManaged0_001`.
-Its manager folder is `fearless<version>`, next to the program folder, on every system. The manager folder holds everything the manager remembers; deleting the manager folder makes the manager start from nothing. A manager starting with no manager folder removes the icons and the file associations the manager took.
+The 'launcher' of the manager is the executable file of the program folder that starts the manager program.
+The manager folder of a manager is `fearless<version>`, next to the program folder, on every system. The manager folder holds everything the manager remembers; deleting the manager folder makes the manager start from nothing.
 A manager folder that can not be created is a 'fatal error' naming the manager folder.
 
 ## Starting the 'single' manager
-Starting the manager program leaves one message in the manager folder. Several runs of the manager program can be alive at the same time, and one of them is the 'single' manager: the run of the manager program handling the messages.
+Starting the manager program leaves one message in the manager folder, or two for the path of a folder or of a `.fearless` file. Several runs of the manager program can be alive at the same time, and one of them is the 'single' manager: the run of the manager program handling the messages.
 
 The manager program takes:
 - zero arguments: the message is `Show`;
 - one argument starting with `FearlessCommand<Verb>`, a `call` (see Requests and messages): the message is the verb `<Verb>` with the arguments of the verb and the `port` that follow in the `call`;
-- one argument not starting with `FearlessCommand`: the path of a file or a folder, as the system passes the path when the file is opened (for example by a double click); the message is `Register` with that path for a folder or a `.fearless` file, and `OpenWithOrShortcut` with that path otherwise.
+- one argument not starting with `FearlessCommand`: the path of a file or a folder, as the system passes the path when the file is opened (for example by a double click); the messages are `Register` with that path, then `Show`, for a folder or a `.fearless` file, and the message is `OpenWithOrShortcut` with that path otherwise.
 For example:
 ```
 "FearlessCommandQuit"
@@ -42,11 +43,11 @@ For example:
 "FearlessCommandRegister Base16:2F646174612F68656C6C6F"
 ```
 (the last one registers `/data/hello` on Linux).
-Every run of the manager program writes its message file. A run that is not the 'single' manager then ends; a run that becomes the 'single' manager applies its own message file like every other message file.
+A run that is not the 'single' manager ends after writing its message files; a run that becomes the 'single' manager applies its own message files like every other message file.
 A run of the manager program called with two or more arguments, or with a bad argument, leaves the message `InvalidCall` with the details. When the 'single' manager handles `InvalidCall`, the 'single' manager shows the error in a dialog and continues running.
-A run of the manager program encountering a 'fatal error' while the 'single' manager is running, or is likely to start soon, leaves the message `FatalError` with the details and ends normally.
+A run of the manager program encountering a 'fatal error' while another process holds the lock of `instance.lock` (see The 'single' manager in Implementation notes) leaves the message `FatalError` with the details and ends normally.
 The 'single' manager handles `FatalError` as a 'fatal error'.
-A run of the manager program encountering a 'fatal error' likely to prevent a 'single' manager from starting deletes the manager folder and removes all the associations the manager took.
+A run of the manager program encountering a 'fatal error' while no other process holds the lock of `instance.lock` handles that 'fatal error' as above.
 
 The 'single' manager runs until Quit, or until a 'fatal error'.
 
@@ -65,15 +66,16 @@ Showing the manager removes the 'tray icon window' and shows the manager window.
 
 Everything the manager is asked to do for a project is a request, and every request is one of the requests below, whether the request comes from a message or from a GUI operation.
 The 'single' manager applies the requests one at a time, in the order they arrive, each one completely before the next.
-Applying a `Run` or a `Compile` is starting the mains or the compilation; applying a `Terminate` ends once the JVM of the main or the compilation has ended.
+Applying a `Run` or a `Compile` is starting the mains or the compilation; applying a `Terminate` ends once the JVM of the main has ended.
 
 A message is the file `messages/<time>-<id>.msg` in the manager folder: `<time>` is the 20 digit count of milliseconds since 1970 when the message was written, and `<id>` is a random UUID. The 'single' manager applies the message files in the order of their names, and deletes each message file after reading it.
 Only the manager program writes message files: the manager program writes `messages/<time>-<id>.tmp`, then renames `messages/<time>-<id>.tmp` to `messages/<time>-<id>.msg`, so the 'single' manager never reads a partial message. The 'single' manager deletes every `.tmp` file older than 60 seconds.
+A run of the manager program whose `.tmp` or `.msg` name already exists picks another `<id>`; the rename never replaces an existing file.
 The 'single' manager relies on the system telling the 'single' manager when a file appears in `messages`. When a run of the manager program becomes the 'single' manager, the 'single' manager writes a `.tmp` file in `messages` and waits for that report; no report within 5 seconds is a 'fatal error'. Some file systems, for example some network drives, do not report new files.
 Every other program commanding the manager (the Eclipse plugin, a script, a test) runs the manager program with a `call` as its argument.
-GUI operations command the manager the same way, through a `call`:
-every GUI operation has an equivalent message, and every message is either ill formed or has an equivalent GUI operation.
-A request changes files (those of the manager folder, those of a project folder, the associations of the system, or the plugin and `manager.info` of an Eclipse), starts or ends a main or a compilation, shows a window of the manager (`Show`, and `OpenWithOrShortcut <path>` when several mains claim the extension), or is `Quit`.
+GUI operations that are requests command the manager the same way, through a `call`:
+every such GUI operation has an equivalent message, and every message is either ill formed or has an equivalent GUI operation, except `Check`: the GUI offers `Check` only as the main button of a project that is not code or is 'invalid', and a `call` can send `Check` of any project.
+A request changes files (those of the manager folder, those of a project folder, the associations of the system, or the plugin and `manager.info` of an Eclipse), starts or ends a main or a compilation, writes the Output of a project, shows a window of the manager (`Show`, and `OpenWithOrShortcut <path>` when several mains claim the extension), or is `Quit`.
 The GUI operations that do none of this are not requests and have no message: Open docs, Base documentation, Browse and Logs, which open another program on a file, and the Clear button of an Output, which empties the Output. A GUI operation that finds nothing to open says so in a dialog.
 The error of an ill formed message shows in a dialog of the manager window, and on the port when the `call` has a `port`. A hidden manager window is shown first.
 Showing the manager window asks the desktop to bring the manager window to the front. A desktop that keeps windows from taking the focus, such as GNOME, may leave the manager window behind the window the user is working in; such a desktop tells the user in its own way, for example with a notification that Fearless Manager is ready.
@@ -83,16 +85,16 @@ A verb is one of the following, written in upper camel case. Verbs about the who
 - `Show`: show the manager window; with the name of a registered project as its argument, also select that project;
 - `Register <path>`: register the folder, or the folder a file is in, then select that project; a folder already registered is only selected;
 - `Quit`: end the manager and every main and compilation the manager runs;
-- `Reset`: end the manager and every main and compilation the manager runs, remove every association the manager took, and delete the manager folder;
+- `Reset`: end the manager as a 'fatal error' ends the manager (the steps at the top of this document), with no dialog;
 - `ConnectEclipse <path>`: connect the Eclipse found from the path, then say so in a dialog, asking to restart Eclipse if Eclipse is running and to open the Fearless perspective;
 - `EditMetadata <path>`: replace `projects.info` with the content of the file at the path (see Registered projects for when the edit is refused);
 - `OpenWithOrShortcut <path>`: open the file with the main claiming the extension of the file; when several mains claim that extension, show a window listing those mains (see Opening a file). Double clicking the file on the desktop is the GUI operation of `OpenWithOrShortcut <path>`.
 - `OpenWithOrShortcut <path> <name> <main>`: open the file with the main `<main>` of the project `<name>`, one of the mains claiming the extension of the file. Picking a main in the window that `OpenWithOrShortcut <path>` shows is the GUI operation of `OpenWithOrShortcut <path> <name> <main>`.
 Verbs about one project, taking the name of a registered project:
 - `Run <name>`: select the project and run the selected mains of the project, in the order of the selected mains;
-- `Compile <name>`: select the project and compile the project if the project needs compiling;
-- `Check <name>`: select the project and report in the Output of the project the 'problem' of the project, or that the project is 'out of date', or that the project is neither 'invalid' nor 'out of date'; the 'problem' is also written to `.fearless_out/check_error.txt`, and a `Check` of a project with no 'problem' deletes `.fearless_out/check_error.txt`;
-- `Terminate <name>`: select the project and end the main or the compilation of the project currently running, if any;
+- `Compile <name>`: select the project and compile the project if the project is 'out of date'; otherwise the Output says `The project "hello" was already up to date and compiled.`, and so does the connection of the `call`, if the `call` has a `port`;
+- `Check <name>`: select the project and report in the Output of the project the 'problem' of the project, or that the project is 'out of date', or that the project is neither 'invalid' nor 'out of date';
+- `Terminate <name>`: select the project and end the main of the project currently running, if any;
 - `DeleteCache <name>`: select the project and delete the compilation cache of the project;
 - `Kind <name> <kind>`: set the kind of the project to `<kind>`;
 - `Forget <name>`: forget the project;
@@ -106,11 +108,11 @@ Before applying the request of a call with a `port`, the manager connects to tha
 What the manager sends on the connection starts with a line saying what became of the message: `Applied` or `Refused`.
 After `Refused`, the manager sends the error, as the dialog shows the error, and ends the connection.
 After `Applied`, the manager ends the connection at once, except for `Run` and `Compile`.
-For `Run` and `Compile`, the connection also receives the Output of the mains or of the compilation: after `Applied`, the manager sends on the connection what the running mains or the compilation print, from their start and then as they print, with the marks of where each main and the compilation start and end, and how each of them ended.
+For `Run` and `Compile`, the connection also receives the Output of the mains or of the compilation: after `Applied`, the manager sends on the connection what the running mains or the compilation print, from their start and then as they print, with the marks of the Output (see Running mains and compilations).
 The connection ends when the last main or the compilation ends, at once when no main and no compilation starts.
 `Quit` and `Reset` may end the manager before the manager sends `Applied`.
 The connection is how another program (Eclipse, a running main) knows that the manager has applied the message of that program, and follows the mains or the compilation that program asked for.
-Two more message files exist, `InvalidCall <details>` and `FatalError <details>`, written only by a run of the manager program that is not the 'single' manager, about a failure of that run of the manager program. `InvalidCall` and `FatalError` are not verbs: no `call` and no GUI operation names those messages, and the argument `FearlessCommandInvalidCall` or `FearlessCommandFatalError` is a bad argument.
+Two more message files exist, `InvalidCall <details>` and `FatalError <details>`, written only by a run of the manager program, about a failure of that run of the manager program. `InvalidCall` and `FatalError` are not verbs: no `call` and no GUI operation names those messages.
 The details of `InvalidCall` and `FatalError` are every line after the first line, any number of lines.
 
 ```
@@ -145,7 +147,7 @@ An argument starting with `FearlessCommand` is a bad argument when the argument 
 
 Ill formed messages:
 - a port where no program of this machine accepts the connection;
-- a name that is not the name of a registered project (the error lists the registered projects), except the `<name>` of `OpenWithOrShortcut <path> <name> <main>`;
+- a name that is not the name of a registered project (the error lists the registered projects), except the `<name>` of `OpenWithOrShortcut <path> <name> <main>` and the `<data>` of `Mount <name> <type> <data>`;
 - a `Register` whose path names nothing, or whose folder (the path, or the folder holding the file of the path) is the manager folder, anything inside the manager folder or a folder holding the manager folder, or is inside the folder of a registered project or holds the folder of a registered project;
 - a `ConnectEclipse` whose path leads to no Eclipse folder, and an `EditMetadata` whose path names no file;
 - an `OpenWithOrShortcut` whose path names no file, names an empty file, or names a file whose extension no main claims;
@@ -156,15 +158,16 @@ Ill formed messages:
 - `Run` of a project with a broken mount, or with a DataRead type with no mount (see DataReadDataEditDesign; the error lists each broken mount, naming what makes that mount broken, and each DataRead type with no mount);
 - `Run` and `Compile` of an 'invalid' project (the error is the 'problem' of the project);
 - `Run` of a project that is not compiled, naming the state of the project; `Run` of a project with no selected main, or with a selected main that is not a main of the project (the error lists the mains of the project);
-- `Run`, `Compile` or `DeleteCache` while a main or a compilation of the project is currently running.
+- `Run`, `Compile`, `Check` or `DeleteCache` while a main or a compilation of the project is currently running;
+- `Terminate` while a compilation of the project is currently running;
+- an `OpenWithOrShortcut` that runs a main of a project where a `Run` of only that main is ill formed (the error is the error of that `Run`).
 
-Whether a message is ill formed is decided when the 'single' manager starts applying the request of the message, from the message and the current state, before anything is compiled, run or written to the Output.
-The error of an ill formed message is shown in a dialog, never in the Output: the Output of a project holds only the results of well formed requests. A failing compile is the result of a well formed request: the request is right, the code is broken.
+Whether a message is ill formed is decided when the 'single' manager starts applying the request of the message, after the 'autoCheck' (see Project states) of the project the request runs on, from the message and the state that 'autoCheck' finds, before anything is compiled, run or written to the Output.
+The error of an ill formed message is never in the Output: the Output of a project holds only the results of well formed requests. A failing compilation is the result of a well formed request: the request is right, the code is broken.
 
 ## Info files
 
-The files the manager and the compiler write for the manager and for Eclipse (`projects.info`, `manager.info`, `<pkg>_manifest.info`) are Info files: text in the Fearless character set (the characters a Fearless `Str` allows).
-The 'manifest' of a compiled package `<pkg>` of a project is the file `.fearless_out/<pkg>_manifest.info` of the project, written by the compiler when compiling the package: the mains of the package, with the claims and the preloaded icons of each main, the attenuators of the package and the DataRead types of the package (see What the compiler records). The 'manifests' of a project are the 'manifests' of the packages of the project.
+The files the manager writes for the manager and for Eclipse (`projects.info`, `manager.info`) are Info files: text in the Fearless character set (the characters a Fearless `Str` allows).
 An Info is a string `"..."`, a list `[a, b]`, or an object `{"key": value, ...}` whose keys are distinct strings.
 Inside an Info string, `\"` is a quote, `\\` a backslash and `\n` a newline; there is no other escape: `"\t"` is an invalid Info.
 
@@ -215,7 +218,7 @@ The manager is the only program writing `projects.info`: the manager writes the 
   "systemExtensions": ["htm"]
 }
 ```
-- `systemExtensions`: the system extensions this manager takes, whether or not a main claims those extensions; each one a system extension (see Well formedness), listed once.
+- `systemExtensions`: the system extensions this manager takes, whether or not a main claims those extensions; each one a system extension (see The data in ReconciliatorDesign), listed once.
 Each project has `path` and `kind`, and may have `mains`, `mounts` and `attenuators`; an absent field is the empty list or the empty object:
 - `path`: the absolute path of the project folder, any path the system allows, exactly as the current system and file system name the folder, separators included, as a `taggedText`. Two projects never share a folder, and a project folder is never inside another project folder.
 - `kind`: `idle`, `code`, `dataRead` or `dataEdit`.
@@ -228,13 +231,14 @@ The `mains`, `mounts` and `attenuators` of a project stay when the kind of the p
 A `projects.info` that is not a valid Info file, or does not hold what is above, is a 'fatal error' pointing at the offending text in the Frontend error message style.
 
 The whole `projects.info` can be edited by hand from the GUI, or via an `EditMetadata` naming a file (outside of the manager folder) with the intended new content.
-The editor of the GUI remembers the content the editor opened; when the user commits, and `projects.info` no longer holds that content, the editor refuses the commit in a dialog, and the user edits the new content again; otherwise the commit is an `EditMetadata`.
+The editor of the GUI remembers the content the editor opened; when the user commits, and `projects.info` does not hold that content, the editor refuses the commit in a dialog, and the user edits the new content again; otherwise the commit is an `EditMetadata`.
 An edit is refused, and nothing changes, when:
 - the whole text is not valid: the error points at the offending text in the Frontend error message style;
-- the edit removes a project, or changes the kind of a project, while a main or a compilation of that project is currently running;
+- the edit removes a project, or changes the kind or the `path` of a project, while a main or a compilation of that project is currently running;
 - the edit changes the mounts of a project, or removes a data project mounted on a DataRead type of that project, or changes the kind or the folder of that data project, while a main of that project is currently running;
-- the edit adds to `systemExtensions` an extension reconcile refuses (see File associations).
-An accepted edit applies at once: projects the edit removes are forgotten, projects the edit adds are registered as they are, every project is 'checked' again.
+- the edit adds to `systemExtensions` an extension reconcile refuses (see Refusals in ReconciliatorDesign);
+- the edit removes from `systemExtensions` an extension that a main of a project claims, while a main or a compilation of that project is currently running.
+An accepted edit applies at once: projects the edit removes are forgotten, projects the edit adds are registered as they are, the compilation cache (`Coordinator.deleteCache`) of each added project, of each project whose kind changes, of each project whose `path` changes and of each project whose mains claim an extension the edit removes from `systemExtensions` is deleted, and every project gets an 'autoCheck'.
 
 
 
@@ -245,9 +249,9 @@ The name of a project is the name of the marker of the project: the only file wi
 Registering a folder that is not registered already:
 Name inference: The name is the name of the marker of the folder, when the folder has exactly one marker, that name is valid, and no other project uses that name.
 Otherwise the name is the folder name turned into a valid name: lowercased, every run of other characters turned into `_`, a leading `p` when the result starts with a digit, then the first of `name`, `name2`, `name3`... not used by another project. The marker is renamed (or created) to match.
-If present, the compilation cache (`.fearless_out`) of the newly registered folder is deleted.
-`.fearless_out` belongs to the manager in every registered folder, whatever the kind of the project.
-The project is now in the `idle` state.
+If present, the compilation cache (`.fearless_out`) of the newly registered folder is deleted (`Coordinator.deleteCache`).
+`.fearless_out` belongs to the Coordinator in every registered folder, whatever the kind of the project.
+The newly registered project is in the `idle` state.
 
 Forgetting a project asks no confirmation.
 Forgetting a project removes the project from `projects.info`; nothing in the project folder is changed.
@@ -255,43 +259,44 @@ Forgetting a project removes the project from `projects.info`; nothing in the pr
 ## Project states
 
 Each project is in one of these states, shown as a badge on the tile of the project:
-- `code: invalid content`, `dataRead: invalid content`, `dataEdit: invalid content`: the project folder is missing, the file names of the project are not valid Fearless file names (for code, also the package structure), the marker is missing or is not the only top level `.fearless` file, or the manager can not display the icon of the project;
+- `code: invalid content`, `dataRead: invalid content`, `dataEdit: invalid content`: the file names of the project are not valid Fearless file names (for code, also the checks of `Coordinator.check`, see CoordinatorDesign), the marker is missing or is not the only top level `.fearless` file, or the folder `.config/icon` holds more than one PNG file or a PNG file that can not be read;
 - `idle`;
 - `dataRead`, `dataEdit`;
-- `code: not compiled (no cache)`: no package is compiled, even if `.fearless_out` exists and holds the error of the last `Check` or `Compile`;
-- `code: not compiled (cache out of date)`: a compilation cache that does not match the sources;
-- `code: compiled`;
+- `code: compilation cache out of date`: the project is 'out of date';
+- `code: compiled`: the project is neither 'invalid' nor 'out of date';
 - `code: busy`: a main or a compilation of the project is currently running.
 
 A project in a state `<kind>: invalid content` is 'invalid'. The 'problem' of an 'invalid' project is the error naming which of the causes above holds.
-A 'check' of a project reads the project folder and finds the state of the project and the mains of the project.
+An 'autoCheck' of a project reads the project folder and finds the state of the project and the mains of the project.
+An 'autoCheck' that finds the project 'invalid' while no compilation of the project runs writes the 'problem' into `.fearless_out/_error.txt` with `Coordinator.writeError`, for every kind of project.
+An 'autoCheck' that can not reach the project folder terminates the main or the compilation of the project, if running, and shows a dialog with the error
+`The project "hello" connects to the folder "/home/user/hello".`
+`This folder is now unreachable.`
+`The project "hello" has now been removed.`
+then the 'autoCheck' is a `Forget` of the project.
 
-A code project is 'out of date' exactly when compiling the project would compile some package: when the compilation cache of a package does not list exactly the current files of that package, or is older than one of those files. Files outside every package (a readme, the marker) never make a project 'out of date'.
-Changes in folders starting with `.` never make a project 'out of date', except changes in `.fearless_out`.
+An 'autoCheck' of a code project is a call of `Coordinator.check` (see CoordinatorDesign), which gives the state of the project: 'invalid' with the 'problem', 'out of date' (`State.outOfDate`), or `State.compiled`. The manager checks the marker and the icon of the project before calling `Coordinator.check`.
 
-The mains of a code project are known when the project is neither 'invalid' nor 'out of date': the concrete mains of every package of the project, read from the 'manifests'.
-When reading the mains finds a package that compiling would compile, or reading the mains fails, the project becomes 'out of date'.
+The mains of a code project are known when `Coordinator.check` gives `State.compiled`: the `.mains` of the `.manifest` of `State.compiled`.
 
 The manager is 'active' while the manager window is shown, and 'passive' while the manager window is hidden (the tray icon or the 'tray icon window' is shown) or minimized.
 A 'passive' manager becomes 'active' when the manager shows an error, or when the user shows the manager window.
-An 'active' manager notices changes made on disk by other programs: every three seconds the 'active' manager 'checks' the selected project, and in turn one other project, and updates states, badges and buttons, including moving a project in and out of 'invalid'. A project is 'checked' when a main or a compilation of the project ends. Every request naming a project 'checks' that project.
-A 'passive' manager does not 'check' projects every three seconds.
+An 'active' manager notices changes made on disk by other programs: every three seconds the 'active' manager runs an 'autoCheck' of the selected project, and in turn of one other project, and updates states, badges and buttons, including moving a project in and out of 'invalid'. A project gets an 'autoCheck' when a main or a compilation of the project ends.
+A 'passive' manager does not run an 'autoCheck' of the projects every three seconds.
 
-The icon of a project is the only PNG file in the folder `.config/icon` of the project, or, with no PNG file in `.config/icon`, an icon generated from the project name. More than one PNG file, or a PNG file that can not be read, makes the project 'invalid'.
-
-A kind changes to any other kind. Changing the kind keeps `mains`, `mounts` and `attenuators`: those fields have no effect while the project is not code, and apply again when the project becomes code again.
+The icon of a project is the only PNG file in the folder `.config/icon` of the project, or, with no PNG file in `.config/icon`, an icon generated from the project name.
 
 ## General GUI shape
 Dropping files or folders on the manager window is a `Register` of each file or folder dropped.
 Every button is disabled for half a second after it is pressed.
 
-A menu bar at the top, with the Manager menu: Add folder (`Register`, through a file picker), Edit project metadata (`EditMetadata`), Connect Eclipse (`ConnectEclipse`), Base documentation, Reset (`Reset`, after a confirmation dialog saying what Reset does, with the buttons Reset and Cancel, Cancel preselected), Quit (`Quit`).
+A menu bar at the top, with the Manager menu: Add folder (`Register`, through a file picker), Edit project metadata (`EditMetadata`), Connect Eclipse (`ConnectEclipse`), Base documentation (`Coordinator.docs` of the package `base`, with any folder), Reset (`Reset`, after a confirmation dialog saying what Reset does, with the buttons Reset and Cancel, Cancel preselected), Quit (`Quit`).
 
 A simplified 'desktop with icons' fills the manager window under the menu bar while no project is selected; while a project is selected, the simplified desktop takes the left side of a vertical divider, and the project area takes the right side.
 Tiles represent the registered projects, sorted by name: each tile shows the project icon with the state badge of the project, and the project name under the project icon.
 A busy project (compiling or running) shows an animated badge.
 Clicking a tile is `Show` with the name of the project of the tile.
-Double clicking the tile of a project in the state `code: compiled` is `Run` of that project; for a project with one main, the `Run` comes after a `SelectMains` naming that main. For any other project, and for a project with several mains and no selected main, a double click is a click.
+Double clicking the tile of a project in the state `code: compiled` is `Run` of that project; for a project with one main, the `Run` comes after a `SelectMains` naming that main. For any other project, and for a project with no main, or with several mains and no selected main, a double click is a click.
 
 ## Project area contains, top to bottom:
 
@@ -300,16 +305,17 @@ A header on one line: the project icon, the project name, and the following butt
   - Check, for a project that is not code, and for an 'invalid' code project;
   - Compile, for a code project that is not compiled;
   - Run, for a compiled code project with one main; Run V (V an arrow down), for a compiled code project with several mains; Run greyed out, for a compiled code project with no main;
-  - Terminate, while a main or a compilation of the project is currently running.
-- The Open docs button (enabled once the mains are known), opening the docs in the default browser.
+  - Terminate, while a main of the project is currently running;
+  - greyed out, while a compilation of the project is currently running.
+- The Open docs button (enabled once the mains are known), opening a menu of the packages of the project, the `packages` of `State.compiled` (see CoordinatorDesign); choosing a package opens the documentation of that package (`Coordinator.docs`) in the default browser.
 - The kind buttons, one for each kind the project is not: "Back to idle", "Become dataRead", "Become dataEdit" and "Become code".
-- Browse, opening the project folder in the file explorer, Forget (`Forget`), and for a code project Delete cache (`DeleteCache`).
+- Browse, opening the project folder in the file explorer, Forget (`Forget`), and Delete cache (`DeleteCache`).
 The kind buttons, Forget and Delete cache are greyed out while a main or a compilation of the project is currently running.
 
 Pressing Run V opens a drop-down menu showing the mains of the project and the selected mains that are not mains of the project, each with a checkbox, the selected mains checked, and a Run button at the end of the list, disabled while no entry is checked or a checked entry is not a main of the project. Checking or unchecking an entry is a `SelectMains` naming the checked entries. That Run button is `Run` of the project; the Run button of a project with one main is a `SelectMains` naming that main, then `Run` of the project.
 A project with selected mains that shows no Run V shows the selected mains in the project area, with a Remove button: a `SelectMains` naming no main.
   
-For a code project whose mains have a `Shortcut`, after the header we see each shortcut file as the simplified desktop shows a project: the icon of the `Shortcut`, with the name of the shortcut file under the icon.
+For a code project whose mains have a `Shortcut`, after the header we see each shortcut file present in the project folder under the name the manager gives that shortcut file (see Shortcut files), and only those, as the simplified desktop shows a project: the icon of the `Shortcut`, with the name of the shortcut file under the icon.
 Double clicking a shortcut file there is `OpenWithOrShortcut` with the path of that shortcut file: the very message a double click on that file on the desktop of the system sends.
 
 
@@ -317,7 +323,7 @@ For every project, we have the Output, a 'collapsible area': an area with vertic
 
 Every entry of `projects.info` about a project shows in the project area of that project, and every entry has a GUI operation that removes that entry.
 
-For a code project, and for any project with `attenuators`, after the Output we see the Attenuators 'collapsible area', one block per main: the attenuators applied to that main in order, each with Remove, Up and Down buttons, then a drop down of the attenuators of the project not yet applied with an Add button. Every change is an `Attenuate` of that main. An attenuator type or a main type that is not in the 'manifests' of this project or in the `base_manifest.info` of the base cache is displayed with a graphical mark, the same mark that flags projects whose files break the rules for portable file names.
+For a code project, and for any project with `attenuators`, after the Output we see the Attenuators 'collapsible area', one block per main: the attenuators applied to that main in order, each with Remove, Up and Down buttons, then a drop down of the attenuators of the project not yet applied with an Add button. Every change is an `Attenuate` of that main. An attenuator type or a main type that is not in the `.manifest` of the `State.compiled` of this project is displayed with a graphical mark, the same mark that flags projects whose file names are not valid Fearless file names.
 
 For a code project whose mains claim extensions (`OpenWith`), after the Attenuators we see a 'collapsible area', one block per main claiming extensions:
   "Extensions this main opens:" (each extension with its icon),
@@ -331,30 +337,24 @@ For a code project we have the Logs 'collapsible area', showing the log files th
 ## Running mains and compilations
 
 A project runs at most one thing at a time: a compilation, or the mains of one `Run`, one after the other.
-Every `Run`, `Compile` and `Check` starts with an empty Output. Everything a running main or a compilation prints goes to the Output, and the Output marks where each main and the compilation start and end, and how each of them ended, so that Eclipse and the user know when the mains of a `Run` or the compilation are over.
+A compilation of a project runs from the start of `Coordinator.compile` to the end of the last step of What the manager does after `Coordinator.compile`.
+Everything a running main or a compilation prints goes to the Output, and the Output marks where each main and the compilation start and end, and how each of them ended, so that Eclipse and the user know when the mains of a `Run` or the compilation are over.
 
-- Compile (code projects): the compiler runs in its own JVM; what the compiler prints goes to the Output. A compile that fails leaves the project 'out of date': the packages the compile did not compile stay out of date, and a compile that fails after compiling the packages (on an icon, an extension or a shortcut file) deletes the 'manifests' of the project, so reading the mains fails. A compile that fails writes the error to `.fearless_out/compile_error.txt`, and a compile that succeeds deletes `.fearless_out/compile_error.txt`.
-- Run (code projects): a `Run` runs the mains the `Run` names, in the order of the mains of the project. Each main runs in its own JVM, one after the other.
-- Terminate ends the running main or compilation: the JVM of that main or compilation ends, and no further main of that `Run` starts.
+- Compile (code projects): the compiler runs in its own JVM.
+- Run (code projects): each main runs in its own JVM (`Coordinator.run`, see CoordinatorDesign).
+- Terminate ends the running main: the JVM of that main ends, and no further main of that `Run` starts.
 - A main or a compilation that crashes, or that takes all the memory, ends alone: the manager and the mains and compilations of the other projects keep running.
 
-An error file (`compile_error.txt`, `check_error.txt`) is a 'stale error file' once `projects.info`, or a file or folder of the project outside the folders starting with `.`, is modified after the error file. A 'stale error file' is shown nowhere.
 
-### Files in use
-The files of a project are 'in use' from the start of a `Compile` to the end of that `Compile`, and from the start of a main to the end of that main.
-A `Compile` ends after the manager has read the icons and written the claims.
-A 'check' of a project with files 'in use' that finds the project 'invalid' or 'out of date' terminates the running main, if still running, with the error `Some files inside the project "hello" were updated while main "hello.Hello" was running.`
-A compile that ends with the project 'out of date' fails with the error `Some files inside the project "hello" were updated while the project was compiling.`
-A read, by a running main, by the compiler or by the manager, that finds a file 'in use' that does not hold what the compilation recorded, while the 'check' finds the project neither 'invalid' nor 'out of date', fails with the error `Fearless crashed: either this project's compilation cache was corrupted, or this is a Fearless bug.`
-Both errors delete `.fearless_out` and are shown in the Output of the project.
+### Files changing during a run
+An 'autoCheck' of a project with a running main that finds the project 'invalid' or 'out of date' terminates that main with the error `Some files inside the project "hello" were updated while main "hello.Hello" was running.`
+That error is shown in the Output of the project.
 
 
 ## File associations
 
-On Windows and Linux the 'single' manager makes the launcher of the manager the program opening every 'captured extension', following `FileAssociations.reconcile` of Commons. The 'captured extensions' are the extensions the manager takes: `.fearless`, every extension in `systemExtensions`, and the Fearless extensions the mains of the projects claim.
-- Extending the 'captured extensions' (an `EditMetadata` adding to `systemExtensions`, a compile giving a main a new Fearless extension) is refused when reconcile refuses a new extension: the `EditMetadata` is ill formed, or the compile fails, naming the extension and the program holding the extension, and nothing changes.
-- Losing a 'captured extension' to a program outside the Fearless family is a 'fatal error' when the manager can not take the extension back. At every start the manager takes back all the 'captured extensions'; `.fearless` is taken from the first start.
-- Only one member of the Fearless family at a time opens `.fearless`: a starting manager of any version, or a starting portable Fearless, takes `.fearless` together with every extension of the Fearless program that held `.fearless`, and deletes the manager folder of the manager that held `.fearless`. A 'single' manager whose manager folder is deleted quits, ending the mains and the compilations of that manager, and changes nothing else on the system: the associations belong to the program that took the associations, and the next start of this manager starts from nothing.
+On Windows and Linux the 'single' manager makes the launcher of the manager the program opening every 'captured extension', with `.reconcile` of the Reconciliator (see ReconciliatorDesign). The 'captured extensions' are the extensions the manager takes: `.fearless`, every extension in `systemExtensions`, and the Fearless extensions the mains of the projects claim.
+- A run of the manager program that becomes the 'single' manager, of any version, or a starting portable Fearless, takes `.fearless` from another program of the Fearless family holding `.fearless` (see ReconciliatorDesign); the `replaced` of that `.reconcile` removes the manager folder of that other program at once, when that other program is a manager: that other program never sees a manager folder deleted in part. A 'single' manager whose manager folder is deleted quits, ending the mains and the compilations of that manager, and changes nothing else on the system: the `.reconcile` of the program that took `.fearless` deletes the setup of this manager (see ReconciliatorDesign), and the next start of this manager starts from nothing.
 
 ## OpenWith and Shortcut
 
@@ -388,104 +388,58 @@ A main can implement several of those four types at once, for example `OpenWith[
 
 ### Well formedness
 
-The Frontend checks the claims of every declaration as well formedness errors, before generating code: a declaration with `OpenWith`, `Shortcut` or `PreLoadIcon` among its supertypes also has `Main` among its supertypes; the icon is a type name with no generic arguments; the extension is a string literal type (`"txt"` and `` `txt` `` are the same extension) holding 1 to 16 characters, each `a-z` or `0-9`, not `fearless`; the extension of a `Shortcut` is `fapp` and three digits, and the extension of an `OpenWith` is not; one main claims each extension at most once, across all the `OpenWith` and `Shortcut` of the main. The Coordinator checks that the icon is the type generated for an image file. The exact rules and errors are those of `inject.Methods.checkClaims` of Frontend and of the doc comments of `OpenWith`, `Shortcut` and `PreLoadIcon` in `base`.
+The Frontend checks the claims of every declaration as well formedness errors, before generating code: a declaration with `OpenWith`, `Shortcut` or `PreLoadIcon` among its supertypes also has `Main` among its supertypes; the icon is a type name with no generic arguments; the extension is a string literal type (`"txt"` and `` `txt` `` are the same extension) holding 1 to 16 characters, each `a-z` or `0-9`, not `fearless`; the extension of a `Shortcut` is `fapp` and three digits, and the extension of an `OpenWith` is not; one main claims each extension at most once, across all the `OpenWith` and `Shortcut` of the main. The Coordinator checks that the icon is the type generated for an image file (see CoordinatorDesign). The exact rules and errors are those of `inject.Methods.checkClaims` of Frontend and of the doc comments of `OpenWith`, `Shortcut` and `PreLoadIcon` in `base`.
 
-The extensions are of two kinds:
-- A Fearless extension: `fapp[0-9][0-9][0-9]` (shortcuts) or `ffile[0-9][0-9][0-9]` (files). The manager owns the Fearless extensions outright: the manager takes a Fearless extension with no question asked.
-- A system extension: any other valid text, `htm`, `pdf`, `notes` alike. Only `OpenWith` can claim a system extension, and only once the user allowed that extension in `systemExtensions`.
+The two kinds of extension, Fearless extension and system extension, are in ReconciliatorDesign.
 
-### What the compiler records (portable and manager alike)
+### What the manager does after `Coordinator.compile`
 
-The portable Fearless does nothing with `OpenWith`/`Shortcut`; the compiler is shared, so the compiler records the claims in either case, and only the manager reads the claims.
+Everything below runs in the manager after `Coordinator.compile` ends. When `Coordinator.compile` failed, only step 2 runs. A step that fails makes the compilation fail: the manager calls `Coordinator.writeError` with the error of that step (for a failing reconcile, see Reconciling), and of the steps after that step only step 2 runs.
 
-The 'manifest' of a package is an object with `mains`, `attenuators`, `dataRead` and `dataEdit` (see the Manager section of AttenuationDesign for `attenuators`, and DataReadDataEditDesign for `dataRead` and `dataEdit`): `mains` maps each concrete main of the package to the file declaring the main, the list of the `Shortcut` claims of the main, the list of the `OpenWith` claims of the main, and the list of the icons the main preloads: the icons of the `Shortcut` claims, `base.IconsFearless`, the icons of the `PreLoadIcon` of the main and the icons of the `OpenWith` claims. A claim is the icon type, where the image of the icon is (the `.diskPath`, `.zipSteps` and `.zipEntry` of the asset, relative to the root of the project owning the package of the icon, the stdLib folder for `base`), then the extension, `""` when the main wrote none; a preloaded icon is written as a claim with `""` as the extension:
-```
-{
-  "mains": {
-    "hello.Bar": ["_hello/bar.fear", [["hello.IconsShortcut", "_hello/icons/shortcut.png", "", "", ""]], [["hello.IconsDoc", "_hello/icons/doc.png", "", "", "htm"]], [["hello.IconsShortcut", "_hello/icons/shortcut.png", "", "", ""], ["base.IconsFearless", "icons/fearless.png", "", "", ""], ["hello.IconsDoc", "_hello/icons/doc.png", "", "", ""]]],
-    "hello.Beer": ["_hello/beer.fear", [], [], [["base.IconsFearless", "icons/fearless.png", "", "", ""]]]
-  },
-  "attenuators": [],
-  "dataRead": [],
-  "dataEdit": []
-}
-```
-The manager reads the 'manifests' of every package of the project, merged, and the `base_manifest.info` of the base cache.
-
-### What the manager does after a compile
-
-Everything below runs in the manager after the compiler succeeded, because the steps below need the claims of every other project.
-
-1. Read the claims and the preloaded icons of the project from the 'manifests' of the project, check that every `Shortcut` claim gives a valid shortcut file name (see Shortcut files), and check that every system extension an `OpenWith` claims is in `systemExtensions` (see System extensions).
-2. **Checking the icon.** Each icon, of a claim or preloaded, must be a PNG file (autoloading also accepts jpg, gif and bmp; jpg, gif and bmp are refused here), square, with a side from 64 to 1024 pixels. A failure is reported as the compile failing, worded like a Frontend error and naming the main, the icon type and the image file:
-   `The icon "hello.IconsBar" in "base.Shortcut[hello.IconsBar,\"fapp123\"]" of main "hello.Bar" is 300x200 pixels (from "_hello/icons/bar.png"): an icon must be a square PNG image with a side from 64 to 1024 pixels.`
-   The portable Fearless ignores icons, so the portable Fearless does not run this check: a project with such an icon compiles there and fails only in the manager.
-3. Choose the missing extensions.
-The manager writes each chosen extension into the 'manifest' of the package of the main, in place of `""`.
-4. Materialise every icon in `.fearless_out/icons/`: the PNG copied out (the PNG may be inside a zip, and the desktop needs a plain file), and on Windows an `.ico` made from the PNG. Two claims with the same icon type share the files. Every compile also removes from `.fearless_out/icons/` the files of icons no longer claimed.
-The name of an icon in `.fearless_out/icons/` follows from the path of the image of the icon, so the 'manifest' does not record the name.
-
-5. Rebuild the in memory map and reconcile.
-6. Create the missing shortcut files.
-
-`projects.info` is unchanged: the `mains` of `projects.info` are the selected mains, not a copy of the compiled mains.
+1. Check that every `Shortcut` claim of `Coordinator.cachedMains` of the project gives a valid shortcut file name (see Shortcut files), and check that every system extension an `OpenWith` claims is in `systemExtensions` (see System extensions).
+2. Rebuild the in memory map (see The in memory map).
+3. Create the missing shortcut files.
+4. Call `Coordinator.finish`.
 
 ### The in memory map
 
-The manager keeps `extension -> list of (project, main, icon)` in memory only. The manager builds the map at start up from the 'manifests' of every registered `code` project, and rebuilds the map after every compile, every deletion of the `.fearless_out` of a project (`DeleteCache`, the errors of Files in use, the removal of an extension from `systemExtensions`: the project then claims nothing), and every `EditMetadata` that adds or removes a `code` project, changes the `path` of a `code` project, or changes the kind of a project from or to `code` (so also `Forget` and `Kind`). A project with no 'manifest' claims nothing.
+The manager keeps `extension -> list of (project, main, icon)` in memory only. The manager builds the map at start up, in step 2 of every compilation (see What the manager does after `Coordinator.compile`), after every deletion of the `.fearless_out` of a project (the project then claims nothing), and after every `EditMetadata` that removes a `code` project.
+A build reads `Coordinator.cachedMains` of every registered `code` project whose `Coordinator.compile` is not running, and keeps the entries of each project whose `Coordinator.compile` is running.
+At start up, before building the map, the manager calls `Coordinator.dropUnfinished` of every registered `code` project.
+When a method of `Coordinator` raises or gives `Error.cacheCorrupted` for a project, the manager ends the running main or compilation of that project, if any, calls `Coordinator.deleteCache` of that project, and writes the error with `Coordinator.writeError`.
+An `Error.cacheCorrupted` of another project during step 2 of a compilation does not make that compilation fail.
+Each operation after which the manager rebuilds the map ends only after the rebuild; the same holds for everything else the manager keeps in memory.
 
 ### Autoselected extensions
 
-A `Shortcut` without extension gets `fappNNN`, an `OpenWith` without extension gets `ffileNNN`, where `NNN` are three digits.
-
-1. Start from a number from 000 to 999 computed from the project name in `projects.info`, the qualified main name and the icon, the same on every machine. The icon is part of the number so that `Shortcut[I1]` and `Shortcut[I2]` of one main start apart.
-2. The number is free if no other claim in the in memory map uses that extension; else try the next number, wrapping from 999 to 000.
-3. If all 1000 are taken, the compile fails:
-   `No free extension is left for "base.Shortcut[hello.IconsBar]" of main "hello.Bar": all the 1000 extensions "fapp000" to "fapp999" are used by the projects of this manager.`
-   For an `OpenWith`, the error adds that a system extension can be claimed instead, for example `"base.OpenWith[hello.IconsFoo,\"foo\"]"`.
-
-Which project compiles first can decide which claim gets a number. This is accepted.
+The Coordinator chooses the extension of a `Shortcut` or an `OpenWith` without extension (see `._autoselect` in CoordinatorDesign), asking the manager through the `takeFreeExtension` of `Coordinator.compile`.
+The manager answers `takeFreeExtension` one call at a time.
+The answer is the first extension of the list that no claim in the in memory map uses and that no call answered for a compilation that has not ended yet.
 
 ### Shortcut files
 
 For each `Shortcut` claim, the manager creates a file `<name>.<extension>` in the top level of the project, next to the marker, holding a single new line, like the marker. `<name>` is the simple name of the main turned into a file name, the inverse of the rule autoloading uses to name the type of an image: each uppercase letter becomes `_` and the lowercase of that letter, except the first letter of the name, which only becomes lowercase. `FooBar` becomes `foo_bar`, `_Foo` becomes `_foo`, `Foo_1` becomes `foo_1`, `FooBAR` becomes `foo_b_a_r`.
 
-The inverse does not exist for every type name: type names can end in primes (`Foo'`), and can contain `_` followed by a lowercase letter (`Foo_bar`), which autoloading never produces. Such a main, a main whose name turns into a Windows reserved name (`Con`), or two mains of the project with a `Shortcut` giving the same file name and extension (`a.Bar` and `b.Bar`), fail the compile:
+The inverse does not exist for every type name: type names can end in primes (`Foo'`), and can contain `_` followed by a lowercase letter (`Foo_bar`), which autoloading never produces. Such a main, a main whose name turns into a Windows reserved name (`Con`), two mains of the project with a `Shortcut` giving the same file name and extension (`a.Bar` and `b.Bar`), or a main whose shortcut file name is the name of a top level file without extension (`readme` for `hello.Readme`), fail the compilation:
 `Main "hello.Foo'" can not have a Shortcut: its name has no matching file name. A main with a Shortcut has a name that can be mapped to a file name like "FooBar" can be mapped to "foo_bar".`
 
-The shortcut file is a visible file of the project: the shortcut file follows the project file rules, and a 'check' of the project sees the shortcut file. A shortcut file the user deleted is created again by the next compile; a shortcut file the user moved out of the project stays where the user moved the shortcut file, and a new shortcut file appears.
+The shortcut file is one of the `.files` of the project (see The data in CoordinatorDesign). The manager never deletes a shortcut file: the user may have copied or moved shortcut files anywhere. A shortcut file whose extension no main claims any more stays, and opening that shortcut file is an `OpenWithOrShortcut` of an extension no main claims (see Opening a file).
 
 ### Reconciling
 
-Reconcile takes the whole wanted set at once, so after each change of the 'captured extensions' the manager calls reconcile with all the 'captured extensions': `.fearless`, every extension in `systemExtensions` and every claimed Fearless extension, each with an icon. An extension claimed by exactly one main uses the icon of that claim; every other 'captured extension' but `.fearless` uses the conflict icon: an extension claimed by several mains, and an extension of `systemExtensions` that no main claims. Reconciling an unchanged set changes nothing; reconcile also runs at manager start up.
+After each rebuild of the in memory map, and in each `EditMetadata` that changes `systemExtensions`, with the `systemExtensions` of the edit, once every other check of the edit (see Registered projects) passes, before the edit applies, the manager calls reconcile with all the 'captured extensions', each with an icon, and with the window classes (see Desk ids and icons). An extension claimed by exactly one main uses the icon of that claim; `.fearless` uses the Fearless icon, `base.IconsFearless`; every other 'captured extension' uses the conflict icon: an extension claimed by several mains, and an extension of `systemExtensions` that no main claims.
 
-The checks of `reconcile` change nothing when the checks fail, so the previous associations stay in place. A failing `reconcile` after a compile makes that compile fail, and the in memory map goes back to the previous 'manifests' of that project (the manager keeps the previous 'manifests' until reconcile succeeded). The error names the failing extension, the main claiming the extension and the program holding the extension.
+A `reconcile` that refuses `.fearless`, or an extension that neither a compilation nor the `EditMetadata` of that `reconcile` brings, is a 'fatal error', and so is a `reconcile` that refuses because more than one identity of the Fearless family is on the system. A `reconcile` that refuses a new extension a compilation brings ends the running main or compilation of every project with a claim of that extension, if any, deletes the compilation cache (`Coordinator.deleteCache`) of each of those projects, and writes the error into each of those projects with `Coordinator.writeError`; such a `reconcile` in step 2 of the compilation of one of those projects also makes that compilation fail. The error names the failing extension, the main claiming the extension and the program holding the extension.
 
-The manager settles conflicts among the mains of the projects of the manager (the conflict icon); with the system and every other program the manager needs a clear yes or no, and the two kinds of extension get different answers.
-- `.fearless` belongs to the Fearless family alone. A program outside the Fearless family opening `.fearless`, or the own choice of the user of a program for `.fearless` (a Windows UserChoice, even when the UserChoice names this manager, or a Linux `[Default Applications]` entry), makes reconcile refuse `.fearless`.
-- A Fearless extension (`fappNNN`, `ffileNNN`) gets the very same setup as `.fearless`, and is checked like `.fearless`. Fearless extensions are invented by Fearless, so a Fearless extension set up in any other way than the setup of the manager was tampered with: losing a Fearless extension of the 'captured extensions' is a 'fatal error', and a new Fearless extension refused fails the compile.
-- A system extension gets the same setup as `.fearless` too, but the manager takes a system extension over from whatever program opens the extension: the user allowed the extension on purpose, so other programs registered for the extension do not make reconcile refuse the extension. A Windows UserChoice still does, as for `.fearless`: the user pinned that extension to a program, and the manager does not undo the own choice of the user. When an extension leaves `systemExtensions`, the manager removes the setup of the manager only, and the previous program opens those files again.
+The manager settles conflicts among the mains of the projects of the manager (the conflict icon); `.reconcile` settles the extensions with the system and every other program (see Refusals in ReconciliatorDesign).
 
-#### Extensions on Linux
+#### Desk ids and icons
 
-On Linux a program opens MIME types, not extensions; the shared MIME database turns a file name into a type through name patterns (globs). Several extensions can share one type (`*.htm` and `*.html` are both `text/html`), so taking over a type would take over all the extensions of that type. The manager never takes over a type: the manager gives each claimed extension a type of its own, in the MIME package of the manager (the file `$XDG_DATA_HOME/mime/packages/<identity>.xml`, which only the manager writes):
-```
-<mime-type type="application/x-fearless-htm">
-  <glob pattern="*.htm" weight="100"/>
-  <sub-class-of type="text/html"/>
-  <sub-class-of type="application/xhtml+xml"/>
-</mime-type>
-```
-- The glob weight is 100, above every glob shipped by the systems we target (at most 80), so the name `x.htm` turns into the type of the manager and `x.html` stays `text/html`.
-- When a system glob also matches the name, GIO and Qt look at the file content to choose, and text content would go to the system type. The `sub-class-of` entries, one for each type the system database gives to `*.htm`, make the content of those types count as the type of the manager. A file whose content is unmistakably another format (a `.htm` file starting with `<?php`) still gets that other type; this is accepted.
-- The `.desktop` of the manager lists the types of the manager; no other program lists those types, so a double click on a `.htm` file reaches the manager, and every other program opening `text/html` stays in the "open with" choices.
-- `.fearless` keeps its type `application/x-fearless`. A Fearless extension gets `application/x-fearless-<ext>` like a system extension; no system glob can match it.
-- Nothing outside the files of the manager changes. Releasing an extension rewrites the MIME package of the manager without that extension, and the system types are back as they were.
-- The Linux counterpart of the Windows UserChoice is a `[Default Applications]` entry, in any `mimeapps.list`, naming another program for a type of the manager: such an entry makes reconcile refuse the extension.
-
-#### Icons on the desktop
-
-On Windows the registry names an icon by its path, so the desktop reads the `.ico` straight from `.fearless_out/icons/`. On Linux a MIME type names its icon, and the desktop looks names up only in icon theme folders: `$XDG_DATA_HOME/icons` of the user, `$XDG_DATA_DIRS/icons` of the system (root only) and the legacy `~/.icons`. `reconcile` installs each icon as `$XDG_DATA_HOME/icons/hicolor/256x256/mimetypes/<identity>-<hash>.png`; the hash gives a changed image a new name, past the icon cache of the desktop. Every file there named `<identity>-<hash>.png` belongs to that identity: each `reconcile` deletes the files of that identity not in the wanted set, and removing an identity deletes all the files of that identity together with the `apps/<identity>.png`, the `.desktop` file and the MIME package of that identity.
+The icon of an extension is `Coordinator.iconFiles` of the icon of the claim (see CoordinatorDesign), or the files of the `icons` folder of the manager folder for the Fearless icon and the conflict icon (see Conflict icon).
+The desk id of a main (the `.deskId` of `Launch`, see CoordinatorDesign) is `<identity>-<hash>`: the identity of the manager (see ReconciliatorDesign), then the hash of the project folder and the name of the main.
+Reconcile also takes the `.preloaded` icons of every main of `Coordinator.cachedMains` of every registered `code` project whose `Coordinator.compile` is not running, each as the window class `<desk id>-<icon name>`, named by the simple name of the main, with the project folder as `.target`.
+The `programIcon` of the manager is the icon of the launcher of the manager.
+On Windows a running main gives its windows the `.ico` of `Coordinator.iconFiles` directly.
 
 ### Opening a file
 
@@ -493,16 +447,15 @@ On `OpenWithOrShortcut <path>` the 'single' manager reacts:
 
 1. One main claims the extension: run that main as `Run` runs a selected main, leaving the selected mains as they are. The running main receives the file as its first input file (see Input files).
 2. Several mains claim the extension: a small window lists those mains with their icons as `project::pkg.Main`, sorted. Picking an entry sends `OpenWithOrShortcut <path> <name> <main>`, with the project and the main of that entry; that message runs the main as in 1. Closing the window runs nothing.
-3. No main claims the extension (an extension of `systemExtensions` that no main claims): the `OpenWithOrShortcut` is ill formed (see Ill formed messages).
+3. No main claims the extension: the `OpenWithOrShortcut` is ill formed (see Ill formed messages).
 
-An empty file runs nothing: the `OpenWithOrShortcut` is ill formed (see Ill formed messages). GNOME types every empty file as `application/x-zerosize` whatever the name of the file and never hands an empty file to the manager; refusing empty files everywhere makes Windows and the other desktops behave the same.
+GNOME types every empty file as `application/x-zerosize` whatever the name of the file and never hands an empty file to the manager; refusing empty files everywhere (see Ill formed messages) makes Windows and the other desktops behave the same.
 
 ### Input files
 
 A running main sees its input files through `System.inputCursor` of the standard library: the list of the files given to the program, in the order they arrived.
 The list starts with the file opened by `OpenWithOrShortcut`, a document or a shortcut file alike, and starts empty for a main started by `Run`.
 Dropping files on a window of a running Fearless program adds those files at the end of the list, in the order of the drop. A drop holding anything that is not a file, a folder for example, adds nothing and is refused.
-This holds for the portable Fearless too: dropping files on a window is part of the runtime of every Fearless program.
 `System.inputCursor` is a cursor on the first position of the list; `#` gives the file at that position, empty until a file arrives there, and `.next` the cursor on the next position. So a program sees a new file by asking again at the first position that was empty.
 An input file offers the reading methods of the autoloaded `TxtFile` and `ImageFile` assets, without their `AssetReadCapability` argument: the input file is itself the capability. Every read reads the file again, and a file that can not be read any more is a non deterministic error.
 
@@ -514,47 +467,45 @@ So a method of `CapManager` returns once the manager has applied the message of 
 A kind is a method of its own (`.kindIdle`, `.kindCode`, `.kindDataRead`, `.kindDataEdit`): a message of a running main can not hold a kind that is not one of the four.
 `Mount` is `.mount(name, type, data)`, and `Unmount` is `.unmount(name, type)`.
 A path is the list of the bytes naming the path, the bytes of the `Base16:` form of the path. A method whose arguments do not make a `call` (a path that is not absolute or is the root of a drive, a name that is not a `projectName`, a main, a type or an attenuator that is not a `typeName`, `.selectMains` with two equal mains) is a non deterministic error of the running main: no message is sent.
-The manager shows a refused message in a dialog, as for every other message, and the method is a deterministic error holding the text after the line `Refused`.
+A refused message makes the method a deterministic error holding the text after the line `Refused`.
 `.quit`, `.reset`, and `.terminate` naming the project of the running main never return: the running main ends.
-A program started by the portable Fearless has no manager: every method of `CapManager` is a non deterministic error.
 
 ### System extensions
 
-Removing an extension from `systemExtensions` makes the manager release that extension, and deletes the compilation cache of every project whose mains claim that extension: those projects need compiling again.
-
-When a compile wants a system extension that is not in `systemExtensions`, the compile fails, naming the main, the claim and the extension. The manager window then asks in a dialog whether to add the extension to `systemExtensions`. Confirming the dialog is an `EditMetadata` adding the extension; the project then needs compiling again.
+The error of step 1 for a system extension not in `systemExtensions` names the main, the claim and the extension. The manager window then asks in a dialog whether to add the extension to `systemExtensions`. Confirming the dialog is an `EditMetadata` adding the extension.
 
 ### Conflict icon
 
-The conflict icon is the Fearless icon with a purple `?` on top of the Fearless icon, stored as a PNG in the standard library at `base/icons/conflict.png`. The manager reads the conflict icon from the stdLib folder of the application image of the manager and materialises the conflict icon like any other icon, the PNG and the `.ico`, in the `icons` folder of the manager folder.
+The conflict icon is the Fearless icon with a purple `?` on top of the Fearless icon, stored as a PNG in the standard library at `base/icons/conflict.png`. The manager reads the conflict icon and the Fearless icon, `base.IconsFearless`, from the folder of `base` (see The data in CoordinatorDesign) and materialises both icons like any other icon, the PNG and, on Windows, the `.ico`, in the `icons` folder of the manager folder.
 
-The conflict icon is the autoloaded type `base.IconsConflict`. `base` autoloads the assets of `base` as if the files of `base` were under a `_base` folder: `.path` is `fear:/_base/icons/conflict.png` and `.diskPath` is `icons/conflict.png`, relative to the stdLib `base` folder, which a running main receives as `fearlessBase.dir`.
+The conflict icon is the autoloaded type `base.IconsConflict`. `base` autoloads the assets of `base` as if the files of `base` were under a `_base` folder: `.path` is `fear:/_base/icons/conflict.png` and `.diskPath` is `icons/conflict.png`, relative to the folder of `base`, which a running main receives as `fearlessBase.dir`.
 
 ## Eclipse
 
 Connect Eclipse asks for a file or a folder through a file picker. The Eclipse folder is the one folder holding `.eclipseproduct`; the chosen file or folder is the Eclipse folder, is directly inside the Eclipse folder, is directly inside a folder directly inside the Eclipse folder, or is a folder holding only the Eclipse folder.
-Connect Eclipse puts the plugin in the Eclipse folder, with `manager.info` next to the plugin: `manager.info` holds the path of the manager program folder, as a `taggedText`. From that path the plugin finds the manager program, the manager folder and the compiled standard library.
+Connect Eclipse puts the plugin in the Eclipse folder, with `manager.info` next to the plugin: `manager.info` holds the path of the manager program folder, as a `taggedText`. From that path the plugin finds the manager program, the manager folder and the base cache (see CoordinatorDesign).
 
 The Output of a running program has no bound on its size, so the manager does not pass it through files: Eclipse listens on a port, and the `Run` and `Compile` of Eclipse carry that port.
 Eclipse shows a refused `Run` or `Compile` only through the dialog of the manager: the Output view stays empty.
-Eclipse follows the mains or the compilation of the last `Run` or `Compile` of Eclipse; Eclipse sends no other `Run` or `Compile` until those mains or that compilation end, except for a save. Everything else Eclipse shows (the error of the last compile, the unit test log) is read from files.
+Eclipse follows the mains or the compilation of the last `Run` or `Compile` of Eclipse; Eclipse sends no other `Run` or `Compile` until those mains or that compilation end, except for a save. Everything else Eclipse shows (the error of the last compilation, the unit test log) is read from files.
 
-Saving a file of a code project in Eclipse compiles the project. Users save often, and a compilation about to end should not be thrown away:
-- if Eclipse follows a compilation of that project that started more than 15 seconds ago, the save is ignored: the files stay unsaved in the editors;
-- otherwise Eclipse sends `Terminate` of the project (a running main is always ended, and so is a younger compilation), saves every open file of the project together, and sends `Compile` of the project.
+Saving a file of a code project in Eclipse compiles the project:
+- while Eclipse follows a compilation of that project, the save is ignored: the files stay unsaved in the editors;
+- otherwise Eclipse sends `Terminate` of the project (a running main is ended), saves every open file of the project together, and sends `Compile` of the project, or `Check` for a code project Eclipse sees as 'invalid', as Build does. During a compilation of that project that Eclipse does not follow, the manager refuses that `Terminate` and that `Compile` or `Check`, Eclipse saves the files anyway, and the project is 'out of date' once the running compilation ends (see `.compile` in CoordinatorDesign).
 
-The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and writes into a project folder only the files and folders the user saves or creates; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not the mirror of that project is an error. Every two seconds the plugin reflects `projects.info` and the `.fearless_out` folders: the error of the last compile (`compile_error.txt`) in the Problems view, on the file and at the line the error names, or on the project while that file does not exist, and the error of the last `Check` (`check_error.txt`) on the project, each while that error file is not a 'stale error file', and in the JUnit view the unit test log the running main writes in `.out/logs`: the complete records of the log, the lines of the log up to the last newline, without a test case whose closing line is not written yet. The plugin shows the followed mains or compilation in the Output view, emptied when the mains of a `Run` or a compilation start, like the Output area of the manager: a view with no buttons, where a stack frame and the header of a compile error are links opening that file at that line. Fearless files show with syntax highlighting. Build (`Compile` for a code project that is not 'invalid', `Check` for any other), Clean (`DeleteCache`), the main button below, the kind switches of the Fearless menu of a project, New Fearless Project (`Register`), Show in manager (`Show` with the name of the project) and Forget project are messages to the manager.
-The toolbar of the Fearless perspective holds the main button of the manager for the project of the active editor or of the selection. The main button shows what pressing the main button does, each with an image of its own: Check, Compile, Run, Run V, or Terminate while Eclipse follows a run or a compilation of that project. Run V asks which mains to run, with the selected mains checked, then sends `SelectMains` naming the mains chosen and `Run`; Run of a project with one main sends `SelectMains` naming that main, then `Run`. Besides the main button, the toolbar of the Fearless perspective holds only the buttons of text editing (Save, Undo, Redo, Search, the toggles of the editor and the navigation in the text); a button that does nothing for Fearless or repeats another is hidden, and so is the Run menu, in the Fearless perspective only. Eclipse finds the state from the files, as the manager does: the kind in `projects.info`, the marker, the packages and the rank files of the packages, and whether compiling would compile some package. A code project 'invalid' for a cause Eclipse does not read shows Compile, and the manager refuses that `Compile` with the 'problem' of the project.
+The error file `_error.txt` is a 'stale error file' once the project folder, a file or folder of the project whose path holds no file name or folder name starting with `.`, the folder `.config`, the folder `.config/icon` or a file of `.config/icon` has a time after the time of the error file and not after the current time. A 'stale error file' is shown nowhere.
+The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and writes into a project folder only the files and folders the user saves or creates; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not the mirror of that project is an error. Every two seconds the plugin reflects `projects.info` and the `.fearless_out` folders: the error of `_error.txt` (see CoordinatorDesign) in the Problems view, on the file and at the line the error names, or on the project while that file does not exist or the error names no file, while `_error.txt` is not a 'stale error file', and in the JUnit view the unit test log the running main writes in `.out/logs`: the complete records of the log, the lines of the log up to the last newline, without a test case whose closing line is not written yet. The plugin shows the followed mains or compilation in the Output view, emptied when the mains of a `Run` or a compilation start, like the Output area of the manager: a view with no buttons, where a stack frame and the header of a compile error are links opening that file at that line. Fearless files show with syntax highlighting. Build (`Compile` for a code project that is not 'invalid', `Check` for any other), Clean (`DeleteCache`), the main button below, the kind switches of the Fearless menu of a project, New Fearless Project (`Register`), Show in manager (`Show` with the name of the project) and Forget project are messages to the manager.
+The toolbar of the Fearless perspective holds the main button of the manager for the project of the active editor or of the selection. The main button shows what pressing the main button does, each with an image of its own: Check, Compile, Run, Run V, or Terminate while Eclipse follows a run of that project, and is greyed out while Eclipse follows a compilation of that project. Run V asks which mains to run, with the selected mains checked, then sends `SelectMains` naming the mains chosen and `Run`. Besides the main button, the toolbar of the Fearless perspective holds only the buttons of text editing (Save, Undo, Redo, Search, the toggles of the editor and the navigation in the text); a button that does nothing for Fearless or repeats another is hidden, and so is the Run menu, in the Fearless perspective only. Eclipse finds the state from the files, with the rules of an 'autoCheck': the kind in `projects.info`, the marker, and the rules of `Coordinator.check` (see CoordinatorDesign). A code project 'invalid' for a cause Eclipse does not read shows Compile, and the manager refuses that `Compile` with the 'problem' of the project.
 The toolbar of the Fearless perspective also holds New Package and New Type, for the project of the active editor or of the selection; each asks for a path inside the project folder and refuses a path that is not valid, naming the rule of the Fearless file names the path breaks:
 - New Package takes a path like `lib/_beer`, and makes the package folder `_beer` with the folders holding the package folder;
-- New Type takes a path like `lib/_beer/point`, and makes the file `point.fear` holding the type `Point`. The option Rank file makes the rank file of that package instead, `_rank_app.fear` or the rank chosen, holding the usual `use` lines of the standard library. The option Example tests adds a test suite checking some arithmetic.
+- New Type takes a path like `lib/_beer/point`, and makes the file `point.fear` holding the type `Point`. The option Rank file makes the rank file of that package instead, `_rank_app.fear` or the rank chosen, holding a `use` line for each of `base.Main`, `base.UnitTests`, `base.Test`, `base.Void`, `base.Bool`, `base.Nat`, `base.Int`, `base.Float`, `base.Str`, `base.List`, `base.Lists`, `base.Opt`, `base.Opts`, `base.Block`, `base.Error` and `base.Debug`. The option Example tests adds a test suite checking some arithmetic.
 New Folder and New File of the Fearless perspective warn when the name is not a valid file name of a Fearless project, naming the rule the name breaks, and create the folder or the file anyway.
 New Fearless Project registers a folder, made if missing (`Register`). New Fearless Project can first write a demo into a new or empty folder, then make the project code (`Kind`) once the manager lists the project: Hello world; Simple GUI, a window with a button; Shortcut and OpenWith, a main started by the shortcut file of the main and a main claiming an extension, each with an icon of its own. The OpenWith main of this demo is a window showing the text of the file the main is opened with; every file dropped on that window adds the text of that file at the end.
 A missing or malformed file of the manager is an error shown in Eclipse, and the plugin stops following the manager until Eclipse starts again.
 
 ## Content assist
 
-Content assist works in a Fearless file of a package folder of a mirrored project, after a dot and on request. Content assist uses the compiled information of the last compile of the project and of the compiled standard library: the api json of every package, the map directives of the project as that compile resolved the map directives, and the text documentation of the package of each proposal. A malformed api json or map, a missing documentation file, and a public type or a method of a type missing from the documentation are errors.
+Content assist works in a Fearless file of a package folder of a mirrored project, after a dot and on request. Content assist uses the compiled information of the last compilation of the project and of the base cache: the `.types` of the `<pkg>.json` of every package, the `<pkg>.txt` of the package of each proposal (see CoordinatorDesign), and the map directives of the rank files of the project. A malformed `<pkg>.json`, a missing `<pkg>.txt`, and a public type or a method of a type missing from the documentation are errors: the content assist popup shows the error, with one proposal, Clean, which sends `DeleteCache` of the project. When `.fearless_out` holds `_unfinished.txt` before content assist reads the files, or, after content assist reads the files, holds `_unfinished.txt` or no longer holds a `<pkg>.json` that content assist read, a missing `<pkg>.txt` and a type or a method missing from the documentation are not errors: content assist shows its proposals without documentation.
 
 Content assist proposes:
 - nothing while the cursor is inside a comment or a string, or touches a name that follows no dot (`ps|`, `Perso|`);
@@ -564,15 +515,15 @@ Content assist proposes:
 Each proposal shows the signature of the method or type, with simple type names and with reference capabilities, and the documentation of the method or type.
 
 The text is read with the tokens of the compiler. The expression before the cursor is what follows the last `;`, `,`, `->`, `:` or the `'` starting a self name in the innermost bracket around the cursor, read with the grammar of the compiler: an atom, then posts left to right, where a post without parenthesis takes one atom, and `.m x = e rest` binds `x`. A bracket not closed yet runs to the end of the text. What the compiler would reject is unknown, and unknown has no methods. The type of:
-- a type name is that type: a simple name is the alias of a `use` directive of the head file of the package (the only `_rank_` file of the package), else a type of the package; a name without `[..]` has no generics. A package name written in the package, in a qualified name or a `use` directive, stands for the package the `map` directives of the project give that name there. A number or a string is a `base.Nat`, `base.Int`, `base.Float` or `base.Str`;
+- a type name is that type: a simple name is the alias of a `use` directive of the rank file of the package, else a type of the package; a name without `[..]` has no generics. A package name written in the package, in a qualified name or a `use` directive, stands for the package the `map` directives of the project give that name there. A number or a string is a `base.Nat`, `base.Int`, `base.Float` or `base.Str`;
 - a name is the type of what binds the name. The literals around the cursor bind the self name of the literal, or `this` for a top level declaration, the generics of a declaration and of the method holding the cursor, and the parameters of that method: to the written type, else to the type of the parameter of the method the literal implements (the method of that name, or, for a method without name, the only abstract method with that number of parameters not implemented by name in the literal). An earlier `x = e` of the same expression binds `x` to the first parameter of the continuation of the method of that `x = e`; inside that `e`, `x` is unknown;
 - a literal is the type the literal declares, or the type written before the literal, or else the type expected by the call the literal is an argument of, or the result type of the method the literal is the whole body of; the generics of that type still open are bound by the types of the bodies of the methods of the literal;
-- a call is the result types of every method of that name and number of arguments of the type of the receiver of the call (several when those methods differ in the reference capability of the receiver, or when the supertypes of a type the last compile does not know disagree), each result type with the generics of the method bound by the explicit type arguments, then by each argument meeting the type of the parameter of that argument, left to right, then by the type expected of the call. An expression of several types has the methods of all those types.
+- a call is the result types of every method of that name and number of arguments of the type of the receiver of the call (several when those methods differ in the reference capability of the receiver, or when the supertypes of a type the last compilation does not know disagree), each result type with the generics of the method bound by the explicit type arguments, then by each argument meeting the type of the parameter of that argument, left to right, then by the type expected of the call. An expression of several types has the methods of all those types.
 
-A type declared in the edited file that the last compile does not know has every method of the supertypes of that type: when supertypes have methods with the same name and number of parameters, all those methods are proposed.
+A type declared in the edited file that the last compilation does not know has every method of the supertypes of that type: when supertypes have methods with the same name and number of parameters, all those methods are proposed.
 
 ## Error management
-An error shared with the portable Fearless is in Coordinator (`Report`, `Violation`); an error unique to the manager is in Controllers, in the same (`Report`, `Violation`) classification.
+An error of the Coordinator is in Coordinator (`Report`, `Violation`); an error of the manager is in Controllers, in the same (`Report`, `Violation`) classification.
 
 ## Future design
 
@@ -596,11 +547,13 @@ An implementation decides alone every detail the design leaves open below the co
 - The stand-in for the tray: under Wayland a program can not place the windows of the program, but AWT on Linux is an X11 client (through XWayland under Wayland), so the manager places the window itself.
   The stand-in is an AWT window of type popup. On X11 the window manager does not manage a popup window: no taskbar lists a popup window, and a popup window stays where the manager places the popup window.
 - A double click on a button presses the button twice, and the second press comes before the request of the first press changes the window, so the second press sends the same request again.
-- A main or a compilation ending alone: the JVM of each main and of each compilation is a process of its own. A process that crashes ends alone. The out of memory killer of the Linux kernel ends one process at a time, chosen by memory use, and Windows and macOS end no group of processes either. systemd-oomd ends a whole cgroup when the memory pressure stays high; a cgroup is a group of processes the Linux kernel accounts together, and a child process starts in the cgroup of the parent process. So on Linux with systemd as init, `Fs.processBuilder` starts each child with `systemd-run --user --scope`, in a transient scope: a cgroup of its own.
+- A main or a compilation ending alone: the JVM of each main and of each compilation is a process of its own. A process that crashes ends alone. The out of memory killer of the Linux kernel ends one process at a time, chosen by memory use, and Windows ends no group of processes either. systemd-oomd ends a whole cgroup when the memory pressure stays high; a cgroup is a group of processes the Linux kernel accounts together, and a child process starts in the cgroup of the parent process. So on Linux with systemd as init, `Fs.processBuilder` starts each child with `systemd-run --user --scope`, in a transient scope: a cgroup of its own.
   systemd-oomd is on by default on Ubuntu with GNOME, Fedora (GNOME and COSMIC) and Omarchy. systemd-oomd is off on Arch, and missing on Debian, Kubuntu, Lubuntu, Xubuntu and openSUSE Tumbleweed. Void has no systemd.
+- A main or a compilation ending with the manager: the JVM of each main and of each compilation reads its standard input, a pipe the manager holds open, and halts when that standard input ends. So a manager that ends, however the manager ends, ends every main and every compilation the manager started.
+- Removing a manager folder at once: rename the manager folder to a new name in the same folder, then delete the renamed folder. On Windows a folder holding a file that a process has open can not be renamed, and the 'single' manager holds `instance.lock` open: how to remove the folder of a running manager at once on Windows is open.
 - The 'single' manager: the process holding the lock (`FileChannel.tryLock`) of the file `instance.lock` in the manager folder. The operating system releases the lock when the process ends, however the process ends, so a manager that was killed leaves no stale lock.
 
-- Tray on Linux: `java.awt.SystemTray` needs an XEmbed tray, which GNOME and most Wayland desktops do not have; what those desktops show is a StatusNotifierItem on the session bus, registered with `org.kde.StatusNotifierWatcher`, the menu of the item served as `com.canonical.dbusmenu`. A desktop with no owner of the watcher name may still have an XEmbed tray (MATE, i3): there the manager uses `java.awt.SystemTray`, as on Windows and macOS. A desktop with neither has no tray. The JDK has no D-Bus client, so the manager speaks the D-Bus wire protocol itself on the `unix:path=` socket of `DBUS_SESSION_BUS_ADDRESS`.
+- Tray on Linux: `java.awt.SystemTray` needs an XEmbed tray, which GNOME and most Wayland desktops do not have; what those desktops show is a StatusNotifierItem on the session bus, registered with `org.kde.StatusNotifierWatcher`, the menu of the item served as `com.canonical.dbusmenu`. A desktop with no owner of the watcher name may still have an XEmbed tray (MATE, i3): there the manager uses `java.awt.SystemTray`, as on Windows. A desktop with neither has no tray. The JDK has no D-Bus client, so the manager speaks the D-Bus wire protocol itself on the `unix:path=` socket of `DBUS_SESSION_BUS_ADDRESS`.
 - Clicks on the tray icon on Linux: each desktop decides what a click on a StatusNotifierItem does.
   Some desktops show the menu served as `com.canonical.dbusmenu` themselves.
   Other desktops report the click to the item: `Activate` (usually a left click), `SecondaryActivate` (usually a middle click) or `ContextMenu` (usually a right click), each with the point of the click.
@@ -612,3 +565,10 @@ An implementation decides alone every detail the design leaves open below the co
 - Syntax highlighting in Eclipse: `org.eclipse.tm4e` colours a file from a TextMate grammar. The only grammar of Fearless is `syntaxes/fearless.tmLanguage.json` of the plugin, with the themes `fearless-light.css` and `fearless-dark.css`; a rewrite keeps those files, or writes the grammar again from the tokens of the Frontend.
 - JUnit view in Eclipse: `JUnitCore.importTestRunSession` of `org.eclipse.jdt.junit.core` shows a JUnit XML report file.
 - Port of a message: a TCP port on the loopback address. The manager connects, sends the status line, then the reason of a refusal or the Output of the mains or of the compilation, as UTF-8 text, then closes the connection. Eclipse and a running main listen on a port the system picks.
+
+## Notes
+
+- `Manager.associate` checks that the PNG of every cached icon exists (`iconGone`). That check goes: the manager does not search for corrupted files of `.fearless_out` (see CoordinatorDesign).
+- A `reconcile` refusing because more than one identity of the Fearless family is on the system shows the error with a button "Remove all Fearless registrations" (`Association.eradicateAll`), where the design has a 'fatal error'.
+- The manager does not delete the compilation cache of a project whose kind changes (`Manager.edit`), where the design calls `Coordinator.deleteCache`.
+- The plugin (`ManagerLink.error`) counts every file of the project folder outside `.fearless_out` and the time of `projects.info`, with no bound on the current time, where the design has the 'stale error file' rule.
