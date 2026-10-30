@@ -37,8 +37,8 @@ For example:
 ```
 "FearlessCommandQuit"
 "FearlessCommandShow hello_world"
-"FearlessCommandRun hello_world hello.Hello1"
-"FearlessCommandRun hello_world hello.Hello1 hello.Hello3 Port:51234"
+"FearlessCommandSelectMains hello_world hello.Hello1 hello.Hello3"
+"FearlessCommandRun hello_world Port:51234"
 "FearlessCommandRegister Base16:2F646174612F68656C6C6F"
 ```
 (the last one registers `/data/hello` on Linux).
@@ -88,7 +88,7 @@ A verb is one of the following, written in upper camel case. Verbs about the who
 - `OpenWithOrShortcut <path>`: open the file with the main claiming the extension of the file; when several mains claim that extension, show a window listing those mains (see Opening a file). Double clicking the file on the desktop is the GUI operation of `OpenWithOrShortcut <path>`.
 - `OpenWithOrShortcut <path> <name> <main>`: open the file with the main `<main>` of the project `<name>`, one of the mains claiming the extension of the file. Picking a main in the window that `OpenWithOrShortcut <path>` shows is the GUI operation of `OpenWithOrShortcut <path> <name> <main>`.
 Verbs about one project, taking the name of a registered project:
-- `Run <name> <main0>..<mainn>`: select the project and run the mains, in the order of the mains of the project; they become the selected mains;
+- `Run <name>`: select the project and run the selected mains of the project, in the order of the selected mains;
 - `Compile <name>`: select the project and compile the project if the project needs compiling;
 - `Check <name>`: select the project and report in the Output of the project the 'problem' of the project, or that the project is 'out of date', or that the project is neither 'invalid' nor 'out of date'; the 'problem' is also written to `.fearless_out/check_error.txt`, and a `Check` of a project with no 'problem' deletes `.fearless_out/check_error.txt`;
 - `Terminate <name>`: select the project and end the main or the compilation of the project currently running, if any;
@@ -98,7 +98,8 @@ Verbs about one project, taking the name of a registered project:
 - `Mount <name> <type> <data>`: set the mount of the DataRead type `<type>` of the project to the data project `<data>` (see DataReadDataEditDesign);
 - `Unmount <name> <type>`: remove the mount of the DataRead type `<type>` of the project;
 - `Attenuate <name> <main> <attenuator1>..<attenuatorn>`: set the attenuators of the main `<main>` of the project to the attenuators `<attenuator1>..<attenuatorn>`, applied in order; no `<attenuator>` removes all the attenuators of `<main>` (see the Manager section of AttenuationDesign);
-`Forget`, `Kind`, `Mount`, `Unmount` and `Attenuate` are special cases of `EditMetadata`: each one is `EditMetadata` with the current `projects.info` changed in one place (the project removed, the `kind` of the project replaced, the mount of one DataRead type replaced or removed, the attenuators of one main replaced).
+- `SelectMains <name> <main1>..<mainn>`: set the selected mains of the project to the mains given; no `<main>` removes the selected mains;
+`Forget`, `Kind`, `Mount`, `Unmount`, `Attenuate` and `SelectMains` are special cases of `EditMetadata`: each one is `EditMetadata` with the current `projects.info` changed in one place (the project removed, the `kind` of the project replaced, the mount of one DataRead type replaced or removed, the attenuators of one main replaced, the selected mains of the project replaced).
 Such a verb is applied, or is ill formed with the same error, exactly as that `EditMetadata` is.
 Before applying the request of a call with a `port`, the manager connects to that port of this machine.
 What the manager sends on the connection starts with a line saying what became of the message: `Applied` or `Refused`.
@@ -121,7 +122,7 @@ command ::= FearlessCommandShow projectName?
   | FearlessCommandEditMetadata base16
   | FearlessCommandOpenWithOrShortcut base16
   | FearlessCommandOpenWithOrShortcut base16 projectName typeName
-  | FearlessCommandRun projectName typeName0..typeNamen
+  | FearlessCommandRun projectName
   | FearlessCommandCompile projectName
   | FearlessCommandCheck projectName
   | FearlessCommandTerminate projectName
@@ -131,12 +132,13 @@ command ::= FearlessCommandShow projectName?
   | FearlessCommandMount projectName typeName projectName
   | FearlessCommandUnmount projectName typeName
   | FearlessCommandAttenuate projectName typeName typeName1..typeNamen
+  | FearlessCommandSelectMains projectName typeName1..typeNamen
 kind ::= idle | code | dataRead | dataEdit
 port ::= Port:1 .. Port:65535
 projectName ::= (?!(con|prn|aux|nul|com[1-9]|lpt[1-9])$)[a-z_][a-z0-9_]{0,190}
 typeName ::= (?!(con|prn|aux|nul|com[1-9]|lpt[1-9])[.])[a-z][a-z0-9_]*[.]_*[A-Z][A-Za-z0-9_]*'*
 ```
-The `typeName0..typeNamen` of `FearlessCommandRun` are all different.
+The `typeName1..typeNamen` of `FearlessCommandSelectMains` are all different.
 The `base16` of a `call` names an absolute path that is not the root of a drive.
 An argument starting with `FearlessCommand` is a bad argument when the argument is not a `call`.
 
@@ -152,7 +154,7 @@ Ill formed messages:
 - `Run` of a project whose `attenuators` name a main that is not a main of the project, or an attenuator that is not an attenuator of the project (the error lists the mains, or the attenuators);
 - `Run` of a project with a broken mount, or with a DataRead type with no mount (see DataReadDataEditDesign; the error lists each broken mount, naming what makes that mount broken, and each DataRead type with no mount);
 - `Run` and `Compile` of an 'invalid' project (the error is the 'problem' of the project);
-- `Run` of a project that is not compiled, naming the state of the project; `Run` naming a main that is not a main of the project (the error lists the mains of the project);
+- `Run` of a project that is not compiled, naming the state of the project; `Run` of a project with no selected main, or with a selected main that is not a main of the project (the error lists the mains of the project);
 - `Run`, `Compile` or `DeleteCache` while a main or a compilation of the project is currently running.
 
 Whether a message is ill formed is decided when the 'single' manager starts applying the request of the message, from the message and the current state, before anything is compiled, run or written to the Output.
@@ -216,7 +218,7 @@ The manager is the only program writing `projects.info`: the manager writes the 
 Each project has `path` and `kind`, and may have `mains`, `mounts` and `attenuators`; an absent field is the empty list or the empty object:
 - `path`: the absolute path of the project folder, any path the system allows, exactly as the current system and file system name the folder, separators included, as a `taggedText`. Two projects never share a folder, and a project folder is never inside another project folder.
 - `kind`: `idle`, `code`, `dataRead` or `dataEdit`.
-- `mains`: the selected mains: the mains the last `Run` ran, for a code project with several mains.
+- `mains`: the selected mains, set by `SelectMains`.
 - `mounts`: for each DataRead type, the name of the data project mounted on that DataRead type (see DataReadDataEditDesign).
 - `attenuators`: for each main the attenuators the manager applies to that main, in order; a main absent from `attenuators` gets no attenuator. Naming a main or an attenuator the project does not have is well formed.
 
@@ -288,7 +290,7 @@ A simplified 'desktop with icons' fills the manager window under the menu bar wh
 Tiles represent the registered projects, sorted by name: each tile shows the project icon with the state badge of the project, and the project name under the project icon.
 A busy project (compiling or running) shows an animated badge.
 Clicking a tile is `Show` with the name of the project of the tile.
-Double clicking the tile of a project in the state `code: compiled` is `Run` of that project naming the only main of the project, or, for a project with several mains, the selected mains (`mains` in `projects.info`). For any other project, and for a project with several mains and no selected main, a double click is a click.
+Double clicking the tile of a project in the state `code: compiled` is `Run` of that project; for a project with one main, the `Run` comes after a `SelectMains` naming that main. For any other project, and for a project with several mains and no selected main, a double click is a click.
 
 ## Project area contains, top to bottom:
 
@@ -303,7 +305,8 @@ A header on one line: the project icon, the project name, and the following butt
 - Browse, opening the project folder in the file explorer, Forget (`Forget`), and for a code project Delete cache (`DeleteCache`).
 The kind buttons, Forget and Delete cache are greyed out while a main or a compilation of the project is currently running.
 
-Pressing Run V opens a drop-down menu showing the mains of the project, each with a checkbox, the selected mains checked, and a Run button at the end of the list, disabled while no main is checked. That Run button is `Run` naming the checked mains; the Run button of a project with one main is `Run` naming that main.
+Pressing Run V opens a drop-down menu showing the mains of the project and the selected mains that are not mains of the project, each with a checkbox, the selected mains checked, and a Run button at the end of the list, disabled while no entry is checked or a checked entry is not a main of the project. Checking or unchecking an entry is a `SelectMains` naming the checked entries. That Run button is `Run` of the project; the Run button of a project with one main is a `SelectMains` naming that main, then `Run` of the project.
+A project with selected mains that shows no Run V shows the selected mains in the project area, with a Remove button: a `SelectMains` naming no main.
   
 For a code project whose mains have a `Shortcut`, after the header we see each shortcut file as the simplified desktop shows a project: the icon of the `Shortcut`, with the name of the shortcut file under the icon.
 Double clicking a shortcut file there is `OpenWithOrShortcut` with the path of that shortcut file: the very message a double click on that file on the desktop of the system sends.
@@ -329,7 +332,7 @@ For a code project we have the Logs 'collapsible area', showing the log files th
 A project runs at most one thing at a time: a compilation, or the mains of one `Run`, one after the other.
 Every `Run`, `Compile` and `Check` starts with an empty Output. Everything a running main or a compilation prints goes to the Output, and the Output marks where each main and the compilation start and end, and how each of them ended, so that Eclipse and the user know when the mains of a `Run` or the compilation are over.
 
-- Compile (code projects): the compiler runs in its own JVM; what the compiler prints goes to the Output. A compile that ends with the mains known removes from the selected mains those that are no longer mains. A compile that fails leaves the project 'out of date': the packages the compile did not compile stay out of date, and a compile that fails after compiling the packages (on an icon, an extension or a shortcut file) deletes the 'manifests' of the project, so reading the mains fails. A compile that fails writes the error to `.fearless_out/compile_error.txt`, and a compile that succeeds deletes `.fearless_out/compile_error.txt`.
+- Compile (code projects): the compiler runs in its own JVM; what the compiler prints goes to the Output. A compile that fails leaves the project 'out of date': the packages the compile did not compile stay out of date, and a compile that fails after compiling the packages (on an icon, an extension or a shortcut file) deletes the 'manifests' of the project, so reading the mains fails. A compile that fails writes the error to `.fearless_out/compile_error.txt`, and a compile that succeeds deletes `.fearless_out/compile_error.txt`.
 - Run (code projects): a `Run` runs the mains the `Run` names, in the order of the mains of the project. Each main runs in its own JVM, one after the other.
 - Terminate ends the running main or compilation: the JVM of that main or compilation ends, and no further main of that `Run` starts.
 - A main or a compilation that crashes, or that takes all the memory, ends alone: the manager and the mains and compilations of the other projects keep running.
@@ -487,7 +490,7 @@ On Windows the registry names an icon by its path, so the desktop reads the `.ic
 
 On `OpenWithOrShortcut <path>` the 'single' manager reacts:
 
-1. One main claims the extension: run that main, as `Run <name> <main>` does. The running main receives the file as its first input file (see Input files).
+1. One main claims the extension: run that main as `Run` runs a selected main, leaving the selected mains as they are. The running main receives the file as its first input file (see Input files).
 2. Several mains claim the extension: a small window lists those mains with their icons as `project::pkg.Main`, sorted. Picking an entry sends `OpenWithOrShortcut <path> <name> <main>`, with the project and the main of that entry; that message runs the main as in 1. Closing the window runs nothing.
 3. No main claims the extension (an extension of `systemExtensions` that no main claims): the `OpenWithOrShortcut` is ill formed (see Ill formed messages).
 
@@ -509,7 +512,7 @@ Each method of `CapManager` sends one message, as Eclipse does: the method liste
 So a method of `CapManager` returns once the manager has applied the message of the method: `.run` and `.compile` return once the mains or the compilation end, and return the Output of the mains or of the compilation, the text the manager sent on the port after the line `Applied`; the other methods return `Void`.
 A kind is a method of its own (`.kindIdle`, `.kindCode`, `.kindDataRead`, `.kindDataEdit`): a message of a running main can not hold a kind that is not one of the four.
 `Mount` is `.mount(name, type, data)`, and `Unmount` is `.unmount(name, type)`.
-A path is the list of the bytes naming the path, the bytes of the `Base16:` form of the path. A method whose arguments do not make a `call` (a path that is not absolute or is the root of a drive, a name that is not a `projectName`, a main, a type or an attenuator that is not a `typeName`, `.run` with no main or with two equal mains) is a non deterministic error of the running main: no message is sent.
+A path is the list of the bytes naming the path, the bytes of the `Base16:` form of the path. A method whose arguments do not make a `call` (a path that is not absolute or is the root of a drive, a name that is not a `projectName`, a main, a type or an attenuator that is not a `typeName`, `.selectMains` with two equal mains) is a non deterministic error of the running main: no message is sent.
 The manager shows a refused message in a dialog, as for every other message, and the method is a deterministic error holding the text after the line `Refused`.
 `.quit`, `.reset`, and `.terminate` naming the project of the running main never return: the running main ends.
 A program started by the portable Fearless has no manager: every method of `CapManager` is a non deterministic error.
@@ -540,7 +543,7 @@ Saving a file of a code project in Eclipse compiles the project. Users save ofte
 - otherwise Eclipse sends `Terminate` of the project (a running main is always ended, and so is a younger compilation), saves every open file of the project together, and sends `Compile` of the project.
 
 The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and writes into a project folder only the files and folders the user saves or creates; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not the mirror of that project is an error. Every two seconds the plugin reflects `projects.info` and the `.fearless_out` folders: the error of the last compile (`compile_error.txt`) in the Problems view, on the file and at the line the error names, or on the project while that file does not exist, and the error of the last `Check` (`check_error.txt`) on the project, each while that error file is not a 'stale error file', and in the JUnit view the unit test log the running main writes in `.out/logs`: the complete records of the log, the lines of the log up to the last newline, without a test case whose closing line is not written yet. The plugin shows the followed mains or compilation in the Output view, emptied when the mains of a `Run` or a compilation start, like the Output area of the manager: a view with no buttons, where a stack frame and the header of a compile error are links opening that file at that line. Fearless files show with syntax highlighting. Build (`Compile` for a code project that is not 'invalid', `Check` for any other), Clean (`DeleteCache`), the main button below, the kind switches of the Fearless menu of a project, New Fearless Project (`Register`), Show in manager (`Show` with the name of the project) and Forget project are messages to the manager.
-The toolbar of the Fearless perspective holds the main button of the manager for the project of the active editor or of the selection. The main button shows what pressing the main button does, each with an image of its own: Check, Compile, Run, Run V, or Terminate while Eclipse follows a run or a compilation of that project. Run V asks which mains to run, with the selected mains checked. Besides the main button, the toolbar of the Fearless perspective holds only the buttons of text editing (Save, Undo, Redo, Search, the toggles of the editor and the navigation in the text); a button that does nothing for Fearless or repeats another is hidden, and so is the Run menu, in the Fearless perspective only. Eclipse finds the state from the files, as the manager does: the kind in `projects.info`, the marker, the packages and the rank files of the packages, and whether compiling would compile some package. A code project 'invalid' for a cause Eclipse does not read shows Compile, and the manager refuses that `Compile` with the 'problem' of the project.
+The toolbar of the Fearless perspective holds the main button of the manager for the project of the active editor or of the selection. The main button shows what pressing the main button does, each with an image of its own: Check, Compile, Run, Run V, or Terminate while Eclipse follows a run or a compilation of that project. Run V asks which mains to run, with the selected mains checked, then sends `SelectMains` naming the mains chosen and `Run`; Run of a project with one main sends `SelectMains` naming that main, then `Run`. Besides the main button, the toolbar of the Fearless perspective holds only the buttons of text editing (Save, Undo, Redo, Search, the toggles of the editor and the navigation in the text); a button that does nothing for Fearless or repeats another is hidden, and so is the Run menu, in the Fearless perspective only. Eclipse finds the state from the files, as the manager does: the kind in `projects.info`, the marker, the packages and the rank files of the packages, and whether compiling would compile some package. A code project 'invalid' for a cause Eclipse does not read shows Compile, and the manager refuses that `Compile` with the 'problem' of the project.
 The toolbar of the Fearless perspective also holds New Package and New Type, for the project of the active editor or of the selection; each asks for a path inside the project folder and refuses a path that is not valid, naming the rule of the Fearless file names the path breaks:
 - New Package takes a path like `lib/_beer`, and makes the package folder `_beer` with the folders holding the package folder;
 - New Type takes a path like `lib/_beer/point`, and makes the file `point.fear` holding the type `Point`. The option Rank file makes the rank file of that package instead, `_rank_app.fear` or the rank chosen, holding the usual `use` lines of the standard library. The option Example tests adds a test suite checking some arithmetic.
