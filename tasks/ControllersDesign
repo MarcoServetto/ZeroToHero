@@ -90,7 +90,7 @@ A verb is one of the following, written in upper camel case. Verbs about the who
 - `OpenWithOrShortcut <path> <name> <main>`: open the file with the main `<main>` of the project `<name>`, one of the mains claiming the extension of the file. Picking a main in the window that `OpenWithOrShortcut <path>` shows is the GUI operation of `OpenWithOrShortcut <path> <name> <main>`.
 Verbs about one project, taking the name of a registered project:
 - `Run <name>`: select the project and run the selected mains of the project, in the order of the selected mains;
-- `Compile <name>`: select the project and compile the project if the project needs compiling;
+- `Compile <name>`: select the project and compile the project if the project is 'out of date'; otherwise the Output says `The project "hello" was already up to date and compiled.`;
 - `Check <name>`: select the project and report in the Output of the project the 'problem' of the project, or that the project is 'out of date', or that the project is neither 'invalid' nor 'out of date'; the 'problem' is also written to `.fearless_out/check_error.txt`, and a `Check` of a project with no 'problem' deletes `.fearless_out/check_error.txt`;
 - `Terminate <name>`: select the project and end the main or the compilation of the project currently running, if any;
 - `DeleteCache <name>`: select the project and delete the compilation cache of the project;
@@ -258,19 +258,17 @@ Each project is in one of these states, shown as a badge on the tile of the proj
 - `code: invalid content`, `dataRead: invalid content`, `dataEdit: invalid content`: the project folder is missing, the file names of the project are not valid Fearless file names (for code, also the package structure), the marker is missing or is not the only top level `.fearless` file, or the manager can not display the icon of the project;
 - `idle`;
 - `dataRead`, `dataEdit`;
-- `code: not compiled (no cache)`: no package is compiled, even if `.fearless_out` exists and holds the error of the last `Check` or `Compile`;
-- `code: not compiled (cache out of date)`: a compilation cache that does not match the sources;
-- `code: compiled`;
+- `code: not compiled (no cache)`: the project is 'out of date' and no package is compiled, even if `.fearless_out` exists and holds the error of the last `Check` or `Compile`;
+- `code: not compiled (cache out of date)`: the project is 'out of date' and some package is compiled;
+- `code: compiled`: the project is neither 'invalid' nor 'out of date'; a project with no package of its own uses only `base`, which is never 'out of date', so that project is compiled, with no main;
 - `code: busy`: a main or a compilation of the project is currently running.
 
 A project in a state `<kind>: invalid content` is 'invalid'. The 'problem' of an 'invalid' project is the error naming which of the causes above holds.
 A 'check' of a project reads the project folder and finds the state of the project and the mains of the project.
 
-A code project is 'out of date' exactly when compiling the project would compile some package: when the compilation cache of a package does not list exactly the current files of that package, or is older than one of those files. Files outside every package (a readme, the marker) never make a project 'out of date'.
-Changes in folders starting with `.` never make a project 'out of date', except changes in `.fearless_out`.
+A 'check' of a code project is a call of `Coordinator.check` (see CoordinatorDesign), which gives the state of the project: 'invalid' with the 'problem', 'out of date', or compiled with the merged manifests. The manager reaches `.fearless_out` only through the methods of `Coordinator`.
 
 The mains of a code project are known when the project is neither 'invalid' nor 'out of date': the concrete mains of every package of the project, read from the 'manifests'.
-When reading the mains finds a package that compiling would compile, or reading the mains fails, the project becomes 'out of date'.
 
 The manager is 'active' while the manager window is shown, and 'passive' while the manager window is hidden (the tray icon or the 'tray icon window' is shown) or minimized.
 A 'passive' manager becomes 'active' when the manager shows an error, or when the user shows the manager window.
@@ -333,7 +331,7 @@ For a code project we have the Logs 'collapsible area', showing the log files th
 A project runs at most one thing at a time: a compilation, or the mains of one `Run`, one after the other.
 Every `Run`, `Compile` and `Check` starts with an empty Output. Everything a running main or a compilation prints goes to the Output, and the Output marks where each main and the compilation start and end, and how each of them ended, so that Eclipse and the user know when the mains of a `Run` or the compilation are over.
 
-- Compile (code projects): the compiler runs in its own JVM; what the compiler prints goes to the Output. A compile that fails leaves the project 'out of date': the packages the compile did not compile stay out of date, and a compile that fails after compiling the packages (on an icon, an extension or a shortcut file) deletes the 'manifests' of the project, so reading the mains fails. A compile that fails writes the error to `.fearless_out/compile_error.txt`, and a compile that succeeds deletes `.fearless_out/compile_error.txt`.
+- Compile (code projects): the compiler runs in its own JVM; what the compiler prints goes to the Output. A compile that fails leaves the project 'out of date': the packages the compile did not compile stay out of date, and a compile that fails after compiling the packages (on an icon, an extension or a shortcut file) fails, so the project is 'out of date' (see CoordinatorDesign). A compile that fails writes the error to `.fearless_out/compile_error.txt`, and a compile that succeeds deletes `.fearless_out/compile_error.txt`.
 - Run (code projects): a `Run` runs the mains the `Run` names, in the order of the mains of the project. Each main runs in its own JVM, one after the other.
 - Terminate ends the running main or compilation: the JVM of that main or compilation ends, and no further main of that `Run` starts.
 - A main or a compilation that crashes, or that takes all the memory, ends alone: the manager and the mains and compilations of the other projects keep running.
@@ -432,19 +430,12 @@ The name of an icon in `.fearless_out/icons/` follows from the path of the image
 
 ### The in memory map
 
-The manager keeps `extension -> list of (project, main, icon)` in memory only. The manager builds the map at start up from the 'manifests' of every registered `code` project, and rebuilds the map after every compile, every deletion of the `.fearless_out` of a project (`DeleteCache`, the errors of Files in use, the removal of an extension from `systemExtensions`: the project then claims nothing), and every `EditMetadata` that adds or removes a `code` project, changes the `path` of a `code` project, or changes the kind of a project from or to `code` (so also `Forget` and `Kind`). A project with no 'manifest' claims nothing.
+The manager keeps `extension -> list of (project, main, icon)` in memory only. The manager builds the map at start up from the 'manifests' of every registered `code` project, and rebuilds the map after every compile, every deletion of the `.fearless_out` of a project (the project then claims nothing), and every `EditMetadata` that adds or removes a `code` project, changes the `path` of a `code` project, or changes the kind of a project from or to `code` (so also `Forget` and `Kind`). A project with no 'manifest' claims nothing.
 
 ### Autoselected extensions
 
-A `Shortcut` without extension gets `fappNNN`, an `OpenWith` without extension gets `ffileNNN`, where `NNN` are three digits.
-
-1. Start from a number from 000 to 999 computed from the project name in `projects.info`, the qualified main name and the icon, the same on every machine. The icon is part of the number so that `Shortcut[I1]` and `Shortcut[I2]` of one main start apart.
-2. The number is free if no other claim in the in memory map uses that extension; else try the next number, wrapping from 999 to 000.
-3. If all 1000 are taken, the compile fails:
-   `No free extension is left for "base.Shortcut[hello.IconsBar]" of main "hello.Bar": all the 1000 extensions "fapp000" to "fapp999" are used by the projects of this manager.`
-   For an `OpenWith`, the error adds that a system extension can be claimed instead, for example `"base.OpenWith[hello.IconsFoo,\"foo\"]"`.
-
-Which project compiles first can decide which claim gets a number. This is accepted.
+A `Shortcut` without extension gets `fappNNN`, an `OpenWith` without extension gets `ffileNNN`, where `NNN` are three digits: the Coordinator chooses the extension during the compile (see `._extension` in CoordinatorDesign), asking the manager through the `freeExtension` of `Coordinator.compile`.
+The manager answers that an extension is free when no claim of another project in the in memory map uses that extension and the manager has not answered that the extension is free before. The manager answers one question at a time, and an extension the manager answers is free is taken from that moment, also while another compile is running.
 
 ### Shortcut files
 
@@ -520,9 +511,9 @@ A program started by the portable Fearless has no manager: every method of `CapM
 
 ### System extensions
 
-Removing an extension from `systemExtensions` makes the manager release that extension, and deletes the compilation cache of every project whose mains claim that extension: those projects need compiling again.
+Removing an extension from `systemExtensions` makes the manager release that extension, and deletes the compilation cache of every project whose mains claim that extension: those projects are 'out of date'.
 
-When a compile wants a system extension that is not in `systemExtensions`, the compile fails, naming the main, the claim and the extension. The manager window then asks in a dialog whether to add the extension to `systemExtensions`. Confirming the dialog is an `EditMetadata` adding the extension; the project then needs compiling again.
+When a compile wants a system extension that is not in `systemExtensions`, the compile fails, naming the main, the claim and the extension. The manager window then asks in a dialog whether to add the extension to `systemExtensions`. Confirming the dialog is an `EditMetadata` adding the extension; the project is then still 'out of date'.
 
 ### Conflict icon
 
