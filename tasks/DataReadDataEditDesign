@@ -1,6 +1,6 @@
 # DataRead DataEdit design
 
-How a Fearless main reads and edits the files of a data project.
+How a Fearless main reads and edits the 'resources' of a data project.
 The code declares the types naming the data the code needs.
 The user of the manager mounts a data project on each of those types, picking the data project from a menu.
 
@@ -10,50 +10,19 @@ The user of the manager mounts a data project on each of those types, picking th
 - 'DataRead type': a type implementing `base.DataRead`. 'DataEdit type': a type implementing `base.DataEdit`. Every DataEdit type is also a DataRead type.
 - 'mount': an entry of `mounts` in `projects.info` (see Registered projects in ControllersDesign): a data project mounted on a DataRead type of a code project.
 - 'broken mount': a mount naming a type that is not a DataRead type of the code project, a mount naming a project that is not registered (a mount whose data project was forgotten: a `Mount` naming a project that is not registered is ill formed) or that is not a data project, a mount of a `dataRead` project on a DataEdit type, and a mount of a data project with invalid content (see Project states in ControllersDesign).
+- 'fsFolder': a folder of the underlying file system. 'fsFile': a file of the underlying file system.
+- 'resource space': the virtual tree that Fearless code accesses through `CapDataRead` and `CapDataEdit`: the 'fsFolder' of a data project, mapped following the rules of `Coordinator.pkgsBuilt(fsFolder, baseCache)`.
+- 'resource': an element of the 'resource space'. A 'resource' is a 'folder' or a 'file', the two kinds of 'resource' that the Fearless API exposes. For example, an 'fsFile' `foo.zip` is not a 'file', but it induces a 'folder' `foo`.
 
 ## Base
 
-```
-DataRead: CaptureFree, Named{}
-DataEdit: DataRead{}
-System: ... {
-  ...
-  mut .dataRead(data: DataRead): mut CapDataRead;
-  mut .dataEdit(data: DataEdit): mut CapDataEdit;
-  }
-CapDataRead: ToIso[CapDataRead], WidenTo[CapDataRead]{
-  mut .paths(path: List[Str]): List[Str];
-  mut .read(path: List[Str]): mut InputCursorNode;
-  }
-CapDataEdit: ToIso[CapDataEdit], WidenTo[CapDataEdit]{
-  mut .paths(path: List[Str]): List[Str];
-  mut .read(path: List[Str]): mut InputCursorNode;
-  mut .writeStrUtf8(path: List[Str], content: Str): Void;
-  mut .writeUStrUtf8(path: List[Str], content: UStr): Void;
-  mut .writeStrUtf16Le(path: List[Str], content: Str): Void;
-  mut .writeUStrUtf16Le(path: List[Str], content: UStr): Void;
-  mut .writeStrUtf32Le(path: List[Str], content: Str): Void;
-  mut .writeUStrUtf32Le(path: List[Str], content: UStr): Void;
-  mut .writeStrUtf16Be(path: List[Str], content: Str): Void;
-  mut .writeUStrUtf16Be(path: List[Str], content: UStr): Void;
-  mut .writeStrUtf32Be(path: List[Str], content: Str): Void;
-  mut .writeUStrUtf32Be(path: List[Str], content: UStr): Void;
-  mut .writeStrAscii(path: List[Str], content: Str): Void;
-  mut .writeUStrAscii(path: List[Str], content: UStr, recover: mut UnencodableRecover): Void;
-  mut .writeStrLatin1(path: List[Str], content: Str): Void;
-  mut .writeUStrLatin1(path: List[Str], content: UStr, recover: mut UnencodableRecover): Void;
-  mut .writeBytes(path: List[Str], content: List[Byte]): Void;
-  mut .writeImagePng(path: List[Str], content: Image): Void;
-  mut .delete(path: List[Str]): Void;
-  }
-```
-Each method of `CapDataRead` and of `CapDataEdit` does what the doc comment of that method in `data_projects.fear` says, errors included, on the data project mounted on the DataRead type.
+Each method of `CapDataRead` and of `CapDataEdit` acts on the data project mounted on the DataRead type, as Data projects of a running main says.
 
 Example:
 ```
 Diary: DataEdit{}
 Pub: DataRead{}
-ShowDiary: Main{ sys -> ... sys.dataEdit(Diary).read(List#(`2026`, `today.txt`)) ... sys.dataRead(Pub).paths(List#) ... }
+ShowDiary: Main{ sys -> ... sys.dataEdit(Diary).read(List#(`y2026`, `today.txt`)) ... sys.dataRead(Pub).paths(List#) ... }
 ```
 `sys.dataRead(Pub)` gives the capability to read the data project mounted on `Pub`.
 `sys.dataEdit(Diary)` gives the capability to read and write the data project mounted on `Diary`.
@@ -86,11 +55,24 @@ A broken mount is well formed; a `Run` of a code project with a broken mount is 
 
 ## Data projects of a running main
 
-When a `Run` starts, the manager gives each main of that `Run` the folder of every data project mounted on a DataRead type of the project, by the qualified name of that DataRead type.
+When a `Run` starts, the manager gives each main of that `Run` the 'fsFolder' of every data project mounted on a DataRead type of the project, by the qualified name of that DataRead type.
 A process started by `CapProcess` has the mounts of the parent process (see Processes in AttenuationDesign).
 A data project that changes on disk while a main runs is not checked again.
-A main does not see the marker of a data project or the files and folders whose name starts with "."; a path naming one of those is not valid.
-A write keeps the data project valid: a write writes only valid names, never a top level file with the `.fearless` extension, and a delete removes the folders and the zip files the delete leaves empty.
+A main does not see the marker of a data project or the 'fsFiles' and 'fsFolders' whose name starts with "."; a path naming one of those is not valid.
+An 'fsFile' `foo.zip` induces a 'folder' `foo` holding the 'resources' of the zip: a listing, a read, a write and a delete give the same results in that 'folder' as in a 'folder' induced by an 'fsFolder', so a main can not tell the two apart.
+A write inside a 'folder' induced by an 'fsFile' rewrites that 'fsFile'.
+A path is the list of the 'folder' names, then the name of the 'resource'.
+`.paths` gives the names of the 'resources' in the 'folder' at the path, sorted; the empty path is the root 'folder'.
+A 'folder' name uses only lowercase letters, digits and underscores, starts with a letter or an underscore, and is not `con`, `prn`, `aux`, `nul`, `com1` to `com9` or `lpt1` to `lpt9`.
+A 'file' name is a 'folder' name, a dot and an extension of 1 to 16 lowercase letters or digits, other than `zip` and `fearless`, or one of `css.map`, `d.ts`, `d.ts.map`, `js.map`, `min.css`, `min.js`, `tar.bz2`, `tar.gz`, `tar.lz`, `tar.lz4`, `tar.xz`, `tar.zst`; a 'file' name can also be one of `authors`, `changelog`, `changes`, `code_of_conduct`, `contributing`, `contributors`, `copying`, `license`, `news`, `notice`, `readme`, `security`, `thanks`, `todo`, with no extension.
+A written path is at most 200 characters long.
+A write replaces the 'file' at the path, or creates the 'file' together with the missing 'folders' of the path.
+A write does not create a 'file' without extension in a 'folder' holding a 'file' of the same name with an extension, or the reverse.
+A text is written with no byte order mark; a `Str` holds only ASCII characters, so `.writeStrUtf8`, `.writeStrAscii` and `.writeStrLatin1` write the same bytes.
+A write keeps the data project valid: a write writes only valid names.
+A delete deletes a 'file', or a 'folder' with every 'resource' in the 'folder' and the 'fsFiles' and 'fsFolders' whose name starts with "."; then the delete deletes the 'folders' that the delete leaves empty, and the 'fsFiles' that induce them; the root 'folder' of a data project is not deleted.
+A path that is not valid, or a request that the 'resources' of the data project do not allow, like a path naming no 'resource' or naming a 'resource' of the other kind, is a deterministic error.
+A data project that is not mounted, a root 'fsFolder' that can not be reached, a 'resource' that exists but can not be read or changed, and a 'folder' holding a name that is not valid are non deterministic errors.
 
 ## GUI
 
