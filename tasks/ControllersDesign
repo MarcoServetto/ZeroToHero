@@ -28,7 +28,7 @@ The manager folder of a manager is `fearless<version>`, next to the program fold
 A manager folder that can not be created is a 'fatal error' naming the manager folder.
 
 ## Starting the 'single' manager
-Starting the manager program leaves one message in the manager folder, or two for the path of a folder or of a `.fearless` file. Several runs of the manager program can be alive at the same time, and one of them is the 'single' manager: the run of the manager program handling the messages.
+Starting the manager program leaves one message in the manager folder, or two for the path of a folder or of a `.fearless` file. Several OS processes running the manager can be alive at the same time, and one of them is the 'single' manager: the OS process running the manager that handles the messages.
 
 The manager program takes:
 - zero arguments: the message is `Show`;
@@ -43,11 +43,12 @@ For example:
 "FearlessCommandRegister Base16:2F646174612F68656C6C6F"
 ```
 (the last one registers `/data/hello` on Linux).
-A run that is not the 'single' manager ends after writing its message files; a run that becomes the 'single' manager applies its own message files like every other message file.
-A run of the manager program called with two or more arguments, or with a bad argument, leaves the message `InvalidCall` with the details. When the 'single' manager handles `InvalidCall`, the 'single' manager shows the error in a dialog and continues running.
-A run of the manager program encountering a 'fatal error' while another process holds the lock of `instance.lock` (see The 'single' manager in Implementation notes) leaves the message `FatalError` with the details and ends normally.
+An OS process running the manager that is not the 'single' manager ends after writing its message files; an OS process running the manager that becomes the 'single' manager applies its own message files like every other message file.
+An OS process running the manager started with two or more arguments, or with a bad argument, leaves the message `InvalidCall` with the details. When the 'single' manager handles `InvalidCall`, the 'single' manager shows the error in a dialog and continues running.
+An OS process running the manager encountering a 'fatal error' while another process holds the lock of `instance.lock` (see The 'single' manager in Implementation notes) leaves the message `FatalError` with the details and ends normally.
 The 'single' manager handles `FatalError` as a 'fatal error'.
-A run of the manager program encountering a 'fatal error' while no other process holds the lock of `instance.lock` handles that 'fatal error' as above.
+An OS process running the manager encountering a 'fatal error' while no other process holds the lock of `instance.lock` handles that 'fatal error' as above.
+An OS process running the manager encountering a 'fatal error' before that OS process running the manager knows the path of its manager folder (the program was not started by the launcher of a manager, or the system does not read file names as UTF-8) only shows the error, then ends: that OS process running the manager deletes no folder, leaves no message, and removes no setup.
 
 The 'single' manager runs until Quit, or until a 'fatal error'.
 
@@ -70,8 +71,8 @@ Applying a `Run` or a `Compile` is starting the mains or the compilation; applyi
 
 A message is the file `messages/<time>-<id>.msg` in the manager folder: `<time>` is the 20 digit count of milliseconds since 1970 when the message was written, and `<id>` is a random UUID. The 'single' manager applies the message files in the order of their names, and deletes each message file after reading it.
 Only the manager program writes message files: the manager program writes `messages/<time>-<id>.tmp`, then renames `messages/<time>-<id>.tmp` to `messages/<time>-<id>.msg`, so the 'single' manager never reads a partial message. The 'single' manager deletes every `.tmp` file older than 60 seconds.
-A run of the manager program whose `.tmp` or `.msg` name already exists picks another `<id>`; the rename never replaces an existing file.
-The 'single' manager relies on the system telling the 'single' manager when a file appears in `messages`. When a run of the manager program becomes the 'single' manager, the 'single' manager writes a `.tmp` file in `messages` and waits for that report; no report within 5 seconds is a 'fatal error'. Some file systems, for example some network drives, do not report new files.
+An OS process running the manager whose `.tmp` or `.msg` name already exists picks another `<id>`; the rename never replaces an existing file.
+The 'single' manager relies on the system telling the 'single' manager when a file appears in `messages`. When an OS process running the manager becomes the 'single' manager, the 'single' manager writes a `.tmp` file in `messages` and waits for that report; no report within 5 seconds is a 'fatal error'. Some file systems, for example some network drives, do not report new files.
 Every other program commanding the manager (the Eclipse plugin, a script, a test) runs the manager program with a `call` as its argument.
 GUI operations that are requests command the manager the same way, through a `call`:
 every such GUI operation has an equivalent message, and every message is either ill formed or has an equivalent GUI operation, except `Check`: the GUI offers `Check` only as the main button of a project that is not code or is 'invalid', and a `call` can send `Check` of any project.
@@ -112,7 +113,7 @@ For `Run` and `Compile`, the connection also receives the Output of the mains or
 The connection ends when the last main or the compilation ends, at once when no main and no compilation starts.
 `Quit` and `Reset` may end the manager before the manager sends `Applied`.
 The connection is how another program (Eclipse, a running main) knows that the manager has applied the message of that program, and follows the mains or the compilation that program asked for.
-Two more message files exist, `InvalidCall <details>` and `FatalError <details>`, written only by a run of the manager program, about a failure of that run of the manager program. `InvalidCall` and `FatalError` are not verbs: no `call` and no GUI operation names those messages.
+Two more message files exist, `InvalidCall <details>` and `FatalError <details>`, written only by an OS process running the manager, about a failure of that OS process running the manager. `InvalidCall` and `FatalError` are not verbs: no `call` and no GUI operation names those messages.
 The details of `InvalidCall` and `FatalError` are every line after the first line, any number of lines.
 
 ```
@@ -248,7 +249,7 @@ The name of a project is the name of the marker of the project: the only file wi
 
 Registering a folder that is not registered already:
 Name inference: The name is the name of the marker of the folder, when the folder has exactly one marker, that name is valid, and no other project uses that name.
-Otherwise the name is the folder name turned into a valid name: lowercased, every run of other characters turned into `_`, a leading `p` when the result starts with a digit, then the first of `name`, `name2`, `name3`... not used by another project. The marker is renamed (or created) to match.
+Otherwise the name is the folder name turned into a valid name: lowercased, every sequence of other characters turned into `_`, a leading `p` when the result starts with a digit, then the first of `name`, `name2`, `name3`... not used by another project. The marker is renamed (or created) to match.
 If present, the compilation cache (`.fearless_out`) of the newly registered folder is deleted (`Coordinator.deleteCache`).
 `.fearless_out` belongs to the Coordinator in every registered folder, whatever the kind of the project.
 The newly registered project is in the `idle` state.
@@ -346,7 +347,7 @@ Everything a running main or a compilation prints goes to the Output, and the Ou
 - A main or a compilation that crashes, or that takes all the memory, ends alone: the manager and the mains and compilations of the other projects keep running.
 
 
-### Files changing during a run
+### Files changing while a main runs
 An 'autoCheck' of a project with a running main that finds the project 'invalid' or 'out of date' terminates that main with the error `Some files inside the project "hello" were updated while main "hello.Hello" was running.`
 That error is shown in the Output of the project.
 
@@ -354,7 +355,7 @@ That error is shown in the Output of the project.
 ## File associations
 
 On Windows and Linux the 'single' manager makes the launcher of the manager the program opening every 'captured extension', with `.reconcile` of the Reconciliator (see ReconciliatorDesign). The 'captured extensions' are the extensions the manager takes: `.fearless`, every extension in `systemExtensions`, and the Fearless extensions the mains of the projects claim.
-- A run of the manager program that becomes the 'single' manager, of any version, or a starting portable Fearless, takes `.fearless` from another program of the Fearless family holding `.fearless` (see ReconciliatorDesign); the `replaced` of that `.reconcile` removes the manager folder of that other program at once, when that other program is a manager: that other program never sees a manager folder deleted in part. A 'single' manager whose manager folder is deleted quits, ending the mains and the compilations of that manager, and changes nothing else on the system: the `.reconcile` of the program that took `.fearless` deletes the setup of this manager (see ReconciliatorDesign), and the next start of this manager starts from nothing.
+- An OS process running the manager that becomes the 'single' manager, of any version, or a starting portable Fearless, takes `.fearless` from another program of the Fearless family holding `.fearless` (see ReconciliatorDesign); the `replaced` of that `.reconcile` removes the manager folder of that other program at once, when that other program is a manager: that other program never sees a manager folder deleted in part. A 'single' manager whose manager folder is deleted quits, ending the mains and the compilations of that manager, and changes nothing else on the system: the `.reconcile` of the program that took `.fearless` deletes the setup of this manager (see ReconciliatorDesign), and the next start of this manager starts from nothing.
 
 ## OpenWith and Shortcut
 
@@ -495,7 +496,7 @@ Saving a file of a code project in Eclipse compiles the project:
 
 The error file `_error.txt` is a 'stale error file' once the project folder, a file or folder of the project whose path holds no file name or folder name starting with `.`, the folder `.config`, the folder `.config/icon` or a file of `.config/icon` has a time after the time of the error file and not after the current time. A 'stale error file' is shown nowhere.
 The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and writes into a project folder only the files and folders the user saves or creates; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not the mirror of that project is an error. Every two seconds the plugin reflects `projects.info` and the `.fearless_out` folders: the error of `_error.txt` (see CoordinatorDesign) in the Problems view, on the file and at the line the error names, or on the project while that file does not exist or the error names no file, while `_error.txt` is not a 'stale error file', and in the JUnit view the unit test log the running main writes in `.out/logs`: the complete records of the log, the lines of the log up to the last newline, without a test case whose closing line is not written yet. The plugin shows the followed mains or compilation in the Output view, emptied when the mains of a `Run` or a compilation start, like the Output area of the manager: a view with no buttons, where a stack frame and the header of a compile error are links opening that file at that line. Fearless files show with syntax highlighting. Build (`Compile` for a code project that is not 'invalid', `Check` for any other), Clean (`DeleteCache`), the main button below, the kind switches of the Fearless menu of a project, New Fearless Project (`Register`), Show in manager (`Show` with the name of the project) and Forget project are messages to the manager.
-The toolbar of the Fearless perspective holds the main button of the manager for the project of the active editor or of the selection. The main button shows what pressing the main button does, each with an image of its own: Check, Compile, Run, Run V, or Terminate while Eclipse follows a run of that project, and is greyed out while Eclipse follows a compilation of that project. Run V asks which mains to run, with the selected mains checked, then sends `SelectMains` naming the mains chosen and `Run`. Besides the main button, the toolbar of the Fearless perspective holds only the buttons of text editing (Save, Undo, Redo, Search, the toggles of the editor and the navigation in the text); a button that does nothing for Fearless or repeats another is hidden, and so is the Run menu, in the Fearless perspective only. Eclipse finds the state from the files, with the rules of an 'autoCheck': the kind in `projects.info`, the marker, and the rules of `Coordinator.check` (see CoordinatorDesign). A code project 'invalid' for a cause Eclipse does not read shows Compile, and the manager refuses that `Compile` with the 'problem' of the project.
+The toolbar of the Fearless perspective holds the main button of the manager for the project of the active editor or of the selection. The main button shows what pressing the main button does, each with an image of its own: Check, Compile, Run, Run V, or Terminate while Eclipse follows the mains of a `Run` of that project, and is greyed out while Eclipse follows a compilation of that project. Run V asks which mains to run, with the selected mains checked, then sends `SelectMains` naming the mains chosen and `Run`. Besides the main button, the toolbar of the Fearless perspective holds only the buttons of text editing (Save, Undo, Redo, Search, the toggles of the editor and the navigation in the text); a button that does nothing for Fearless or repeats another is hidden, and so is the Run menu, in the Fearless perspective only. Eclipse finds the state from the files, with the rules of an 'autoCheck': the kind in `projects.info`, the marker, and the rules of `Coordinator.check` (see CoordinatorDesign). A code project 'invalid' for a cause Eclipse does not read shows Compile, and the manager refuses that `Compile` with the 'problem' of the project.
 The toolbar of the Fearless perspective also holds New Package and New Type, for the project of the active editor or of the selection; each asks for a path inside the project folder and refuses a path that is not valid, naming the rule of the Fearless file names the path breaks:
 - New Package takes a path like `lib/_beer`, and makes the package folder `_beer` with the folders holding the package folder;
 - New Type takes a path like `lib/_beer/point`, and makes the file `point.fear` holding the type `Point`. The option Rank file makes the rank file of that package instead, `_rank_app.fear` or the rank chosen, holding a `use` line for each of `base.Main`, `base.UnitTests`, `base.Test`, `base.Void`, `base.Bool`, `base.Nat`, `base.Int`, `base.Float`, `base.Str`, `base.List`, `base.Lists`, `base.Opt`, `base.Opts`, `base.Block`, `base.Error` and `base.Debug`. The option Example tests adds a test suite checking some arithmetic.
@@ -567,6 +568,6 @@ An implementation decides alone every detail the design leaves open below the co
 - Port of a message: a TCP port on the loopback address. The manager connects, sends the status line, then the reason of a refusal or the Output of the mains or of the compilation, as UTF-8 text, then closes the connection. Eclipse and a running main listen on a port the system picks.
 - Each case of a main that can not have a Shortcut (a name with no matching file name, a reserved name, two mains giving the same file name and extension, a file without extension of that name) has an error of its own; the error above is the error of a name with no matching file name.
 - Registering a folder whose marker has the right name and is empty writes a newline into the marker, so the marker holds what a created marker holds: GNOME never hands an empty file to the manager (see Opening a file).
-- Eclipse waits for the end of each run of the manager program Eclipse starts, at most 10 seconds: a run that becomes the 'single' manager does not end, and that run writes its message files before taking the lock of `instance.lock`.
+- Eclipse waits for the end of each OS process running the manager that Eclipse starts, at most 10 seconds: an OS process running the manager that becomes the 'single' manager does not end, and that OS process running the manager writes its message files before taking the lock of `instance.lock`.
 - A claim whose icon file can not be read shows, in the manager window, the icon generated from `project::pkg.Main`, as the icon of a project is generated from the project name.
 - Name inference keeps the first 64 characters of the folder name turned into a valid name. Name inference skips a name `n` while the project folder holds a file other than the marker named `n.fearless` or `n`, ignoring case: on a file system ignoring case that file would be the marker, and a file without extension does not share its name with a file with an extension.
