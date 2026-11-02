@@ -672,40 +672,50 @@ Text folds
 ==========
 
 A 'fold' turns bytes into text, one byte at a time.
-Every text that comes from outside the program goes through a fold: the text of a file, and the text added to a TextField or a TextArea.
+Every text that comes from outside the program goes through folds: the text of a file, and the text added to a TextField or a TextArea.
+A 'fold maker' makes a fresh fold from a starting text, the text that the fold sees before its first byte.
 
     ByteFoldStr:{ mut .nextByte(b: Byte): Str; mut .end: Str; }
     ByteFoldUStr:{ mut .nextByte(b: Byte): UStr; mut .end: UStr; }
     ScalarFoldStr:{ mut .nextScalar(n: Nat): Str; mut .end: Str; }
     ScalarFoldUStr:{ mut .nextScalar(n: Nat): UStr; mut .end: UStr; }
     UStrFolds:{
-      .text: mut ByteFoldUStr;
-      .line: mut ByteFoldUStr;
-      .utf8: mut ByteFoldUStr;
-      .utf8(recover: mut BadUStrUnitRecover): mut ByteFoldUStr;
-      .utf16Le(recover: mut BadUStrUnitRecover): mut ByteFoldUStr;
-      .utf16Be(recover: mut BadUStrUnitRecover): mut ByteFoldUStr;
-      .utf32Le(recover: mut BadUStrUnitRecover): mut ByteFoldUStr;
-      .utf32Be(recover: mut BadUStrUnitRecover): mut ByteFoldUStr;
-      .ascii(recover: mut BadUStrUnitRecover): mut ByteFoldUStr;
-      .latin1(recover: mut BadUStrUnitRecover): mut ByteFoldUStr;
-      .utf8Scalars(fold: mut ScalarFoldUStr): mut ByteFoldUStr;
+      .text: imm F[UStr, mut ByteFoldUStr];
+      .line: imm F[UStr, mut ByteFoldUStr];
+      .utf8: imm F[UStr, mut ByteFoldUStr];
+      .utf8(recover: BadUStrUnitRecover): imm F[UStr, mut ByteFoldUStr];
+      .utf16Le(recover: BadUStrUnitRecover): imm F[UStr, mut ByteFoldUStr];
+      .utf16Be(recover: BadUStrUnitRecover): imm F[UStr, mut ByteFoldUStr];
+      .utf32Le(recover: BadUStrUnitRecover): imm F[UStr, mut ByteFoldUStr];
+      .utf32Be(recover: BadUStrUnitRecover): imm F[UStr, mut ByteFoldUStr];
+      .ascii(recover: BadUStrUnitRecover): imm F[UStr, mut ByteFoldUStr];
+      .latin1(recover: BadUStrUnitRecover): imm F[UStr, mut ByteFoldUStr];
+      .utf8Scalars(maker: imm F[mut ScalarFoldUStr]): imm F[UStr, mut ByteFoldUStr];
       }
     StrFolds:{ the methods of UStrFolds, with Str for UStr }
 
-A 'run' of a fold calls .nextByte once for each byte of the input, in order, and then .end once.
-The result of the run is the results of those calls, concatenated.
+A fold maker is imm, so it captures no mut object, and each fold it makes starts with no state but its starting text.
+BadStrUnitRecover and BadUStrUnitRecover have a read # instead of a mut #: a fold maker captures them.
+
+A 'run' of a fold maker on an input:
+  the fold maker makes a fold with the empty starting text;
+  the run calls .nextByte of the current fold with each byte of the input, in order;
+  when a result holds a newline, the result up to its first newline goes to the result of the run, the current fold is over, and the fold maker makes the next fold with the rest of that result as starting text;
+  at the end of the input the run calls .end of the current fold, and cuts its result in the same way: each fold made then gets .end at once;
+  a fold with the empty starting text that receives no byte gets no .end.
+The result of the run is the parts of the results that went to it, concatenated.
 
 The encoding folds:
 A 'bad unit' is a part of the input that the encoding rejects; its BadTextReason tells why.
 .utf8(recover) decodes UTF-8; each bad unit gives the result of recover.
 .utf16Le, .utf16Be, .utf32Le, .utf32Be, .ascii and .latin1 do the same with their encodings.
 .utf8 decodes UTF-8; a bad unit is a deterministic error holding the BadTextReason, the byte offset and the bytes of the bad unit.
+An encoding fold returns its starting text as it is, at its first call.
 
 The normalizing folds:
 UStrFolds.text decodes UTF-8, and:
   a bad unit becomes U+FFFD;
-  a U+FEFF at the start of the run is dropped;
+  each U+FEFF is dropped;
   carriage return newline, carriage return, U+000B, U+000C, U+0085, U+2028 and U+2029 become newline;
   the result is in NFC.
 UStrFolds.line does what UStrFolds.text does, then each newline becomes a space.
@@ -714,23 +724,24 @@ StrFolds.text does what UStrFolds.text does, with ? instead of U+FFFD for a bad 
   each scalar value is decomposed (NFKD), so an accented letter becomes its letter;
   what is still not in Str is dropped.
 StrFolds.line does what StrFolds.text does, then each newline becomes a space.
+A normalizing fold normalizes its starting text followed by the text it decodes.
 No fold depends on the locale.
 
-.utf8Scalars(fold) decodes UTF-8 and calls fold.nextScalar with each scalar value; a bad unit gives U+FFFD.
-At the end of the run it calls fold.end.
-The result of the run is the results of fold, concatenated.
+.utf8Scalars(maker) makes folds that decode UTF-8; a bad unit gives U+FFFD.
+Each of them gets a fresh scalar fold from maker, calls its .nextScalar with each scalar value of the starting text and then with each scalar value it decodes, and calls its .end at the end.
+Each of them returns the results of the scalar fold, concatenated.
 
 Reading:
-A read of text takes a fold: the result of the read is the run of the fold on the bytes of the file.
+A read of text takes a fold maker: the result of the read is the run of the fold maker on the bytes of the file.
 
     CapInputCursorNode:{ ...
-      mut .readStr(fold: mut ByteFoldStr): Str;
-      mut .readUStr(fold: mut ByteFoldUStr): UStr;
+      mut .readStr(fold: imm F[Str, mut ByteFoldStr]): Str;
+      mut .readUStr(fold: imm F[UStr, mut ByteFoldUStr]): UStr;
       mut .readBytes: List[Byte];
       ...
       }
 
-TxtFile has .readStr(cap, fold), .readUStr(cap, fold), .consumeStr(requestId, fold) and .consumeUStr(requestId, fold); CapAssetRead has .readStr and .readUStr with a fold in the same way.
+TxtFile has .readStr(cap, fold), .readUStr(cap, fold), .consumeStr(requestId, fold) and .consumeUStr(requestId, fold); CapAssetRead has .readStr and .readUStr with a fold maker in the same way.
 There is no read method for each encoding: n.readUStr(UStrFolds.utf8 recover) reads UTF-8 with recover.
 
 Text editing
@@ -760,7 +771,7 @@ A TextField holds one line of text; a TextArea holds any number of lines.
       read .editable:Bool;
       mut .textClearsUndo(Bool):mut S;
       read .textClearsUndo:Bool;
-      mut .fold(imm F[mut ByteFoldUStr]):mut S;
+      mut .fold(imm F[UStr, mut ByteFoldUStr]):mut S;
       mut .onEdit(mut Consumer[TextEvent]):mut S;
       mut .onCommit(mut Consumer[TextEvent]):mut S;
       mut .caret(CaretPainter):mut S;
@@ -781,7 +792,7 @@ A TextField holds one line of text; a TextArea holds any number of lines.
 The text:
 The text of a TextField has no newline.
 The lines of a TextArea are its text split on newline: "a" newline has two lines, the second one empty, and the caret can stand on it.
-Every change of the text goes through the fold first, as Incoming text says.
+Every change of the text goes through the fold maker first, as Incoming text says.
 
 The offsets:
 .caret and .anchor are offsets in unicode scalar values, the unit of UStr.size.
@@ -791,30 +802,28 @@ The program reads the caret and the anchor in a TextEvent, and has no way to set
 A program .text or .uText erases the caret and the selection: the caret goes to the end of the new text and nothing is selected.
 
 Incoming text:
-Every change of the text goes through the fold: a typed text, a pasted text, a text an input method commits, a cut, a Backspace, a Delete, a .text, .uText or .uAppend.
+Every change of the text goes through the fold maker: a typed text, a pasted text, a text an input method commits, a cut, a Backspace, a Delete, a .text, .uText or .uAppend.
 An undo and a redo restore a text without the fold.
 A change replaces the text between two offsets a and b with a new text: the selection or the caret for a typed text, the grapheme cluster before the caret for a Backspace, the whole text for a .text or .uText, the end of the text for a .uAppend.
-The 'touched lines' of a change go from the start of the line holding a to the end of the line holding b, without the newline after it.
-The widget makes a fresh fold with the function of .fold, and runs it on the UTF-8 bytes of the touched lines with the new text in place of the text between a and b.
-The result of the run replaces the touched lines.
+The widget runs the fold maker of .fold on the UTF-8 bytes of the text from the start of the line holding a, with the new text in place of the text between a and b.
+The run stops at the first start of a line of the text after b where the fold maker makes a fold with the empty starting text, or at the end of the text.
+The result of the run replaces the text that the run read.
 A text from the desk is UTF-16: a lone surrogate in it becomes its three bytes of the generalized UTF-8 (WTF-8), and a UTF-8 fold sees those bytes as a bad unit.
-After a change by the user, the caret goes at the end of the result minus the size of the text between b and the end of the touched lines, then back to the start of the grapheme cluster holding it; nothing is selected.
-The default fold is UStrFolds.line on a TextField and UStrFolds.text on a TextArea.
+After a change by the user, the caret goes at the end of the result minus the size of the text that the run read after b, then back to the start of the grapheme cluster holding it; nothing is selected.
+The default fold maker is UStrFolds.line on a TextField and UStrFolds.text on a TextArea.
 A result with a newline for a TextField is a deterministic error.
-The widget assumes two things of its fold:
-  a run on a result of the fold gives that same result;
-  after a newline, the results do not depend on the bytes before the newline.
-A fold that breaks these assumptions changes the text of the touched lines outside the text between a and b at each change.
+The widget assumes that a run on a result of the fold maker gives that same result.
+A fold maker that breaks this assumption changes the text that the run read outside the text between a and b at each change.
 
 Open: the keys a desk turns into text.
 The program never sees the keys pressed inside a TextField or a TextArea, only the text that comes out of them.
 The same keys can give a different text on another desk: a keyboard layout puts q or a on the same key, a dead key turns ´ then e into é, an input method turns nihon into 日本 after the user picks it from a list.
-Each of these is the desk deciding which text the user typed, the way a paste is the clipboard deciding it, and that text goes through the same fold.
+Each of these is the desk deciding which text the user typed, the way a paste is the clipboard deciding it, and that text goes through the same fold maker.
 This is less predictable than the rest of the Gui, and there is no clear better rule yet.
 
 Input methods:
 The text an input method is still composing is drawn underlined at the caret; it is not part of the text and reaches no handler.
-When the input method commits it, the committed text goes through the fold like a typed text.
+When the input method commits it, the committed text goes through the fold maker like a typed text.
 The library tells the input method where the caret is, so that its list of choices opens next to the caret.
 
 Events:
@@ -859,12 +868,12 @@ The close key and the full screen key keep their meaning.
       Ctrl+Home, Ctrl+End  the start and the end of the text
       PageUp, PageDown one view (TextArea); in a TextField they reach Frame.onKey
     Editing; nothing on a widget that is not editable
-      a typed text     through the fold, replaces the selection or goes at the caret
+      a typed text     through the fold maker, replaces the selection or goes at the caret
       Backspace        deletes the selection, else the grapheme cluster before the caret
       Delete           deletes the selection, else the grapheme cluster after the caret
       Shift+Enter      inserts a newline (TextArea); nothing in a TextField
       Ctrl+X           cuts the selection to the clipboard
-      Ctrl+V           pastes the clipboard through the fold
+      Ctrl+V           pastes the clipboard through the fold maker
       Ctrl+Z           undo
       Ctrl+Y, Ctrl+Shift+Z  redo
     Always
