@@ -668,6 +668,71 @@ It is clipped by its parent.
 It could be an error instead, in the offensive style.
 Many other things clip as well (a long text in a region, a line forced by minPerLine), so clipping stays, and this point is open.
 
+Text folds
+==========
+
+A 'fold' turns bytes into text, one byte at a time.
+Every text that comes from outside the program goes through a fold: the text of a file, and the text added to a TextField or a TextArea.
+
+    ByteFoldStr:{ mut .nextByte(b: Byte): Str; mut .end: Str; }
+    ByteFoldUStr:{ mut .nextByte(b: Byte): UStr; mut .end: UStr; }
+    ScalarFoldStr:{ mut .nextScalar(n: Nat): Str; mut .end: Str; }
+    ScalarFoldUStr:{ mut .nextScalar(n: Nat): UStr; mut .end: UStr; }
+    UStrFolds:{
+      .text: mut ByteFoldUStr;
+      .line: mut ByteFoldUStr;
+      .utf8: mut ByteFoldUStr;
+      .utf8(recover: mut BadUStrUnitRecover): mut ByteFoldUStr;
+      .utf16Le(recover: mut BadUStrUnitRecover): mut ByteFoldUStr;
+      .utf16Be(recover: mut BadUStrUnitRecover): mut ByteFoldUStr;
+      .utf32Le(recover: mut BadUStrUnitRecover): mut ByteFoldUStr;
+      .utf32Be(recover: mut BadUStrUnitRecover): mut ByteFoldUStr;
+      .ascii(recover: mut BadUStrUnitRecover): mut ByteFoldUStr;
+      .latin1(recover: mut BadUStrUnitRecover): mut ByteFoldUStr;
+      .utf8Scalars(fold: mut ScalarFoldUStr): mut ByteFoldUStr;
+      }
+    StrFolds:{ the methods of UStrFolds, with Str for UStr }
+
+A 'run' of a fold calls .nextByte once for each byte of the input, in order, and then .end once.
+The result of the run is the results of those calls, concatenated.
+
+The encoding folds:
+A 'bad unit' is a part of the input that the encoding rejects; its BadTextReason tells why.
+.utf8(recover) decodes UTF-8; each bad unit gives the result of recover.
+.utf16Le, .utf16Be, .utf32Le, .utf32Be, .ascii and .latin1 do the same with their encodings.
+.utf8 decodes UTF-8; a bad unit is a deterministic error holding the BadTextReason, the byte offset and the bytes of the bad unit.
+
+The normalizing folds:
+UStrFolds.text decodes UTF-8, and:
+  a bad unit becomes U+FFFD;
+  a U+FEFF at the start of the run is dropped;
+  carriage return newline, carriage return, U+000B, U+000C, U+0085, U+2028 and U+2029 become newline;
+  the result is in NFC.
+UStrFolds.line does what UStrFolds.text does, then each newline becomes a space.
+StrFolds.text does what UStrFolds.text does, with ? instead of U+FFFD for a bad unit, and then:
+  tab becomes space;
+  each scalar value is decomposed (NFKD), so an accented letter becomes its letter;
+  what is still not in Str is dropped.
+StrFolds.line does what StrFolds.text does, then each newline becomes a space.
+No fold depends on the locale.
+
+.utf8Scalars(fold) decodes UTF-8 and calls fold.nextScalar with each scalar value; a bad unit gives U+FFFD.
+At the end of the run it calls fold.end.
+The result of the run is the results of fold, concatenated.
+
+Reading:
+A read of text takes a fold: the result of the read is the run of the fold on the bytes of the file.
+
+    CapInputCursorNode:{ ...
+      mut .readStr(fold: mut ByteFoldStr): Str;
+      mut .readUStr(fold: mut ByteFoldUStr): UStr;
+      mut .readBytes: List[Byte];
+      ...
+      }
+
+TxtFile has .readStr(cap, fold), .readUStr(cap, fold), .consumeStr(requestId, fold) and .consumeUStr(requestId, fold); CapAssetRead has .readStr and .readUStr with a fold in the same way.
+There is no read method for each encoding: n.readUStr(UStrFolds.utf8 recover) reads UTF-8 with recover.
+
 Text editing
 ============
 
@@ -695,7 +760,7 @@ A TextField holds one line of text; a TextArea holds any number of lines.
       read .editable:Bool;
       mut .textClearsUndo(Bool):mut S;
       read .textClearsUndo:Bool;
-      mut .onInput(mut MF[UStr,UStr]):mut S;
+      mut .fold(imm F[mut ByteFoldUStr]):mut S;
       mut .onEdit(mut Consumer[TextEvent]):mut S;
       mut .onCommit(mut Consumer[TextEvent]):mut S;
       mut .caret(CaretPainter):mut S;
@@ -714,9 +779,9 @@ A TextField holds one line of text; a TextArea holds any number of lines.
     Pane:_Container[Pane]{ ... mut .textField(mut Scope[TextField]):mut Pane; mut .textArea(mut Scope[TextArea]):mut Pane; }
 
 The text:
-The text of a TextField has no newline: a .text or .uText with a newline on a TextField is a deterministic error.
+The text of a TextField has no newline.
 The lines of a TextArea are its text split on newline: "a" newline has two lines, the second one empty, and the caret can stand on it.
-The text holds any UStr the program gives it; what the user adds goes through .onInput first.
+Every change of the text goes through the fold first, as Incoming text says.
 
 The offsets:
 .caret and .anchor are offsets in unicode scalar values, the unit of UStr.size.
@@ -726,24 +791,30 @@ The program reads the caret and the anchor in a TextEvent, and has no way to set
 A program .text or .uText erases the caret and the selection: the caret goes to the end of the new text and nothing is selected.
 
 Incoming text:
-Every text the user adds goes through .onInput before it reaches the widget: a typed text, a pasted text, a text an input method commits.
-.onInput receives the incoming text and returns the text to insert; an empty result inserts nothing.
-The default reduces the incoming text to Str:
-  carriage return newline and carriage return become newline, tab becomes space;
-  each scalar value is decomposed (NFKD), so an accented letter becomes its letter;
-  what is still not in Str is dropped;
-  in a TextField, newline becomes space.
+Every change of the text goes through the fold: a typed text, a pasted text, a text an input method commits, a cut, a Backspace, a Delete, a .text, .uText or .uAppend.
+An undo and a redo restore a text without the fold.
+A change replaces the text between two offsets a and b with a new text: the selection or the caret for a typed text, the grapheme cluster before the caret for a Backspace, the whole text for a .text or .uText, the end of the text for a .uAppend.
+The 'touched lines' of a change go from the start of the line holding a to the end of the line holding b, without the newline after it.
+The widget makes a fresh fold with the function of .fold, and runs it on the UTF-8 bytes of the touched lines with the new text in place of the text between a and b.
+The result of the run replaces the touched lines.
+A text from the desk is UTF-16: a lone surrogate in it becomes its three bytes of the generalized UTF-8 (WTF-8), and a UTF-8 fold sees those bytes as a bad unit.
+After a change by the user, the caret goes at the end of the result minus the size of the text between b and the end of the touched lines, then back to the start of the grapheme cluster holding it; nothing is selected.
+The default fold is UStrFolds.line on a TextField and UStrFolds.text on a TextArea.
 A result with a newline for a TextField is a deterministic error.
+The widget assumes two things of its fold:
+  a run on a result of the fold gives that same result;
+  after a newline, the results do not depend on the bytes before the newline.
+A fold that breaks these assumptions changes the text of the touched lines outside the text between a and b at each change.
 
 Open: the keys a desk turns into text.
 The program never sees the keys pressed inside a TextField or a TextArea, only the text that comes out of them.
 The same keys can give a different text on another desk: a keyboard layout puts q or a on the same key, a dead key turns ´ then e into é, an input method turns nihon into 日本 after the user picks it from a list.
-Each of these is the desk deciding which text the user typed, the way a paste is the clipboard deciding it, and the program receives that text through the same .onInput.
+Each of these is the desk deciding which text the user typed, the way a paste is the clipboard deciding it, and that text goes through the same fold.
 This is less predictable than the rest of the Gui, and there is no clear better rule yet.
 
 Input methods:
 The text an input method is still composing is drawn underlined at the caret; it is not part of the text and reaches no handler.
-When the input method commits it, the committed text goes through .onInput like a typed text.
+When the input method commits it, the committed text goes through the fold like a typed text.
 The library tells the input method where the caret is, so that its list of choices opens next to the caret.
 
 Events:
@@ -756,7 +827,7 @@ A commit runs .onCommit when the text differs from the committed text, and the t
 A commit happens on Enter and on Ctrl+Enter, and when the focus leaves the widget by a press elsewhere, Tab or Shift+Tab.
 A press elsewhere queues the commit first and the handlers of the press after it.
 A widget removed from the window (.clear, a replaced Border region, a new .content) commits nothing.
-A new .onInput, .onEdit, .onCommit or .caret replaces the earlier one.
+A new .fold, .onEdit, .onCommit or .caret replaces the earlier one; a new .fold does not change the text.
 
 Focus:
 At most one TextField or TextArea of a frame has the focus; it receives the keys and shows the caret.
@@ -788,12 +859,12 @@ The close key and the full screen key keep their meaning.
       Ctrl+Home, Ctrl+End  the start and the end of the text
       PageUp, PageDown one view (TextArea); in a TextField they reach Frame.onKey
     Editing; nothing on a widget that is not editable
-      a typed text     through .onInput, replaces the selection or goes at the caret
+      a typed text     through the fold, replaces the selection or goes at the caret
       Backspace        deletes the selection, else the grapheme cluster before the caret
       Delete           deletes the selection, else the grapheme cluster after the caret
       Shift+Enter      inserts a newline (TextArea); nothing in a TextField
       Ctrl+X           cuts the selection to the clipboard
-      Ctrl+V           pastes the clipboard through .onInput
+      Ctrl+V           pastes the clipboard through the fold
       Ctrl+Z           undo
       Ctrl+Y, Ctrl+Shift+Z  redo
     Always
@@ -905,7 +976,8 @@ With the room and the box, a program aligns text as it needs: left at x, right a
 A decoration goes with the room: a highlight is a .rect of the room, an underline is a .line a little below room.baseline.
 
 g.textLines(text, width) is the text broken into lines whose rooms are at most width wide, as a TextArea wraps its text.
-A line break of the text ends a line.
+A newline of the text ends a line.
+Only a newline ends a line, in a widget, in a tooltip and with Graphics: every other character, also a carriage return, U+2028 or U+2029, is a character of its line.
 A line breaks after a word; a word wider than width breaks between characters; a single character wider than width is a line alone.
 The spaces where a line breaks are not part of the line.
 
@@ -1244,5 +1316,7 @@ The desk's minimum size is setMinimumSize: the smallest window whose content are
 The Windows peer of the toolkit hands the desk the minimum size in user space while the desk reads it in device pixels; on Windows the frame reports the minimum multiplied by the display scale to the peer, and the plain minimum inside Window.reshape, which checks in user space every size given to the window, the growth by setMinimumSize included.
 Windows restores a maximized window to at least the desk's minimum size, and a ResizeRequest accepted in state 3 can raise the minimum size above the restore size: on Windows the library grows the restore size to the minimum size each time it sets the minimum size of a maximized window, so that the unmaximize still gives exactly the restore size.
 
+The default folds are Java classes, so a run of a default fold costs what decoding costs.
+A read and a widget call the fold for each byte and append each result, with a fast path for the results of size 0 and 1: Byte gives them cached (.size1Str, .size1UStr).
 The opacity goes through setOpacity, which the toolkit allows only on an undecorated window that is not the full screen window.
 On macOS, Cmd+Q ends the process without a windowClosing unless the quit strategy is CLOSE_ALL_WINDOWS; the runtime sets it, so Cmd+Q is a close request.
