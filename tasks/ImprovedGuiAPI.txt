@@ -550,6 +550,8 @@ That method puts the widget in the region and returns the container of the regio
       mut .picture(mut Scope[Picture]): S;
       mut .textField(mut Scope[TextField]): S;
       mut .textArea(mut Scope[TextArea]): S;
+      mut .uTextField(mut Scope[UTextField]): S;
+      mut .uTextArea(mut Scope[UTextArea]): S;
       }
     Frame:{ ... mut .content: mut RegionFiller[Void]; }
     Border:_Container[Border]{ ... mut .north: mut RegionFiller[mut Border]; ...south, east, west, center }
@@ -672,16 +674,14 @@ Text editing
 ============
 
 A TextField holds one line of text; a TextArea holds any number of lines.
+A TextField and a TextArea hold a Str; a UTextField and a UTextArea hold a UStr.
+Every rule below about a TextField also holds for a UTextField, and every rule about a TextArea also holds for a UTextArea.
 
     _Caption[S]:Widget[S]{ ...text, textHeight, aboveBaseline, belowBaseline }
     Button:_Caption[Button]{ ... }
     Label:_Caption[Label]{ ... }
 
     _EditText[S]:Widget[S]{
-      mut .text(s:Str):mut S->this.uText(s.u);
-      mut .uText(UStr):mut S;
-      read .text:Str->this.uText.getStr;
-      read .uText:UStr;
       mut .textHeight(n:Nat):mut S->this.textHeight'(HeightNat#n);
       mut .textHeight'(HeightNat):mut S;
       mut .aboveBaseline(f:Float):mut S->this.aboveBaseline'(TextRatio#f);
@@ -695,23 +695,41 @@ A TextField holds one line of text; a TextArea holds any number of lines.
       read .editable:Bool;
       mut .textClearsUndo(Bool):mut S;
       read .textClearsUndo:Bool;
-      mut .cleaner(imm F[UStr, mut UStrCleaner]):mut S;
-      mut .onEdit(mut Consumer[TextEvent]):mut S;
-      mut .onCommit(mut Consumer[TextEvent]):mut S;
       mut .caret(CaretPainter):mut S;
       }
-    TextField:_EditText[TextField]{ .self->this; }
-    TextArea:_EditText[TextArea]{
+    _StrEditText[S]:_EditText[S]{
+      mut .text(Str):mut S;
+      read .text:Str;
+      mut .cleaner(imm F[Str, mut StrCleaner]):mut S;
+      mut .onEdit(mut Consumer[TextEvent]):mut S;
+      mut .onCommit(mut Consumer[TextEvent]):mut S;
+      }
+    _UStrEditText[S]:_EditText[S]{
+      mut .uText(UStr):mut S;
+      read .uText:UStr;
+      mut .cleaner(imm F[UStr, mut UStrCleaner]):mut S;
+      mut .onEdit(mut Consumer[UTextEvent]):mut S;
+      mut .onCommit(mut Consumer[UTextEvent]):mut S;
+      }
+    TextField:_StrEditText[TextField]{ .self->this; }
+    UTextField:_UStrEditText[UTextField]{ .self->this; }
+    TextArea:_StrEditText[TextArea]{
       .self->this;
-      mut .append(s:Str):mut TextArea->this.uAppend(s.u);
-      mut .uAppend(UStr):mut TextArea;
+      mut .append(Str):mut TextArea;
       mut .wrap(Bool):mut TextArea;
       read .wrap:Bool;
       }
-    TextEvent:ScreenContext{ .text:UStr; .caret:Nat; .anchor:Nat; }
+    UTextArea:_UStrEditText[UTextArea]{
+      .self->this;
+      mut .uAppend(UStr):mut UTextArea;
+      mut .wrap(Bool):mut UTextArea;
+      read .wrap:Bool;
+      }
+    TextEvent:ScreenContext{ .text:Str; .caret:Nat; .anchor:Nat; }
+    UTextEvent:ScreenContext{ .uText:UStr; .caret:Nat; .anchor:Nat; }
     CaretPainter:{ .run(mut CaretGraphics):mut Graphics; }
     CaretGraphics:Graphics{ read .sinceMove:Duration; read .lineHeight:HeightNat; }
-    Pane:_Container[Pane]{ ... mut .textField(mut Scope[TextField]):mut Pane; mut .textArea(mut Scope[TextArea]):mut Pane; }
+    Pane:_Container[Pane]{ ... mut .textField(mut Scope[TextField]):mut Pane; mut .textArea(mut Scope[TextArea]):mut Pane; mut .uTextField(mut Scope[UTextField]):mut Pane; mut .uTextArea(mut Scope[UTextArea]):mut Pane; }
 
 The text:
 The text of a TextField has no newline.
@@ -722,19 +740,19 @@ The offsets:
 .caret and .anchor are offsets in unicode scalar values, the unit of UStr.size.
 The selection is the text between .anchor and .caret; nothing is selected when they are equal.
 The user moves the caret and the anchor only to the boundaries of grapheme clusters.
-The program reads the caret and the anchor in a TextEvent, and has no way to set them.
+The program reads the caret and the anchor in a TextEvent or a UTextEvent, and has no way to set them.
 A program .text or .uText erases the caret and the selection: the caret goes to the end of the new text and nothing is selected.
 
 Incoming text:
-Every change of the text goes through the cleaner maker: a typed text, a pasted text, a text an input method commits, a cut, a Backspace, a Delete, a .text, .uText or .uAppend.
+Every change of the text goes through the cleaner maker: a typed text, a pasted text, a text an input method commits, a cut, a Backspace, a Delete, a .text, .uText, .append or .uAppend.
 An undo and a redo restore a text without the cleaner maker.
-A change replaces the text between two offsets a and b with a new text: the selection or the caret for a typed text, the grapheme cluster before the caret for a Backspace, the whole text for a .text or .uText, the end of the text for a .uAppend.
+A change replaces the text between two offsets a and b with a new text: the selection or the caret for a typed text, the grapheme cluster before the caret for a Backspace, the whole text for a .text or .uText, the end of the text for an .append or a .uAppend.
 The widget runs the cleaner maker of .cleaner on the UTF-8 bytes of the text from the start of the line holding a, with the new text in place of the text between a and b.
 The run stops at the first start of a line of the text after b where the cleaner maker makes a cleaner with the empty starting text, or at the end of the text.
 The result of the run replaces the text that the run read.
 A text from the desk is UTF-16: a lone surrogate in it becomes its three bytes of the generalized UTF-8 (WTF-8), and a UTF-8 cleaner sees those bytes as a bad unit.
 After a change by the user, the caret goes at the end of the result minus the size of the text that the run read after b, then back to the start of the grapheme cluster holding it; nothing is selected.
-The default cleaner maker is UStrCleaners.line on a TextField and UStrCleaners.text on a TextArea.
+The default cleaner maker is StrCleaners.line on a TextField, StrCleaners.text on a TextArea, UStrCleaners.line on a UTextField and UStrCleaners.text on a UTextArea.
 A result with a newline for a TextField is a deterministic error.
 The widget assumes that a run on a result of the cleaner maker gives that same result.
 A cleaner maker that breaks this assumption changes the text that the run read outside the text between a and b at each change.
@@ -754,8 +772,8 @@ Events:
 Each action of the user is one model task, queued with the clicks and the keys: one key, one paste, one cut, one undo.
 The task changes the text and the caret, runs .onEdit if the text changed, and the frame shows the result only when the task ends.
 .onEdit runs for every change of the text the user makes, with the text after the change; a move of the caret or of the selection alone runs nothing.
-A .text, .uText or .uAppend of the program never runs .onEdit or .onCommit.
-The committed text is the text of the last commit or of the last .text, .uText or .uAppend of the program.
+A .text, .uText, .append or .uAppend of the program never runs .onEdit or .onCommit.
+The committed text is the text of the last commit or of the last .text, .uText, .append or .uAppend of the program.
 A commit runs .onCommit when the text differs from the committed text, and the text becomes the committed text.
 A commit happens on Enter and on Ctrl+Enter, and when the focus leaves the widget by a press elsewhere, Tab or Shift+Tab.
 A press elsewhere queues the commit first and the handlers of the press after it.
@@ -814,7 +832,7 @@ Undo:
 Each user action that changes the text is one step of the history: undo goes back one step and restores the caret and the anchor of before the step; redo goes forward.
 A new change after an undo drops the steps that redo would replay.
 An undo and a redo are changes the user makes: they run .onEdit.
-With .textClearsUndo(True), the default, a .text, .uText or .uAppend of the program empties the history.
+With .textClearsUndo(True), the default, a .text, .uText, .append or .uAppend of the program empties the history.
 With .textClearsUndo(False), it is one step of the history like a user action.
 
 Scrolling and wrapping:
@@ -823,8 +841,8 @@ A TextArea always has a vertical scroll bar, and a horizontal one exactly when .
 With .wrap(True), the default, a line of the text longer than the widget goes on over more displayed lines; the breaks fall between words when a line has a break, inside a word only when the word is longer than the widget, and never change the text.
 After every move of the caret by the user, the view scrolls by the least amount that shows the caret.
 A .text or .uText scrolls the view to show the caret at the end.
-.uAppend adds at the end, keeps the caret and the selection where they are, and moves an offset that the new text puts inside a grapheme cluster to the start of that cluster.
-If the view showed the last displayed line before .uAppend, it shows the last displayed line after it; otherwise the view does not move.
+.append and .uAppend add at the end, keep the caret and the selection where they are, and move an offset that the new text puts inside a grapheme cluster to the start of that cluster.
+If the view showed the last displayed line before an .append or a .uAppend, it shows the last displayed line after it; otherwise the view does not move.
 
 The caret:
 The caret painter draws the caret with its origin at the top of the caret position, clipped to the widget, every repaint tick.
