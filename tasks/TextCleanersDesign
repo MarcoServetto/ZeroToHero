@@ -1,0 +1,81 @@
+Text cleaners
+=============
+
+A 'cleaner' turns bytes into text, one byte at a time.
+Every text that comes from outside the program goes through cleaners: the text of a file, and the text added to a TextField or a TextArea.
+A 'cleaner maker' makes a fresh cleaner from a starting text, the text that the cleaner sees before its first byte.
+
+    UStrCleaner:{ mut .nextByte(b: Byte): UStr; mut .end: UStr; }
+    StrCleaner:{ mut .nextByte(b: Byte): Str; mut .end: Str; }
+    UStrScalarCleaner:{ mut .nextScalar(n: Nat): UStr; mut .end: UStr; }
+    StrScalarCleaner:{ mut .nextScalar(n: Nat): Str; mut .end: Str; }
+    UStrFixer:{ mut #(reason: BadTextReason, byteOffset: Nat, byteLength: Nat, rejectedValue: Nat): UStr; }
+    StrFixer:{ mut #(reason: BadTextReason, byteOffset: Nat, byteLength: Nat, rejectedValue: Nat): Str; }
+    UStrCleaners:{
+      .text: imm F[UStr, mut UStrCleaner];
+      .line: imm F[UStr, mut UStrCleaner];
+      .utf8: imm F[UStr, mut UStrCleaner];
+      .utf8OrElse(fixer: imm F[mut UStrFixer]): imm F[UStr, mut UStrCleaner];
+      .utf16LeOrElse(fixer: imm F[mut UStrFixer]): imm F[UStr, mut UStrCleaner];
+      .utf16BeOrElse(fixer: imm F[mut UStrFixer]): imm F[UStr, mut UStrCleaner];
+      .utf32LeOrElse(fixer: imm F[mut UStrFixer]): imm F[UStr, mut UStrCleaner];
+      .utf32BeOrElse(fixer: imm F[mut UStrFixer]): imm F[UStr, mut UStrCleaner];
+      .asciiOrElse(fixer: imm F[mut UStrFixer]): imm F[UStr, mut UStrCleaner];
+      .latin1OrElse(fixer: imm F[mut UStrFixer]): imm F[UStr, mut UStrCleaner];
+      .utf8Then(cleaner: imm F[mut UStrScalarCleaner]): imm F[UStr, mut UStrCleaner];
+      }
+    StrCleaners:{ the methods of UStrCleaners, with Str for UStr }
+
+A cleaner maker is imm, so each cleaner it makes starts with no state but its starting text.
+A cleaner maker of UStrCleaners or StrCleaners that takes an imm F calls it once for each cleaner it makes, so each cleaner has its own fixer or scalar cleaner.
+
+A 'run' of a cleaner maker on an input:
+  the cleaner maker makes a cleaner with the empty starting text;
+  the run calls .nextByte of the current cleaner with each byte of the input, in order;
+  when a result holds a newline, the result up to its first newline goes to the result of the run, the current cleaner is over, and the cleaner maker makes the next cleaner with the rest of that result as starting text;
+  at the end of the input the run calls .end of the current cleaner, and cuts its result in the same way: each cleaner made then gets .end at once;
+  a cleaner with the empty starting text that receives no byte gets no .end.
+The result of the run is the parts of the results that went to it, concatenated.
+
+The encoding cleaners:
+A 'bad unit' is a part of the input that the encoding rejects; its BadTextReason tells why.
+.utf8OrElse(fixer) decodes UTF-8; each bad unit gives the result of the fixer of the cleaner.
+.utf16LeOrElse, .utf16BeOrElse, .utf32LeOrElse, .utf32BeOrElse, .asciiOrElse and .latin1OrElse do the same with their encodings.
+.utf8 decodes UTF-8; a bad unit is a deterministic error holding the BadTextReason, the byte offset and the bytes of the bad unit.
+An encoding cleaner returns its starting text as it is, at its first call.
+
+The normalizing cleaners:
+UStrCleaners.text decodes UTF-8, and:
+  a bad unit becomes U+FFFD;
+  each U+FEFF is dropped;
+  carriage return newline, carriage return, U+000B, U+000C, U+0085, U+2028 and U+2029 become newline;
+  the result is in NFC.
+UStrCleaners.line does what UStrCleaners.text does, then each newline becomes a space.
+StrCleaners.text does what UStrCleaners.text does, with ? instead of U+FFFD for a bad unit, and then:
+  tab becomes space;
+  each scalar value is decomposed (NFKD), so an accented letter becomes its letter;
+  what is still not in Str is dropped.
+StrCleaners.line does what StrCleaners.text does, then each newline becomes a space.
+A normalizing cleaner normalizes its starting text followed by the text it decodes.
+No cleaner depends on the locale.
+
+.utf8Then(cleaner) makes cleaners that decode UTF-8; a bad unit gives U+FFFD.
+Each of them gets a fresh scalar cleaner from cleaner, calls its .nextScalar with each scalar value of the starting text and then with each scalar value it decodes, and calls its .end at the end.
+Each of them returns the results of the scalar cleaner, concatenated.
+
+Reading:
+A read of text takes a cleaner maker: the result of the read is the run of the cleaner maker on the bytes of the file.
+
+    CapInputCursorNode:{ ...
+      mut .readStr(cleaner: imm F[Str, mut StrCleaner]): Str;
+      mut .readUStr(cleaner: imm F[UStr, mut UStrCleaner]): UStr;
+      mut .readBytes: List[Byte];
+      ...
+      }
+
+TxtFile has .readStr(cap, cleaner), .readUStr(cap, cleaner), .consumeStr(requestId, cleaner) and .consumeUStr(requestId, cleaner); CapAssetRead has .readStr and .readUStr with a cleaner maker in the same way.
+There is no read method for each encoding: n.readUStr(UStrCleaners.utf8OrElse fixer) reads UTF-8 with fixer.
+
+Implementation notes:
+The default cleaners are Java classes, so a run of a default cleaner costs what decoding costs.
+A read and a widget call the cleaner for each byte and append each result, with a fast path for the results of size 0 and 1: Byte gives them cached (.size1Str, .size1UStr).
