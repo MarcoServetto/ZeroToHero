@@ -200,22 +200,22 @@ The manager writes `Str:` then `.escape` of the text when the text is a `Str`; `
 The manager folder holds `projects.info`, the record of every registered project (the path, the kind, the selected mains, the mounts and the attenuators) and the system extensions.
 The manager is the only program writing `projects.info`: the manager writes the new content to another file in the manager folder, then renames that file to `projects.info`, so a reader such as Eclipse never reads a partial `projects.info`.
 
-`projects.info` is an Info file: an object with `projects`, mapping each project name to its metadata, and `systemExtensions`:
+`projects.info` is an Info file: an object with `projects`, the list of the registered projects in the order they were registered, and `systemExtensions`:
 ```
 {
-  "projects": {
-    "hello_world": {
+  "projects": [
+    {
       "path": "Str:\"C:\\data\\01_hello_world\"",
       "kind": "code",
       "mains": ["hello.Hello1", "hello.Hello3"],
       "mounts": {"hello.Diary": "diary"},
       "attenuators": {"hello.Hello1": ["base.NoManagerQuit", "hello.NoGui"]}
     },
-    "diary": {
+    {
       "path": "UStr:\"C:\\Users\\Jos\".u\"00E9\"+(\"\\da\".u\"1F600\")+(\"ta\".u)",
       "kind": "dataEdit"
     }
-  },
+  ],
   "systemExtensions": ["htm"]
 }
 ```
@@ -228,20 +228,27 @@ A project folder is never the root of a drive, the manager folder, a folder insi
 - `mounts`: for each DataRead type, the name of the data project mounted on that DataRead type (see DataReadDataEditDesign).
 - `attenuators`: for each main the attenuators the manager applies to that main, in order; a main absent from `attenuators` gets no attenuator. Naming a main or an attenuator the project does not have is well formed.
 
+`projects.info` holds no project name: the name of a project is the name of the marker in the project folder (see Registering a folder).
+The 'single' manager keeps the names in memory.
+A 'name lookup' gives a name to every project of `projects.info`, in the order of `projects.info`: the name of each project is the result of name inference (see Registering a folder), which renames or creates the marker when needed, so no project takes a name of a project before it in `projects.info`.
+A 'name check' of a project compares the marker in the project folder with the name in memory; when they differ, the manager does a 'name lookup'.
+The manager does a 'name lookup' at start; before applying a request, the manager does a 'name check' of every project the request names; an 'autoCheck' of a project starts with a 'name check' of the project.
+A project folder the manager can not reach gets no name: the manager forgets that project (see Project states).
+
 The `mains`, `mounts` and `attenuators` of a project stay when the kind of the project changes, and a mount stays when the data project of the mount is forgotten: a later `Kind` back to `code`, or a project registered under the name of that data project, makes them work again. For example, a code project swaps real data and test data by registering one folder or the other under the name of the data project.
 
 A `projects.info` that is not a valid Info file, or does not hold what is above, is a 'fatal error' pointing at the offending text in the Frontend error message style.
 
 The whole `projects.info` can be edited by hand from the GUI, or via an `EditMetadata` naming a file (outside of the manager folder) with the intended new content.
 The editor of the GUI remembers the content the editor opened; when the user commits, and `projects.info` does not hold that content, the editor refuses the commit in a dialog, and the user edits the new content again; otherwise the commit is an `EditMetadata`.
-An edit that renames a project removes one project and adds another.
+A project of the edit is a project of `projects.info` when both have the same `path`.
 An edit is refused, and nothing changes, when:
 - the whole text is not valid: the error points at the offending text in the Frontend error message style;
-- the edit removes a project, or changes the kind or the `path` of a project, while a main or a compilation of that project is currently running;
+- the edit removes a project, or changes the kind of a project, while a main or a compilation of that project is currently running;
 - the edit changes the mounts of a project, or removes a data project mounted on a DataRead type of that project, or changes the kind or the folder of that data project, while a main of that project is currently running;
 - the edit adds to `systemExtensions` an extension reconcile refuses (see Refusals in ReconciliatorDesign);
 - the edit removes from `systemExtensions` an extension that a main of a project claims, while a main or a compilation of that project is currently running.
-An accepted edit applies at once: projects the edit removes are forgotten, projects the edit adds are registered as they are, the compilation cache (`Coordinator.deleteCache`) of each added project, of each project whose kind changes, of each project whose `path` changes and of each project whose mains claim an extension the edit removes from `systemExtensions` is deleted, and every project gets an 'autoCheck'.
+An accepted edit applies at once: projects the edit removes are forgotten, projects the edit adds are registered as they are, the compilation cache (`Coordinator.deleteCache`) of each added project, of each project whose kind changes and of each project whose mains claim an extension the edit removes from `systemExtensions` is deleted, and every project gets an 'autoCheck'.
 
 
 
@@ -249,9 +256,9 @@ An accepted edit applies at once: projects the edit removes are forgotten, proje
 
 The name of a project is the name of the marker of the project: the only file with the `.fearless` extension at the top of the project folder, `<name>.fearless`. A project name follows the rules of a single file name segment of a Fearless project (lowercase letters, digits and `_`, not starting with a digit, not a reserved name such as `con`).
 
-Registering a folder that is not registered already:
-Name inference: The name is the name of the marker of the folder, when the folder has exactly one marker, that name is valid, and no other project uses that name.
-Otherwise the name is the folder name turned into a valid name: lowercased, every sequence of other characters turned into `_`, a leading `p` when the result starts with a digit, then the first of `name`, `name2`, `name3`... not used by another project. The marker is renamed (or created) to match.
+Registering a folder that is not registered already adds the project at the end of `projects.info`, named by name inference.
+Name inference: The name is the name of the first marker of the folder in file name order, when that name is valid and no project before this project in `projects.info` uses that name.
+Otherwise the name is the folder name turned into a valid name: lowercased, every sequence of other characters turned into `_`, a leading `p` when the result starts with a digit, then the first of `name`, `name2`, `name3`... not used by a project before this project in `projects.info`. The first marker is renamed (or the marker is created) to match.
 If present, the compilation cache (`.fearless_out`) of the newly registered folder is deleted (`Coordinator.deleteCache`).
 `.fearless_out` belongs to the Coordinator in every registered folder, whatever the kind of the project.
 The newly registered project is in the `idle` state.
@@ -262,7 +269,7 @@ Forgetting a project removes the project from `projects.info`; nothing in the pr
 ## Project states
 
 Each project is in one of these states, shown as a badge on the tile of the project:
-- `code: invalid content`, `dataRead: invalid content`, `dataEdit: invalid content`: the file names of the project are not valid Fearless file names (for code, also the checks of `Coordinator.check`, see CoordinatorDesign), the marker is missing or is not the only top level `.fearless` file, or the folder `.config/icon` holds more than one PNG file or a PNG file that can not be read;
+- `code: invalid content`, `dataRead: invalid content`, `dataEdit: invalid content`: the file names of the project are not valid Fearless file names (for code, also the checks of `Coordinator.check`, see CoordinatorDesign), the project folder holds more than one top level `.fearless` file, or the folder `.config/icon` holds more than one PNG file or a PNG file that can not be read;
 - `idle`;
 - `dataRead`, `dataEdit`;
 - `code: compilation cache out of date`: the project is 'out of date';
@@ -503,6 +510,7 @@ Saving a file of a code project in Eclipse compiles the project:
 - otherwise Eclipse sends `Terminate` of the project (a running main is ended), saves every open file of the project together, and sends `Compile` of the project, or `Check` for a code project Eclipse sees as 'invalid', as Build does. During a compilation of that project that Eclipse does not follow, the manager refuses that `Terminate` and that `Compile` or `Check`, Eclipse saves the files anyway, and the project is 'out of date' once the running compilation ends (see `.compile` in CoordinatorDesign).
 
 The error file `_error.txt` is a 'stale error file' once the project folder, a file or folder of the project whose path holds no file name or folder name starting with `.`, the folder `.config`, the folder `.config/icon` or a file of `.config/icon` has a time after the time of the error file and not after the current time. A 'stale error file' is shown nowhere.
+The plugin names each registered project by the first top level `.fearless` file of its folder in file name order, and mirrors no folder without one.
 The plugin mirrors every registered project into the Eclipse workspace, in the Fearless perspective only, and writes into a project folder only the files and folders the user saves or creates; a project the manager forgets is removed from the workspace. A workspace project named like a registered project that is not the mirror of that project is an error. Every two seconds the plugin reflects `projects.info` and the `.fearless_out` folders: the error of `_error.txt` (see CoordinatorDesign) in the Problems view, on the file and at the line the error names, or on the project while that file does not exist or the error names no file, while `_error.txt` is not a 'stale error file', and in the JUnit view the unit test log the running main writes in `.out/logs`: the complete records of the log, the lines of the log up to the last newline, without a test case whose closing line is not written yet. The plugin shows the followed mains or compilation in the Output view, emptied when the mains of a `Run` or a compilation start, like the Output area of the manager: a view with no buttons, where a stack frame and the header of a compile error are links opening that file at that line. Fearless files show with syntax highlighting. Build (`Compile` for a code project that is not 'invalid', `Check` for any other), Clean (`DeleteCache`), the main button below, the kind switches of the Fearless menu of a project, New Fearless Project (`Register`), Show in manager (`Show` with the name of the project) and Forget project are messages to the manager.
 The toolbar of the Fearless perspective holds the main button of the manager for the project of the active editor or of the selection. The main button shows what pressing the main button does, each with an image of its own: Check, Compile, Run, Run V, or Terminate while Eclipse follows the mains of a `Run` of that project, and is greyed out while Eclipse follows a compilation of that project. Run V asks which mains to run, with the selected mains checked, then sends `SelectMains` naming the mains chosen and `Run`. Besides the main button, the toolbar of the Fearless perspective holds only the buttons of text editing (Save, Undo, Redo, Search, the toggles of the editor and the navigation in the text); a button that does nothing for Fearless or repeats another is hidden, and so is the Run menu, in the Fearless perspective only. Eclipse finds the state from the files, with the rules of an 'autoCheck': the kind in `projects.info`, the marker, and the rules of `Coordinator.check` (see CoordinatorDesign). A code project 'invalid' for a cause Eclipse does not read shows Compile, and the manager refuses that `Compile` with the 'problem' of the project.
 The toolbar of the Fearless perspective also holds New Package and New Type, for the project of the active editor or of the selection; each asks for a path inside the project folder and refuses a path that is not valid, naming the rule of the Fearless file names the path breaks:
