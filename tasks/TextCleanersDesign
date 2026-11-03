@@ -2,7 +2,7 @@ Text cleaners
 =============
 
 A 'cleaner' turns bytes into text, one byte at a time.
-Every text that comes from outside the program goes through cleaners: the text of a file, and the text added to a TextField or a TextArea.
+Every text that comes from outside the program goes through cleaners: the text of a file or of a download, and the text added to a TextField or a TextArea.
 A 'cleaner maker' makes a fresh cleaner from a starting text, the text that the cleaner sees before its first byte.
 
     UStrCleaner:{ mut .nextByte(b: Byte): UStr; mut .end: UStr; }
@@ -33,7 +33,8 @@ A 'run' of a cleaner maker on an input:
   the cleaner maker makes a cleaner with the empty starting text;
   the run calls .nextByte of the current cleaner with each byte of the input, in order;
   when a result holds a newline, the result up to its first newline goes to the result of the run, the current cleaner is over, and the cleaner maker makes the next cleaner with the rest of that result as starting text;
-  at the end of the input the run calls .end of the current cleaner, and cuts its result in the same way: each cleaner made then gets .end at once;
+  at the end of the input the run calls .end of the current cleaner, and cuts its result in the same way: each cleaner made from a rest at the end of the input gets only .end;
+  at the end of the input, what the .end of a cleaner that received no byte leaves after its first newline must be shorter than the starting text of that cleaner, else it is a deterministic error; so every run ends;
   a cleaner with the empty starting text that receives no byte gets no .end.
 The result of the run is the parts of the results that went to it, concatenated.
 
@@ -42,7 +43,8 @@ A 'bad unit' is a part of the input that the encoding rejects; its BadTextReason
 .utf8OrElse(fixer) decodes UTF-8; each bad unit gives the result of the fixer of the cleaner.
 .utf16LeOrElse, .utf16BeOrElse, .utf32LeOrElse, .utf32BeOrElse, .asciiOrElse and .latin1OrElse do the same with their encodings.
 .utf8 decodes UTF-8; a bad unit is a deterministic error holding the BadTextReason, the byte offset and the bytes of the bad unit.
-An encoding cleaner returns its starting text as it is, at its first call.
+An encoding cleaner returns its starting text as it is, in front of the first character or bad unit it decodes, or at its .end.
+The cleaners of the library return text only when they hold no byte of an unfinished sequence, so a cleaner that ends at a newline drops no byte.
 
 The normalizing cleaners:
 UStrCleaners.text decodes UTF-8, and:
@@ -51,11 +53,11 @@ UStrCleaners.text decodes UTF-8, and:
   carriage return newline, carriage return, U+000B, U+000C, U+0085, U+2028 and U+2029 become newline;
   the result is in NFC.
 UStrCleaners.line does what UStrCleaners.text does, then each newline becomes a space.
-StrCleaners.text does what UStrCleaners.text does, with ? instead of U+FFFD for a bad unit, and then:
+StrCleaners.softText does what UStrCleaners.text does, with ? instead of U+FFFD for a bad unit, and then:
   tab becomes space;
   each scalar value is decomposed (NFKD), so an accented letter becomes its letter;
   what is still not in Str is dropped.
-StrCleaners.line does what StrCleaners.text does, then each newline becomes a space.
+StrCleaners.softLine does what StrCleaners.softText does, then each newline becomes a space.
 A normalizing cleaner normalizes its starting text followed by the text it decodes.
 No cleaner depends on the locale.
 
@@ -65,6 +67,7 @@ Each of them returns the results of the scalar cleaner, concatenated.
 
 Reading:
 A read of text takes a cleaner maker: the result of the read is the run of the cleaner maker on the bytes of the file.
+A download of text takes a cleaner maker the same way: the result is the run of the cleaner maker on the bytes of the response body.
 
     CapInputCursorNode:{ ...
       mut .readStr(cleaner: imm F[Str, mut StrCleaner]): Str;
