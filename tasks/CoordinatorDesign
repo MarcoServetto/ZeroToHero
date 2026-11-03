@@ -209,5 +209,20 @@ a file of a package replaced by a file with a time older than the `<pkg>.jar` of
 
 ## Note for a future session
 
-- The code of Coordinator does not follow `.compile` above yet: `Cache` compares the files of the project before and after the compilation, hashing their content. Change `Cache` to the rule above: write `_unfinished.txt`, wait until the clock of the file system is after its time, then take the project; refuse with `Error.filesUpdated` every file read after that time whose modification time is after the time of `_unfinished.txt`; give each `<pkg>.jar` the time of `_unfinished.txt`; remove the comparison of the files and the hashing.
-- Then continue the review rounds of the code against CoordinatorDesign, ControllersDesign and ReconciliatorDesign, in cycles of four rounds: two internal reviews and two external reviews, one of the internal reviews being a user attempt (the managed Fearless deployed on a VM desk and used as a person would use it).
+Before starting, read /data/global_memory.txt: it names the notes files of this work.
+
+Fix first, in Coordinator, the way `.compile` finds files changed during the compilation:
+- Today `Coordinator/src/coordinator/Cache.java` keeps a picture of the project files: the record `File(path, time, content)`, where `content` is the SHA-256 hash of the bytes of the file, built by `Cache.files()`. `Cache.compile` builds that picture at its start and again at its end, and fails with `Error.filesUpdated` when the two pictures differ. Hashing the files was never part of this design, and the coding rules forbid it: the code reacts to what it meets, and never adds logic to search for changed files.
+- Remove the picture of the files, the record `File`, `files()`, `sha()` and the comparison. No hashing of any file remains anywhere in Coordinator.
+- Remove the class `Cache` itself if, without the picture, the class no longer earns its place: its remaining methods follow the `Project` of this design, and go where the code of the Coordinator is smallest.
+- Implement `.compile` as above: write `_unfinished.txt`; wait until the clock of the file system holding the project is after the modification time of `_unfinished.txt`; then take the project; every file of the project read after that point is refused with `Error.filesUpdated` when its modification time is after the modification time of `_unfinished.txt` (the time is read after the bytes); every `<pkg>.jar` gets the modification time of `_unfinished.txt`; `._writeCompiled` no longer waits.
+- Run the full test suites (`TestAllFrontendCoordinatorIntegration.java`, then `TestAllController.java`, never both at once) and open a PR to FearlessLang/Coordinator.
+
+Then continue the review rounds of the code against CoordinatorDesign, ControllersDesign and ReconciliatorDesign, in cycles of four rounds, in this order:
+1. Internal code review: a fresh sub-agent (opus, effort high) reads the three designs and the code, by reasoning only, without tests. It receives the file of known and decided items (/data/fearlessBranch3/review_known.txt) and the list of the areas changed since the last round.
+2. External code review: a fresh sub-agent (opus, effort high) reads the three designs and the code, by reasoning only, without tests. It receives neither the file of known items nor the list of changes, so its reading is not anchored on earlier decisions; its findings that are already known or decided are dropped.
+3. Internal user attempt: a fresh sub-agent deploys the managed Fearless (`DeployManagedFearless.java`), uses it on a VM desk not tried before as a person would, through `agentTools.Pilot`, and reports what blocks or confuses a person.
+4. External code review: as round 2.
+The prompts of the code reviews and of the user attempt are in /data/fearlessBranch3/review_prompts.txt.
+After each round: decide on each finding, fix the real ones in the code with tests, run the suites, add the new known or decided items to review_known.txt, and bring each possible design bug to the user one question at a time.
+Stop when five consecutive code review rounds find no real difference.
