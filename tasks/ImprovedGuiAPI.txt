@@ -535,7 +535,7 @@ A size that is state costs nothing to read, and the program can always override 
 Every clipping prints a warning: a widget that does not fit in its parent, a text that does not fit in its widget, a painter that draws past the edges of its widget.
 
 Regions:
-A place for one child is a region: the five regions of a Border, the two regions of a Split, the content of a Frame, the title and the content of a section.
+A place for one child is a region: the five regions of a Border, the regions of a Split, the content of a Frame, the title and the content of a section.
 A region is filled through a RegionFiller.
 A RegionFiller has one method per kind of widget, taking the scope of that widget.
 That method puts the widget in the region and returns the container of the region.
@@ -543,7 +543,7 @@ That method puts the widget in the region and returns the container of the regio
     RegionFiller[S:*]:{
       mut .pane(mut Scope[Pane]): S;
       mut .border(mut Scope[Border]): S;
-      mut .split: mut RegionFiller[mut And[mut SplitWith[S]]];
+      mut .split: mut RegionFiller[mut And[mut SplitAnd[S]]];
       mut .sections(mut Scope[Sections]): S;
       mut .button(mut Scope[Button]): S;
       mut .label(mut Scope[Label]): S;
@@ -607,63 +607,79 @@ A Pane keeps its scroll position in virtual pixels when its lines break again.
 Open: a program can not set the scroll position of a Pane, so it can not scroll a child into view.
 
 Split:
-A Split has two regions and a divider between them.
-.horizontal (the default) puts the first region left of the second; .vertical puts the first region above the second.
+A Split has two or more regions and a divider between each two neighbouring regions.
+.horizontal (the default) puts the regions from left to right; .vertical puts the regions from top to bottom.
 The axis of a Split is the width for .horizontal and the height for .vertical.
 
     Split:Widget[Split]{
       mut .horizontal: mut Split;
       mut .vertical: mut Split;
-      mut .dividerPosition(n:Nat): mut Split;
-      read .dividerPosition: Nat;
+      mut .dividerPositions(ps:List[Nat]): mut Split;
+      read .dividerPositions: List[Nat];
       mut .draggable(b:Bool): mut Split;
       read .draggable: Bool;
       mut .mouse(mut Scope[Mouse]):mut Split;
       mut .paint(Painter):mut Split;
-      mut .first: mut RegionFiller[mut Split];
-      mut .second: mut RegionFiller[mut Split];
+      mut .region(index: Nat): mut RegionFiller[mut Split];
+      read .size: Nat;
       }
-    Pane:_Container[Pane]{ ... mut .split: mut RegionFiller[mut And[mut SplitWith[mut Pane]]]; }
-    RegionFiller[S:*]:{ ... mut .split: mut RegionFiller[mut And[mut SplitWith[S]]]; }
+    Pane:_Container[Pane]{ ... mut .split: mut RegionFiller[mut And[mut SplitAnd[mut Pane]]]; }
+    RegionFiller[S:*]:{ ... mut .split: mut RegionFiller[mut And[mut SplitAnd[S]]]; }
     And[T:*]:{ mut .and: mut RegionFiller[T]; }
-    SplitWith[S:*]:{ mut .with(mut Scope[Split]): S; }
+    SplitAnd[S:*]:{ mut .and: mut RegionFiller[mut SplitAnd[S]]; mut .with(mut Scope[Split]): S; }
 
-    .split.pane{:: ...}.and.label{:: ...}.with{:: .vertical .dividerPosition 30}
+    .split.pane{:: ...}.and.label{:: ...}.with{:: .vertical .dividerPositions(Lists#30)}
+    .split.pane{:: ...}.and.pane{:: ...}.and.pane{:: ...}.with{:: .dividerPositions(Lists#(150, 600))}
 
-.split fills the first region, .and the second region, and the scope of .with receives the Split with both; .with returns the container of the Split.
+.split fills the first region, each .and fills the next region, and the scope of .with receives the Split with all the regions; .with returns the container of the Split.
+.size is the number of regions.
+The regions and the dividers are indexed from 0 along the axis: the divider at index i is between the regions at index i and i+1.
+.region(index) is the RegionFiller of the region at that index; an index that is not below .size is a deterministic error.
 
-Every divider is 5 virtual pixels thick on the axis, as thick as a scroll bar, and spans the Split on the other axis.
-A Split has no gaps: it is not a _Container, and the divider is the only space between its two regions.
-The divider position is a distance in virtual pixels on the axis: from the start of the Split, after the left inset for .horizontal and after the top inset for .vertical, to the divider.
-The first region goes from that start to the divider.
-The second region goes from the end of the divider to the end of the Split, before the right inset or the bottom inset.
-The default divider position is 0.
+Every divider is 5 virtual pixels thick on the axis, as thick as a scroll bar, and spans the Split on the other axis, between the insets.
+A Split has no gaps: it is not a _Container, and the dividers are the only space between its regions.
+The start of the Split is after the left inset for .horizontal and after the top inset for .vertical; the end of the Split is before the right inset for .horizontal and before the bottom inset for .vertical.
+A divider position is a distance in virtual pixels on the axis, from the start of the Split to the start of the divider.
+.dividerPositions(ps) sets all the divider positions at once, in the order of the dividers.
+A ps that does not hold one position per divider, holds a position over 32767 (the largest length that .width and .height accept), or holds a position less than 5 more than the position before it, is a deterministic error.
+.dividerPositions returns the current divider positions.
+The first region goes from the start of the Split to the first divider.
+Each later region goes from the end of the divider before it to the divider after it; the last region goes to the end of the Split.
+No region goes past the end of the Split: a region that would is cut at the end of the Split.
+The default divider positions are 0, 5, 10 and so on: every region except the last one has length 0.
 
-The divider stands at the divider position, whatever the size of the children and of the space the Split is drawn in.
-A divider position past the end of the Split leaves the second region empty, and the divider is clipped.
-Each region spans the Split on the other axis.
-A child takes its region as the center of a Border does: with .fill it fills the region, and a child smaller than its region is centered in it.
+Each divider stands at its divider position, whatever the size of the children and of the space the Split is drawn in.
+Only the part of a divider before the end of the Split is drawn and takes a press.
+Each region spans the Split on the other axis, between the insets.
+A child takes its region as the center of a Border does.
 A child larger than its region is centered on the region and clipped to it, on both sides.
 
-The divider is drawn in the faint color of a scroll track, with a darker grip in the middle.
-The user drags the divider with the mouse primary button: the divider follows the pointer, and the drag sets the divider position.
-A drag keeps the divider inside the Split.
-A press on the divider reaches no handler, as a press on a scroll bar.
-The pointer over the divider shows the resize cursor of the axis.
+A divider is drawn in the faint color of a scroll track, with a darker grip in the middle.
+A press of the primary button on a divider of a Split with .draggable(True) starts a drag: that press, its drag and its release reach no handler, as on a scroll bar.
+The dragged divider follows the pointer.
+The dragged divider moves no further once the regions on one side of the dragged divider all have length 0.
+The dragged divider moves no further from the start of the Split than the larger of two positions: its position at the press, and the end of the Split minus 5.
+The drag also moves the other dividers, so that the regions on each side of the dragged divider keep the ratios of their lengths.
+The regions before the dragged divider scale between the start of the Split and the dragged divider; the regions after the dragged divider scale between the dragged divider and the end of the Split.
+In the rules of a drag, the length of a region is measured before the cut at the end of the Split, and the last region ends at the end of the Split or at the end of the last divider at the press, whichever is further.
+Each new position is rounded to the nearest virtual pixel and computed from the positions at the press: moving the pointer back to the press puts every divider back.
+When the regions on one side of the dragged divider all have length 0 at the press, the region next to the dragged divider on that side takes the whole length of that side, and the other regions on that side keep length 0.
+For example, in a Split whose end is at 400 with dividers at 100 and 200, dragging the divider at 200 to 100 moves the divider at 100 to 49: the regions before the dragged divider go from 100 and 95 to 49 and 46.
+A drag in progress ends when the program calls .vertical, .horizontal, .draggable(False), .dividerPositions(ps) or .pack on its Split, removes the Split from the window, collapses the section whose content holds the Split, or when a menu opens; then the moves of the pointer move no divider until the release.
+The pointer over a divider shows the resize cursor of the axis.
 .draggable is True by default.
-With .draggable(False) the divider has no grip and the pointer over it shows the default cursor.
-A press on that divider is a press on the Split.
+With .draggable(False) the dividers have no grip, the pointer over them shows the default cursor, and a press on a divider is a press on the Split.
 
-A new child grows the Split to fit that child alone, plus the divider on the axis and the insets.
-.vertical and .horizontal grow the Split to fit each child alone, plus the divider on the new axis and the insets.
-.pack sets the length of the Split on the axis to the lengths of the two children plus the divider, plus the insets.
-On the other axis, .pack sets the length of the Split to the larger of the two children, plus the insets.
-.pack also sets the divider position to the length of the first child on the axis.
+A new child grows the Split to fit that child alone, plus the dividers on the axis and the insets.
+.vertical and .horizontal grow the Split to fit each child alone, plus the dividers on the new axis and the insets.
+.pack sets the length of the Split on the axis to the lengths of the children plus the dividers, plus the insets.
+On the other axis, .pack sets the length of the Split to the largest of the children, plus the insets.
+.pack also puts each divider right after the child before it: the divider at index i at the sum of the lengths on the axis of the children at index 0 to i, plus 5 times i.
 
-Why the divider stands where it is put.
-The program and the user put the divider at a position, and no layout moves it: predictability wins over convenience.
+Why the dividers stand where they are put.
+The program and the user put the dividers at their positions, and no layout moves them: predictability wins over convenience.
 The space a Split is drawn in changes only when the program acts: a new virtual pixel space, a new size of a widget.
-So the program that changes that space also sets the divider position it wants in the new space, for example in its .onResize handler; the user can always drag the divider.
+So the program that changes that space also sets the divider positions it wants in the new space, for example in its .onResize handler; the user can always drag a divider.
 
 Open: a widget larger than the space its parent gives.
 It is clipped by its parent.
