@@ -71,7 +71,7 @@ Project: {
     the modification time of the file package.name+".jar" of Coordinator._outFolder(this.folder, package.name), if present;
   mut ._writeCompiled(sys: mut System, package: Package, compiled: Compiled): Void ->
     writes compiled.html and compiled.txt into the files package.name+".html" and package.name+".txt" of .fearless_out;
-    then waits until the clock of the file system holding the project is after this._newestFileTime(package), writes compiled.jar into the file package.name+".jar" of .fearless_out, and waits until that clock is after the modification time of that file plus the timestamp resolution of that file system;
+    then writes compiled.jar into the file package.name+".jar" of .fearless_out, and gives that file the modification time of .fearless_out/_unfinished.txt;
   ._lowerPackages(package: Package): List[Package] ->
     this.packages.flow
       .filter{p -> p.rank < (package.rank)}
@@ -141,14 +141,14 @@ Coordinator: {
     .if {project.ownPackages.flow.any{p -> project._upToDate(sys, p).not}} .return {State.outOfDate}
     .return{State.compiled(project._mergedManifest(sys), project.packages.flow.map{::.name}.list)};
   mut .compile(sys: mut System, folder: FsPath, projectName: Name, takeFreeExtension: mut TakeFreeExtension): Opt[Error] -> Block#
+    .do{.fearless_out holds _unfinished.txt .thenDo{delete every file of .fearless_out with the extension jar}}   // a <pkg>.jar written by the .compile that wrote _unfinished.txt may be written in part, or be older than its <pkg>.json
+    .do{write .fearless_out/_unfinished.txt}
+    .do{wait until the clock of the file system holding the project is after the modification time of .fearless_out/_unfinished.txt}
     .let[Project] project= {this._project(sys, folder)}
     .if {project.optProblem.isSome} .return {project._fail(sys, project.optProblem!)}
-    .do{.fearless_out holds _unfinished.txt .thenDo{delete every file of .fearless_out with the extension jar}}   // a <pkg>.jar written by the .compile that wrote _unfinished.txt may be written in part, hold the code of files changed during that .compile, or be older than its <pkg>.json
-    .do{write .fearless_out/_unfinished.txt}
     .do{project._otherFiles(sys).flow.for{f -> delete f}}
     .let[Opt[Error]] optError= {sys.try#{project.ownPackages.flow.for{p -> project._upToDate(sys, p).not
         .thenDo{project._compilePackage(sys, p, projectName, takeFreeExtension)}}}.info}
-    .if {this._project(sys, folder).files == (project.files) .not} .return {project._fail(sys, Error.filesUpdated(projectName))}
     .if {optError.isSome} .return {project._fail(sys, optError!)}
     .do{delete .fearless_out/_error.txt}
     .return{Opt#};
@@ -183,6 +183,8 @@ A package of the same rank or of a higher rank can name an extension this packag
 `._writeIcons`: the checks of each icon of the `.preloaded` of a main are those of `Cache.writeIcon` in `Coordinator/src/coordinator/Cache.java`. A failure makes `.compile` fail, with an error worded like a Frontend error and naming the main, the icon type and the image file:
 `The icon "hello.IconsBar" in "base.Shortcut[hello.IconsBar,\"fapp123\"]" of main "hello.Bar" is 300x200 pixels (from "_hello/icons/bar.png"): an icon must be a square PNG image with a side from 64 to 1024 pixels.`
 `._writeIcons` copies the PNG because the PNG may be inside a zip, and the desktop needs a plain file.
+During `.compile`, the Coordinator reads each file of the project, and then refuses that file, raising `Error.filesUpdated(projectName)`, when the modification time of that file is after the modification time of `.fearless_out/_unfinished.txt`: the file changed after `.compile` started, so `.compile` would mix two versions of the project.
+A file changed after the Coordinator read it was compiled in its earlier version; that file is newer than the `<pkg>.jar` of its package, which has the time of `_unfinished.txt`, so the project is 'out of date'.
 The error `Error.filesUpdated(projectName)` is
 `Some files inside the project "hello" were updated while the project was compiling.`
 The error `Error.noFreeExtension(main.name, claim)` is, for a `Shortcut`,
@@ -204,3 +206,8 @@ a file of a package replaced by a file with a time older than the `<pkg>.jar` of
 - The text of `Error.cacheCorrupted` is followed by a line `Details:` and the stack trace of the failure that found the corruption.
 - A crash of the code of the Coordinator (a bug, not an `Error`) during `.compile` is caught by `sys.try` only when `.fearless_out` existed before that `.compile`: then the crash may come from a corrupted file, and is `Error.cacheCorrupted`. With no `.fearless_out` before, the crash ends `.compile`, and the caller reports the crash.
 - `.deleteCache` of a folder with no `.fearless_out` does nothing: writing `_unfinished.txt` never creates `.fearless_out`, nor the project folder.
+
+## Note for a future session
+
+- The code of Coordinator does not follow `.compile` above yet: `Cache` compares the files of the project before and after the compilation, hashing their content. Change `Cache` to the rule above: write `_unfinished.txt`, wait until the clock of the file system is after its time, then take the project; refuse with `Error.filesUpdated` every file read after that time whose modification time is after the time of `_unfinished.txt`; give each `<pkg>.jar` the time of `_unfinished.txt`; remove the comparison of the files and the hashing.
+- Then continue the review rounds of the code against CoordinatorDesign, ControllersDesign and ReconciliatorDesign, in cycles of four rounds: two internal reviews and two external reviews, one of the internal reviews being a user attempt (the managed Fearless deployed on a VM desk and used as a person would use it).
