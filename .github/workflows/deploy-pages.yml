@@ -3,26 +3,55 @@ name: Deploy ZeroToHero pages
 on:
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-pages
+
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+  generate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      JDK_LINUX_URL: https://download.oracle.com/java/26/archive/jdk-26.0.2_linux-x64_bin.tar.gz
+      JDK_LINUX_SHA256: 11de2bce72e7f07b9e80afa9bdd950b42f3a5c69cf4969e44389d50f466959e2
+    outputs:
+      sources: ${{ steps.sources.outputs.sources }}
     steps:
-      - uses: actions/checkout@v7
-        with: { path: src/ZeroToHero }
-      - uses: actions/checkout@v7
-        with: { repository: FearlessLang/Commons, path: src/Commons }
-      - uses: actions/checkout@v7
-        with: { repository: FearlessLang/Frontend, path: src/Frontend }
-      - uses: actions/checkout@v7
-        with: { repository: FearlessLang/Coordinator, path: src/Coordinator }
-      - uses: actions/checkout@v7
-        with: { repository: MarcoServetto/FearlessTour, path: src/FearlessTour }
+      - name: Check that the workflow runs from main
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo "::error::Run this workflow from main, not from $GITHUB_REF"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { path: src/ZeroToHero, persist-credentials: false }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { repository: FearlessLang/Commons, ref: main, path: src/Commons, persist-credentials: false }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { repository: FearlessLang/Frontend, ref: main, path: src/Frontend, persist-credentials: false }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { repository: FearlessLang/Coordinator, ref: main, path: src/Coordinator, persist-credentials: false }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { repository: MarcoServetto/FearlessTour, ref: main, path: src/FearlessTour, persist-credentials: false }
+      - name: Record the commit of each repository
+        id: sources
+        shell: bash
+        run: |
+          {
+            echo "sources<<SOURCES"
+            for r in MarcoServetto/ZeroToHero FearlessLang/Commons FearlessLang/Frontend FearlessLang/Coordinator MarcoServetto/FearlessTour; do
+              echo "- $r $(git -C "src/${r#*/}" rev-parse HEAD)"
+            done
+            echo "SOURCES"
+          } >> "$GITHUB_OUTPUT"
       - name: Install JDK 26
         shell: bash
         run: |
-          curl -fsSL -o "$RUNNER_TEMP/jdk.tar.gz" https://download.oracle.com/java/26/archive/jdk-26.0.2_linux-x64_bin.tar.gz
+          curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/jdk.tar.gz" "$JDK_LINUX_URL" || { echo "::error::curl could not download $JDK_LINUX_URL; run again, or check whether the URL moved"; exit 1; }
+          echo "$JDK_LINUX_SHA256  $RUNNER_TEMP/jdk.tar.gz" | sha256sum -c - || { echo "::error::$JDK_LINUX_URL does not have the SHA-256 pinned in deploy-pages.yml; compare it with the published .sha256 before changing the pin"; exit 1; }
           mkdir -p "$RUNNER_TEMP/jdk"
           tar -xzf "$RUNNER_TEMP/jdk.tar.gz" -C "$RUNNER_TEMP/jdk" --strip-components=1
           echo "JAVA_BIN=$RUNNER_TEMP/jdk/bin/java" >> "$GITHUB_ENV"
@@ -30,16 +59,30 @@ jobs:
         shell: bash
         run: |
           dest="$GITHUB_WORKSPACE/src/FearlessTour/externalJars"
-          base="https://repo1.maven.org/maven2/com/vladsch/flexmark"
-          for j in flexmark flexmark-ext-tables flexmark-util-ast flexmark-util-builder flexmark-util-collection flexmark-util-data flexmark-util-dependency flexmark-util-format flexmark-util-html flexmark-util-misc flexmark-util-options flexmark-util-sequence flexmark-util-visitor; do
-            curl -fsSL -o "$dest/$j-0.64.8.jar" "$base/$j/0.64.8/$j-0.64.8.jar"
-          done
-          curl -fsSL -o "$dest/annotations-24.0.1.jar" "https://repo1.maven.org/maven2/org/jetbrains/annotations/24.0.1/annotations-24.0.1.jar"
+          while read -r url sum; do
+            curl -fsSL --retry 5 --retry-all-errors -o "$dest/${url##*/}" "$url" || { echo "::error::curl could not download $url; run again, or check whether the URL moved"; exit 1; }
+            echo "$sum  $dest/${url##*/}" | sha256sum -c - || { echo "::error::$url does not have the SHA-256 pinned in deploy-pages.yml; compare it with the .sha1 of Maven Central before changing the pin"; exit 1; }
+          done <<'JARS'
+          https://repo1.maven.org/maven2/com/vladsch/flexmark/flexmark/0.64.8/flexmark-0.64.8.jar 3133878d108f0e1964d7d427f379a7433e1b71a45f9f3c1fab7ed0ac0301d3b0
+          https://repo1.maven.org/maven2/com/vladsch/flexmark/flexmark-ext-tables/0.64.8/flexmark-ext-tables-0.64.8.jar cdf82d26e112e96ade7e370138aeb16920b7e2d411d20c6c15cb1acfacd1ef1f
+          https://repo1.maven.org/maven2/com/vladsch/flexmark/flexmark-util-ast/0.64.8/flexmark-util-ast-0.64.8.jar a5342f644c6a5f37d502f225c3a0cb699c263621c82e720d9c08eba5a9f3b8d3
+          https://repo1.maven.org/maven2/com/vladsch/flexmark/flexmark-util-builder/0.64.8/flexmark-util-builder-0.64.8.jar afb9c88d9f652451e75f1ab069ad7ddd791d712eb211c51d8d2a83494240875d
+          https://repo1.maven.org/maven2/com/vladsch/flexmark/flexmark-util-collection/0.64.8/flexmark-util-collection-0.64.8.jar 031ff01408d0f54c6235db18d451dc6e6b15b859b0ec1e40ff3429a82375082a
+          https://repo1.maven.org/maven2/com/vladsch/flexmark/flexmark-util-data/0.64.8/flexmark-util-data-0.64.8.jar 83ceb5989ab0205054bf1b42446f55cb6da14c10aa7c2bda05d6a2504670f353
+          https://repo1.maven.org/maven2/com/vladsch/flexmark/flexmark-util-dependency/0.64.8/flexmark-util-dependency-0.64.8.jar e41adb5e8144699b61b78d50eb004eeb7de84f90c4c63626609e6cee5ea28b42
+          https://repo1.maven.org/maven2/com/vladsch/flexmark/flexmark-util-format/0.64.8/flexmark-util-format-0.64.8.jar 6c9ac87686474edf0117b3f838d9dcb3b965fa72be4998d2177b598013679f73
+          https://repo1.maven.org/maven2/com/vladsch/flexmark/flexmark-util-html/0.64.8/flexmark-util-html-0.64.8.jar 5b19e6506aff7913c74ad725af7c2b8a9f23958e6324bf0710c5a645a4663017
+          https://repo1.maven.org/maven2/com/vladsch/flexmark/flexmark-util-misc/0.64.8/flexmark-util-misc-0.64.8.jar 74472ca81a9080e51ea1a4f11c270898e3d6c242c92275fab47eb993806c8f2b
+          https://repo1.maven.org/maven2/com/vladsch/flexmark/flexmark-util-options/0.64.8/flexmark-util-options-0.64.8.jar 2489f41e9caf1d9f8061833b311b25403925cbb631fff2b8c069192804d6fc88
+          https://repo1.maven.org/maven2/com/vladsch/flexmark/flexmark-util-sequence/0.64.8/flexmark-util-sequence-0.64.8.jar 6e22976fe4e9b8de94fd529991ecb2d79cc482aad94985367470a93be1d82631
+          https://repo1.maven.org/maven2/com/vladsch/flexmark/flexmark-util-visitor/0.64.8/flexmark-util-visitor-0.64.8.jar d9b3002a833a078c45e139568b306dab0ac117ff9046c6a1f9e180c0154563fc
+          https://repo1.maven.org/maven2/org/jetbrains/annotations/24.0.1/annotations-24.0.1.jar 61666dbce7e42e6c85b43c04fcfb8293a21dcb55b3c80e869270ce42c01a6b35
+          JARS
       - name: Generate LocalResources.java
         shell: bash
         run: |
           prefix="${GITHUB_WORKSPACE//\\//}/src"
-          cat > "$GITHUB_WORKSPACE/src/Coordinator/Build/src/resources/LocalResources.java" <<JAVA
+          cat > "$prefix/Coordinator/Build/src/resources/LocalResources.java" <<JAVA
           package resources;
           import java.nio.file.Path;
           public class LocalResources{
@@ -55,27 +98,67 @@ jobs:
             static public final Path coordinatorSrcModule= prefix.resolve("Coordinator","srcModule");
             static public final Path controllerSrc= prefix.resolve("Controllers","src");
             static public final Path controllerSrcModule= prefix.resolve("Controllers","srcModule");
-            static public final Path portableEclipse= prefix.resolve("eclipse");
             static public final Path portableFolderOut= prefix.resolve("out","fearlessArtefact");
             static public final Path managedFolderOut= prefix.resolve("out","fearlessManagedArtefact");
             static public final Path badZipCorpous= prefix.resolve("Coordinator","badZips");
             static public final Path packaging= prefix.resolve("Coordinator","_fearless_packaging");
+            static public final Path portableEclipse= prefix.resolve("eclipse");
           }
           JAVA
       - name: Generate pages
         shell: bash
         working-directory: src/Coordinator/Build/src
-        run: "\"$JAVA_BIN\" -ea --module-path ../../../Commons/Commons.jar --add-modules Commons scripts/DeployZeroToHeroPages.java"
-      - name: Commit and push regenerated pages
+        run: |
+          touch "$RUNNER_TEMP/before_pages"
+          "$JAVA_BIN" -ea --module-path ../../../Commons/Commons.jar --add-modules Commons scripts/DeployZeroToHeroPages.java
+      - name: Check the generated pages
         shell: bash
         working-directory: src/ZeroToHero
         run: |
-          git add src/assetsDest src/assetsLeo src/assetsGuide
-          if git diff --cached --quiet; then
-            echo "No page changes to publish"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "Regenerate ZeroToHero and guide pages"
-            git push
+          for d in src/assetsDest src/assetsLeo src/assetsGuide; do
+            if [[ -z "$(find "$d" -name '*.html' -newer "$RUNNER_TEMP/before_pages" -print -quit)" ]]; then
+              echo "::error::The page generator wrote no .html file in $d; DeployZeroToHeroPages writes the pages of all three folders"
+              exit 1
+            fi
+          done
+          outside=$(git status --porcelain -- . ':!src/assetsDest' ':!src/assetsLeo' ':!src/assetsGuide')
+          if [[ -n "$outside" ]]; then
+            echo "::error::The page generator changed the files listed below, outside src/assetsDest, src/assetsLeo and src/assetsGuide; DeployZeroToHeroPages may write only these three folders"
+            echo "$outside"
+            exit 1
           fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: pages
+          path: |
+            src/ZeroToHero/src/assetsDest
+            src/ZeroToHero/src/assetsLeo
+            src/ZeroToHero/src/assetsGuide
+          if-no-files-found: error
+          include-hidden-files: true
+
+  push:
+    needs: generate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { ref: "${{ github.sha }}" }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with: { name: pages, path: src }
+      - name: Commit and push regenerated pages
+        shell: bash
+        env:
+          SOURCES: ${{ needs.generate.outputs.sources }}
+        run: |
+          git add -A src/assetsDest src/assetsLeo src/assetsGuide
+          if git diff --cached --quiet; then
+            echo "::notice::No page changes to publish"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Regenerate ZeroToHero and guide pages" -m "Generated from:" -m "$SOURCES"
+          git push origin HEAD:main || { echo "::error::git push to main of $GITHUB_REPOSITORY was refused (the git error is above); if main moved after $GITHUB_SHA, run the workflow again from main"; exit 1; }
