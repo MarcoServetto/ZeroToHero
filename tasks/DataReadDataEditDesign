@@ -71,6 +71,37 @@ A delete deletes a 'file', or a 'folder' with every 'resource' in the 'folder' a
 A path that is not valid, or a request that the 'resources' of the data project do not allow, like a path naming no 'resource', a path naming a 'resource' of the other kind, or a delete of the root 'folder', is a deterministic error.
 A data project that is not mounted, a root 'fsFolder' that can not be reached, a 'resource' that exists but can not be read or changed, and a 'folder' holding a name that is not valid are non deterministic errors.
 
+## Locks of data projects
+
+Each data project has one lock, held by processes: running mains, processes started by `CapProcess`, and the manager.
+A process holds the lock in one of two modes: a 'read lock' or the 'edit lock'.
+Any number of processes hold a 'read lock' at the same time; a process holds the 'edit lock' only while no other process holds the lock.
+A main takes a 'read lock' through any DataRead type, and the 'edit lock' only through a DataEdit type.
+
+An 'operation' is a call of a method of `CapDataRead` or `CapDataEdit`, or a read of a 'file' that `.read` gave.
+Each 'operation' holds the lock from its start to its end: a 'read lock' for `.paths` and for the reads, the 'edit lock' for a write and for a delete.
+An 'operation' that can not take the lock waits until it can; Fearless code observes the wait only as time.
+
+`.locked(f)` of `CapDataRead` holds a 'read lock', and `.locked(f)` of `CapDataEdit` holds the 'edit lock', for the whole run of `f`, and returns what `f` returns.
+The lock is released when `f` ends, normally or with an error.
+Inside `f`, the 'operations' on that data project take no lock of their own, and an 'operation' on another data project is a deterministic error.
+A process runs at most one `.locked` at a time: a `.locked` waits while another `.locked` of the same process runs, and a `.locked` inside the `f` of a `.locked` is a deterministic error.
+So a process that waits for a lock holds no lock, and two processes never wait for each other.
+
+The manager holds a 'read lock' during each scan of a data project; when the lock is not free, the manager skips that scan and keeps the state found by the previous scan.
+
+The lock is a lock of the operating system on the 'lock file' of the data project: a shared lock for a 'read lock', an exclusive lock for the 'edit lock'.
+The operating system releases the locks of a process when the process ends, however the process ends.
+The 'lock file' of a data project is `locks/<hash>.lock` in the manager folder, where `<hash>` is the SHA-256 of the absolute path of the 'fsFolder' of the data project, in hexadecimal.
+When a `Run` starts, the manager gives each main the 'lock file' of each data project it gives, next to the 'fsFolder'.
+The 'lock file' holds nothing, and its existence means nothing: a process creates the 'lock file' when the 'lock file' is missing.
+A process keeps one open channel to each 'lock file', with a lock of its own threads in front of the lock of the operating system: on Linux and macOS, closing any channel to a file releases every lock that the process holds on that file.
+
+An edit leaves the 'fsFolder' of the data project valid at every moment, also when the process ends during the edit.
+The edit builds what it adds as a hidden 'fsFile' or 'fsFolder' `.<uuid>.tmp` in the root 'fsFolder': the new 'fsFile', the rewritten zip, or the missing 'fsFolders' holding the new 'fsFile'.
+Then the edit moves the `.<uuid>.tmp` to its place with one rename.
+A process that takes the 'edit lock' deletes every `.<uuid>.tmp` of the root 'fsFolder'.
+
 ## GUI
 
 For a code project, the Data collapsible area shows each DataRead type of the project and each mount of the project.
