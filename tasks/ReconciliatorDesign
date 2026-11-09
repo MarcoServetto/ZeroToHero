@@ -11,7 +11,7 @@ Each version of the manager and each version of the portable Fearless has an ide
 The program folder of a manager holds two launchers, `<name>` and `<name>w`: they are two members of the Fearless family, with the identities `<name>` and `<name>w`, and one manager folder.
 The kind of an extension follows from the text of the extension: `.fearless`, `.fapp` and three digits, and `.ffile` and three digits are Fearless extensions; every other extension is a system extension.
 ```
-ExtensionIcon: { .extension: FileExtension; .icon: FsPath }    // the .ico on Windows, the PNG on Linux
+ExtensionIcon: { .extension: FileExtension; .icon: FsPath }    // the .ico on Windows, the PNG on Linux and macOS
 WindowIcon: { .windowClass: Str; .name: Str; .target: FsPath; .png: FsPath }  // Linux only
 Reconciliator: {
   mut .reconcile(sys: mut System, identity: Str, command: FsPath, extensions: List[ExtensionIcon], windows: List[WindowIcon], programIcon: FsPath, replaced: mut MF[FsPath, Void]): Void;
@@ -19,11 +19,11 @@ Reconciliator: {
   }
 ```
 `.reconcile` makes `command` the program opening exactly `extensions`, under `identity`, each extension with its icon, and installs the icons of `windows`.
-`programIcon` is the icon of `command` itself: the `.ico` on Windows, the PNG on Linux.
+`programIcon` is the icon of `command` itself: the `.ico` on Windows, the PNG on Linux and macOS.
 The 'setup' of an identity is every registry key and file `.reconcile` writes for that identity.
 The setup of every other identity of the Fearless family, and the setup of `identity` when that setup has another command, is deleted, after `replaced` is called on the command of that setup. So only one member of the Fearless family at a time opens `.fearless`, and a program that takes `.fearless` from another member of the Fearless family releases every extension of that other member.
 `.reconcile` takes the whole wanted set at once. Reconciling an unchanged set changes no setup.
-Every `.reconcile` that passes its checks ends with one refresh of the desktop (`SHChangeNotify` on Windows, the MIME and desktop databases on Linux), also when no setup changed: a changed image at the same path then shows too.
+Every `.reconcile` that passes its checks ends with one refresh of the desktop (`SHChangeNotify` on Windows, the MIME and desktop databases on Linux, `LSRegisterURL` of the 'helper bundle' on macOS), also when no setup changed: a changed image at the same path then shows too.
 The checks of `.reconcile` change nothing when the checks fail, so the previous setup stays in place.
 An extension left out of a `.reconcile` loses the setup of the identity only, and the previous program opens the files of that extension again.
 
@@ -51,14 +51,32 @@ On Linux a program opens MIME types, not extensions; the shared MIME database tu
 - `.fearless` keeps its type `application/x-fearless`. A Fearless extension gets `application/x-fearless-<ext>` like a system extension; no system glob can match it.
 - Nothing outside the files of the identity changes. Releasing an extension rewrites the MIME package of the identity without that extension, and the system types are back as they were.
 
+### Extensions on macOS
+
+On macOS a program opens types, not extensions: an application declares, in the `Info.plist` of the application, the types the application opens, and the extensions of the types the application invents.
+Changing the `Info.plist` of a signed application breaks the signature of that application.
+So the application of `command` declares `.fearless` when that application is built, and `.reconcile` declares every other extension in the 'helper bundle' of the identity.
+The 'helper bundle' of an identity is the application `~/Library/Application Support/fearlessAssociations/<identity>.app`, which only `.reconcile` writes: an `Info.plist`, a launcher script running `command` with the arguments of the launcher script, the icon of each extension and the icon of `command`.
+The 'helper bundle' is the setup of the identity: the identities on the system are the 'helper bundles' in `fearlessAssociations`, and `.reconcile` writes the 'helper bundle' also when `.fearless` is the only extension.
+The 'declared type' of an extension is the first type macOS gives for that extension that an application outside `fearlessAssociations` declares.
+- An extension with no 'declared type' gets a type of its own: `<identity>.<ext>`, with `-` for each `_` and in lower case, because a type name holds no `_` and macOS reads type names in lower case. The 'helper bundle' declares that type and opens that type as owner (`LSHandlerRank` `Owner`), so a double click on a file of that extension reaches `command`.
+- A Fearless extension other than `.fearless` with a 'declared type' makes `.reconcile` refuse that extension; the program holding that extension is the application declaring the 'declared type'.
+- A system extension with a 'declared type' gets no new type: the 'helper bundle' opens the 'declared type' as alternate (`LSHandlerRank` `Alternate`). `command` is then in the "Open With" choices of every extension of the 'declared type' (of `.html` too when the extension is `.htm`), and the program opening the 'declared type' stays the same.
+- When an application outside `/System` declares the 'declared type', and the previous `Info.plist` of the 'helper bundle' does not name the 'declared type', `.reconcile` asks macOS once to make the 'helper bundle' the program opening the 'declared type'; macOS asks the user to confirm.
+- `.reconcile` does not ask for a 'declared type' that an application in `/System` declares: for `public.html` macOS would ask the user to change the default web browser.
+- A double click on a file runs the launcher script of the 'helper bundle', so `command` starts with zero arguments, and macOS passes the file as an event (see Starting the 'single' manager in ControllersDesign).
+- `.reconcile` checks nothing for `.fearless`. The application of every installed program of the Fearless family declares `.fearless`: with two of those applications installed, macOS chooses which application opens a `.fearless` file.
+- Deleting the setup of an identity registers the 'helper bundle' with an `Info.plist` declaring no type, then deletes the 'helper bundle'.
+
 ### Icons on the desktop
 
 On Windows the registry names an icon by its path, so the desktop reads the `.icon` of each `ExtensionIcon` from that path. On Linux a MIME type names its icon, and the desktop looks names up only in icon theme folders: `$XDG_DATA_HOME/icons` of the user, `$XDG_DATA_DIRS/icons` of the system (root only) and the legacy `~/.icons`. `.reconcile` installs each icon as `$XDG_DATA_HOME/icons/hicolor/256x256/mimetypes/<identity>-<hash>.png`; the hash gives a changed image a new name, past the icon cache of the desktop. Every file there named `<identity>-<hash>.png` belongs to that identity: each `.reconcile` deletes the files of that identity not in the wanted set, and deleting the setup of an identity deletes all the files of that identity together with the `apps/<identity>.png`, the `.desktop` files and the MIME package of that identity.
 On Linux each window class of `windows` gets a `.desktop` file with `NoDisplay=true`, holding `.name` as its name, `command` followed by `.target` as its command, the installed icon as its icon and the window class as its `StartupWMClass`: GNOME and COSMIC show that icon for every window of that window class.
+On macOS the `Info.plist` of the 'helper bundle' names an icon file for each type: `.reconcile` writes the icon of each extension as `Contents/Resources/<ext>.icns`, an icns file holding the PNG scaled to 256 pixels. Finder shows the icon of a new extension at once. After the icon of an extension changes, Finder keeps showing the first icon of that extension until the icon store of macOS is rebuilt.
 
 ### Notes
 
-- The code of the Reconciliator is today the package `fileAssociations` of Commons (`FileAssociations`, `WindowsAssociations`, `LinuxAssociations`, `Ico`, `Icon`, `WindowIcon`, `Shell`, `Xdg`), called by `Controllers/src/controller/Association.java` and by `offerAssociation` of `Coordinator/src/mainCoordinator/Main.java`. That code becomes a component of its own, called from the repositories Controllers and Coordinator.
+- The code of the Reconciliator is today the package `fileAssociations` of Commons (`FileAssociations`, `WindowsAssociations`, `LinuxAssociations`, `MacAssociations`, `Ico`, `Icon`, `WindowIcon`, `Shell`, `Xdg`), called by `Controllers/src/controller/Association.java` and by `offerAssociation` of `Coordinator/src/mainCoordinator/Main.java`. That code becomes a component of its own, called from the repositories Controllers and Coordinator.
 - The exact checks and steps of `.reconcile` are those of the doc comment of `FileAssociations` in Commons.
 - `Ico` makes the `.ico` of an icon from the PNG of the icon; `._writeIcons` of CoordinatorDesign and the manager (Conflict icon in ControllersDesign) need `Ico`.
 - The code passes both an `.ico` and a PNG for each extension and for the program (`Icon`, `programIco`, `programPng`), where the design passes only the file the system reads.
