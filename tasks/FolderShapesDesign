@@ -65,25 +65,48 @@ Fix changes the content of the project folder, and nothing else.
 A 'desk file' is one of the following 'entries', 'visible' or 'invisible':
 - a file named `.DS_Store`;
 - a file whose name starts with `._`;
-- a folder named `__MACOSX`, with every 'entry' inside that folder;
+- a folder named `__MACOSX` or `.AppleDouble`, with every 'entry' inside that folder;
 - a file named `Icon` followed by a carriage return;
-- a file named `Thumbs.db` or `desktop.ini`, in any mix of uppercase and lowercase;
+- a file named `Thumbs.db`, `ehthumbs.db`, `ehthumbs_vista.db` or `desktop.ini`, in any mix of uppercase and lowercase;
+- a file whose name ends with `:Zone.Identifier`;
 - a file named `.directory`;
 - a folder whose name starts with `.Trash-`, with every 'entry' inside that folder;
-- a file whose name ends with `~`.
-The desktops, the archive programs and the text editors write the 'desk files' on their own, next to the files of the user.
+- a file whose name ends with `~`;
+- a file whose name starts with `~$`;
+- a file whose name starts with `.~lock.` and ends with `#`;
+- a file whose name starts with `#` and ends with `#`;
+- a file whose name starts with `.` and ends with `.swp`.
+The desktops, the archive programs, the office programs and the text editors write the 'desk files' on their own, next to the files of the user.
+
+The 'fixed segment' of a text is that text in lowercase, with every sequence of characters other than `a` to `z`, digits and `_` turned into one `_`, and with a leading `p` when the result is not a 'valid segment'.
+The 'guessed extension' of a file is:
+- `png` when the content of the file starts with the bytes `89 50 4E 47 0D 0A 1A 0A`;
+- `jpg` when the content of the file starts with the bytes `FF D8 FF`;
+- `gif` when the content of the file starts with the text `GIF87a` or `GIF89a`;
+- `txt` when the content of the file is UTF-8 text holding no control character other than tab, line feed and carriage return; a file with no content is such a file;
+- `bin` otherwise.
+The 'fixed name' of a folder is the 'fixed segment' of the name of the folder.
+The 'fixed name' of a file is the 'fixed segment' of the stem of the file, a dot and the extension of the file, where the stem is the name without the dot and the extension, and the extension is:
+- `css.map`, `d.ts`, `d.ts.map`, `js.map`, `min.css`, `min.js`, `tar.bz2`, `tar.gz`, `tar.lz`, `tar.lz4`, `tar.xz` or `tar.zst`, when the name in lowercase ends with a dot and that extension;
+- otherwise the end of the name after the last dot, in lowercase, when that end is 1 to 16 letters (`a` to `z`, `A` to `Z`) or digits;
+- otherwise the 'guessed extension' of the file; the stem is then the whole name.
+Two names 'clash' when the two names are equal after lowercasing and after removing an ending `.zip`.
 
 Fix visits every 'entry' once, in the order of the names, the 'entries' of a folder before that folder, and does the following to each 'entry', in this order:
 1. Fix deletes every 'desk file'.
-2. In every 'visible' file with the extension `fear`, Fix removes a byte order mark at the start of the file, and turns every carriage return followed by a line feed into a line feed. The Frontend refuses a source file holding a byte order mark or a carriage return.
-3. Fix sets to the current time the time of every file, 'visible' or 'invisible', whose time is not after 1970-01-01T00:00:00Z or is more than 5 seconds after the current time.
-4. Fix deletes every 'visible' folder holding no 'entry', and every 'zip' holding no file; Fix repeats this step until no such folder and no such 'zip' is left. Fix never deletes the project folder, and never deletes an 'invisible' folder for holding no 'entry': git needs the empty folders of `.git`.
-Fix renames nothing, and changes or deletes no other 'entry': a project folder breaking another 'shape rule' is not 'well shaped' after Fix either.
+2. Fix renames to the 'fixed name' every 'visible' folder whose name is not a 'valid segment' and every 'visible' file whose name is not a 'valid file name'. When the 'fixed name' 'clashes' with the name of another 'entry' of the same folder, Fix adds at the end of the 'fixed segment' the first of `2`, `3`, `4`... giving a name that 'clashes' with the name of no other 'entry' of that folder.
+3. Fix cleans the text of every 'visible' file with the extension `fear`. The text of the file is the UTF-16 text when the file starts with a UTF-16 byte order mark (the bytes `FF FE` or `FE FF`), the UTF-8 text when the bytes of the file are UTF-8, and one character for each byte (ISO-8859-1) otherwise. Fix writes the file again as the result of the run of `StrCleaners.softText` on the UTF-8 bytes of that text (see TextCleanersDesign). The Frontend refuses a source file holding a character other than the line feed and U+0020 to U+007E.
+4. Fix sets to the current time the time of every file, 'visible' or 'invisible', whose time is not after 1970-01-01T00:00:00Z or is more than 5 seconds after the current time.
+5. Fix deletes every folder that holds no 'entry' and is not inside an 'invisible' folder, and every 'zip' holding no file; Fix repeats this step until no such folder and no such 'zip' is left. Fix never deletes the project folder, and never deletes a folder inside an 'invisible' folder for holding no 'entry': git needs the empty folders of `.git`.
+Fix changes or deletes no other 'entry': a project folder breaking another 'shape rule' is not 'well shaped' after Fix either.
 Fix does the same inside a 'zip': Fix writes again every 'zip' that Fix changes, and the files that Fix does not change keep their names, their content, their times and their order in that 'zip'.
+Before visiting the 'entries' of a 'zip', Fix changes the names that 'zip' stores: every `\` becomes `/`, then Fix removes a `/` at the start of a name, every `/` following another `/`, and every segment `.`; a folder whose name becomes empty is no longer stored.
 Inside a 'zip', Fix visits the 'entries' in the order that 'zip' stores, and deletes every folder with no file under that folder, 'visible' or 'invisible'.
-Fix leaves as it is a 'zip' that is not a readable zip file, a 'zip' storing a name that breaks a 'shape rule' of Zips, and a 'zip' deeper than 64 levels.
+Fix leaves as it is a 'zip' that is not a readable zip file, a 'zip' storing a name that still breaks a 'shape rule' of Zips after that change of the names, and a 'zip' deeper than 64 levels.
 
-Fix empties the Output of the project, then writes in the Output one line for each change, with the 'path' of the 'entry' changed, like `Deleted lib/.DS_Store`, `Removed the byte order mark of _app/main.fear`, `Fixed the line endings of _app/main.fear`, `Reset the time of img/logo.png`, `Deleted the empty folder old` and `Deleted the empty zip lib/old.zip`.
+Fix empties the Output of the project, then writes in the Output one line for each change, with the 'path' of the 'entry' changed, like `Deleted lib/.DS_Store`, `Renamed img/My Logo.PNG to my_logo.png`, `Removed the byte order mark of _app/main.fear`, `Fixed the line endings of _app/main.fear`, `Cleaned 3 characters of _app/main.fear`, `Fixed the stored names of lib/old.zip`, `Reset the time of img/logo.png`, `Deleted the empty folder old` and `Deleted the empty zip lib/old.zip`.
+The line of a renamed 'entry' holds the 'path' before the renaming; the lines of the later changes hold the 'path' after the renaming.
+The number of cleaned characters is the number of characters of the text, after the byte order mark is removed and the line endings are fixed, other than the line feed and U+0020 to U+007E.
 When Fix changes nothing, the Output says `The project "hello" needs no fix.`.
 A change that the file system refuses ends Fix: the Output holds the lines of the changes already done, then the error of the file system with the path on the disk that the file system refuses.
 Fix ends the same way at a folder holding a symbolic link or a junction: the Output holds the lines of the changes already done, then `This path is a symbolic link/junction, and Fearless does not follow symbolic links/junctions:` and the path on the disk of the symbolic link or junction.
