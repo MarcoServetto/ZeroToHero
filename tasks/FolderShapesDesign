@@ -11,6 +11,8 @@ A 'zip' `x.zip` stands for a folder `x` holding the content of the 'zip': a file
 The 'path' of an 'entry' is the names from the project folder to the 'entry', joined with `/`, where each 'zip' `x.zip` on the way counts as `x`: the file `a.fear` of `lib/x.zip` has the 'path' `lib/x/a.fear`.
 An 'entry' is 'invisible' when a name of the 'path' of the 'entry' starts with `.`.
 Any other 'entry' is 'visible'.
+A 'stray character' is U+FFFD or a surrogate without its pair.
+Fearless reads as U+FFFD each part of a name of the disk that is not UTF-8.
 
 ## Shape rules
 
@@ -39,7 +41,7 @@ A 'valid file name' is one of:
 ### Invisible entries
 
 - The name of an 'invisible' 'entry' does not end with a dot or a space.
-- The name of an 'invisible' 'entry' holds no control character, no surrogate without its pair, and none of `<`, `>`, `:`, `"`, `/`, `\`, `|`, `?`, `*`.
+- The name of an 'invisible' 'entry' holds no control character, no 'stray character', and none of `<`, `>`, `:`, `"`, `/`, `\`, `|`, `?`, `*`.
 - The part of the name of an 'invisible' 'entry' before the first dot, in lowercase, is not `con`, `prn`, `aux`, `nul`, `com1` to `com9` or `lpt1` to `lpt9`.
 - No two 'invisible' 'entries' of one folder have names that are equal after Unicode normalization (NFC) and lowercasing.
 - An 'invisible' folder that is not inside another 'invisible' folder holds at least one 'entry'.
@@ -67,7 +69,7 @@ A 'desk file' is one of the following 'entries', 'visible' or 'invisible':
 - a file whose name starts with `._`;
 - a folder named `__MACOSX` or `.AppleDouble`, with every 'entry' inside that folder;
 - a file named `Icon` followed by a carriage return;
-- a file named `Thumbs.db`, `ehthumbs.db`, `ehthumbs_vista.db` or `desktop.ini`, in any mix of uppercase and lowercase;
+- a file named `Thumbs.db`, `ehthumbs.db`, `ehthumbs_vista.db` or `desktop.ini`, with each letter `a` to `z` in uppercase or in lowercase;
 - a file whose name ends with `:Zone.Identifier`;
 - a file named `.directory`;
 - a folder whose name starts with `.Trash-`, with every 'entry' inside that folder;
@@ -85,23 +87,28 @@ The 'guessed extension' of a file is:
 - `gif` when the content of the file starts with the text `GIF87a` or `GIF89a`;
 - `txt` when the content of the file is UTF-8 text holding no control character other than tab, line feed and carriage return; a file with no content is such a file;
 - `bin` otherwise.
-The 'fixed name' of a folder is the 'fixed segment' of the name of the folder.
-The 'fixed name' of a file is the 'fixed segment' of the stem of the file, a dot and the extension of the file, where the stem is the name without the dot and the extension, and the extension is:
+The 'fixed name' of a 'visible' folder is the 'fixed segment' of the name of the folder.
+The 'fixed name' of a 'visible' file is the 'fixed segment' of the stem of the file, a dot and the extension of the file, where the stem is the name without the dot and the extension, and the extension is:
 - `css.map`, `d.ts`, `d.ts.map`, `js.map`, `min.css`, `min.js`, `tar.bz2`, `tar.gz`, `tar.lz`, `tar.lz4`, `tar.xz` or `tar.zst`, when the name in lowercase ends with a dot and that extension;
 - otherwise the end of the name after the last dot, in lowercase, when that end is 1 to 16 letters (`a` to `z`, `A` to `Z`) or digits;
 - otherwise the 'guessed extension' of the file; the stem is then the whole name.
-Two names 'clash' when the two names are equal after lowercasing and after removing an ending `.zip`.
+The 'fixed name' of an 'invisible' 'entry' is the name of the 'entry' with every 'stray character' turned into `x`.
+A 'device name' is a name whose part before the first dot, in lowercase, is `con`, `prn`, `aux`, `nul`, `com1` to `com9` or `lpt1` to `lpt9`.
+Two names 'clash' when the two names are equal after Unicode normalization (NFC), after lowercasing and after removing an ending `.zip`.
 
 Fix visits every 'entry' once, in the order of the names; Fix visits the 'entries' of a folder or of a 'zip' between step 4 and step 5 on that folder or 'zip'. Fix does the following to each 'entry', in this order:
 1. Fix deletes every 'desk file'.
-2. Fix renames to the 'fixed name' every 'visible' folder whose name is not a 'valid segment' and every 'visible' file whose name is not a 'valid file name'. When the 'fixed name' 'clashes' with the name of another 'entry' of the same folder, Fix adds at the end of the 'fixed segment' the first of `2`, `3`, `4`... giving a name that 'clashes' with the name of no other 'entry' of that folder.
-3. Fix cleans the text of every 'visible' file with the extension `fear`. The text of the file is the UTF-16 text when the file starts with a UTF-16 byte order mark (the bytes `FF FE` or `FE FF`), the UTF-8 text when the bytes of the file are UTF-8, and the windows-1252 text otherwise. In that text Fix turns U+2018 and U+2019 into `'`, U+201C and U+201D into `"`, and U+2013, U+2014 and U+2212 into `-`. Fix then writes the file again as the result of the run of `StrCleaners.softText` on the UTF-8 bytes of the text (see TextCleanersDesign). The Frontend refuses a source file holding a character other than the line feed and U+0020 to U+007E.
+2. Fix renames to the 'fixed name' every 'visible' folder whose name is not a 'valid segment', every 'visible' file whose name is not a 'valid file name' and every 'invisible' 'entry' whose name holds a 'stray character'. When the 'fixed name' is the name of a 'desk file', is a 'device name' or 'clashes' with the name of another 'entry' of the same folder, Fix adds at the end of the 'fixed segment', or at the end of the 'fixed name' of an 'invisible' 'entry', the first of `2`, `3`, `4`... giving a name that is not the name of a 'desk file', is not a 'device name' and 'clashes' with the name of no other 'entry' of that folder.
+3. Fix cleans the text of every 'visible' file with the extension `fear`. The text of the file is the UTF-16 text when the file starts with a UTF-16 byte order mark (the bytes `FF FE` or `FE FF`), the UTF-8 text when the bytes of the file are UTF-8, and the windows-1252 text otherwise, where the bytes `EF BB BF` at the start of the file are a byte order mark. In that text Fix turns U+2018 and U+2019 into `'`, U+201C and U+201D into `"`, and U+2013, U+2014 and U+2212 into `-`. Fix then writes the file again as the result of the run of `StrCleaners.softText` on the UTF-8 bytes of the text (see TextCleanersDesign). The Frontend refuses a source file holding a character other than the line feed and U+0020 to U+007E.
 4. Fix sets to the current time the time of every file, 'visible' or 'invisible', whose time is not after 1970-01-01T00:00:00Z or is more than 5 seconds after the current time.
 5. Fix deletes every folder that holds no 'entry' and is not inside an 'invisible' folder, and every 'zip' holding no 'entry'; Fix repeats this step until no such folder and no such 'zip' is left. Fix never deletes the project folder, and never deletes a folder inside an 'invisible' folder for holding no 'entry': git needs the empty folders of `.git`.
 Fix changes or deletes no other 'entry': a project folder breaking another 'shape rule' is not 'well shaped' after Fix either.
+Fix shortens no name: a 'path' over the limit of 200 or 250 characters stays over that limit, and a renaming of Fix to a longer name can bring a 'path' over that limit.
 Fix does to the 'entries' inside a 'zip' what Fix does to the 'entries' on the disk, in the same order: Fix writes again every 'zip' that Fix changes, and the files that Fix does not change keep their names, their content, their times and their order in that 'zip'.
+A 'zip' that Fix writes again stores only names, content and times: Fix does not keep the comment of the 'zip', or any other data the 'zip' stored for a file, like the permissions of that file.
+Fix reads as U+FFFD each part of a name a 'zip' stores that is not UTF-8, when the 'zip' does not set for that name the flag of the zip format saying that the name is UTF-8.
 Before visiting the 'entries' of a 'zip', Fix changes the names that 'zip' stores: every `\` becomes `/`, then Fix removes a `/` at the start of a name, every `/` following another `/`, and every segment `.`; a folder whose name becomes empty is no longer stored.
-Fix leaves as it is a 'zip' that is not a readable zip file, a 'zip' storing a name that still breaks a 'shape rule' of Zips after that change of the names, and a 'zip' deeper than 64 levels.
+Fix leaves as it is a 'zip' that is not a readable zip file, a 'zip' setting that flag for a name that is not UTF-8, a 'zip' storing a name that still breaks a 'shape rule' of Zips after that change of the names, and a 'zip' deeper than 64 levels.
 
 Fix empties the Output of the project, then writes in the Output one line for each change, with the 'path' of the 'entry' changed, like `Deleted lib/.DS_Store`, `Renamed img/My Logo.PNG to my_logo.png`, `Removed the byte order mark of _app/main.fear`, `Fixed the line endings of _app/main.fear`, `Cleaned 3 characters of _app/main.fear`, `Fixed the stored names of lib/old.zip`, `Reset the time of img/logo.png`, `Deleted the empty folder old` and `Deleted the empty zip lib/old.zip`.
 The line of a renamed 'entry' holds the 'path' before the renaming; the lines of the later changes hold the 'path' after the renaming.
