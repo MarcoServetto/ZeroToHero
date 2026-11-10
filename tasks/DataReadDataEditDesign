@@ -84,9 +84,11 @@ An 'operation' that can not take the lock waits until it can; Fearless code obse
 
 `sys.locked(reads, edits, f)` holds, for the whole run of `f`, a 'read lock' of the data project mounted on each DataRead type of `reads` and the 'edit lock' of the data project mounted on each DataEdit type of `edits`, and returns what `f` returns.
 A data project named more than once, through several types or in both lists, is locked once: with the 'edit lock' when one of its types is in `edits`.
-`.locked` takes the locks one at a time, in the order of the names of their 'lock files', and releases every lock when `f` ends, normally or with an error.
-While `f` runs, the 'operations' of the process on the data projects of `reads` and `edits` take no lock of their own; a write or a delete on a data project locked with a 'read lock', and an 'operation' of the process on a data project that is not in `reads` or `edits`, are deterministic errors.
-A process runs at most one `.locked` at a time: a `.locked` waits while another `.locked` of the same process runs, and a `.locked` inside the `f` of a `.locked` is a deterministic error.
+`.locked` takes the locks one at a time, in the order of the names of their 'lock files', and releases every lock when `f` has ended, normally or with an error, and every process that the process of `.locked` started while `f` runs has ended.
+The 'lock group' of a `.locked` is the process of `.locked` while `f` runs, every process that this process starts while `f` runs, and every process that a process of the 'lock group' starts.
+A process of the 'lock group' gets the 'lock files' of the `.locked` and their modes when it starts, and ends only after every process it started has ended.
+The 'operations' of the 'lock group' on the data projects of `reads` and `edits` hold the 'inner lock' of the data project instead of the lock, in the same mode; a write or a delete on a data project locked with a 'read lock', and an 'operation' of the 'lock group' on a data project that is not in `reads` or `edits`, are deterministic errors.
+A process runs at most one `.locked` at a time: a `.locked` waits while another `.locked` of the same process runs; a `.locked` inside the `f` of a `.locked`, and a `.locked` of a process of a 'lock group' started by `CapProcess`, are deterministic errors.
 So every process takes the locks of `.locked` in the same order, a process that waits for a lock holds only locks that come earlier in that order, and two processes never wait for each other.
 `.locked` is a method of `System`: an attenuator gives it as the other methods of `System`, `ErrorSystem` revokes it, and `RevokableSystem` checks the `Revocation` before it.
 
@@ -95,9 +97,10 @@ The manager holds a 'read lock' during each scan of a data project; when the loc
 The lock is a lock of the operating system on the 'lock file' of the data project: a shared lock for a 'read lock', an exclusive lock for the 'edit lock'.
 The operating system releases the locks of a process when the process ends, however the process ends.
 The 'lock file' of a data project is `locks/<hash>.lock` in the manager folder, where `<hash>` is the SHA-256 of the absolute path of the 'fsFolder' of the data project, in hexadecimal.
+The 'inner lock' is a lock of the operating system on the 'inner lock file' `locks/<hash>_inner.lock`, next to the 'lock file'.
 When a `Run` starts, the manager gives each main the 'lock file' of each data project it gives, next to the 'fsFolder'.
 The 'lock file' holds nothing, and its existence means nothing: a process creates the 'lock file' when the 'lock file' is missing.
-When the manager starts, the manager deletes every 'lock file' of `locks` that is not the 'lock file' of a registered project, unless a process holds a lock of it.
+When the manager starts, the manager deletes every file of `locks` that is not the 'lock file' or the 'inner lock file' of a registered project, unless a process holds a lock of it.
 A process keeps one open channel to each 'lock file', with a lock of its own threads in front of the lock of the operating system: on Linux and macOS, closing any channel to a file releases every lock that the process holds on that file.
 
 An edit leaves the 'fsFolder' of the data project valid at every moment, also when the process ends during the edit.
