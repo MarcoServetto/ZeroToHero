@@ -1,0 +1,89 @@
+# Folder shapes design
+
+Which files and folders a project folder may hold, and what Fix changes in a project folder.
+A project folder is the folder of a registered project of any kind (see ControllersDesign).
+
+## Entries
+
+An 'entry' is a file or a folder inside the project folder.
+A 'zip' is a file whose name ends with `.zip`, when every name from the project folder to that file starts with a character other than `.`.
+A 'zip' `x.zip` stands for a folder `x` holding the content of the 'zip': a file or a folder inside a 'zip' is an 'entry' too.
+The 'path' of an 'entry' is the names from the project folder to the 'entry', joined with `/`, where each 'zip' `x.zip` on the way counts as `x`: the file `a.fear` of `lib/x.zip` has the 'path' `lib/x/a.fear`.
+An 'entry' is 'invisible' when a name of the 'path' of the 'entry' starts with `.`.
+Any other 'entry' is 'visible'.
+
+## Shape rules
+
+A project folder is 'well shaped' when every 'shape rule' of this section holds.
+A code project or a data project whose project folder is not 'well shaped' is 'invalid' (see Project states in ControllersDesign); the 'problem' names one broken 'shape rule' and the 'path' breaking that 'shape rule'.
+The code checking the 'shape rules' is `Coordinator/src/realSourceOracle`.
+
+### Every entry
+
+- The project folder is a folder.
+- An 'entry' on the disk is a regular file or a folder: not a symbolic link, not a junction, not any other kind of object of the file system.
+
+### Visible entries
+
+A 'valid segment' holds only lowercase letters (`a` to `z`), digits and `_`, starts with a letter or `_`, and is not `con`, `prn`, `aux`, `nul`, `com1` to `com9` or `lpt1` to `lpt9`.
+A 'valid file name' is one of:
+- a 'valid segment', a dot and an extension of 1 to 16 lowercase letters or digits;
+- a 'valid segment', a dot and one of `css.map`, `d.ts`, `d.ts.map`, `js.map`, `min.css`, `min.js`, `tar.bz2`, `tar.gz`, `tar.lz`, `tar.lz4`, `tar.xz`, `tar.zst`;
+- one of `authors`, `changelog`, `changes`, `code_of_conduct`, `contributing`, `contributors`, `copying`, `license`, `news`, `notice`, `readme`, `security`, `thanks`, `todo`, with no extension.
+
+- The name of a 'visible' folder is a 'valid segment'.
+- The name of a 'visible' file is a 'valid file name'.
+- A 'visible' file with no extension, like `readme`, has no sibling whose name starts with the name of that file and a dot, like `readme.md`.
+- The 'path' of a 'visible' 'entry' is at most 200 characters long.
+- A 'visible' folder holds at least one 'entry', 'visible' or 'invisible'; so does the project folder.
+- The time of a 'visible' file is after 1970-01-01T00:00:00Z, and at most 5 seconds after the current time. The time of a file on the disk is the last modified time; the time of a file inside a 'zip' is the time the 'zip' stores for that file.
+
+### Invisible entries
+
+- The name of an 'invisible' 'entry' does not end with a dot or a space.
+- The name of an 'invisible' 'entry' holds no control character, no surrogate without its pair, and none of `<`, `>`, `:`, `"`, `/`, `\`, `|`, `?`, `*`.
+- The part of the name of an 'invisible' 'entry' before the first dot, in lowercase, is not `con`, `prn`, `aux`, `nul`, `com1` to `com9` or `lpt1` to `lpt9`.
+- No two 'invisible' 'entries' of one folder have names that are equal after Unicode normalization (NFC) and lowercasing.
+- The 'path' of an 'invisible' 'entry' is at most 250 characters long. The limit for the files of the user is 200 characters, and the rules at the end of every error on a 'shape rule' tell the user 200 characters for every 'entry'; the 50 characters more are for the files that Fearless generates inside the project folder, like the files of `.fearless_out`.
+Nothing else is checked about an 'invisible' 'entry': an 'invisible' folder may hold no 'entry', an 'invisible' file may have any time, and an 'invisible' file `x.zip` is a file like any other, on the disk and inside a 'zip'.
+
+### Zips
+
+- A 'zip' is a readable zip file.
+- A 'zip' holds at least one file.
+- The names a 'zip' stores are UTF-8.
+- A name a 'zip' stores is not empty, does not start with `/`, holds no NUL character, and holds no segment that is empty, `.` or `..`.
+- A 'zip' stores no name twice.
+- A 'zip' stores no folder with no file under that folder.
+- A 'zip' stores no file under the name of another file of that 'zip'.
+- A 'zip' `x.zip` has no sibling named `x`.
+- A 'zip' of the disk holds at most 64 levels of 'zips' inside 'zips'.
+The files and folders inside a 'zip' are 'entries': the rules of Visible entries and Invisible entries hold for them.
+
+## Fix
+
+Fix is an operation of the manager on one project (`Fix <name>` in ControllersDesign).
+Fix changes the content of the project folder, and nothing else.
+A 'desk file' is one of the following 'entries', 'visible' or 'invisible':
+- a file named `.DS_Store`;
+- a file whose name starts with `._`;
+- a folder named `__MACOSX`, with every 'entry' inside that folder;
+- a file named `Icon` followed by a carriage return;
+- a file named `Thumbs.db` or `desktop.ini`, in any mix of uppercase and lowercase;
+- a file named `.directory`;
+- a folder whose name starts with `.Trash-`, with every 'entry' inside that folder;
+- a file whose name ends with `~`.
+The desktops, the archive programs and the text editors write the 'desk files' on their own, next to the files of the user.
+
+Fix does the following, in this order:
+1. Fix deletes every 'desk file'.
+2. In every 'visible' file with the extension `fear`, Fix removes a byte order mark at the start of the file, and turns every carriage return followed by a line feed into a line feed. The Frontend refuses a source file holding a byte order mark or a carriage return.
+3. Fix sets to the current time the time of every file, 'visible' or 'invisible', whose time is not after 1970-01-01T00:00:00Z or is more than 5 seconds after the current time.
+4. Fix deletes every 'visible' folder holding no 'entry', and every 'zip' holding no file; Fix repeats this step until no such folder and no such 'zip' is left. Fix never deletes the project folder, and never deletes an 'invisible' folder for holding no 'entry': git needs the empty folders of `.git`.
+Fix renames nothing, and changes or deletes no other 'entry': a project folder breaking another 'shape rule' is not 'well shaped' after Fix either.
+Fix does the same inside a 'zip': Fix writes again every 'zip' that Fix changes, and the files that Fix does not change keep their names, their content, their times and their order in that 'zip'.
+Fix leaves as it is a 'zip' that is not a readable zip file, a 'zip' storing a name that breaks a 'shape rule' of Zips, and a 'zip' deeper than 64 levels.
+
+Fix empties the Output of the project, then writes in the Output one line for each change, with the 'path' of the 'entry' changed, like `Deleted lib/.DS_Store`, `Fixed the line endings of _app/main.fear`, `Reset the time of img/logo.png` and `Deleted the empty folder old`.
+When Fix changes nothing, the Output says `The project "hello" needs no fix.`.
+A change that the file system refuses ends Fix: the Output holds the lines of the changes already done, then the error of the file system with the 'path' of the 'entry'.
