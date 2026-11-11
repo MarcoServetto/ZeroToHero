@@ -6,35 +6,32 @@ A project folder is the folder of a registered project of any kind (see Controll
 ## Desks
 
 ```
-D ::= ids; Fs
-F ::= id{Es}
-E ::= s -> id | s -> file | s -> other
+D ::= ids; folders
+folder ::= id{Es}
+E ::= s -> entry
+entry ::= id | file | other
 p ::= id s1..sn
 s ::= U0..Un
 ```
-- In a D, the ids of the Fs are disjoint.
-- In a D, every id of the ids, and every id of an E of the Fs, is the id of an F of the Fs.
-- In an F, the s of the Es are disjoint.
+- In a D, the ids of the folders are disjoint.
+- In a D, every id of the ids, and every id of an E of the folders, is the id of a folder of the folders.
+- In a folder, the s of the Es are disjoint.
 
 `U`, `file` and `other` are atoms.
 The ids of a D are the roots: the paths start there.
 ```
 at(D, id)= id                 with D= _ id _; _
-at(D, p s)= id                with at(D, p){_ s -> id _} in D
-kind(D, p)= folder            with at(D, p) defined
-kind(D, p s)= file            with at(D, p){_ s -> file _} in D
-kind(D, p s)= other           with at(D, p){_ s -> other _} in D
-kind(D, p)= none              otherwise
-create(D, p s, file)= ids; Fs id{Es s -> file} Fs'
-                     with D= ids; Fs id{Es} Fs'
-                          id= at(D, p)
-                          kind(D, p s)= none
+at(D, p s)= entry             with at(D, p)= id, id{_ s -> entry _} in D
+create(D, p s, file)= ids; folders id{Es s -> file} folders'
+                     with D= ids; folders id{Es} folders'
+                          at(D, p)= id
+                          at(D, p s) undefined
 ```
-A 'checkable folder property' is a predicate on Ds and paths defined using only `kind` and `create`.
+A 'checkable folder property' is a predicate on Ds and paths defined using only `at` and `create`, never comparing two ids.
 ```
-valid(D, p)         iff  kind(D, p)= folder
+valid(D, p)         iff  at(D, p)= id
 same(D, p1, p2)     iff  valid(D, p1), valid(D, p2),
-                         exists s, file: kind(D, p1 s)= none, kind(D, p2 s)= none, kind(create(D, p1 s, file), p2 s)= file
+                         exists s, file: at(D, p1 s) undefined, at(D, p2 s) undefined, at(create(D, p1 s, file), p2 s)= file
 inside(D, p1, p2)   iff  valid(D, p1), valid(D, p2), exists p < p1: same(D, p, p2)
 ```
 `p < p1` holds when `p` is a proper prefix of `p1`.
@@ -149,12 +146,13 @@ Fix ends the same way at a folder holding a symbolic link or a junction: the Out
 
 ## Implementation notes
 
-An implementation sees a real desk R as a D, alpha(R), and answers `kind` and `create` as alpha(R) does:
+An implementation sees a real desk R as a D, alpha(R), and answers `at` and `create` as alpha(R) does:
 ```
-kind_impl(R, p)= kind(alpha(R), p)
-alpha(create_impl(R, p s))= create(alpha(R), p s, file), plus possibly more entries s' -> file in the folder at(alpha(R), p)
+at_impl(R, p)= at(alpha(R), p)
+alpha(create_impl(R, p s))= create(alpha(R), p s, file)
 ```
 In alpha(R):
 - a U is a byte on Linux and macOS, and a 16 bit unit on Windows;
 - the ids are the roots of R: `/`, or `C:\`, `D:\` and so on;
-- a regular file is file; a folder is a folder, also where a volume is mounted; a link, a junction and every other entry is other.
+- the s of a folder are exactly the names the listing of that folder gives, unit by unit: on a desk ignoring case, `at` finds `foo` and not `FOO`;
+- a regular file is a file; a folder is a folder, also where a volume is mounted; a link, a junction and every other entry is an other.
