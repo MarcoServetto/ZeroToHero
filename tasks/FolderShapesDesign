@@ -145,56 +145,53 @@ Fix ends the same way at a folder holding a symbolic link or a junction: the Out
 
 ## Implementation notes
 
-Each section below says how the shell operations of one desk stand for operations on a D.
-An id has no text: a mount point `m` stands for the id `id(m)` of the ids of the D.
-Each interpretation holds while no other program changes the folders involved.
+The sections below say, for each desk, which operations of the desk correspond to which operations on a D.
+An operation of a desk is a program run in a shell: `sh` on Linux and macOS, PowerShell on Windows.
+Each correspondence holds while no other program changes the folders that the operation reads or writes.
+
+An id corresponds to a folder of the desk; no program prints an id.
+A mount point corresponds to a root id: one of the ids of a D.
+The pair of the device number and the inode number that a desk gives for a folder does not correspond to an id.
+Two mount points of one shared folder of the network give that folder two different device numbers, so two different pairs, while `same` holds for the two paths.
 
 ### Linux
 
-- s: 1 or more bytes, none of them `0x00` or `0x2F` (`/`); not `.` or `..`.
-- The mount points: the paths of field 5 of `/proc/self/mountinfo`, with the `\ooo` escapes decoded; `/` is one of them.
-- A shell argument `m/s1/../sn`, with `m` the longest mount point the argument starts with, name by name, stands for the p `id(m) s1..sn`,
-  when every `si` is one of the names `find` gives for `m/s1/../si-1`.
-  With the mount points `/` and `/home`, the argument `/home/user/proj` stands for `id(/home) user proj`.
-
-| shell operation, with the argument standing for p | operation on D |
-|---|---|
-| `find <arg> -mindepth 1 -maxdepth 1 -printf '%f\0'` | the s of the Es of `at(D, p)`, separated by NUL |
-| `stat -c %F <arg>` gives `directory` | `at(D, p)` is an id |
-| `stat -c %F <arg>` gives `regular file` or `regular empty file` | `at(D, p)` is a file |
-| `stat -c %F <arg>` gives `symbolic link`, `fifo`, `socket`, `character special file`, `block special file`, or any other | `at(D, p)` is an other |
-| `stat -c %F <arg>` fails with `No such file or directory` | `at(D, p)` is undefined |
-| `set -C; : > <arg>/s` succeeds | `create(D, p s, file)` |
+- An s corresponds to 1 or more bytes, none of them `0x00` or `0x2F` (`/`), other than `.` and `..`.
+- The mount points are the paths in the fifth field of each line of the file `/proc/self/mountinfo`, with each escape `\ooo` (three octal digits) read as the byte it stands for. `/` is one of them.
+- A path `m/s1/../sn` given to a program corresponds to the p `id s1..sn`, where `m` is the longest mount point the path starts with, comparing whole names, and `id` is the root id corresponding to `m`.
+  This holds when each `si` is one of the names that the program `find` prints for `m/s1/../si-1`, as below.
+  For example, with the mount points `/` and `/home`, the path `/home/user/proj` corresponds to `id user proj`, with `id` corresponding to `/home`.
+- The program `find`, run as `find <path> -mindepth 1 -maxdepth 1 -printf '%f\0'`, prints the s of the Es of the folder `at(D, p)`, each followed by the byte `0x00`.
+- The program `stat`, run as `stat -c %F <path>`:
+  - prints `directory` when `at(D, p)` is an id;
+  - prints `regular file` or `regular empty file` when `at(D, p)` is a file;
+  - prints `symbolic link`, `fifo`, `socket`, `character special file`, `block special file`, or any other text, when `at(D, p)` is an other;
+  - fails with `No such file or directory` when `at(D, p)` is undefined.
+- The shell command `set -C; : > <path>/s` creates the file `<path>/s`, and fails when an entry of that name exists; it corresponds to `create(D, p s, file)`.
 
 ### macOS
 
-- s: as on Linux.
-- The mount points: the paths `mount` lists between ` on ` and ` (`; `/` is one of them.
-- A shell argument stands for a p as on Linux.
-
-| shell operation, with the argument standing for p | operation on D |
-|---|---|
-| `find <arg> -mindepth 1 -maxdepth 1 -print0` | the s of the Es of `at(D, p)`, separated by NUL, each without `<arg>/` in front |
-| `stat -f %HT <arg>` gives `Directory` | `at(D, p)` is an id |
-| `stat -f %HT <arg>` gives `Regular File` | `at(D, p)` is a file |
-| `stat -f %HT <arg>` gives `Symbolic Link`, `FIFO`, `Socket`, `Character Device`, `Block Device`, `Whiteout`, or any other | `at(D, p)` is an other |
-| `stat -f %HT <arg>` fails with `No such file or directory` | `at(D, p)` is undefined |
-| `set -C; : > <arg>/s` succeeds | `create(D, p s, file)` |
+- An s corresponds to bytes, as on Linux.
+- The mount points are the paths that the program `mount`, run with no argument, prints: one line for each mount point, with the path between ` on ` and the next ` (`. `/` is one of them.
+- A path given to a program corresponds to a p as on Linux.
+- The program `find`, run as `find <path> -mindepth 1 -maxdepth 1 -print0`, prints `<path>/` followed by each s of the Es of the folder `at(D, p)`, each followed by the byte `0x00`.
+- The program `stat`, run as `stat -f %HT <path>`:
+  - prints `Directory` when `at(D, p)` is an id;
+  - prints `Regular File` when `at(D, p)` is a file;
+  - prints `Symbolic Link`, `FIFO`, `Socket`, `Character Device`, `Block Device`, `Whiteout`, or any other text, when `at(D, p)` is an other;
+  - fails with `No such file or directory` when `at(D, p)` is undefined.
+- The shell command `set -C; : > <path>/s` corresponds to `create(D, p s, file)`, as on Linux.
 
 ### Windows
 
-- s: 1 or more 16 bit units, none of them `0x0000`, `0x002F` (`/`) or `0x005C` (`\`); not `.` or `..`.
-- The mount points: the paths `mountvol` lists for the volumes, like `C:\` and `C:\mnt\usb\`, and every `\\server\share\`.
-- A shell argument `m\s1\..\sn` stands for a p as on Linux, with `\` in place of `/`, and `Get-ChildItem` in place of `find`.
-  With the mount points `C:\` and `C:\mnt\usb\`, the argument `C:\mnt\usb\docs\a` stands for `id(C:\mnt\usb\) docs a`.
-
-In PowerShell, with `$a= Get-Item -LiteralPath <arg> -Force` and `$t` the tag and target `fsutil reparsepoint query <arg>` gives:
-
-| shell operation, with the argument standing for p | operation on D |
-|---|---|
-| `Get-ChildItem -LiteralPath <arg> -Force -Name` | the s of the Es of `at(D, p)` |
-| `$a.Attributes` holds `Directory`, and no `ReparsePoint`, or `$t` is a cloud tag `0x9000x01A`, or `$t` is the tag `0xA0000003` with a target `\??\Volume{<guid>}\` | `at(D, p)` is an id |
-| `$a.Attributes` holds no `Directory`, and no `ReparsePoint`, or `$t` is a cloud tag `0x9000x01A` | `at(D, p)` is a file |
-| `$t` is the tag `0xA000000C`, the tag `0xA0000003` with any other target, or any other tag; `$a` is a device | `at(D, p)` is an other |
-| `Get-Item` fails with `ItemNotFoundException` | `at(D, p)` is undefined |
-| `New-Item -LiteralPath <arg>\s -ItemType File` succeeds | `create(D, p s, file)` |
+- An s corresponds to 1 or more 16 bit units, none of them `0x0000`, `0x002F` (`/`) or `0x005C` (`\`), other than `.` and `..`.
+- The mount points are the paths that the program `mountvol`, run with no argument, prints for each volume, like `C:\` and `C:\mnt\usb\`, and every shared folder of the network, like `\\server\share\`.
+- A path `m\s1\..\sn` given to a program corresponds to a p as on Linux, with `\` in place of `/`, and with the command `Get-ChildItem` below in place of `find`.
+  For example, with the mount points `C:\` and `C:\mnt\usb\`, the path `C:\mnt\usb\docs\a` corresponds to `id docs a`, with `id` corresponding to `C:\mnt\usb\`.
+- The PowerShell command `Get-ChildItem -LiteralPath <path> -Force -Name` prints the s of the Es of the folder `at(D, p)`, one for each line.
+- The PowerShell command `(Get-Item -LiteralPath <path> -Force).Attributes` prints the attributes of the entry. When the attributes hold `ReparsePoint`, the program `fsutil`, run as `fsutil reparsepoint query <path>`, prints the tag and the target of the entry.
+  - `at(D, p)` is an id when the attributes hold `Directory`, and either the attributes hold no `ReparsePoint`, or the tag is a cloud tag `0x9000x01A` (a OneDrive placeholder), or the tag is `0xA0000003` with the target `\??\Volume{<guid>}\` (a folder where a volume is mounted).
+  - `at(D, p)` is a file when the attributes hold no `Directory`, and either the attributes hold no `ReparsePoint` or the tag is a cloud tag `0x9000x01A`.
+  - `at(D, p)` is an other when the tag is `0xA000000C` (a symbolic link), or the tag is `0xA0000003` with any other target (a junction), or the tag is any other tag, or the entry is a device.
+  - `at(D, p)` is undefined when `Get-Item` fails because no entry is at `<path>`.
+- The PowerShell command `New-Item -LiteralPath <path>\s -ItemType File` creates the file `<path>\s`, and fails when an entry of that name exists; it corresponds to `create(D, p s, file)`.
