@@ -29,10 +29,15 @@ The ids of a D are the roots: the paths start there.
 at(D, id)= id                 with D= _ id _; _
 at(D, p s)= entry             with at(D, p)= id, id{_ s -> entry _} in D
 root(D, p)                    iff  at(D, p)= id, D= _ id _; _
-create(D, p s, file)= ids; folders id{Es s -> file} folders'
+add(D, p s, entry)= ids; folders id{Es s -> entry} folders'
                      with D= ids; folders id{Es} folders'
                           at(D, p)= id
                           at(D, p s) undefined
+create(D, p s, file)= add(D, p s, file)
+makeFolder(D, p s)= add(ids; folders id{}, p s, id)
+                     with D= ids; folders
+                          id is not an id of D
+move(D, p1 s1, p2 s2)= add(delete(D, p1 s1), p2 s2, at(D, p1 s1))
 delete(D, p s)= ids; folders id{Es Es'} folders'
                      with D= ids; folders id{Es s -> _ Es'} folders'
                           at(D, p)= id
@@ -44,7 +49,7 @@ write(D, p s, file')= ids; folders id{Es s -> file' Es'} folders'
                      with D= ids; folders id{Es s -> file Es'} folders'
                           at(D, p)= id
 ```
-`delete`, `rename` and `write` on a z are the same, with `{Zs}` in place of the folder of `at(D, p)`.
+`add`, `delete`, `rename` and `write` on a z are the same, with `{Zs}` in place of the folder of `at(D, p)`.
 A 'checkable folder property' is a predicate on Ds and paths that compares two ids only through `root`.
 ```
 names(D, id)= Es              with id{Es} in D
@@ -144,44 +149,56 @@ A zip file written from a z keeps, for each file that Fix does not change, its n
 
 In the pseudocode, `say <line>` adds a line at the end of the Output of the project, and `end <line>` adds a line and ends Fix.
 `<path>` is the 'path' of the 'entry' `p s`, and `<disk path>` is the path on the disk of `p s`.
+The 'fix folder' of a project folder named `<n>` is the first of `<n>_fix`, `<n>_fix2`, `<n>_fix3`, ... with nothing at that name in the folder holding the project folder.
 ```
 fix(p)
   empty the Output
-  fixFolder(p, visible, 0)
+  fixFolder(p, visible, 0, 0)
   if the Output is empty: say `The project "<name>" needs no fix.`
 
-fixFolder(p, v, d)
-  for each s of names(D, at(D, p)), in the order of the s: fixEntry(p, s, v, d)
+fixFolder(p, v, d, l)
+  for each s of names(D, at(D, p)), in the order of the s: fixEntry(p, s, v, d, l)
 
-fixEntry(p, s, v, d)
+fixEntry(p, s, v, d, l)
   n= at(D, p s)
   v'= hidden if v= hidden or isHidden(s), visible otherwise
-  if n= other: end `This path is a symbolic link/junction, and Fearless does not follow symbolic links/junctions:` <disk path>
   if (n= file and s is a 'desk file') or (n= id and s is a 'desk folder'):
     D= delete(D, p s); say `Deleted <path>`; return
-  if v'= visible and ((n= id and not folderNameOk(s)) or (n= file and not fileNameOk(s))):
+  if n= other: away(p s); return
+  if v'= visible and ((n= id and not folderNameOk(s)) or (n= file and not fileNameOk(s))
+                      or (isZip(s) and isZipOf(s, s'') for an s'' of names(D, at(D, p)))):
     s'= the first of the 'fixed name' of p s, its 'fixed name' number 2, number 3, ..., clashing with no other s of names(D, at(D, p))
     D= rename(D, p s, s'); say `Renamed <path> to <s'>`; s= s'
+  L= l+len(s)
+  if (v'= hidden and not hiddenNameOk(s)) or (v'= visible and L > 200) or L > 250
+     or not okTogether(s'', s) for an s'' before s in names(D, at(D, p)):
+    away(p s); return
   if v'= visible and n= file and the extension of s is `fear`:
     D= write(D, p s, the 'cleaned text' of n); say each of the 'cleaning lines' of n
   n= at(D, p s)
   if n= file and not timeOk(n):
     D= write(D, p s, n with the current time); say `Reset the time of <path>`
   if n= id:
-    fixFolder(p s, v', d)
+    fixFolder(p s, v', d, L+1)
     if v= visible and names(D, n) is empty: D= delete(D, p s); say `Deleted the empty folder <path>`
-  if n= file and v'= visible and isZip(s) and d < 64:
-    fixZip(p s, d+1)
+  if n= file and v'= visible and isZip(s):
+    fixZip(p s, d+1, L-3)
 
-fixZip(p s, d)
+fixZip(p s, d, l)
   n= at(D, p s), with the 'restored names' in place of its 'stored names'
-  if zip(n) is undefined: return
+  if zip(n) is undefined or d > 64: away(p s); return
   if the 'restored names' differ from the 'stored names': say `Fixed the stored names of <path>`
-  fixFolder on the z zip(n) in place of the folders of D, a z in place of an id, with v= visible and d
+  fixFolder on the z zip(n) in place of the folders of D, a z in place of an id, with v= visible, d and l
   if the z or the names changed: D= write(D, p s, n written from the z)
   if the z holds no Z: D= delete(D, p s); say `Deleted the empty zip <path>`
+
+away(p s)
+  q= the 'fix folder'; D= makeFolder of q and of each folder of the 'path' of p s below q that is missing
+  D= move(D, p s, the 'path' of p s below q); an entry of a z becomes a file or a folder of the desk
+  say `Moved <path> to <the path on the disk of the destination>`
 ```
-A `delete`, a `rename` or a `write` that the desk refuses is `end` with the error of the desk and `<disk path>`.
+When Fix does not `end`, `valid(D, p)` holds after Fix, unless the project folder holds no entry.
+A `delete`, a `rename`, a `write`, a `makeFolder` or a `move` that the desk refuses is `end` with the error of the desk and `<disk path>`.
 A `rename` to a name that the desk takes as the name of another 'entry' is `end` `file already exists:` and the path on the disk of that name: a desk can take as one name two names that do not 'clash'.
 
 ## Implementation notes
@@ -221,6 +238,8 @@ Two mount points of one shared folder of the network give that folder two differ
   - fails with `No such file or directory` when `at(D, p)` is undefined.
 - The shell command `set -C; : > <path>/s` creates the file `<path>/s`, and fails when an entry of that name exists; it corresponds to `create(D, p s, file)`.
 - The program `rm`, run as `rm -r <path>/s`, corresponds to `delete(D, p s)`.
+- The program `mkdir`, run as `mkdir <path>/s`, corresponds to `makeFolder(D, p s)`.
+- The shell command `[ ! -e <path2>/s2 ] && [ ! -L <path2>/s2 ] && mv <path1>/s1 <path2>/s2` corresponds to `move(D, p1 s1, p2 s2)`.
 - The shell command `[ ! -e <path>/s' ] && [ ! -L <path>/s' ] && mv <path>/s <path>/s'` renames `<path>/s` to `<path>/s'`, and fails when an entry of the name `s'` exists, also an entry that the desk takes as `s'`; it corresponds to `rename(D, p s, s')`.
 - Writing the bytes of `file'` in `<path>/s`, then running the program `touch` as `touch -m -d @<seconds> <path>/s` with the time of `file'`, corresponds to `write(D, p s, file')`.
 - The order of the s: the first byte that differs decides, and a shorter s comes before the longer s it starts.
@@ -241,7 +260,7 @@ Two mount points of one shared folder of the network give that folder two differ
   - prints `Symbolic Link`, `FIFO`, `Socket`, `Character Device`, `Block Device`, `Whiteout`, or any other text, when `at(D, p)` is an other;
   - fails with `No such file or directory` when `at(D, p)` is undefined.
 - The shell command `set -C; : > <path>/s` corresponds to `create(D, p s, file)`, as on Linux.
-- `delete`, `rename`, the order of the s and the reading of s as text: as on Linux.
+- `delete`, `makeFolder`, `move`, `rename`, the order of the s and the reading of s as text: as on Linux.
 - Writing the bytes of `file'` in `<path>/s`, then running the program `touch` as `touch -m -t <time> <path>/s` with the time of `file'`, corresponds to `write(D, p s, file')`.
 
 ### Windows
@@ -268,6 +287,8 @@ Two mount points of one shared folder of the network give that folder two differ
   - `at(D, p)` is undefined when `Get-Item` fails because no entry is at `<path>`.
 - The PowerShell command `New-Item -LiteralPath <path>\s -ItemType File` creates the file `<path>\s`, and fails when an entry of that name exists; it corresponds to `create(D, p s, file)`.
 - The PowerShell command `Remove-Item -LiteralPath <path>\s -Recurse -Force` corresponds to `delete(D, p s)`.
+- The PowerShell command `New-Item -LiteralPath <path>\s -ItemType Directory` corresponds to `makeFolder(D, p s)`.
+- The PowerShell command `Move-Item -LiteralPath <path1>\s1 -Destination <path2>\s2`, which fails when an entry of the name `s2` exists, corresponds to `move(D, p1 s1, p2 s2)`.
 - The PowerShell command `Rename-Item -LiteralPath <path>\s -NewName s'` renames `<path>\s` to `<path>\s'`, and fails when an entry of the name `s'` exists, also an entry that the desk takes as `s'`; it corresponds to `rename(D, p s, s')`.
 - The PowerShell command `Set-Content -LiteralPath <path>\s -AsByteStream -Value <bytes>`, then `(Get-Item -LiteralPath <path>\s -Force).LastWriteTimeUtc= <time>`, with the bytes and the time of `file'`, corresponds to `write(D, p s, file')`.
 - The order of the s: the first unit that differs decides, and a shorter s comes before the longer s it starts.
