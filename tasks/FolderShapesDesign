@@ -33,7 +33,18 @@ create(D, p s, file)= ids; folders id{Es s -> file} folders'
                      with D= ids; folders id{Es} folders'
                           at(D, p)= id
                           at(D, p s) undefined
+delete(D, p s)= ids; folders id{Es Es'} folders'
+                     with D= ids; folders id{Es s -> _ Es'} folders'
+                          at(D, p)= id
+rename(D, p s, s')= ids; folders id{Es s' -> entry Es'} folders'
+                     with D= ids; folders id{Es s -> entry Es'} folders'
+                          at(D, p)= id
+                          at(D, p s') undefined
+write(D, p s, file')= ids; folders id{Es s -> file' Es'} folders'
+                     with D= ids; folders id{Es s -> file Es'} folders'
+                          at(D, p)= id
 ```
+`delete`, `rename` and `write` on a z are the same, with `{Zs}` in place of the folder of `at(D, p)`.
 A 'checkable folder property' is a predicate on Ds and paths that compares two ids only through `root`.
 ```
 names(D, id)= Es              with id{Es} in D
@@ -94,22 +105,20 @@ The 'stored names' of a zip file are the names its central directory stores. The
 ## Fix
 
 Fix is an operation of the manager on one project (`Fix <name>` in ControllersDesign).
-Fix changes the content of the project folder, and nothing else.
-A 'desk file' is one of the following 'entries', 'visible' or 'invisible':
+
+A 'desk file' is one of:
 - a file named `.DS_Store`;
 - a file whose name starts with `._`;
-- a folder named `__MACOSX` or `.AppleDouble`, with every 'entry' inside that folder;
 - a file named `Icon` followed by a carriage return;
 - a file named `Thumbs.db`, `ehthumbs.db`, `ehthumbs_vista.db` or `desktop.ini`, in any mix of uppercase and lowercase;
 - a file whose name ends with `:Zone.Identifier`;
 - a file named `.directory`;
-- a folder whose name starts with `.Trash-`, with every 'entry' inside that folder;
 - a file whose name ends with `~`;
 - a file whose name starts with `~$`;
 - a file whose name starts with `.~lock.` and ends with `#`;
 - a file whose name starts with `#` and ends with `#`;
 - a file whose name starts with `.` and ends with `.swp`.
-The desktops, the archive programs, the office programs and the text editors write the 'desk files' on their own, next to the files of the user.
+A 'desk folder' is a folder named `__MACOSX` or `.AppleDouble`, or a folder whose name starts with `.Trash-`.
 
 The 'fixed segment' of a text is that text in lowercase, with every sequence of characters other than `a` to `z`, digits and `_` turned into one `_`, and with a leading `p` when the result is not a 'valid segment'.
 The 'guessed extension' of a file is:
@@ -123,26 +132,57 @@ The 'fixed name' of a file is the 'fixed segment' of the stem of the file, a dot
 - `css.map`, `d.ts`, `d.ts.map`, `js.map`, `min.css`, `min.js`, `tar.bz2`, `tar.gz`, `tar.lz`, `tar.lz4`, `tar.xz` or `tar.zst`, when the name in lowercase ends with a dot and that extension;
 - otherwise the end of the name after the last dot, in lowercase, when that end is 1 to 16 letters (`a` to `z`, `A` to `Z`) or digits;
 - otherwise the 'guessed extension' of the file; the stem is then the whole name.
+The 'fixed name' number k of an entry is its 'fixed name' with k added at the end of the 'fixed segment'.
 Two names 'clash' when the two names are equal after lowercasing and after removing an ending `.zip`.
 
-Fix visits every 'entry' once, in the order of the names; Fix visits the 'entries' of a folder or of a 'zip' between step 4 and step 5 on that folder or 'zip'. Fix does the following to each 'entry', in this order:
-1. Fix deletes every 'desk file'.
-2. Fix renames to the 'fixed name' every 'visible' folder whose name is not a 'valid segment' and every 'visible' file whose name is not a 'valid file name'. When the 'fixed name' 'clashes' with the name of another 'entry' of the same folder, Fix adds at the end of the 'fixed segment' the first of `2`, `3`, `4`... giving a name that 'clashes' with the name of no other 'entry' of that folder.
-3. Fix cleans the text of every 'visible' file with the extension `fear`. The text of the file is the UTF-16 text when the file starts with a UTF-16 byte order mark (the bytes `FF FE` or `FE FF`), the UTF-8 text when the bytes of the file are UTF-8, and the windows-1252 text otherwise. In that text Fix turns U+2018 and U+2019 into `'`, U+201C and U+201D into `"`, and U+2013, U+2014 and U+2212 into `-`. Fix then writes the file again as the result of the run of `StrCleaners.softText` on the UTF-8 bytes of the text (see TextCleanersDesign). The Frontend refuses a source file holding a character other than the line feed and U+0020 to U+007E.
-4. Fix sets to the current time the time of every file, 'visible' or 'invisible', whose time is not after 1970-01-01T00:00:00Z or is more than 5 seconds after the current time.
-5. Fix deletes every folder that holds no 'entry' and is not inside an 'invisible' folder, and every 'zip' holding no 'entry'; Fix repeats this step until no such folder and no such 'zip' is left. Fix never deletes the project folder, and never deletes a folder inside an 'invisible' folder for holding no 'entry': git needs the empty folders of `.git`.
-Fix changes or deletes no other 'entry': a project folder breaking another 'shape rule' is not 'well shaped' after Fix either.
-Fix does to the 'entries' inside a 'zip' what Fix does to the 'entries' on the disk, in the same order: Fix writes again every 'zip' that Fix changes, and the files that Fix does not change keep their names, their content, their times and their order in that 'zip'.
-Before visiting the 'entries' of a 'zip', Fix changes the names that 'zip' stores: every `\` becomes `/`, then Fix removes a `/` at the start of a name, every `/` following another `/`, and every segment `.`; a folder whose name becomes empty is no longer stored.
-Fix leaves as it is a 'zip' that is not a readable zip file, a 'zip' whose 'stored names' are still not 'good' after that change of the names, and a 'zip' deeper than 64 levels.
+The 'cleaned text' of a file is the file written again as the result of the run of `StrCleaners.softText` (see TextCleanersDesign) on the UTF-8 bytes of the text of the file, after turning U+2018 and U+2019 into `'`, U+201C and U+201D into `"`, and U+2013, U+2014 and U+2212 into `-`.
+The text of the file is the UTF-16 text when the file starts with a UTF-16 byte order mark (the bytes `FF FE` or `FE FF`), the UTF-8 text when the bytes of the file are UTF-8, and the windows-1252 text otherwise.
+The 'cleaning lines' of a file are `Removed the byte order mark of <path>`, `Fixed the line endings of <path>` and `Cleaned <k> characters of <path>`, each when that change happens; `<k>` is the number of characters of the text, after the byte order mark is removed and the line endings are fixed, other than the line feed and U+0020 to U+007E.
 
-Fix empties the Output of the project, then writes in the Output one line for each change, with the 'path' of the 'entry' changed, like `Deleted lib/.DS_Store`, `Renamed img/My Logo.PNG to my_logo.png`, `Removed the byte order mark of _app/main.fear`, `Fixed the line endings of _app/main.fear`, `Cleaned 3 characters of _app/main.fear`, `Fixed the stored names of lib/old.zip`, `Reset the time of img/logo.png`, `Deleted the empty folder old` and `Deleted the empty zip lib/old.zip`.
-The line of a renamed 'entry' holds the 'path' before the renaming; the lines of the later changes hold the 'path' after the renaming.
-The number of cleaned characters is the number of characters of the text, after the byte order mark is removed and the line endings are fixed, other than the line feed and U+0020 to U+007E.
-When Fix changes nothing, the Output says `The project "hello" needs no fix.`.
-A change that the file system refuses ends Fix: the Output holds the lines of the changes already done, then the error of the file system with the path on the disk that the file system refuses.
-Fix ends the same way instead of renaming an 'entry' to a name that the file system takes as the name of another 'entry': a file system can take as one name two names that do not 'clash'. The Output holds the lines of the changes already done, then `file already exists:` and the path on the disk of that name.
-Fix ends the same way at a folder holding a symbolic link or a junction: the Output holds the lines of the changes already done, then `This path is a symbolic link/junction, and Fearless does not follow symbolic links/junctions:` and the path on the disk of the symbolic link or junction.
+The 'restored names' of a zip file are its 'stored names' where every `\` becomes `/`, then a `/` at the start of a name, every `/` following another `/`, and every segment `.` are removed; a folder whose name becomes empty is no longer stored.
+A zip file written from a z keeps, for each file that Fix does not change, its name, its content, its time and its place in the order of the zip.
+
+In the pseudocode, `say <line>` adds a line at the end of the Output of the project, and `end <line>` adds a line and ends Fix.
+`<path>` is the 'path' of the 'entry' `p s`, and `<disk path>` is the path on the disk of `p s`.
+```
+fix(p)
+  empty the Output
+  fixFolder(p, visible, 0)
+  if the Output is empty: say `The project "<name>" needs no fix.`
+
+fixFolder(p, v, d)
+  for each s of names(D, at(D, p)), in the order of the s: fixEntry(p, s, v, d)
+
+fixEntry(p, s, v, d)
+  n= at(D, p s)
+  v'= hidden if v= hidden or isHidden(s), visible otherwise
+  if n= other: end `This path is a symbolic link/junction, and Fearless does not follow symbolic links/junctions:` <disk path>
+  if (n= file and s is a 'desk file') or (n= id and s is a 'desk folder'):
+    D= delete(D, p s); say `Deleted <path>`; return
+  if v'= visible and ((n= id and not folderNameOk(s)) or (n= file and not fileNameOk(s))):
+    s'= the first of the 'fixed name' of p s, its 'fixed name' number 2, number 3, ..., clashing with no other s of names(D, at(D, p))
+    D= rename(D, p s, s'); say `Renamed <path> to <s'>`; s= s'
+  if v'= visible and n= file and the extension of s is `fear`:
+    D= write(D, p s, the 'cleaned text' of n); say each of the 'cleaning lines' of n
+  n= at(D, p s)
+  if n= file and not timeOk(n):
+    D= write(D, p s, n with the current time); say `Reset the time of <path>`
+  if n= id:
+    fixFolder(p s, v', d)
+    if v= visible and names(D, n) is empty: D= delete(D, p s); say `Deleted the empty folder <path>`
+  if n= file and v'= visible and isZip(s) and d < 64:
+    fixZip(p s, d+1)
+
+fixZip(p s, d)
+  n= at(D, p s), with the 'restored names' in place of its 'stored names'
+  if zip(n) is undefined: return
+  if the 'restored names' differ from the 'stored names': say `Fixed the stored names of <path>`
+  fixFolder on the z zip(n) in place of the folders of D, a z in place of an id, with v= visible and d
+  if the z or the names changed: D= write(D, p s, n written from the z)
+  if the z holds no Z: D= delete(D, p s); say `Deleted the empty zip <path>`
+```
+A `delete`, a `rename` or a `write` that the desk refuses is `end` with the error of the desk and `<disk path>`.
+A `rename` to a name that the desk takes as the name of another 'entry' is `end` `file already exists:` and the path on the disk of that name: a desk can take as one name two names that do not 'clash'.
 
 ## Implementation notes
 
@@ -180,6 +220,11 @@ Two mount points of one shared folder of the network give that folder two differ
   - prints `symbolic link`, `fifo`, `socket`, `character special file`, `block special file`, or any other text, when `at(D, p)` is an other;
   - fails with `No such file or directory` when `at(D, p)` is undefined.
 - The shell command `set -C; : > <path>/s` creates the file `<path>/s`, and fails when an entry of that name exists; it corresponds to `create(D, p s, file)`.
+- The program `rm`, run as `rm -r <path>/s`, corresponds to `delete(D, p s)`.
+- The shell command `[ ! -e <path>/s' ] && [ ! -L <path>/s' ] && mv <path>/s <path>/s'` renames `<path>/s` to `<path>/s'`, and fails when an entry of the name `s'` exists, also an entry that the desk takes as `s'`; it corresponds to `rename(D, p s, s')`.
+- Writing the bytes of `file'` in `<path>/s`, then running the program `touch` as `touch -m -d @<seconds> <path>/s` with the time of `file'`, corresponds to `write(D, p s, file')`.
+- The order of the s: the first byte that differs decides, and a shorter s comes before the longer s it starts.
+- The 'desk file', 'desk folder', 'fixed name' and 'clash' rules read s as text: the UTF-8 text of s, where each byte that is not part of valid UTF-8 is a character other than `a` to `z`, digits and `_`.
 
 ### macOS
 
@@ -196,6 +241,8 @@ Two mount points of one shared folder of the network give that folder two differ
   - prints `Symbolic Link`, `FIFO`, `Socket`, `Character Device`, `Block Device`, `Whiteout`, or any other text, when `at(D, p)` is an other;
   - fails with `No such file or directory` when `at(D, p)` is undefined.
 - The shell command `set -C; : > <path>/s` corresponds to `create(D, p s, file)`, as on Linux.
+- `delete`, `rename`, the order of the s and the reading of s as text: as on Linux.
+- Writing the bytes of `file'` in `<path>/s`, then running the program `touch` as `touch -m -t <time> <path>/s` with the time of `file'`, corresponds to `write(D, p s, file')`.
 
 ### Windows
 
@@ -220,3 +267,8 @@ Two mount points of one shared folder of the network give that folder two differ
   - `at(D, p)` is an other when the tag is `0xA000000C` (a symbolic link), or the tag is `0xA0000003` with any other target (a junction), or the tag is any other tag, or the entry is a device.
   - `at(D, p)` is undefined when `Get-Item` fails because no entry is at `<path>`.
 - The PowerShell command `New-Item -LiteralPath <path>\s -ItemType File` creates the file `<path>\s`, and fails when an entry of that name exists; it corresponds to `create(D, p s, file)`.
+- The PowerShell command `Remove-Item -LiteralPath <path>\s -Recurse -Force` corresponds to `delete(D, p s)`.
+- The PowerShell command `Rename-Item -LiteralPath <path>\s -NewName s'` renames `<path>\s` to `<path>\s'`, and fails when an entry of the name `s'` exists, also an entry that the desk takes as `s'`; it corresponds to `rename(D, p s, s')`.
+- The PowerShell command `Set-Content -LiteralPath <path>\s -AsByteStream -Value <bytes>`, then `(Get-Item -LiteralPath <path>\s -Force).LastWriteTimeUtc= <time>`, with the bytes and the time of `file'`, corresponds to `write(D, p s, file')`.
+- The order of the s: the first unit that differs decides, and a shorter s comes before the longer s it starts.
+- The 'desk file', 'desk folder', 'fixed name' and 'clash' rules read s as text: the UTF-16 text of s, where each surrogate without its pair is a character other than `a` to `z`, digits and `_`.
