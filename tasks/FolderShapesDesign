@@ -6,34 +6,32 @@ A project folder is the folder of a registered project of any kind (see Controll
 ## Desks
 
 ```
-D ::= F0..Fn
-F ::= id{E1..En}
-E ::= s -> id | s -> 'file' | s -> 'other'
-p ::= s0..sn
+D ::= ids; Fs
+F ::= id{Es}
+E ::= s -> id | s -> file | s -> other
+p ::= id s1..sn
 s ::= U0..Un
 ```
-- In a D, the ids of F0..Fn are disjoint.
-- In a D, exactly one F has the id 'top'.
-- In a D, every id that an E names is the id of an F of that D.
-- In an F, the s of E1..En are disjoint.
+- In a D, the ids of the Fs are disjoint.
+- In a D, every id of the ids, and every id of an E of the Fs, is the id of an F of the Fs.
+- In an F, the s of the Es are disjoint.
 
-`U` is a path unit: a byte on Linux and macOS, a 16 bit unit on Windows. `id` ranges over an infinite set.
-On a real desk, a regular file is `'file'`, and a link, a junction, or any other entry that is neither a regular file nor a folder is `'other'`.
+The ids of a D are the roots: the paths start there.
 ```
-at(D, id, ss)= at(D, id', ss')     with ss= s ss', id{_ s -> id' _} in D
-at(D, id, ss)= id                  with ss empty
-kind(D, p)= folder                 with at(D, 'top', p) defined
-kind(D, ss s)= 'file'              with id{_ s -> 'file' _} in D, id= at(D, 'top', ss)
-kind(D, ss s)= 'other'             with id{_ s -> 'other' _} in D, id= at(D, 'top', ss)
-kind(D, p)= none                   otherwise
-create(D, p s)= D'                 with kind(D, p)= folder, kind(D, p s)= none, kind(D', p s)= 'file',
-                                   and D' differs from D only in the F of the id at(D, 'top', p)
+at(D, id)= id                 with D= _ id _; _
+at(D, p s)= id                with at(D, p){_ s -> id _} in D
+kind(D, p)= folder            with at(D, p) defined
+kind(D, p s)= file            with at(D, p){_ s -> file _} in D
+kind(D, p s)= other           with at(D, p){_ s -> other _} in D
+kind(D, p)= none              otherwise
+create(D, p s)= {ids; Fs id{Es Es'} Fs' | kind(ids; Fs id{Es Es'} Fs', p s)= file, Es'= _ -> file .. _ -> file}
+                              with D= ids; Fs id{Es} Fs', id= at(D, p), kind(D, p s)= none
 ```
-A 'checkable folder property' is a predicate on desks and paths defined using only `kind` and `create`.
+A 'checkable folder property' is a predicate on Ds and paths defined using only `kind` and `create`.
 ```
-valid(D, s0..sn)    iff  forall k in 0..n: kind(D, s0..sk)= folder
+valid(D, p)         iff  kind(D, p)= folder
 same(D, p1, p2)     iff  valid(D, p1), valid(D, p2),
-                         exists s: kind(D, p1 s)= none, kind(D, p2 s)= none, kind(create(D, p1 s), p2 s)= 'file'
+                         exists s: kind(D, p1 s)= none, kind(D, p2 s)= none, forall D' in create(D, p1 s): kind(D', p2 s)= file
 inside(D, p1, p2)   iff  valid(D, p1), valid(D, p2), exists p < p1: same(D, p, p2)
 ```
 `p < p1` holds when `p` is a proper prefix of `p1`.
@@ -145,3 +143,15 @@ When Fix changes nothing, the Output says `The project "hello" needs no fix.`.
 A change that the file system refuses ends Fix: the Output holds the lines of the changes already done, then the error of the file system with the path on the disk that the file system refuses.
 Fix ends the same way instead of renaming an 'entry' to a name that the file system takes as the name of another 'entry': a file system can take as one name two names that do not 'clash'. The Output holds the lines of the changes already done, then `file already exists:` and the path on the disk of that name.
 Fix ends the same way at a folder holding a symbolic link or a junction: the Output holds the lines of the changes already done, then `This path is a symbolic link/junction, and Fearless does not follow symbolic links/junctions:` and the path on the disk of the symbolic link or junction.
+
+## Implementation notes
+
+An implementation sees a real desk R as a D, alpha(R), and answers `kind` and `create` as alpha(R) does:
+```
+kind_impl(R, p)= kind(alpha(R), p)
+alpha(create_impl(R, p s)) in create(alpha(R), p s)
+```
+In alpha(R):
+- a U is a byte on Linux and macOS, and a 16 bit unit on Windows;
+- the ids are the roots of R: `/`, or `C:\`, `D:\` and so on;
+- a regular file is file; a folder is a folder, also where a volume is mounted; a link, a junction and every other entry is other.
