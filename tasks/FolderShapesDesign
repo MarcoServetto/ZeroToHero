@@ -25,7 +25,7 @@ v ::= visible | hidden
 `s`, `file` and `other` are atoms; a `file` has a content and a time. `len(s)` is a natural number.
 `isHidden(s)`, `isZip(s)`, `isZipOf(s1, s2)`, `folderNameOk(s)`, `fileNameOk(s)`, `hiddenNameOk(s)`, `okTogether(s1, s2)` and `timeOk(file)` are predicates, and `zip(file)` is a z or undefined.
 The implementation notes define them for each desk.
-The ids of a D are the 'roots'.
+The ids of a D are the 'root ids'.
 ```
 at(D, id)= id                 with D= _ id _; _
 at(D, p s)= e                 with at(D, p)= id, id{_ s -> e _} in D
@@ -76,7 +76,7 @@ okEntry(D, s, t, v, L, d)
                            (v= visible implies names(D, t) not empty), ok(D, names(D, t), hidden, L+1, d)
 same(D, p1, p2)     iff  at(D, p1)= id1, at(D, p2)= id2,
                          exists s, file: at(D, p1 s) undefined, at(D, p2 s) undefined, at(create(D, p1 s, file), p2 s)= file
-inside(D, p1, p2)   iff  at(D, p1)= id1, at(D, p2)= id2, exists s1..sn with n > 0: same(D, p2 s1..sn, p1)
+inside(D, p1, p2)   iff  at(D, p1)= id1, at(D, p2)= id2, exists s1..sn with n > 0: same(D, p1, p2 s1..sn)
 ```
 
 ## Entries
@@ -89,7 +89,7 @@ The 'path' of an 'entry' p s1..sn is s1, ..., sn joined with `/`, where each si,
 ## Shape rules
 
 A project folder p is 'well shaped' when `valid(D, p)` holds; the 'shape rules' are the premises of `valid`, `ok` and `okEntry`.
-The 'problem' (see Project states in ControllersDesign) of a project whose project folder is not 'well shaped' names one broken 'shape rule' and the 'paths' breaking that 'shape rule' (none for a project folder holding no 'entry').
+The 'problem' (see Project states in ControllersDesign) of a project whose project folder is not 'well shaped' states one broken 'shape rule' and lists the 'paths' breaking that 'shape rule' (none for a project folder holding no 'entry').
 The code checking the 'shape rules' is `Coordinator/src/realSourceOracle`.
 
 ## Names
@@ -102,7 +102,7 @@ A 'valid file name' is one of:
 A 'hidden name':
 - does not end with a dot or a space;
 - holds no control character, no surrogate without its pair, and none of `<`, `>`, `:`, `"`, `/`, `\`, `|`, `?`, `*`;
-- before the first dot, in lowercase, is not `con`, `prn`, `aux`, `nul`, `conin$`, `conout$`, `com1` to `com9`, `lpt1` to `lpt9`, or `com` or `lpt` followed by U+00B9, U+00B2 or U+00B3;
+- before the first dot, without its ending spaces, in lowercase, is not `con`, `prn`, `aux`, `nul`, `conin$`, `conout$`, `com1` to `com9`, `lpt1` to `lpt9`, or `com` or `lpt` followed by U+00B9, U+00B2 or U+00B3;
 - is at most 255 bytes long in UTF-8.
 
 A 'zip file' is a file in the zip format where each file its central directory stores is stored or deflated, and not encrypted.
@@ -129,30 +129,30 @@ A 'junk file' is one of:
 - a file whose name starts with `.` and ends with `.swp`.
 A 'junk folder' is a folder named `__MACOSX` or `.AppleDouble`, or a folder whose name starts with `.Trash-`.
 
-The 'fixed segment' of a text is that text in lowercase, with every sequence of characters other than `a` to `z`, `0` to `9` and `_` turned into one `_`, and with a leading `p` when the result is not a 'valid segment'.
+The 'fixed segment' of a text is that text with `A` to `Z` turned into `a` to `z`, with every sequence of characters other than `a` to `z`, `0` to `9` and `_` turned into one `_`, and with a leading `p` when the result is not a 'valid segment'.
 The 'guessed extension' of a file is:
 - `png` when the content of the file starts with the bytes `89 50 4E 47 0D 0A 1A 0A`;
 - `jpg` when the content of the file starts with the bytes `FF D8 FF`;
 - `gif` when the content of the file starts with the text `GIF87a` or `GIF89a`;
 - `txt` when the content of the file is UTF-8 text holding no control character other than tab, line feed and carriage return; a file with no content is such a file;
 - `bin` otherwise.
-The 'fixed name' of a folder is the 'fixed segment' of the name of the folder.
-The 'fixed name' of a file is the 'fixed segment' of the stem of the file, a dot and the extension of the file, where the stem is the name without the dot and the extension, and the extension is:
+The 'fixed name' of an 'entry' p s with `at(D, p s)` an id or a z is the 'fixed segment' of s.
+The 'fixed name' of an 'entry' p s with `at(D, p s)` a file is the 'fixed segment' of the stem of s, a dot and the extension of s, where the stem is s without the dot and the extension, and the extension is:
 - `css.map`, `d.ts`, `d.ts.map`, `js.map`, `min.css`, `min.js`, `tar.bz2`, `tar.gz`, `tar.lz`, `tar.lz4`, `tar.xz` or `tar.zst`, when the name in lowercase ends with a dot and that extension;
 - otherwise the end of the name after the last dot, in lowercase, when that end is 1 to 16 letters (`a` to `z`, `A` to `Z`) or digits (`0` to `9`);
 - otherwise the 'guessed extension' of the file; the stem is then the whole name.
-The 'fixed name' number k of an entry is its 'fixed name' with k added at the end of the 'fixed segment'.
+The 'fixed name' number k of an 'entry' is its 'fixed name' with k added at the end of the 'fixed segment'.
 Two names 'clash' when the two names are equal after removing an ending `.zip` in any letter case, Unicode normalization (NFC) and Unicode simple case folding.
 
 The 'cleaned file' of a file is the file, with the current time, whose content is the result of the run of `StrCleaners.softText` (see TextCleanersDesign) on the UTF-8 bytes of the text of the file, after turning U+2018 and U+2019 into `'`, U+201C and U+201D into `"`, and U+2013, U+2014 and U+2212 into `-`.
 The text of the file is the UTF-16 text when the file starts with a UTF-16 byte order mark (the bytes `FF FE` or `FE FF`) and the bytes after it are valid UTF-16, the UTF-8 text when the bytes of the file are valid UTF-8, and the windows-1252 text otherwise, where each byte that windows-1252 does not define is U+FFFD.
 The 'cleaning lines' of a file are `Removed the byte order mark of <path>`, `Fixed the line endings of <path>` and `Cleaned <k> characters of <path>` (`Cleaned 1 character of <path>` when `<k>` is 1): the first when the text starts with a byte order mark, the second when the line endings change, the third when `<k>` is more than 0; `<k>` is the number of code points of the text, after the byte order mark is removed and the line endings are fixed, other than the line feed and U+0020 to U+007E.
 
-The 'restored names' of a 'zip file' are its 'stored names' where every `\` becomes `/`, and each name is then its segments that are neither empty nor `.`, joined with `/`, with a `/` at the end when the stored name ends with `/`; a name with no such segment is no longer stored.
-A 'zip file' written from a z keeps, for each file that Fix does not change, its name, its content, the time the 'zip file' stores for it and its place in the order of the zip.
+The 'restored names' of a 'zip file' are its 'stored names' where every `\` becomes `/`, and each name is then its segments that are neither empty nor `.`, joined with `/`, with a `/` at the end when the stored name ends with `/` or `\`; a name ending with `/` or `\` with no such segment is no longer stored, and any other name with no such segment is the empty name.
+A 'zip file' written from a z keeps, for each file that Fix does not change, its name, its content, the time the 'zip file' stores for it and its place in the central directory of the 'zip file'.
 
 In the pseudocode, `say <line>` adds a line at the end of the Output of the project, and `end <line>` adds a line and ends Fix.
-`<path>` is the 'path' of the 'entry' `p s`.
+`<path>` is the 'path' of the 'entry' `p s` in the D before the operation of the same line.
 The 'fix folder' of a Fix on a project folder named `<f>` is the first of `<f>_fix`, `<f>_fix2`, `<f>_fix3`, ... that 'clashes' with no name in the folder holding the project folder when the Fix starts.
 ```
 fix(p)
@@ -161,7 +161,7 @@ fix(p)
   if the Output is empty: say `The project "<name>" needs no fix.`, with <name> the name of the project
 
 fixFolder(p, v, l, d)
-  for each s of an E of names(D, at(D, p)) when fixFolder starts, in the order of the s: fixEntry(p, s, v, l, d)
+  for each s of an `s -> t` of names(D, at(D, p)) when fixFolder starts, in the order of the s: fixEntry(p, s, v, l, d)
 
 fixEntry(p, s, v, l, d)
   t= at(D, p s)
@@ -170,13 +170,13 @@ fixEntry(p, s, v, l, d)
     D= delete(D, p s); say `Deleted <path>`; return
   if t= other: away(p s); return
   if v'= visible and (((t= id or t= z) and not folderNameOk(s)) or (t= file and not fileNameOk(s))
-                      or (isZip(s) and isZipOf(s, s'') for the s'' of an E of names(D, at(D, p)))):
+                      or (isZip(s) and isZipOf(s, s'') for an s'' of an `s -> t` of names(D, at(D, p)))):
     s'= the first of the 'fixed name' of p s, its 'fixed name' number 2, number 3, ...,
-        with folderNameOk(s') when t= id or t= z, with fileNameOk(s') when t= file, clashing with no s of another E of names(D, at(D, p))
+        with folderNameOk(s') when t= id or t= z, with fileNameOk(s') when t= file, clashing with no s of another `s -> t` of names(D, at(D, p))
     D= rename(D, p s, s'); say `Renamed <path> to <s'>`; s= s'
   L= l+len(s)
   if (v'= hidden and not hiddenNameOk(s)) or (v'= visible and L > 200) or L > 250
-     or not okTogether(s'', s) for an s'' that this fixFolder has already handled and that is the s of an E of names(D, at(D, p)):
+     or not okTogether(s'', s) for an s'' that this fixFolder has already handled and that is the s of an `s -> t` of names(D, at(D, p)):
     away(p s); return
   if v'= visible and t= file and s ends with `.fear` and the content of the 'cleaned file' of t is not the content of t:
     D= write(D, p s, the 'cleaned file' of t); say each of the 'cleaning lines' of t
@@ -198,24 +198,23 @@ fixZip(p s, l, d)
 
 away(p s)
   q= the 'fix folder'
-  if a name of the 'path' of p s below q names a file or an other: end `file already exists:` and the path on the disk of that name
+  with s1, ..., sn the segments of the 'path' of p s: if `at(D, q s1..si)` is a file or an other for an i in 1..n: end `file already exists:` and the disk path of q s1..si
   D= makeFolder of q, when q is missing, and of each folder of the 'path' of p s below q that is missing
   D= move(D, p s, the 'path' of p s below q)
-  say `Moved <path> to <the path on the disk of the destination>`
+  say `Moved <path> to <the disk path of the destination>`
 ```
 When Fix does not `end`, `valid(D, p)` holds after Fix, unless the project folder holds no entry.
-A `delete`, a `rename`, a `write`, a `makeFolder` or a `move` that the desk refuses ends Fix with `end` and the error of the desk and the path on the disk that the desk refuses.
-A `rename` to a name that the desk takes as the name of another 'entry' ends Fix with `end` `file already exists:` and the path on the disk of that name.
+A `delete`, a `rename`, a `write`, a `makeFolder` or a `move` that the desk refuses ends Fix with `end` and the error of the desk and the disk path that the desk refuses; for a `rename` refused because the desk takes s' as the name of another 'entry', that error is `file already exists:`.
 
 ## Implementation notes
 
 The sections below say, for each desk, which operations of the desk correspond to which operations on a D.
 An operation of a desk is a program run in a shell: `sh` on Linux and macOS, PowerShell 7 (`pwsh`) on Windows.
 Each correspondence holds while no other program changes the folders that the operation reads or writes.
-`<disk path>`, `<disk path1>` and `<disk path2>` are the paths on the disk corresponding to p, p1 and p2.
+A 'disk path' is a path as the desk writes it; `<disk path>`, `<disk path1>` and `<disk path2>` are the 'disk paths' corresponding to p, p1 and p2.
 
 An id corresponds to a folder of the desk.
-A mount point corresponds to a root id: one of the ids of a D.
+A mount point corresponds to a 'root id'.
 The pair of the device number and the inode number that a desk gives for a folder does not correspond to an id.
 Two mount points of one shared folder of the network can give that folder two different device numbers, so two different pairs, while `same` holds for the two ps.
 
@@ -232,8 +231,8 @@ Two mount points of one shared folder of the network can give that folder two di
 - `okTogether(s1, s2)`: s1 and s2 are not both valid UTF-8 with texts equal after Unicode normalization (NFC) and Unicode simple case folding.
 - `timeOk(file)`: the time of the file is after 1970-01-01T00:00:00Z and at most 5 seconds after the current time. The time of a file of the folders is the last modified time, the number of seconds that the program `stat`, run as `stat -c %Y <disk path>`, prints; the time of a file of a z is the time of the 'zip file' holding that z.
 - `zip(file)`: the tree of the 'stored names' of the 'zip file' (see Names), split at `/`, each segment as its UTF-8 bytes, where a name ending with `/` is a z; undefined when the file is not a 'zip file', or its 'stored names' are not 'good'.
-- The mount points are the paths in the fifth field of each line of the file `/proc/self/mountinfo`, with each escape `\ooo` (three octal digits) read as the byte it stands for, for which `stat -c %F` prints `directory`, leaving out a line when a later line has a mount point that the path of that line starts with, comparing whole names. `/` is one of them.
-- A path given to a program, whose names after the mount point `m` are s1, ..., sn, corresponds to the p `id s1..sn`, where `m` is the longest mount point the path starts with, comparing whole names, and `id` is the root id corresponding to `m`.
+- The mount points are the paths in the fifth field of each line of the file `/proc/self/mountinfo`, with each escape `\ooo` (three octal digits) read as the byte it stands for, for which `stat -c %F` prints `directory`, leaving out a line when another line, not on the chain of parents of that line (the second field of a line is the first field of the line of its parent), has a mount point that the path of that line starts with, comparing whole names. `/` is one of them.
+- A 'disk path' given to a program, whose names after the mount point `m` are s1, ..., sn, corresponds to the p `id s1..sn`, where `m` is the longest mount point the path starts with, comparing whole names, and `id` is the 'root id' corresponding to `m`.
   This holds when each `si` is one of the names that the program `find` prints for the path of `m` and s1, ..., si-1, as below, and `stat` prints `directory` for each of the paths ending at s1, ..., sn-1.
   For example, with the mount points `/` and `/home`, the path `/home/user/proj` corresponds to `id user proj`, with `id` corresponding to `/home`.
 - The program `find`, run as `find <disk path> -mindepth 1 -maxdepth 1 -printf '%f\0'`, prints the s of the Es of the folder `at(D, p)`, each followed by the byte `0x00`.
@@ -242,11 +241,11 @@ Two mount points of one shared folder of the network can give that folder two di
   - prints `regular file` or `regular empty file` when `at(D, p)` is a file;
   - prints `symbolic link`, `fifo`, `socket`, `character special file`, `block special file`, or any other text, when `at(D, p)` is an other;
   - fails with `No such file or directory` when `at(D, p)` is undefined.
-- The shell command `[ ! -e <disk path>/s ] && [ ! -L <disk path>/s ] && : > <disk path>/s` creates the file `<disk path>/s`, and fails when `at(D, p s)` is defined; it corresponds to `create(D, p s, file)`.
+- The shell command `[ ! -e <disk path>/s ] && [ ! -L <disk path>/s ] && : > <disk path>/s` creates the file `<disk path>/s`, and fails when `at(D, p s)` is defined; it corresponds to `create(D, p s, file)` for the file with no content and the current time.
 - The program `rm`, run as `rm -r <disk path>/s`, corresponds to `delete(D, p s)` when no mount point m has `same(D, m, p s)` or `inside(D, m, p s)`; otherwise the desk refuses `delete(D, p s)`.
 - The program `mkdir`, run as `mkdir <disk path>/s`, corresponds to `makeFolder(D, p s)`.
 - The shell command `[ ! -L <disk path2>/s2 ] && [ ! -e <disk path2>/s2 ] && mv -T <disk path1>/s1 <disk path2>/s2` corresponds to `move(D, p1 s1, p2 s2)` when no mount point m has `same(D, m, p1 s1)` or `inside(D, m, p1 s1)`; otherwise the desk refuses `move(D, p1 s1, p2 s2)`.
-- The shell command `[ ! -L <disk path>/s' ] && { [ ! -e <disk path>/s' ] || [ <disk path>/s -ef <disk path>/s' ]; } && mv -T <disk path>/s <disk path>/<n> && mv -T <disk path>/<n> <disk path>/s'`, with `<n>` an s with `at(D, p <n>)` undefined, corresponds to `rename(D, p s, s')`.
+- The shell command `[ ! -L <disk path>/s' ] && { [ ! -e <disk path>/s' ] || [ <disk path>/s -ef <disk path>/s' ]; } && mv -T <disk path>/s <disk path>/<n> && mv -T <disk path>/<n> <disk path>/s'`, with `<n>` an s for which `[ ! -e <disk path>/<n> ] && [ ! -L <disk path>/<n> ]` holds, corresponds to `rename(D, p s, s')`.
 - Writing the bytes of `file'` in `<disk path>/s`, then running the program `touch` as `touch -m -d @<seconds> <disk path>/s` with the time of `file'`, corresponds to `write(D, p s, file')` when `stat -c %h <disk path>/s` prints `1` and no mount point is `<disk path>/s`; otherwise the desk refuses `write(D, p s, file')`.
 - The order of the s: the first byte that differs decides, and a shorter s comes before the longer s it starts.
 - The 'junk file', 'junk folder', 'fixed segment', 'fixed name' and 'clash' rules read s as text: the UTF-8 text of s, where each byte that is not part of valid UTF-8 is a character other than `a` to `z`, digits and `_`.
@@ -258,7 +257,7 @@ Two mount points of one shared folder of the network can give that folder two di
 - `isHidden(s)`, `isZip(s)`, `isZipOf(s1, s2)`, `folderNameOk(s)`, `fileNameOk(s)`, `hiddenNameOk(s)`, `okTogether(s1, s2)` and `zip(file)`: as on Linux.
 - `timeOk(file)`: as on Linux, with the program `stat` run as `stat -f %m <disk path>`.
 - The mount points are the paths that the program `mount`, run with no argument, prints: one line for each mount point, with the path between the first ` on ` and the last ` (`. `/` is one of them.
-- A path given to a program corresponds to a p as on Linux.
+- A 'disk path' given to a program corresponds to a p as on Linux.
 - The program `find`, run as `find <disk path> -mindepth 1 -maxdepth 1 -print0`, prints `<disk path>/` followed by each s of the Es of the folder `at(D, p)`, each followed by the byte `0x00`.
 - The program `stat`, run as `stat -f %HT <disk path>`:
   - prints `Directory` when `at(D, p)` is an id;
@@ -273,6 +272,7 @@ Two mount points of one shared folder of the network can give that folder two di
 ### Windows
 
 - An s corresponds to 1 or more 16 bit units, none of them `0x0000`, `0x002F` (`/`) or `0x005C` (`\`), other than `.` and `..`.
+- The desk refuses a `create`, a `makeFolder`, a `move` and a `rename` to an s holding `0x003A` (`:`): NTFS takes `a:b` as a stream of the file `a`.
 - `len(s)` is the number of 16 bit units of s.
 - `isHidden(s)`: the first unit of s is `0x002E` (`.`).
 - `isZip(s)`: the last four units of s are the units of `.zip`.
@@ -282,21 +282,21 @@ Two mount points of one shared folder of the network can give that folder two di
 - `hiddenNameOk(s)`: the units of s, read as UTF-16, are a 'hidden name' (see Names).
 - `okTogether(s1, s2)`: the texts of s1 and s2, read as UTF-16, are not equal after Unicode normalization (NFC) and Unicode simple case folding.
 - `timeOk(file)`: as on Linux, where the last modified time is the value `LastWriteTimeUtc` of `Get-Item -LiteralPath <disk path> -Force`.
-- `zip(file)`: as on Linux, with each segment as the 16 bit units of its text.
+- `zip(file)`: as on Linux, with each segment as the 16 bit units of its text; undefined also when a segment holds `\`.
 - The mount points are the paths that the program `mountvol`, run with no argument, prints for each volume, like `C:\` and `C:\mnt\usb\`, the root `X:\` of each drive whose name is one letter in `Get-PSDrive -PSProvider FileSystem`, also mapped network drives and `subst` drives, and every shared folder of the network, like `\\server\share\`; the letter of a drive is uppercase.
-- `<disk path>` starts with `\\?\` (`\\?\UNC\` for a shared folder of the network), so that Windows takes each name as it is; a path on the disk in the Output is written without that start.
-- A path given to a program corresponds to a p as on Linux, with `\` in place of `/`, with the command `Get-ChildItem` below in place of `find`, and with `at(D, ...)` an id by the attributes below in place of `stat` printing `directory`.
+- `<disk path>` starts with `\\?\` (`\\?\UNC\` for a shared folder of the network), so that Windows takes each name as it is; a 'disk path' in the Output is written without that start.
+- A 'disk path' given to a program corresponds to a p as on Linux, with `\` in place of `/`, with the command `Get-ChildItem` below in place of `find`, and with `at(D, ...)` an id by the attributes below in place of `stat` printing `directory`.
   For example, with the mount points `C:\` and `C:\mnt\usb\`, the path `C:\mnt\usb\docs\a` corresponds to `id docs a`, with `id` corresponding to `C:\mnt\usb\`.
 - The PowerShell command `Get-ChildItem -LiteralPath <disk path> -Force -Name` gives the s of the Es of the folder `at(D, p)`, as strings.
 - The PowerShell command `(Get-Item -LiteralPath <disk path> -Force).Attributes` gives the attributes at `<disk path>`. When the attributes hold `ReparsePoint`, the program `fsutil`, run as `fsutil reparsepoint query <disk path>`, prints the tag and the target at `<disk path>`.
   - `at(D, p)` is an other when the tag is `0xA000000C` (a symbolic link), `0xA000001D` (a symbolic link of WSL), `0x8000001B` (an app execution alias), `0x80000023`, `0x80000024`, `0x80000025` or `0x80000026` (a socket, a fifo or a device of WSL), or `0xA0000003` with a target other than `\??\Volume{<guid>}\` (a junction).
   - Otherwise `at(D, p)` is an id when the attributes hold `Directory`, and a file when they do not: a folder where a volume is mounted, a OneDrive placeholder, a compressed file and a deduplicated file are folders and files.
   - `at(D, p)` is undefined when `Get-Item` fails because nothing is at `<disk path>`.
-- The PowerShell command `New-Item -Path <disk path>\s -ItemType File` creates the file `<disk path>\s`, and fails when `at(D, p s)` is defined; it corresponds to `create(D, p s, file)`.
+- The PowerShell command `New-Item -Path <disk path>\s -ItemType File` creates the file `<disk path>\s`, and fails when `at(D, p s)` is defined; it corresponds to `create(D, p s, file)` for the file with no content and the current time.
 - The PowerShell command `Remove-Item -LiteralPath <disk path>\s -Recurse -Force` corresponds to `delete(D, p s)` when no mount point m has `same(D, m, p s)` or `inside(D, m, p s)`; otherwise the desk refuses `delete(D, p s)`.
 - The PowerShell command `New-Item -Path <disk path>\s -ItemType Directory` corresponds to `makeFolder(D, p s)`.
 - The PowerShell command `if (Get-Item -LiteralPath <disk path2>\s2 -Force -ErrorAction Ignore) { throw }; Move-Item -LiteralPath <disk path1>\s1 -Destination <disk path2>\s2` corresponds to `move(D, p1 s1, p2 s2)` with the condition of Linux.
-- The PowerShell commands `Rename-Item -LiteralPath <disk path>\s -NewName <n>` and then `Rename-Item -LiteralPath <disk path>\<n> -NewName s'`, with `<n>` an s with `at(D, p <n>)` undefined, run when `Test-Path -LiteralPath <disk path>\s'` gives `False` or when s' and s are equal for `-ieq`, correspond to `rename(D, p s, s')`; otherwise the desk refuses `rename(D, p s, s')`.
+- The PowerShell commands `Rename-Item -LiteralPath <disk path>\s -NewName <n>` and then `Rename-Item -LiteralPath <disk path>\<n> -NewName s'`, with `<n>` an s for which `Test-Path -LiteralPath <disk path>\<n>` gives `False`, run when `Test-Path -LiteralPath <disk path>\s'` gives `False` or when s' and s are equal for `-ieq`, correspond to `rename(D, p s, s')`; otherwise the desk refuses `rename(D, p s, s')`.
 - The PowerShell command `Set-Content -LiteralPath <disk path>\s -AsByteStream -Force -Value <bytes>`, then `(Get-Item -LiteralPath <disk path>\s -Force).LastWriteTimeUtc= <time>`, with the bytes and the time of `file'`, corresponds to `write(D, p s, file')` when `fsutil hardlink list <disk path>\s` prints one line, or fails because the volume holds no hard links; otherwise the desk refuses `write(D, p s, file')`.
 - The order of the s: the first unit that differs decides, and a shorter s comes before the longer s it starts.
 - The 'junk file', 'junk folder', 'fixed segment', 'fixed name' and 'clash' rules read s as text: the UTF-16 text of s, where each surrogate without its pair is a character other than `a` to `z`, digits and `_`.
