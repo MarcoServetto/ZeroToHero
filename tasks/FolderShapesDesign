@@ -32,9 +32,9 @@ A 'checkable folder property' is a predicate on Ds and paths defined using only 
 valid(D, p)         iff  at(D, p)= id
 same(D, p1, p2)     iff  valid(D, p1), valid(D, p2),
                          exists s, file: at(D, p1 s) undefined, at(D, p2 s) undefined, at(create(D, p1 s, file), p2 s)= file
-inside(D, p1, p2)   iff  valid(D, p1), valid(D, p2), exists p < p1: same(D, p, p2)
+inside(D, p1, p2)   iff  valid(D, p1), valid(D, p2), exists p: p1 < p, same(D, p, p2)
+p s0..sn < p
 ```
-`p < p1` holds when `p` is a proper prefix of `p1`.
 
 ## Entries
 
@@ -146,24 +146,35 @@ Fix ends the same way at a folder holding a symbolic link or a junction: the Out
 
 ## Implementation notes
 
-On every desk:
-- the s of a folder are exactly the names the listing of that folder gives, unit by unit;
-- a path starts at the longest mount point it begins with.
-
 ### Linux
 
-- A U is a byte.
-- The roots are the mount points, `/` included.
-- A regular file is a file, a folder is a folder, also where a volume is mounted, and a link, a device, a pipe or a socket is an other.
+- U: a byte.
+- ids: the mount points, field 5 of `/proc/self/mountinfo` with the `\ooo` escapes decoded; `/` is one of them.
+- The text `/s1/../sn` is the path `id sk+1..sn`, with `/s1/../sk` the longest mount point it starts with, and `id` that mount point.
+- The s of the folder `/s1/../sn`: the names `find /s1/../sn -mindepth 1 -maxdepth 1 -printf '%f\0'` gives, separated by NUL.
+- The entry of each s, by `stat -c %F`:
+  - file: `regular file`, `regular empty file`;
+  - folder: `directory`;
+  - other: `symbolic link`, `fifo`, `socket`, `character special file`, `block special file`, any other.
 
 ### macOS
 
-- A U is a byte.
-- The roots are the mount points: `/`, `/System/Volumes/Data`, and the volumes in `/Volumes`.
-- A regular file is a file, a folder is a folder, also a firmlink, and a link, a device, a pipe or a socket is an other. A Finder alias is a regular file.
+- U: a byte.
+- ids: the mount points `mount` lists, the path after `on`; `/` is one of them.
+- The text `/s1/../sn` is the path `id sk+1..sn`, as on Linux.
+- The s of the folder `/s1/../sn`: the names `find /s1/../sn -mindepth 1 -maxdepth 1 -print0` gives, separated by NUL, each without `/s1/../sn/` in front.
+- The entry of each s, by `stat -f %HT`:
+  - file: `Regular File`;
+  - folder: `Directory`;
+  - other: `Symbolic Link`, `FIFO`, `Socket`, `Character Device`, `Block Device`, `Whiteout`, any other.
 
 ### Windows
 
-- A U is a 16 bit unit.
-- The roots are the drives, like `C:\`, the volumes mounted in a folder, and the shared folders of the network, like `\\server\share`.
-- A regular file is a file, a folder is a folder, also where a volume is mounted and also a OneDrive placeholder, and a symbolic link, a junction or any other entry is an other.
+- U: a 16 bit unit.
+- ids: the paths `mountvol` lists for the volumes (`C:\`, and the folders where a volume is mounted), and every `\\server\share`.
+- The text `r\s1\..\sn` is the path `id sk+1..sn`, with `r\s1\..\sk` the longest id it starts with.
+- The s of the folder `r\s1\..\sn`: the names `Get-ChildItem -LiteralPath 'r\s1\..\sn' -Force -Name` gives.
+- The entry of each s, by the attributes of `(Get-Item -LiteralPath <path> -Force).Attributes` and the tag and target `fsutil reparsepoint query <path>` gives:
+  - file: no `Directory`, and no `ReparsePoint` or a cloud tag `0x9000x01A`;
+  - folder: `Directory`, and no `ReparsePoint`, or a cloud tag `0x9000x01A`, or the tag `0xA0000003` with a target `\??\Volume{<guid>}\`;
+  - other: the tag `0xA000000C`, the tag `0xA0000003` with any other target, any other tag, a device.
