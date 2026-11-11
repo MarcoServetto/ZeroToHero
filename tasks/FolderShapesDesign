@@ -145,35 +145,56 @@ Fix ends the same way at a folder holding a symbolic link or a junction: the Out
 
 ## Implementation notes
 
+Each section below says how the shell operations of one desk stand for operations on a D.
+An id has no text: a mount point `m` stands for the id `id(m)` of the ids of the D.
+Each interpretation holds while no other program changes the folders involved.
+
 ### Linux
 
 - s: 1 or more bytes, none of them `0x00` or `0x2F` (`/`); not `.` or `..`.
-- ids: the mount points, field 5 of `/proc/self/mountinfo` with the `\ooo` escapes decoded; `/` is one of them.
-- A text is the path `id s1..sn`: `id` is the longest mount point the text starts with, and `s1..sn` are the names after `id`, separated by `/`. With the mount points `/` and `/home`, the text `/home/user/proj` is the path `/home user proj`, and the text `/home` is the path `/home`.
-- The s of the folder `/s1/../sn`: the names `find /s1/../sn -mindepth 1 -maxdepth 1 -printf '%f\0'` gives, separated by NUL.
-- The entry of each s, by `stat -c %F`:
-  - file: `regular file`, `regular empty file`;
-  - folder: `directory`;
-  - other: `symbolic link`, `fifo`, `socket`, `character special file`, `block special file`, any other.
+- The mount points: the paths of field 5 of `/proc/self/mountinfo`, with the `\ooo` escapes decoded; `/` is one of them.
+- A shell argument `m/s1/../sn`, with `m` the longest mount point the argument starts with, name by name, stands for the p `id(m) s1..sn`,
+  when every `si` is one of the names `find` gives for `m/s1/../si-1`.
+  With the mount points `/` and `/home`, the argument `/home/user/proj` stands for `id(/home) user proj`.
+
+| shell operation, with the argument standing for p | operation on D |
+|---|---|
+| `find <arg> -mindepth 1 -maxdepth 1 -printf '%f\0'` | the s of the Es of `at(D, p)`, separated by NUL |
+| `stat -c %F <arg>` gives `directory` | `at(D, p)` is an id |
+| `stat -c %F <arg>` gives `regular file` or `regular empty file` | `at(D, p)` is a file |
+| `stat -c %F <arg>` gives `symbolic link`, `fifo`, `socket`, `character special file`, `block special file`, or any other | `at(D, p)` is an other |
+| `stat -c %F <arg>` fails with `No such file or directory` | `at(D, p)` is undefined |
+| `set -C; : > <arg>/s` succeeds | `create(D, p s, file)` |
 
 ### macOS
 
-- s: 1 or more bytes, none of them `0x00` or `0x2F` (`/`); not `.` or `..`.
-- ids: the mount points `mount` lists, the path after `on`; `/` is one of them.
-- A text is a path as on Linux.
-- The s of the folder `/s1/../sn`: the names `find /s1/../sn -mindepth 1 -maxdepth 1 -print0` gives, separated by NUL, each without `/s1/../sn/` in front.
-- The entry of each s, by `stat -f %HT`:
-  - file: `Regular File`;
-  - folder: `Directory`;
-  - other: `Symbolic Link`, `FIFO`, `Socket`, `Character Device`, `Block Device`, `Whiteout`, any other.
+- s: as on Linux.
+- The mount points: the paths `mount` lists between ` on ` and ` (`; `/` is one of them.
+- A shell argument stands for a p as on Linux.
+
+| shell operation, with the argument standing for p | operation on D |
+|---|---|
+| `find <arg> -mindepth 1 -maxdepth 1 -print0` | the s of the Es of `at(D, p)`, separated by NUL, each without `<arg>/` in front |
+| `stat -f %HT <arg>` gives `Directory` | `at(D, p)` is an id |
+| `stat -f %HT <arg>` gives `Regular File` | `at(D, p)` is a file |
+| `stat -f %HT <arg>` gives `Symbolic Link`, `FIFO`, `Socket`, `Character Device`, `Block Device`, `Whiteout`, or any other | `at(D, p)` is an other |
+| `stat -f %HT <arg>` fails with `No such file or directory` | `at(D, p)` is undefined |
+| `set -C; : > <arg>/s` succeeds | `create(D, p s, file)` |
 
 ### Windows
 
 - s: 1 or more 16 bit units, none of them `0x0000`, `0x002F` (`/`) or `0x005C` (`\`); not `.` or `..`.
-- ids: the paths `mountvol` lists for the volumes (`C:\`, and the folders where a volume is mounted), and every `\\server\share`.
-- A text is the path `id s1..sn`: `id` is the longest id the text starts with, and `s1..sn` are the names after `id`, separated by `\`. With the ids `C:\` and `C:\mnt\usb\`, the text `C:\mnt\usb\docs\a` is the path `C:\mnt\usb\ docs a`.
-- The s of the folder `r\s1\..\sn`: the names `Get-ChildItem -LiteralPath 'r\s1\..\sn' -Force -Name` gives.
-- The entry of each s, by the attributes of `(Get-Item -LiteralPath <path> -Force).Attributes` and the tag and target `fsutil reparsepoint query <path>` gives:
-  - file: no `Directory`, and no `ReparsePoint` or a cloud tag `0x9000x01A`;
-  - folder: `Directory`, and no `ReparsePoint`, or a cloud tag `0x9000x01A`, or the tag `0xA0000003` with a target `\??\Volume{<guid>}\`;
-  - other: the tag `0xA000000C`, the tag `0xA0000003` with any other target, any other tag, a device.
+- The mount points: the paths `mountvol` lists for the volumes, like `C:\` and `C:\mnt\usb\`, and every `\\server\share\`.
+- A shell argument `m\s1\..\sn` stands for a p as on Linux, with `\` in place of `/`, and `Get-ChildItem` in place of `find`.
+  With the mount points `C:\` and `C:\mnt\usb\`, the argument `C:\mnt\usb\docs\a` stands for `id(C:\mnt\usb\) docs a`.
+
+In PowerShell, with `$a= Get-Item -LiteralPath <arg> -Force` and `$t` the tag and target `fsutil reparsepoint query <arg>` gives:
+
+| shell operation, with the argument standing for p | operation on D |
+|---|---|
+| `Get-ChildItem -LiteralPath <arg> -Force -Name` | the s of the Es of `at(D, p)` |
+| `$a.Attributes` holds `Directory`, and no `ReparsePoint`, or `$t` is a cloud tag `0x9000x01A`, or `$t` is the tag `0xA0000003` with a target `\??\Volume{<guid>}\` | `at(D, p)` is an id |
+| `$a.Attributes` holds no `Directory`, and no `ReparsePoint`, or `$t` is a cloud tag `0x9000x01A` | `at(D, p)` is a file |
+| `$t` is the tag `0xA000000C`, the tag `0xA0000003` with any other target, or any other tag; `$a` is a device | `at(D, p)` is an other |
+| `Get-Item` fails with `ItemNotFoundException` | `at(D, p)` is undefined |
+| `New-Item -LiteralPath <arg>\s -ItemType File` succeeds | `create(D, p s, file)` |
