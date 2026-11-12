@@ -1,0 +1,111 @@
+IQL and the callbacks of the Gui
+================================
+
+Goal
+====
+
+IQL asks the user for structured input: a dialog with named fields, each with a kind, a prompt, a default and constraints.
+IQL is a capability of System of its own: a program uses it with or without a Gui.
+An IQL dialog is a window built with the widgets of the Gui library, never a dialog of the toolkit.
+The IQL syntax is fluent, like the syntax of the Gui, and simpler and less flexible on purpose.
+The result of an IQL query is something the program waits on.
+One API waits on a result: the end of a process, the next input file, the result of a dialog.
+A Frame can be disabled: while a dialog is open, the frame behind it takes no input.
+
+Open: the IQL syntax, the result of a query and the API that waits are not designed yet.
+This document lists the callbacks of the Gui first, since disabling a frame is defined on them.
+
+Terms
+=====
+
+    the program        the Fearless code that uses s.gui.
+    the library        the standard library code that implements CapGui and Frame.
+    toolkit thread     the thread that receives the input of the window, lays out and paints it.
+    model queue        the queue of tasks of one frame, run one at a time, in order, by the model thread of the frame.
+    model task         a task of the model queue.
+    callback           code of the program that the library runs when the user acts or time passes.
+    model event        a model task that runs a callback.
+    library task       a model task that runs only code of the library.
+
+Threads
+=======
+
+One thread at a time runs mut code of the program.
+The thread that calls CapGui.run runs the consumer of .run, then waits until the window closes.
+Meanwhile the model thread of the frame runs the model events.
+A model event that calls CapGui.run waits in the same way until the new window closes.
+So the threads running mut code of the program form a stack, and only the top of the stack runs.
+Each handoff between two of these threads is a happens-before edge: a queue, or a wait for a task to end.
+The toolkit thread runs only imm code of the program: the painters.
+
+The getters
+===========
+
+Every getter of an object reached from CapGui is mut: the frame, the widgets, the menus and their builders.
+What the user or time changes (the text of a TextField, the positions of the dividers of a Split, Frame.elapsed) is then observed only through a mut reference, as every other observation of the world.
+A getter whose name is the name of a setter with no parameter takes another name: .fills is the getter of .fill.
+The values the library gives to painters and callbacks keep read getters: Graphics, CaretGraphics, TextRoom, ScreenContext, ResizeRequest, TextEvent, UTextEvent, KeyEvent.
+Each of them describes one moment and never changes.
+
+The callbacks
+=============
+
+Model events, each registered by the setter on the left:
+
+    Button.action              a click of the primary button on the Button.
+    Mouse.pressed .released .moved .dragged
+                               the gesture on the deepest widget with a handler for it; the gesture goes up the widget tree to it.
+    Mouse.clicked .doubleClicked
+                               a click: the press and the release in the same widget.
+    Mouse.entered .exited      the pointer entering or leaving the widget, also when a layout or a closing menu moves the widget under the pointer.
+    Widget.contextMenu         a click of the secondary button: the scope builds the menu, with its submenus.
+    MenuItem.action            choosing an item without a submenu.
+    Sections.onTitleClick      a click on the title of a section.
+    Sections.onClose           a click on the x of a section.
+    Frame.onKey                the .pressed and .released actions of a key whose first press reaches Frame.onKey,
+                               and the .released actions the library runs when the focus moves, the window loses the keyboard or a new .onKey replaces the Keys.
+    Frame.onClose              the close key, the close button of the desk border, Cmd+Q on macOS.
+    Frame.onResize             a ResizeRequest.
+    ModelFps.action            a model tick.
+    _StrEditText.cleaner, _UStrEditText.cleaner, .onEdit
+                               one change of the text by the user: a typed text, a text of an input method, a paste, a cut,
+                               Backspace, Delete, Shift+Enter, an undo, a redo.
+                               The cleaner maker makes the cleaner of the change; .onEdit runs when the text changed.
+    .onCommit                  Enter, Ctrl+Enter, and the focus leaving the widget by a press elsewhere, Tab or Shift+Tab,
+                               when the text differs from the committed text.
+
+Library tasks run no callback: a press or a drag that moves the caret, the steps of the scroll of a drag past an edge, the keys that move the caret, Ctrl+A, Ctrl+C.
+They are model tasks only so that the user and the program change a text widget in one order.
+
+The toolkit thread alone handles the rest, and runs no callback:
+hover highlighting, tooltips, the wheel, scroll bars, the drag of a divider of a Split,
+a menu that is open (highlighting, keys, scrolling, closing, opening a submenu),
+the focus, the composition of an input method, the full screen key, the states of the window, the drag of the Fearless corner, the repaints.
+A file dropped on the window goes to the list of the input files (CapInputCursor), with no model task.
+
+Code of the program that runs outside callbacks:
+
+    the consumer of CapGui.run      on the thread that calls .run, before the window opens.
+    the scope of each builder       on the thread that calls the builder.
+    Widget.openMenu                 the scope builds the menu, with its submenus, on the thread that calls .openMenu.
+    Painter, CaretPainter           imm, on the toolkit thread, at every repaint.
+
+Disabling a frame
+=================
+
+    Frame:{ ...
+      mut .enabled(Bool): mut Frame;
+      mut .enabled: Bool;
+      }
+    ScreenContext:{ ... read .enabled: Bool; }
+
+A frame is enabled when it opens.
+While a frame is disabled, the library drops each model event of the frame instead of queuing it: no callback of the frame runs.
+A ResizeRequest of a disabled frame is dropped like every other model event: the bands of a desk resize made while the frame is disabled stay until the next desk resize.
+The toolkit thread goes on as for an enabled frame: the repaints, hover, tooltips, scrolling, the states of the window.
+Each painter sees whether the frame is enabled through .enabled of its Graphics, and can draw a disabled look.
+
+Open: a pair cut by .enabled(False): a key pressed before it and released after it, an .entered with no .exited, a press with no release.
+Open: the library tasks of a disabled frame.
+Open: whether the widgets of the library draw a disabled look of their own.
+Open: whether a file dropped on a disabled frame goes to the input files.
