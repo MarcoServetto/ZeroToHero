@@ -1,6 +1,6 @@
 # Reconciliator design
 
-How a program of the Fearless family makes the desktop of the system open a set of extensions with that program, and show the icons of those extensions and of the windows of that program.
+How a program of the Fearless family comes to hold a set of extensions, and makes the desktop of the system show the icons of those extensions and of the windows of that program.
 The manager (see ControllersDesign) and the portable Fearless call the Reconciliator. The Reconciliator knows nothing of projects and mains: the caller gives the extensions, the icons and the windows.
 
 The algorithms of this design are a contract on the behaviour: a specification, not a suggested implementation.
@@ -9,45 +9,59 @@ They may be very slow or otherwise inefficient. They are designed to be obviousl
 ### The data
 
 The 'identity' of a program is the file name of the launcher of that program, without extension.
-The 'Fearless family' is the set of the identities holding the text `earless`.
+The 'Fearless family' is the set of the identities containing the text `earless`.
 Each version of the manager and each version of the portable Fearless has an identity of its own.
-The program folder of a manager holds two launchers, `<name>` and `<name>w`: they are two members of the Fearless family, with the identities `<name>` and `<name>w`, and one manager folder.
+The program folder of a manager has two launchers, `<name>` and `<name>w`: `<name>` and `<name>w` are two members of the Fearless family, with the identities `<name>` and `<name>w`, and one manager folder.
 The kind of an extension follows from the text of the extension: `.fearless`, `.fapp` and three digits, and `.ffile` and three digits are Fearless extensions; every other extension is a system extension.
+A program 'holds' an extension when the desktop of the system opens the files with that extension with that program, on a double click. Refusals gives the program holding an extension on each system.
 ```
 ExtensionIcon: { .extension: FileExtension; .icon: FsPath }    // the .ico on Windows, the PNG on Linux and macOS
 WindowIcon: { .windowClass: Str; .name: Str; .target: FsPath; .png: FsPath }  // Linux only
 Reconciliator: {
-  mut .reconcile(sys: mut System, identity: Str, name: Str, command: FsPath, extensions: List[ExtensionIcon], windows: List[WindowIcon], programIcon: FsPath, replaced: mut MF[FsPath, Void]): Void;
+  mut .reconcile(sys: mut System, identity: Str, name: Str, command: FsPath, extensions: List[ExtensionIcon], taken: List[FileExtension], windows: List[WindowIcon], programIcon: FsPath, replaced: mut MF[FsPath, Void]): Void;
   mut .eradicateAll(sys: mut System): Void;      // deletes the setup of every identity of the Fearless family, with no check
-  mut .forgetChoices(sys: mut System, choices: List[Str]): Void;  // removes exactly the choices made by hand that a refusal named
   }
 ```
-`.reconcile` makes `command` the program opening exactly `extensions`, under `identity`, each extension with its icon, and installs the icons of `windows`.
+`.reconcile` makes `command` the program holding each extension of `extensions`, under `identity`, each extension with its icon, and installs the icons of `windows`.
 `.reconcile` gives no description of its own to the type of an extension: the desktop shows its own text for each extension. The mains of a manager may claim the same extension, so no one description fits an extension.
 `programIcon` is the icon of `command` itself: the PNG on Linux and macOS. Windows ignores `programIcon` and uses the icon inside `command`.
 `name` is the name the desktop shows for `command`: `Fearless Manager` for a manager, `Fearless Portable` for the portable Fearless. `name` is the `Name` of the `.desktop` file on Linux, the `ApplicationName` on Windows and the `CFBundleName` of the 'helper bundle' on macOS.
 The 'setup' of an identity is every registry key and file `.reconcile` writes for that identity.
-The setup of every other identity of the Fearless family, and the setup of `identity` when that setup has another command, is deleted, after `replaced` is called on the command of that setup. So only one member of the Fearless family at a time opens `.fearless`, and a program that takes `.fearless` from another member of the Fearless family releases every extension of that other member.
-`.reconcile` takes the whole wanted set at once. Reconciling an unchanged set changes no setup.
+After `.reconcile`, the setup of `identity` names exactly the extensions of `extensions`.
+An identity 'releases' an extension when the setup of the identity stops naming the extension.
+The setup of every other identity of the Fearless family, and the setup of `identity` when that setup has another command, is deleted, after `replaced` is called on the command of that setup.
+A `.reconcile` with the arguments of the previous `.reconcile` of `identity` changes no setup.
 Every `.reconcile` that passes its checks ends with one refresh of the desktop (`SHChangeNotify` on Windows, the MIME and desktop databases on Linux, `LSRegisterURL` of the 'helper bundle' on macOS), also when no setup changed: a changed image at the same path then shows too.
-The checks of `.reconcile` change nothing when the checks fail, so the previous setup stays in place.
-An extension left out of a `.reconcile` loses the setup of the identity only, and the previous program opens the files of that extension again.
+The checks of `.reconcile` change nothing when the checks fail.
 
 ### Refusals
 
-- `.fearless` belongs to the Fearless family alone. A program outside the Fearless family opening `.fearless` makes `.reconcile` refuse `.fearless`.
-- A Fearless extension other than `.fearless` gets the very same setup as `.fearless`, and is checked like `.fearless`. Fearless extensions are invented by Fearless, so a Fearless extension set up in any other way than the setup of the Fearless family was tampered with.
-- A system extension gets the same setup as `.fearless` too, but `.reconcile` takes a system extension over from whatever program opens the extension: the user allowed the extension on purpose, so other programs registered for the extension do not make `.reconcile` refuse the extension. A Windows UserChoice of a system extension, left in place, keeps opening the files of that extension with the program of that UserChoice. So `.reconcile` deletes that UserChoice when `.reconcile` takes that extension over, and that UserChoice does not come back when that extension is left out of a later `.reconcile`.
-More than one identity of the Fearless family already on the system makes `.reconcile` refuse.
-A 'broken desk' is a desk holding a choice made by hand that mentions the Fearless family. Only `.reconcile` writes what the desktop knows of the Fearless family, so a broken desk makes `.reconcile` refuse, also when `extensions` is empty, until the user removes that choice.
-- On Linux a choice made by hand is a line of a `mimeapps.list` file the desktop reads, in any section. That line mentions the Fearless family when the line names a type of the Fearless family (`application/x-fearless` or `application/x-fearless-<ext>`) or a `.desktop` file of an identity of the Fearless family, this identity included.
-- On Windows a choice made by hand is a UserChoice (the keys `UserChoice` and `UserChoiceLatest` of an extension). A UserChoice mentions the Fearless family when the UserChoice is of a Fearless extension, or of an extension that an identity of the Fearless family is set up to open, or names a ProgId of an identity of the Fearless family, for any extension.
-- On macOS a choice made by hand is a program the user picked for a type of its own of an identity of the Fearless family (`<identity>.<ext>`, see Extensions on macOS), this identity included, whatever program the user picked. `.reconcile` never asks macOS about such a type.
-  For every other type, macOS keeps a request of `.reconcile` (see Extensions on macOS) as it keeps a program the user picked, so a program picked for another type is not a choice made by hand.
-  macOS reads the programs picked for types only when the service of macOS that opens files (`lsd`) starts, so on macOS `.forgetChoices` restarts that service after removing the choices.
-A refusal raises an error holding each refused extension with the programs holding that extension, or, for more than one identity of the Fearless family, the list of those identities, or, for a broken desk, each choice made by hand that mentions the Fearless family.
-The error of a refusal for a broken desk names each of those choices and where that choice is, and offers the action "Remove these choices": `.forgetChoices` removes exactly those choices, and the next `.reconcile` checks again.
-Fearless removes a choice made by hand that mentions the Fearless family only through that action.
+The checks of `.reconcile` refuse in two cases:
+- more than one identity of the Fearless family is on the system: the error lists those identities;
+- a program outside the Fearless family holds an extension of `extensions` that is not in `taken`: the error maps each such extension to the program holding that extension.
+Each extension of `taken` is an extension of `extensions`.
+`.reconcile` makes `command` hold each extension of `taken`, and each extension of `extensions` that another program of the Fearless family holds:
+- On Windows the program holding an extension is the ProgId of the UserChoice of the extension (the keys `UserChoice` and `UserChoiceLatest`), or, with no UserChoice, the ProgId of the default value of `HKEY_CLASSES_ROOT\<ext>`. `.reconcile` deletes the UserChoice of each of those extensions. A UserChoice that `.reconcile` deletes does not come back when the identity releases the extension. `.reconcile` keeps the previous default value of `HKEY_CURRENT_USER\Software\Classes\<ext>`, and puts that value back when the identity releases the extension.
+- On Linux the program holding an extension is the default program of the desktop for the type of the glob of highest weight matching the name `x<ext>` in the MIME database; no program holds an extension that no glob matches. `.reconcile` removes, from every `mimeapps.list` and `<desktop>-mimeapps.list` file the desktop reads (`<desktop>` is each name of `$XDG_CURRENT_DESKTOP`, in lower case), each line, in any section, whose key is the type of the identity for one of those extensions (see Extensions on Linux).
+- On macOS the program holding an extension is the application macOS opens a file named `x<ext>` with. `.reconcile` asks macOS to make the 'helper bundle' of the identity (for `.fearless`, the application of `command`) the default program of the type of each of those extensions (see Extensions on macOS); macOS asks the user, and `.reconcile` waits for the answer. An extension that the user keeps for another program makes `.reconcile` refuse after writing the setup of the identity: the error maps each such extension to the program holding that extension.
+
+### The setup on each system
+
+The setup is the same for every version of every program of the Fearless family: each program of the Fearless family finds, reads and deletes the setup of the other identities.
+On Windows the setup of an identity is:
+- the key `HKEY_CURRENT_USER\Software\<identity>`, with `Capabilities` (the values `ApplicationName` and `ApplicationIcon`, and the key `FileAssociations` mapping each extension to the ProgId of that extension) and `PreviousDefaults` (the previous default value of `HKEY_CURRENT_USER\Software\Classes\<ext>` for each extension, by extension);
+- the value `<identity>` of `HKEY_CURRENT_USER\Software\RegisteredApplications`, naming `Software\<identity>\Capabilities`;
+- for each extension, the ProgId `<identity>.<ext without dot>` in `HKEY_CURRENT_USER\Software\Classes`, with the icon of the extension as `DefaultIcon` and `"<command>" "%1"` as `shell\open\command`, named by the default value of `HKEY_CURRENT_USER\Software\Classes\<ext>` and by the `OpenWithProgids` of that key.
+On Windows the identities on the system are the value names of `RegisteredApplications` and the names `<name>` of the keys `HKEY_CURRENT_USER\Software\<name>\Capabilities`, that are in the Fearless family.
+On Windows the command of a setup is the command in `shell\open\command` of the ProgIds of that setup.
+On Windows the name of the ProgId `<name>.<ext without dot>` of an extension is `<name>`; the name of every other ProgId is the whole ProgId.
+On Linux the setup of an identity is `<identity>.desktop` and the `.desktop` file of each window class in `$XDG_DATA_HOME/applications`, the MIME package of the identity (see Extensions on Linux), and the icons of the identity (see Icons on the desktop).
+On Linux the identities on the system are the file names, without extension and without a final `-` followed by hex digits, of the `.desktop` files in the `applications` folder of `$XDG_DATA_HOME` and of each folder of `$XDG_DATA_DIRS`, and of the files in the `mime/packages` folder of those same folders, that are in the Fearless family.
+On Linux the command of a setup is the `TryExec` of `<identity>.desktop`.
+On Linux the name of a program is the file name of the `.desktop` file of that program without `.desktop`.
+On macOS the command of a setup is the command the launcher script of the 'helper bundle' runs (see Extensions on macOS).
+On macOS the name of an application is the file name of that application without `.app`.
+A program holding an extension is in the Fearless family when the name of that program contains the text `earless`.
 
 ### Extensions on Linux
 
@@ -57,13 +71,14 @@ On Linux a program opens MIME types, not extensions; the shared MIME database tu
   <glob pattern="*.htm" weight="100"/>
   <sub-class-of type="text/html"/>
   <sub-class-of type="application/xhtml+xml"/>
+  <icon name="<identity>-<hash>"/>
 </mime-type>
 ```
 - The glob weight is 100, above every glob shipped by the systems we target (at most 80), so the name `x.htm` turns into the type of the identity and `x.html` stays `text/html`.
 - When a system glob also matches the name, GIO and Qt look at the file content to choose, and text content would go to the system type. The `sub-class-of` entries, one for each type the system database gives to `*.htm`, make the content of those types count as the type of the identity. A file whose content is unmistakably another format (a `.htm` file starting with `<?php`) still gets that other type; this is accepted.
 - The `.desktop` of the identity lists the types of the identity; no other program lists those types, so a double click on a `.htm` file reaches `command`, and every other program opening `text/html` stays in the "open with" choices.
-- `.fearless` keeps its type `application/x-fearless`. A Fearless extension gets `application/x-fearless-<ext>` like a system extension; no system glob can match it.
-- Nothing outside the files of the identity changes. Releasing an extension rewrites the MIME package of the identity without that extension, and the system types are back as they were.
+- `.fearless` keeps its type `application/x-fearless`. Every other extension gets `application/x-fearless-<ext without dot>`.
+- Releasing an extension rewrites the MIME package of the identity without that extension, and the system types are back as they were.
 
 ### Extensions on macOS
 
@@ -72,21 +87,16 @@ Changing the `Info.plist` of a signed application breaks the signature of that a
 So the application of `command` declares `.fearless` when that application is built, and `.reconcile` declares every other extension in the 'helper bundle' of the identity.
 The 'helper bundle' of an identity is the application `~/Library/Application Support/fearlessAssociations/<identity>.app`, which only `.reconcile` writes: an `Info.plist`, a launcher script running `command` with the one argument `FearlessCommandOpened`, the icon of each extension and the icon of `command`.
 The 'helper bundle' is the setup of the identity: the identities on the system are the 'helper bundles' in `fearlessAssociations`, and `.reconcile` writes the 'helper bundle' also when `.fearless` is the only extension.
-The 'declared type' of an extension is the first type macOS gives for that extension that an application outside `fearlessAssociations` declares.
-- An extension with no 'declared type' gets a type of its own: `<identity>.<ext>`, with `-` for each `_` and in lower case, because a type name holds no `_` and macOS reads type names in lower case. The 'helper bundle' declares that type and opens that type as owner (`LSHandlerRank` `Owner`), so a double click on a file of that extension reaches `command`.
-- A Fearless extension other than `.fearless` with a 'declared type' makes `.reconcile` refuse that extension; the program holding that extension is the application declaring the 'declared type'.
-- A system extension with a 'declared type' gets no new type: the 'helper bundle' opens the 'declared type' as alternate (`LSHandlerRank` `Alternate`). `command` is then in the "Open With" choices of every extension of the 'declared type' (of `.html` too when the extension is `.htm`), and the program opening the 'declared type' stays the same.
-- When an application outside `/System` declares the 'declared type', and the previous `Info.plist` of the 'helper bundle' does not name the 'declared type', `.reconcile` asks macOS once to make the 'helper bundle' the program opening the 'declared type'; macOS asks the user to confirm.
-- `.reconcile` does not ask for a 'declared type' that an application in `/System` declares: for `public.html` macOS would ask the user to change the default web browser.
-- A double click on a file runs the launcher script of the 'helper bundle', so `command` starts with the one argument `FearlessCommandOpened`, and macOS passes the file as an event (see Starting the 'single' manager in ControllersDesign).
-- `.reconcile` checks nothing for `.fearless`. The application of every installed program of the Fearless family declares `.fearless`: with two of those applications installed, macOS chooses which application opens a `.fearless` file.
+The 'declared type' of an extension is the first type macOS gives for that extension that a bundle outside `fearlessAssociations` declares.
+- An extension with no 'declared type' gets a type of its own: `<identity><ext>`, with `-` for each `_` and in lower case, because a type name has no `_` and macOS reads type names in lower case. The 'helper bundle' declares that type and opens that type as owner (`LSHandlerRank` `Owner`), so a double click on a file of that extension reaches `command`.
+- An extension with a 'declared type' gets no new type: the 'helper bundle' opens the 'declared type' as alternate (`LSHandlerRank` `Alternate`). `command` is then in the "Open With" choices of every extension of the 'declared type' (of `.html` too when the extension is `.htm`). macOS keeps one default program for each type, so holding such an extension makes `command` hold every extension of the 'declared type'.
 - Deleting the setup of an identity registers the 'helper bundle' with an `Info.plist` declaring no type, then deletes the 'helper bundle'.
 
 ### Icons on the desktop
 
-On Windows the registry names an icon by its path, so the desktop reads the `.icon` of each `ExtensionIcon` from that path. On Linux a MIME type names its icon, and the desktop looks names up only in icon theme folders: `$XDG_DATA_HOME/icons` of the user, `$XDG_DATA_DIRS/icons` of the system (root only) and the legacy `~/.icons`. `.reconcile` installs each icon as `$XDG_DATA_HOME/icons/hicolor/256x256/mimetypes/<identity>-<hash>.png`; the hash gives a changed image a new name, past the icon cache of the desktop. Every file there named `<identity>-<hash>.png` belongs to that identity: each `.reconcile` deletes the files of that identity not in the wanted set, and deleting the setup of an identity deletes all the files of that identity together with the `apps/<identity>.png`, the `.desktop` files and the MIME package of that identity.
-On Linux each window class of `windows` gets a `.desktop` file with `NoDisplay=true`, holding `.name` as its name, `command` followed by `.target` as its command, the installed icon as its icon and the window class as its `StartupWMClass`: GNOME and COSMIC show that icon for every window of that window class.
-On macOS the `Info.plist` of the 'helper bundle' names an icon file for each type: `.reconcile` writes the icon of each extension as `Contents/Resources/<ext>.icns`, an icns file holding the PNG scaled to 256 pixels. Finder shows the icon of a new extension at once. After the icon of an extension changes, Finder keeps showing the first icon of that extension until the icon store of macOS is rebuilt.
+On Windows the registry names an icon by its path, so the desktop reads the `.icon` of each `ExtensionIcon` from that path. On Linux a MIME type names its icon, and the desktop looks names up only in the folders of the icon theme specification: `$XDG_DATA_HOME/icons` of the user, `$XDG_DATA_DIRS/icons` and `/usr/share/pixmaps` of the system (root only) and the legacy `~/.icons`. `.reconcile` installs each icon as `$XDG_DATA_HOME/icons/hicolor/256x256/mimetypes/<identity>-<hash>.png`; the hash gives a changed image a new name, past the icon cache of the desktop. Every file there named `<identity>-<hash>.png` belongs to that identity: each `.reconcile` deletes the files of that identity that the `.reconcile` does not install. `.reconcile` installs `programIcon` as `$XDG_DATA_HOME/icons/hicolor/256x256/apps/<identity>.png`.
+On Linux each window class of `windows` gets a `.desktop` file `<identity>-<hash>.desktop`, with `<hash>` the lower case hex digits of a hash of the window class, with `NoDisplay=true`, with `.name` as its name, `command` followed by `.target` as its command, the path of the installed icon as its icon and the window class as its `StartupWMClass`: GNOME and COSMIC show that icon for every window of that window class.
+On macOS the `Info.plist` of the 'helper bundle' names an icon file for each type: `.reconcile` writes the icon of each extension as `Contents/Resources/<ext without dot>.icns`, an icns file containing the PNG scaled to 256 pixels. Finder shows the icon of a new extension at once. After the icon of an extension changes, Finder keeps showing the first icon of that extension until the icon store of macOS is rebuilt.
 
 ### Notes
 
