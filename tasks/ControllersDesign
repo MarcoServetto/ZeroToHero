@@ -444,21 +444,16 @@ An 'autoCheck' of a project with a running main that finds the project 'invalid'
 
 ## File associations
 
-The 'reserve' of the manager is the list of extensions `reserve` in `projects.info` (see Registered projects): extensions beyond the Fearless extensions that the manager holds also when no main claims them.
-The 'captured extensions' are the Fearless extensions (see The data in ReconciliatorDesign) and the extensions of the 'reserve'.
-The manager asks once for each system extension, and one or more times for each Fearless extension.
-After the user accepts, `.reconcile` checks every extension again: a refusal for another extension asks about that extension.
-
 ### Invariants and transitions
 
 ```
 M                  the manager; id(M) its identity; folder(M) its manager folder
 D                  the desktop of the system
 fearless           the Fearless extensions: .fearless, .fapp000 .. .fapp999, .ffile000 .. .ffile999
-reserve(M)         the extensions of the 'reserve' of M
+reserve(M)         the 'reserve' of M: the list reserve of projects.info (see Registered projects)
 compiled(M)        the registered projects of M whose .fearless_out holds a compilation
 claims(p)          the extensions the mains of p claim
-captured(M)        fearless ∪ reserve(M)
+captured(M)        the 'captured extensions' of M: fearless ∪ reserve(M)
 setup(D, i)        the extensions the setup of the identity i names on D
 holder(D, e)       the program D opens a file x<e> with
 family(D)          the identities of the Fearless family with a setup on D
@@ -475,34 +470,32 @@ I4  |family(D)| ≤ 1
 At every moment:
 ```
 I5  ∀ f. |single(D, f)| ≤ 1
-I6  M running ∧ ¬exists(folder(M)) ∧ M did not delete folder(M)  ⇒  M is quitting, and M changes nothing on D
+I6  M running ∧ ¬exists(folder(M)) ∧ M did not delete folder(M)  ⇒  M is applying Quit, and M changes nothing on D
 ```
 
 The transitions:
 ```
-T1  .reconcile makes holder(D, e) = id(M) for an e whose holder is outside the Fearless family
-      only when e ∈ taken, after the user accepted e in the question the manager asks
+T1  a .reconcile of M refuses because a program outside the Fearless family holds an e ∉ taken:
+      the manager asks the user to let the manager hold e: once when e ∉ fearless, one or more times when e ∈ fearless;
+      the user accepts each such e  ⇒  .reconcile again, with those extensions as taken
 
 T2  the user rejects the last question for e, or .reconcile can not take e:
       e ∈ fearless  ⇒  'fatal error' naming e
+      the user rejects the last question for e, and the EditMetadata of this .reconcile adds e to reserve(M)
+                    ⇒  that EditMetadata is refused, and changes nothing
       otherwise     ⇒  for each p ∈ compiled(M) with e ∈ claims(p): end the mains and the compilation of p,
                         and delete the compilation cache of p (Coordinator.deleteCache);
                         reserve(M) := reserve(M) \ {e};
                         .reconcile again
 
 T3  a compilation of p ends with e ∈ claims(p) \ captured(M):
-      reserve(M) := reserve(M) ∪ {e}, and .reconcile (T2 if the question for e is rejected)
+      reserve(M) := reserve(M) ∪ {e}, and .reconcile
 
-T4  forgetting a project, or a compilation whose mains no longer claim e, leaves reserve(M) as it is
+T4  only T2, T3 and an EditMetadata change reserve(M)
 ```
-
-An `EditMetadata` adding e to the 'reserve' whose question is rejected is refused, and changes nothing: the outcome T2 gives.
 
 The `replaced` of each `.reconcile` deletes the manager folder of the program of the command that `replaced` receives, when that command is inside the program folder of a manager (see Program and manager folder) and that manager folder is not the manager folder of the program calling `.reconcile`.
 `replaced` deletes that manager folder only while holding the lock of the `instance.lock` of that folder (see The 'single' manager in Implementation notes): when a manager of that folder is running, `replaced` sends `Quit` to that manager and waits for the lock, at most 30 seconds; after that wait, `replaced` deletes every file of that manager folder that can be deleted, and that manager quits (I6).
-So the program of that command never sees a manager folder deleted in part, and no second 'single' manager of that folder can start meanwhile (I5).
-Reset deletes the manager folder also while holding the lock of its `instance.lock`.
-A 'single' manager whose manager folder another program deletes quits, ending the mains and the compilations of that manager, and changes nothing else on the system.
 
 In the stories below, Foo is a program outside the Fearless family.
 The user observes the icon of a file on the desktop and inside the file manager applications.
@@ -586,7 +579,7 @@ K The manager holds the Fearless extensions. .pdf is not in the 'reserve'.
 ### Preferences of the system
 
 ```
-A The manager is running and holds the Fearless extensions and .md. Main hello.Hello of the compiled project hello claims .md.
+A The manager is running and holds the Fearless extensions.
 B The user sets a preference of the system so that Foo holds .fapp123.
 C The manager compiles project world.
 D The manager calls .reconcile.
@@ -594,7 +587,7 @@ E .reconcile refuses because Foo holds .fapp123.
 F The manager shows a dialog asking the user to let the manager hold .fapp123.
 G The user accepts.
 H The manager calls .reconcile, taking .fapp123.
-I The manager holds the Fearless extensions and .md.
+I The manager holds the Fearless extensions.
 
 A The manager is running and holds the Fearless extensions.
 B The user sets a preference of the system so that Foo holds .fearless.
@@ -608,7 +601,7 @@ H Either the manager asks again or the manager fails with a fatal error.
 
 A The manager is running and holds the Fearless extensions and .md. Main hello.Hello of the compiled project hello claims .md. hello.Hello is running.
 B The user sets a preference of the system so that Foo holds .md.
-C The user forgets project world.
+C The user forgets the code project world.
 D The manager calls .reconcile.
 E .reconcile refuses because Foo holds .md.
 F The manager shows a dialog asking the user to let the manager hold .md.
@@ -859,7 +852,7 @@ The shortcut file is one of the `.files` of the project (see The data in Coordin
 
 ### Reconciling
 
-After each rebuild of the in memory map, and in each `EditMetadata` that changes `reserve`, with the `reserve` of the edit, once every other check of the edit (see Registered projects) passes, before the edit applies, the manager calls `.reconcile` of the Reconciliator (see ReconciliatorDesign) with the launcher of the manager as `command`, with all the 'captured extensions', each with an icon, with the window classes (see Desk ids and icons), and with an empty `taken`. After the user accepts the extensions of a refused `.reconcile`, the manager calls `.reconcile` again with those extensions as `taken`.
+After each rebuild of the in memory map, and in each `EditMetadata` that changes `reserve`, with the `reserve` of the edit, once every other check of the edit (see Registered projects) passes, before the edit applies, the manager calls `.reconcile` of the Reconciliator (see ReconciliatorDesign) with the launcher of the manager as `command`, with all the 'captured extensions', each with an icon, with the window classes (see Desk ids and icons), and with an empty `taken`.
 
 #### Desk ids and icons
 
