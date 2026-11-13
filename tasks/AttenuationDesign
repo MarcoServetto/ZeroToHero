@@ -1,19 +1,19 @@
 # Attenuation design
 
-How a Fearless main gets less than the full power of `System`,
-and how a main runs another main of the same project in a new process with the same limits or more.
+How a Fearless main gets less than the full authority of `System`,
+and how a main runs another main of the same project in a new process with the same attenuators or more.
 
 The algorithms of this design are a contract on the behaviour: a specification, not a suggested implementation.
 They may be very slow or otherwise inefficient. They are designed to be obviously correct; implementing them as they are may be a terrible idea.
 
 ### Fearless facts
 
-`System` is the root object capability: every observation of the world goes through a method of `System` or of a capability `System` gives (`CapTry`, `Output`, `InputCursor`, `AssetReadCapability`, `DownloadCapability`, `CapDataRead`, `CapDataEdit`, `CapManager`, `CapProcess`, `LogReader`, `Gui`).
+`System` is the root object capability: every observation of the world goes through a method of `System` or of a capability `System` gives (`CapTry`, `CapOutput`, `CapInputCursor`, `CapAssetRead`, `CapDownload`, `CapDataRead`, `CapDataEdit`, `CapManager`, `CapProcess`, `CapLogReader`, `CapGui`, `CapRevocationRoot`).
 `System` and every capability it gives are not sealed: Fearless code can implement them.
-A main is `Main: CaptureFree { .main(sys: mut System): Void }`; the runtime gives it the one real `System` of the process.
+A main is `Main: CaptureFree { .main(sys: mut System): Void }`; the runtime gives it a `System` built from the one real `System` of the process (see Deterministic reconstruction).
 Observable Determinism: a method with no mut parameters, receiver included, returns structurally equivalent results for structurally equivalent inputs; non termination and deterministic exceptions are results.
 A non deterministic exception is caught only by a `CapTry`, and a `CapTry` comes only from a `System`.
-A type implementing `CaptureFree` captures nothing: its instance is a singleton, and its type name denotes that singleton. A top level type captures nothing by construction; a type declared inside a method captures nothing only when it implements `CaptureFree`.
+A type implementing `CaptureFree` captures nothing. A type implementing `CaptureFree` with no abstract methods and zero generic parameters has one instance, and its type name denotes that instance: the type is 'summonable'. A top level type captures nothing by construction; a type declared inside a method captures nothing only when it implements `CaptureFree`.
 The Fearless manager runs each main in a JVM of its own, started with the folder of the project and the data projects mounted on the DataRead types of the project (DataReadDataEditDesign).
 `Info` is the one value with a text form that parses back: `Info.str` is JSON text, `Infos.fromStr` reads it.
 
@@ -22,8 +22,8 @@ The Fearless manager runs each main in a JVM of its own, started with the folder
 From the object capability literature, used here with one meaning each:
 - 'object capability': an object that can do a privileged thing; holding a reference to it is the permission to do that thing. `System` and every capability it gives are object capabilities.
 - 'authority': what a program can do to the world. A capability carries authority; a `mut System` carries all of it.
-- 'attenuation': deriving from a capability a capability with less authority. An 'attenuator' of a capability type `C` is a function from a `mut C` to a `mut C` with less authority. Not: limiter, watchdog, restriction, filter.
-- 'revoke': to take the authority away from a capability already given. A capability 'revoked' is one with no authority: every method of it throws (.iso still produces an iso copy that would equally throw).
+- 'attenuation': deriving from a capability a capability with no more authority. An 'attenuator' of a capability type `C` is a function from a `mut C` to a `mut C` with no more authority. Not: limiter, watchdog, restriction, filter.
+- 'revoke': to take the authority away from a capability already given. A capability 'revoked' is one with no authority: every `mut` method of it throws, except `.iso`, which gives a revoked copy, and `.close`.
 - 'reconstruction': building in a new process the attenuated `System` of another process from the names of its attenuators, instead of transferring any object.
 
 ## Current design
@@ -35,12 +35,9 @@ Attenuator[C]: CaptureFree, F[mut C, mut C]{}
 SystemAttenuator: Attenuator[System]{}
 ```
 An attenuator of `System` receives a `mut System` and gives a `mut System` whose methods reach the world only through the received one.
-Attenuator implements CaptureFree; so even an attenuator declared inside of a method body has a clear unique instance that can be summoned by its name. Even if it is anonymous in the original source, the inference chooses a name for it, and the manager can use it.
-Note that a top level attenuator may have abstract methods and thus not be summonable by name.
-
-We expect attenuators to return a wrapper around the parameter, propagating some methods (`.out -> u.out`),
-revoking some (`.out -> Error...`) or any other kind of custom behaviour and protocol.
-Each attenuator has to decide what errors should be deterministic or non deterministic on a case by case basis.
+An attenuator declared inside a method body has a type name too: the name in the source, or the name the inference chooses for an anonymous attenuator.
+The attenuators of a process are summonable: the process finds each of them by its type name.
+An attenuator chooses, for each method of the `System` it gives, whether the errors of that method are deterministic or non deterministic.
 
 Example:
 ```
@@ -48,24 +45,27 @@ NoInput: SystemAttenuator { u -> mut ErrorSystem{'s
   .try -> u.try;
   .out -> u.out;
   .assetRead -> u.assetRead;
-  //.dataEdit, .dataRead, .inputCursor, .download omitted; thus would go in non deterministic Error
+  //.inputCursor, .download, .dataRead, .dataEdit, .locked omitted: they throw the non deterministic error of ErrorSystem
   //.manager must be omitted near every time since it can give near absolute power back
   .process -> u.process.with NoInput;
   .readLog l -> u.readLog l;
   .gui -> u.gui;
+  .revocation -> u.revocation;
+  .randomSeed -> u.randomSeed;
   .iso -> NoInput#(u.iso.close);
   .close -> s;
   }}
 ```
-Attenuators compose by application: `NoGui#(NoInput#(sys))` gives a `System` with neither capability, whatever the order. But in some cases the order may be relevant. The result of an outer attenuator reaches only what the inner one gives, so no attenuator recovers authority.
+Attenuators compose by application: in `NoGui#(NoInput#(sys))` the `System` that `NoGui` receives is the `System` that `NoInput` gives, so no attenuator recovers authority that an inner attenuator took away.
+`NoGui#(NoInput#(sys))` and `NoInput#(NoGui#(sys))` give the same authority; for other attenuators the order of application can change the result.
 
-### ErrorSystem, Revocation and StartRevokeSystem
+### ErrorSystem, Revocation and RevokableSystem
 
 ```
 ErrorSystem: System { ...every method throws...; .iso -> ErrorSystem; .close -> this; }
 Revocation: ToIso[Revocation]{ mut #: Void; }
-RevocationRoot: Revocation, ToIso[RevocationRoot]{ mut .start: Void; mut .revoke: Void; }
-System: ... { ...; mut .revocation: mut RevocationRoot; }
+CapRevocationRoot: Revocation, ToIso[CapRevocationRoot]{ mut .start: Void; mut .revoke: Void; }
+System: ... { ...; mut .revocation: mut CapRevocationRoot; }
 RevokableSystem: { #(r: mut Revocation, sys: mut System): mut System -> {
   .try->Block#(r#,RevokableTry#(r,sys.try));
   ...
@@ -74,19 +74,31 @@ RevokableSystem: { #(r: mut Revocation, sys: mut System): mut System -> {
 ```
 `ErrorSystem` is a `System` with no authority: every method throws the non deterministic error `System.<method> is revoked.`, `.iso` gives another `ErrorSystem` and `.close` gives itself.
 
-A `Revocation` is a flag in one of three states, in this order and with no way back: not started, started, revoked.
-`r#` returns when started; otherwise it throws the non deterministic error `Revocation.start was not called yet.` or `Revocation.revoke was called.`.
-`sys.revocation` gives a new `RevocationRoot`, with `.start` and `.revoke`.
-`Revocation` needs magic/native implementation: `r.iso` gives a copy sharing the flag of `r`; the copy of a root is a root, the copy of a check only `Revocation` checks only.
-Copies of the same root can reach a parallel flow stage as iso elements or as the iso `ctx` of a stage.
-Thus we can have code that runs multiple `.revoke` and `#` at the same time: there is no single holder of the root. Note that this is the same for two capabilities trying to write on a file. All those kinds of capabilities need some native synchronization to not step on each other: here one volatile field.
-`.start` on a started or revoked root, and `.revoke` on one not started or already revoked, are errors; we keep them non deterministic, since the holder of a copy has no way to know the state. A root is an object capability, so a deterministic error there would be allowed too.
+```
+Flag: { .notStarted | .started | .revoked }
+sys.revocation  gives a new root r, with a new flag(r) = .notStarted
+r.iso           gives a copy r' with flag(r') = flag(r): the same flag, not a copy of it
+r#              flag(r) = .started    -> returns
+                flag(r) = .notStarted -> non deterministic error `Revocation.start was not called yet.`
+                flag(r) = .revoked    -> non deterministic error `Revocation.revoke was called.`
+r.start         flag(r) = .notStarted -> flag(r) := .started
+                otherwise             -> non deterministic error `Revocation.start was called twice.`
+r.revoke        flag(r) = .started    -> flag(r) := .revoked
+                flag(r) = .notStarted -> non deterministic error `Revocation.revoke was called before .start.`
+                flag(r) = .revoked    -> non deterministic error `Revocation.revoke was called twice.`
+```
+The errors of `.start` and `.revoke` are non deterministic: the holder of a copy has no way to know the flag.
 A `Revocation` holds no value and has no `read` method: the copies share the flag and nothing else, so a copy promoted to `imm` is inert.
 
-`RevokableSystem#(r,sys)` wraps `sys` by calling `r#` at every delegation of a `mut` method, and returning revocable versions of all the other capabilities, transitively: one wrapper type per capability type, each as long as the type.
-The wrapper of `Gui` stops at `.run`: the `Frame` and widgets `.run` gives are not wrapped.
+`RevokableSystem#(r,sys)` wraps `sys` by calling `r#` at every delegation of a `mut` method, and returning revocable versions of all the other capabilities, transitively: one wrapper type per capability type.
+The wrapper of `CapGui` stops at `.run`: the `Frame` and widgets `.run` gives are not wrapped.
 A `read` method of a wrapper delegates without calling `r#`: only `mut` methods are object capability methods.
-`.iso` does not check the flag: the copy it gives checks the flag at every call, so a revoked `System` gives images that are revoked too.
+`.iso` does not check the flag: the copy it gives checks the flag at every call, so a revoked `System` gives copies that are revoked too.
+
+Implementation details:
+- `Revocation` is native: the copies `r.iso` gives share one flag;
+- copies of one root reach parallel flow stages as iso elements or as the iso `ctx` of a stage, so `#`, `.start` and `.revoke` run at the same time on one flag: the flag is one volatile field;
+- each wrapper type of `RevokableSystem` is as long as the capability type it wraps.
 
 ### Deterministic reconstruction
 
@@ -122,9 +134,9 @@ CapProcess: ToIso[CapProcess], WidenTo[CapProcess]{
 The new process applies the attenuators of this process, in their order, then the attenuators of `.with`, in their order, then `attenuators` in their order.
 `u.process.with A` is a `CapProcess` whose new processes also apply `A`. `u.process` starts processes with the authority of `u`, so an attenuator `A` that keeps `.process` gives `u.process.with A`.
 
-The new process starts as this one started: same first input file, same data projects, same manager, same desk identity, same working folder; it prints to the output of this process. Each process may open guis it owns: a file dropped on a gui of the new process arrives on the `InputCursor` of the new process, as a file dropped on a gui of this process arrives on this one.
+The new process starts as this one started: same first input file, same data projects, same manager, same desk identity, same working folder; it prints to the output of this process. Each process may open guis it owns: a file dropped on a gui of the new process arrives on the `CapInputCursor` of the new process, as a file dropped on a gui of this process arrives on this one.
 Every main is capture free, so as for attenuators, we can just summon them by name.
-`.run` accepts any main (with no abstract methods) of every package included, not only the mains of the highest ranking package.
+`.run` accepts any summonable main of every package included, not only the mains of the highest ranking package.
 A process that can not start, or that ends before its main ends (a JVM error, a kill), is a non deterministic error of `.run`.
 The end of a process also ends every process it started: a new process holds the parent lifeline of its parent, as every process the manager starts does.
 
@@ -195,7 +207,7 @@ An error of the system in working with processes is a non deterministic error.
 `.run` is `.start` then `.await`.
 
 The out and err of the process reach the out and err of the parent as the process produces them; the lines of two processes running at once interleave.
-TODO: capture: `.start` takes a callback called with each chunk the process produces and the out of the parent; the default callback writes the chunk on that out. A chunk is bytes, as `Output` writes bytes: whether the callback receives them as bytes or as text with a recovery, as the reads of `InputCursorNode` do, is to be decided.
+TODO: capture: `.start` takes a callback called with each chunk the process produces and the out of the parent; the default callback writes the chunk on that out. A chunk is bytes, as `CapOutput` writes bytes: whether the callback receives them as bytes or as text with a recovery, as the reads of `CapInputCursorNode` do, is to be decided.
 
 ### Third step: values across processes
 
@@ -206,11 +218,10 @@ CapProcess: ... {
   mut .start(main: InfoMain, arg: Info, attenuators: List[SystemAttenuator]): mut RunningMain[Info];
   }
 ```
-An `Info` is the one value with a text form that parses back: `Info.str` and `Infos.fromStr`.
 `sys.process.run(Compute, arg, as)` behaves as `Compute.main(An#(...A1#(sys)), arg)` in a process of its own, as `.run` of a `Main` does, and gives the `Info` the main returns.
 The text of `arg` is the first line on the standard input of the new process, before the parent lifeline; the text of the result follows the `ok` line on its standard error.
 An `InfoMain` is not a main of the project.
-The new process finds the `InfoMain` by name, as it finds an attenuator: a concrete type implementing `InfoMain` has zero generic parameters.
+The new process finds the `InfoMain` by name, as it finds an attenuator: the `InfoMain` is summonable.
 Any immutable value with `ToInfo` and `FromInfo` crosses as an `Info`. A transfer of every `imm` value needs a serialization for every immutable type, which Fearless does not have.
 
 ### Related work and the paper
