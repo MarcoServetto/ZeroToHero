@@ -9,9 +9,9 @@ IQL is a capability of System of its own: a program uses it with or without a Gu
 An IQL dialog is a window built with the widgets of the Gui library, never a dialog of the toolkit.
 The IQL syntax is fluent, like the syntax of the Gui, and simpler and less flexible on purpose.
 The program waits on a later: the end of a process, the arrival of a file at a position of CapInputCursor, the answer of an IQL dialog; one API waits on every later.
-A Frame can be disabled: while a dialog is open, the frame behind it runs no handler.
+A Frame can be disabled: a disabled frame drops every model event; a program can disable a frame while the program waits on an IQL dialog.
 
-Open: the IQL syntax; Query and Answer stand for the types of an IQL query and of its answer.
+Open: the IQL syntax; Query and Answer stand for the types of an IQL query and of its answer; an Answer also tells that the user closed the dialog.
 
 Terms
 =====
@@ -72,9 +72,9 @@ Model events, each registered by the setter on the left:
     .onCommit                  Enter, Ctrl+Enter, and the focus leaving the widget by a press elsewhere, Tab or Shift+Tab,
                                when the text differs from the committed text.
 
-Library tasks run no handler: a press or a drag that moves the caret, the steps of the scroll of a drag past an edge, the keys that move the caret, Ctrl+A, Ctrl+C.
+Library tasks: a press or a drag that moves the caret, the steps of the scroll of a drag past an edge, the keys that move the caret, Ctrl+A, Ctrl+C.
 
-The toolkit thread alone handles the rest, and runs no handler:
+The toolkit thread alone handles the rest:
 hover highlighting, tooltips, the wheel, scroll bars, the drag of a divider of a Split,
 a menu that is open (highlighting, keys, scrolling, closing, opening a submenu),
 the focus, the composition of an input method, the full screen key, the states of the window, the drag of the Fearless corner, the repaints.
@@ -161,38 +161,36 @@ Later is Sealed: only the library makes a later.
 
     state(l)     the state of the later l: empty, or held(r), with r a value v or an error e.
     l is held    state(l) = held(r) for some r.
-    dead(l)      state(l) = empty, and the source of l can never give a result.
+    dead(l)      l is a later of CapInputCursor.file, state(l) = empty, and no window of the program is open: no file can arrive at the position of l.
 
     The source of l gives r while state(l) = empty:  state(l) := held(r).
     No other step changes state(l).
 
     l.await                held(v): return v.  held(e): throw e.
-                           empty: block until l is held, then as above; a non deterministic error as soon as dead(l).
+                           empty: block until l is held, then as above; the non deterministic error
+                           `No file can arrive at this position of CapInputCursor: no window of the program is open.` as soon as dead(l).
     l.awaitUpTo(t)         held(v): an Opt of v.  held(e): throw e.
                            empty: block until l is held, at most t; still empty after t: an empty Opt. With t = Duration#0 it only checks.
     Laters.first(ls, cs)   ls empty, or |ls| != |cs|: a deterministic error, before blocking.
-                           block until some ls[i] is held; a non deterministic error as soon as every ls[i] is dead.
+                           block until some ls[i] is held; the non deterministic error of .await on a dead later as soon as every ls[i] is dead.
                            i: the least index with ls[i] held.
                            state(ls[i]) = held(e): throw e.
                            state(ls[i]) = held(v): cs[i]# runs once, on the thread that calls Laters.first, and Laters.first returns what cs[i]# returns; no other element of cs runs.
     Laters.firstUpTo(t, ls, cs)
                            as Laters.first, but no ls[i] is held after t: an empty Opt; dead laters give no error.
 
-An element of callbacks takes no argument, and reads the value with .await of the later the element captures; that .await returns at once.
-
     .let b= {build.end}
-    .let f= {at.file}
+    .let file= {at.file}
     .let a= {iql.ask(SettingsQuery)}
-    .let msg= {Laters.first(Lists#(b, f, a), Lists#(
+    .let msg= {Laters.first(Lists#(b, file, a), Lists#(
       {"built: "+(b.await.str)},
-      {"file: "+(f.await.label)},
+      {"file: "+(file.await.label)},
       {"answered"}
       ))}
 
-A later of CapInputCursor.file is dead when the later is empty and no window of the program is open.
-A later of CapRunningMain.end, and a later of CapIql.ask whose dialog is open, are never dead.
+The IQL dialog of a later of CapIql.ask closes exactly when the source of the later gives the result: when the user answers the dialog, or closes the window of the dialog.
 RevokableSystem.iql gives a RevokableIql.
-A later that RevokableRunningMain, RevokableInputCursor or RevokableIql gives checks its Revocation first: once the Revocation is revoked, .await and .awaitUpTo of that later throw the error of the Revocation, and so do Laters.first and Laters.firstUpTo when their laters hold that later.
+A later that RevokableRunningMain, RevokableInputCursor or RevokableIql gives checks its Revocation at each .await and .awaitUpTo, and Laters.first and Laters.firstUpTo check it before blocking: they throw the error of the Revocation before the start of the Revocation and after its revoke.
 
 A model event waits on a later as any code does: the model thread of the frame blocks, and the toolkit thread goes on repainting.
 A frame waiting on a dialog:
@@ -215,6 +213,7 @@ A frame waiting on a dialog:
 
 An IQL dialog runs no mut code of the program: the Query is imm, and the library runs the window of the dialog, so the stack of the threads running mut code of the program does not grow.
 A frame that stays enabled checks its laters from ModelFps.action, with .awaitUpTo(Duration#0) or Laters.firstUpTo(Duration#0, ...).
+Open: an IQL dialog whose later no code waits on any more (a later that lost a Laters.first, a later asked by a frame that closed), and an IQL dialog still open when the main returns: CapIql has no way to close a dialog.
 
 Implementation notes
 ====================
