@@ -16,7 +16,7 @@ an `IsoPod` can also be opened once, giving its `iso` back and staying empty fro
 **Observable Determinism:**\
 A method with no mut parameters (including the receiver) returns structurally equivalent results for structurally equivalent input. "Results" includes deterministic exceptions and non termination: the result may be non termination or a structurally equivalent thrown Info.
 
-This works mostly because every method of an object capability doing something non deterministic is a mut method: with no mut in input, any capability in the ROG of the call is 'muted'. Most of the properties below also support determinism, but are valuable on their own.
+Determinism holds because every method of an object capability doing something non deterministic is a mut method: with no mut in input, the method can call no such method.
 
 **Immutability:**\
 An imm reference refers to an object whose ROG is deeply unmodifiable: nothing in that ROG will ever change again.
@@ -29,16 +29,16 @@ If a method has no mut parameters, any read parameter is also deeply unmodifiabl
 An iso reference refers to an object whose (mutable) ROG is encapsulated under that single reference. The ROG may share imm objects, which are referentially transparent, but every mutable object in it would be garbage collectable if that iso reference were lost.
 
 **Strong exception safety:**\
-The body of a try either completes successfully or leaves the state observable outside of the try unmodified. Enforced by the type system: `Try#[R](try: read F[R])`. A `read` lambda can not mutate what it captures, so the body reaches only what it created or the `iso` given to the two-argument form, and `Action` yields the value or the `Info`.
+The body of a try either completes successfully or leaves the state observable outside of the try unmodified. Enforced by the type system: `Try#[R](try: read F[R]): mut Action[R]` and `Try#[T,R](data: iso T, try: read F[iso T,R]): mut Action[R]`. A `read` lambda can not mutate what it captures, so the body mutates only what it creates and `data`. The `Action` holds the value or the `Info`.
 
 Example: with `rs` of type `mut List[mut Repr[T]]`,
 `Try#{.. rs.flow(ParRepr#).map{r -> r.mutate{...}}.list}`
-compiles only if `rs` is created inside the `{..` part, not captured by the `Try` lambda.
-Thus running that flow with data parallelism is correct: even if the code executed as part of the map stage throws on the element at index 3 of 7 of `rs`, no non determinism is observable, since all of ROG(rs) is garbage collectable when the exception is caught.
+compiles only if `rs` is created inside the `{..` part or passed as `data`, not captured by the `Try` lambda.
+Thus running that flow with data parallelism is correct: even if the code executed as part of the map stage throws on the element at index 3 of `rs`, no non determinism is observable, since all of ROG(rs) is garbage collectable when the exception is caught.
 
 **Identity Transparency:**\
 Without using mut methods of capability objects, we can not distinguish whether two references are identity equal or just structurally equivalent.\
-This is enforced by careful API design in all the `_Magic!` setups, and is needed for Determinism and caching: otherwise one could call something twice and tell re-computation from a cached result, violating Determinism of an outer expression that internally uses caching (and tests for identity).
+No `_Magic!` method breaks Identity Transparency. Identity Transparency is needed for Determinism and caching: otherwise one could call something twice and tell re-computation from a cached result, violating Determinism of an outer expression that internally uses caching (and tests for identity).
 
 ### Terms
 
@@ -71,11 +71,11 @@ Elements and order:
 - 'materialise': collect elements into a list inside the whole flow expression.
 
 Kinds of stages/terminals:
-- 'elementwise' stage: `map`, `filter`, `flatMap`, `flatMapMut`, `peek`, `mapFilter`.
-- 'streaming stateful' stage: `limit`, `scan`, `actor`, `actorMut`, map with context, `distinct`.
+- 'elementwise' stage: `map`, `filter`, `flatMap`, `flatMapMut`, `peek`, `mapFilter`, `readOnly`.
+- 'streaming stateful' stage: `limit`, `scan`, `actor`, `actorMut`, map and peek with context, `distinct`.
 - 'fence': a stage/terminal that sends nothing downstream, and lets no exception of its own propagate, until every stage before it has finished with every element: the stages `allToAll`, `sort`, `sortDistinct`, `max`, `min`, `distinctMut` and `++`, and the terminal `for`. Not: fence operation, barrier.
-- 'consuming terminal': `list`, `eList`, `set`, `eSet`, `mapping`, `for`, `forEach`, `fold`, `foldAcc`, `size`, `isEmpty`, `get`, `getOpt`, `join`, `sum`, `last`, `with`, `withBoth`, `withAll`. Every element passes the whole chain.
-- 'utility method': a flow method that is neither a stage nor a terminal: it calls a terminal and continues with ordinary code, so the flow expression ends at that terminal. `let` is the only one.
+- 'consuming terminal': `list`, `eList`, `set`, `eSet`, `mapping`, `for`, `forEach`, `fold`, `foldAcc`, `size`, `isEmpty`, `get`, `getOpt`, `tryGet`, `tryGetOpt`, `join`, `sum`, `last`, `with`, `withBoth`, `withAll`. A consuming terminal never stops receiving: it receives every element the stage before it sends downstream.
+- 'utility method': a flow method that is neither a stage nor a terminal: it ends the flow expression with `.list` and returns what its lambdas compute from that list, possibly a flow. `let` is the only one.
 - 'short-circuit terminal': `first`, `any`, `all`, `none`, `findFirst`, `findMap`. They can decide before the end, leaving the elements after the decision in flow order never processed.
 
 Multi flows:
@@ -94,30 +94,30 @@ Strategies:
 - 'mode': `Seq`, `ParImm`, `ParRead`, `ParRepr` or `ParPod`, recorded by the source and by each `.recoverFlow`. Not: execution mode, par mode.
 - 'strategy': how the terminal runs the whole flow expression: the sequential strategy, data parallelism, pipeline parallelism, or a mix of them. Not: mode, shape, parallel shape.
 - 'sequential strategy': runs the elements through the stages one at a time. Not: sequential execution, sequential run, sequential mode.
-- 'hint': `.hintSequential` or `.hintParallel`, recorded in the chain to say which strategy the user prefers for the stages up to the next `.recoverFlow`, or for the whole flow expression if there is none. A hint changes nothing a flow expression returns. Not: annotation, option.
+- 'hint': `.hintSequential` or `.hintParallel`, recorded in the chain to say which strategy the user prefers for the 'part' that holds the hint. A 'part' is a piece of the chain cut at each `.recoverFlow`: from the source or a `.recoverFlow` to the next `.recoverFlow` or the terminal. A hint changes nothing a flow expression returns. Not: annotation, option.
 - 'data parallelism/fork-join': the elements are split into chunks; a task runs one chunk through a sequence of stages; workers execute tasks.
 - 'worker'. Not: thread, core.
 - 'data parallel region': consecutive stages (could be a single one) running with data parallelism. Not: parallel region, section.
 - 'pipeline parallelism/nodes': stages run in nodes; a node receives elements in flow order and sends its output to the next node. Elements can be in chunks or not.
 - 'node': one part of pipeline parallelism, as an actor in actor systems. Not: actor, worker; actor is only the `actor` stage, do not use 'actor' as a worker entity to avoid confusion.
-- 'speculative call': a call the sequential strategy may not make.
-- 'positive speculation calls': the calls that could be made by a flow expression that completes successfully in a parallel strategy, but that the same flow expression would not make in a sequential strategy.
+- 'speculative call': a call a parallel strategy makes before it is known whether the sequential strategy makes that call.
 - 'speculation calls': the calls that could be made by a flow expression in a parallel strategy, but that the same flow expression would not make in a sequential strategy.
-- 'negative speculation calls': speculation calls that are not positive speculation calls. That is, calls that parallelism performs early that would be eventually executed if the flow expression completes successfully, but that could be prevented by an exception or non termination of a former call.
+- 'positive speculation calls': the calls that could be made by a flow expression that completes successfully in a parallel strategy, but that the same flow expression would not make in a sequential strategy.
+- 'negative speculation calls': speculation calls that are not positive speculation calls. That is, calls that parallelism performs early that would be eventually executed if the flow expression completes successfully, but that could be prevented by an exception or non termination of a call the sequential strategy makes before them.
 - 'speculation driver': a stage or terminal that can decide that the elements after some element are never processed, so that running the stages before it ahead of that decision makes positive speculation calls: `limit`, an `actor` or `actorMut` returning `Break#`, and the short-circuit terminals. In `.map a .sort .map b .findFirst c`, `.findFirst c`.
-- 'speculating stage': a stage between the last fence and a speculation driver; running it in parallel makes positive speculation calls. In `.map a .sort .map b .findFirst c`, `.map b`, and `.findFirst c` itself for its own lambda; `.map a` is not one, since `.sort` is a fence.
+- 'speculating stage': a stage that is not a fence, with no fence between that stage and a speculation driver after it; also a short-circuit terminal with a lambda, for that lambda. Running a speculating stage in parallel makes positive speculation calls. In `.map a .sort .map b .findFirst c`, `.map b` and `.findFirst c` are speculating stages; `.map a` is not one, since `.sort` is a fence.
 
 ### The two kinds of parallelism
 
 **Data parallelism/fork-join:**\
-The iconic map reduce set up: `a.flow.map f1 .filter f2 .list` is divided into chunks, one task per chunk; workers execute some tasks and some are left 'for later'.
-Each task conceptually applies `f1#e |> {x->f2#x .thenDo{acc.append x}}` to each element `e` of its chunk, with an accumulator `acc` that preserves the flow order.
+The iconic map reduce set up: the elements of `a.flow.map f1 .filter f2 .list` are divided into chunks, one task per chunk; the workers execute the tasks.
+Each task conceptually applies `f1#e |> {x->f2#x .thenDo{acc.add x}}` to each element `e` of its chunk, with an accumulator `acc` that preserves the flow order.
 
 **Pipeline parallelism/nodes:**\
 What happens in actor systems: `a.flow.map f1 .filter f2 .list` is made of 3 nodes.
 The `map` node receives elements from the flow (in chunks or not), applies f1 and sends them to the mailbox of the `filter` node, which applies f2 and sends the survivors to the `list` node, building the list. The 3 nodes run in parallel, and each can freely update local mutable data, since it receives its elements one at a time, in flow order.
 
-This applies in plenty of cases where data parallelism does not, and it is more efficient when code locality is crucial: the same node runs the same code over and over, and if that code fits in cache this may beat data parallelism, especially when the whole flow expression (not broken into chunks) would not fit in cache.
+Pipeline parallelism applies in plenty of cases where data parallelism does not, and it is more efficient when code locality is crucial: the same node runs the same code over and over, and if that code fits in cache this may beat data parallelism, especially when the whole flow expression (not broken into chunks) would not fit in cache.
 
 ### How the semantics is given
 
@@ -129,7 +129,7 @@ The semantics is given by multiple descriptions, validated by checking that they
 
 ### Examples and pseudocode
 
-In all the examples `l` is `Lists#(0,1,2,3,4,5,6,7)`, with `ej` its element at index `j`, and `f` and `g` are of type `read F[Nat,Nat]`.
+Unless an example says otherwise, `l` is `Lists#(0,1,2,3,4,5,6,7)`, with `ej` its element at index `j`, and `f` and `g` are of type `read F[Nat,Nat]`.
 
 Example pseudocode with `ps` a `List[Person]`, `ps.flow.map{::.name}.filter{::.size > 3}.list` is
 ```
@@ -143,10 +143,10 @@ return res.list;
 ```
 The parallel strategies use a few primitives:
 - `m : Mailbox[T]`: elements in flow order, possibly followed by one exception. `for(T x: m){..}` waits for each element in turn, and throws the exception in its place; `m.join` waits for the end of `m`, and throws its exception if any. `m.list` and `m.first` are sequential methods of `Mailbox`.
-- `fork(Range c: Chunks#n){..}` splits the indexes from `0` to `n` into chunks and starts one task per chunk, running the block on some worker. The block sends elements with `out.send(x)`; a thrown exception moves in the mailbox exactly as a value does. 
+- `fork(Range c: Chunks#n){..}` splits the indexes `0 ..< n` into chunks and starts one task per chunk, running the block on some worker. The block sends elements with `out.send(x)`. `fork` returns the mailbox of what the blocks send: chunk after chunk in index order, and in sending order inside one chunk. An exception thrown by a block takes the place of the next element of its chunk and ends the mailbox: what the chunks after it send is discarded.
 `fork(List[T] c: Chunks#m){..}` does the same over the elements of the mailbox `m`, forming each chunk as it receives its elements.
 `node(T x: m){..}` over a mailbox or a list `m` processes the elements one at a time, in flow order, sending with `out.send(x)`, and returns the mailbox of what it sends; it may update the local variables declared just before it, which no other code uses. All nodes in a pseudocode section start at the same time, so that they can work in parallel (as soon/as long as they all have elements).
-- `Mailbox#` is an empty mailbox the code itself feeds, with `feed.send(x)` and `feed.close`.
+- `Mailbox[T] feed= Mailbox#;` is an empty mailbox the code itself feeds, with `feed.send(x)` and `feed.close`.
 - when the pseudocode completes (return or exception), it cancels through `Yield#` every task and node still running.
 
 The flow expression above becomes, with data parallelism:
@@ -516,7 +516,6 @@ It is a global flag, it can not say which misuse exceptions it is meant for.
 ```
 for(E e: in){ out.send(e); }
 ```
-They apply to the stages up to the next `.recoverFlow`, or to the whole flow expression if there is none.
 
 **`recoverFlow`** records a mode in the chain:
 ```
@@ -554,7 +553,7 @@ Misuse exceptions are thrown by the terminals, so the code implementing the term
 
 Every terminal starts with `checkMisuse(c)`, where `c` is its chain:
 - `c.mode`, `c.source` (the elements of the source), `c.stages` (in order, indexed from `0`), `c.terminal`;
-- `c.parts`: the chain cut at each `.recoverFlow`; `p.hints` are the `.hintSequential` and `.hintParallel` of the part `p`, in order, starting with one `.hintSequential` when `p` starts at a source of mode `Seq`; a hint is not in `c.stages`;
+- `c.parts`: the parts of the chain; `p.hints` are the `.hintSequential` and `.hintParallel` of the part `p`, in order, starting with one `.hintSequential` when `p` starts at a source of mode `Seq`; a hint is not in `c.stages`;
 - `c.lambdas`: every lambda of the chain; `l.owner` is the stage/terminal `l` is an argument of;
 - `l.onlyImmCapture`: `l` captures only `imm` values; a top level declaration used as a value and every `imm` lambda carry it.
 
@@ -626,13 +625,13 @@ Void checkForEach(Chain c){
 ```
 Deceptive shape exceptions:
 ```
-Elementwise= {filter, flatMap, flatMapMut, mapFilter}
+CountChanging= {filter, flatMap, flatMapMut, mapFilter}
 ReadsEmpty=  {map, readOnly, ++, scan, sort, distinct, distinctMut, sortDistinct, max, min, limit}* .isEmpty
 ReadsCount=  {map, readOnly, ++, scan, sort, limit}* .size
-ReadsElems=  ({map, readOnly, ++, sort, max, min} + Elementwise)* (
+ReadsElems=  ({map, readOnly, ++, sort, max, min} + CountChanging)* (
                {.get, .getOpt, .sum(sn)} with sn the SumNumber of Nat, Byte or Num
-             | (Elementwise + {distinct, distinctMut, sortDistinct, max, min}) ReadsCount
-             | Elementwise ReadsEmpty )
+             | (CountChanging + {distinct, distinctMut, sortDistinct, max, min}) ReadsCount
+             | CountChanging ReadsEmpty )
 ReadsFirst=  {map, readOnly, ++, scan, distinct, distinctMut, limit}* .first
 ```
 ```
@@ -965,8 +964,7 @@ es.flow //examples, of course it does not make sense to use those together
 Then we could have unchecked exceptions on inapplicable hints etc.
 `.hintSequential` and `.hintParallel` are the first hints.
 `.seqFlow` and `Flows#` start the flow with `.hintSequential`.
-A hint applies to the stages up to the next `.recoverFlow`; the stages after a `.recoverFlow` start with no hint.
-The flow terminal may choose to use a parallel strategy only when the flow has no `.hintSequential`.
+The flow terminal may choose to use a parallel strategy only for a part with no `.hintSequential`.
 The presence of `.hintParallel` further incentivizes the flow terminal to apply a parallel strategy.
 
 ## How: the parallel strategies
