@@ -1,13 +1,21 @@
 # Coordinator design
 
 How the Coordinator compiles a Fearless project, and what the Coordinator keeps in the folder `.fearless_out` of the project.
-The Coordinator alone writes `.fearless_out`, and the Coordinator writes no file outside `.fearless_out`. The manager (see ControllersDesign) reaches `.fearless_out` only through the methods of `Coordinator` below; the manager, the Reconciliator (see ReconciliatorDesign), the desktop on Windows and a running main also read the files of `.fearless_out/icons`. Eclipse, another process, reads the files of `.fearless_out` as described in EclipseDesign.
+The Coordinator alone writes `.fearless_out`, except the files whose name starts with `.`, which other programs, like a file manager, may write there.
+The Coordinator writes no file outside `.fearless_out`.
+Other programs read files of `.fearless_out`:
+- the manager (see ControllersDesign), through the methods of `Coordinator` below, and the files that `Coordinator.iconFiles` gives;
+- the Reconciliator (see ReconciliatorDesign), the desktop on Windows and a running main, the files that `Coordinator.iconFiles` gives;
+- the JVM that `Coordinator.run` starts, the `<pkg>.jar` files;
+- the program that opens `.html` files, the file that `Coordinator.docs` gives;
+- Eclipse, the files that EclipseDesign lists.
 
 The algorithms of this design are a contract on the behaviour: a specification, not a suggested implementation.
 They may be very slow or otherwise inefficient. They are designed to be obviously correct; implementing them as they are may be a terrible idea.
 
 ### The data
 
+The 'folder of `base`' is the folder of the installation of Fearless holding the files of the package `base`.
 `Path` is a path inside a project folder or inside the folder of `base`, `FsPath` a path of the file system.
 ```
 File: { .path: Path; .time: Time; .content: Content }
@@ -24,18 +32,26 @@ Project: {
 Base: Package{
   .name -> "base";
   .rank -> 0;
-  .files -> the source files of the package base
+  .files -> the files of the folder of `base`
   }
 ```
-The `.files` of a project are the files of the project folder whose path holds no file name or folder name starting with `.`.
 The `.path` of a file is the path inside the project folder; a zip `x.zip` stands for a folder `x` holding the entries of the zip, and every entry has the `.time` of `x.zip`: the entry `a.fear` of `lib/x.zip` has the path `lib/x/a.fear`.
-`Helper.pkgMap` gives the packages of the project: the `.files` of the package named `pkg` are the files under any folder `_pkg`, and the `.rank` is the rank of the rank file of the package.
+The `.files` of a project are the files of the project folder whose `.path` holds no file name or folder name starting with `.`.
+`Helper.pkgMap` gives the packages of the project: the `.files` of the package named `pkg` are the files under any folder `_pkg`.
+The 'rank file' of a package is the one file of the package whose name starts with `_rank_`.
+The name of a rank file is
+```
+rankFile ::= _rank_ level digits .fear | _rank_ level .fear
+level    ::= base | core | driver | worker | framework | accumulator | tool | app
+digits   ::= three digits 0-9
+```
+The `.rank` of the package is 1000*i+n, where `level` is the i-th alternative of `level` (`base` is 1, `app` is 8), and n is `digits`, or 999 for a rank file with no `digits`.
 `Helper.rankMap` gives, for each package, the map directives that apply to that package, from the rank files of every package of the project.
 The rules of a valid project are the checks of `Helper.pkgMap` and `Helper.rankMap` in `Coordinator/src/coordinator/Coordinator.java`, and the 'shape rules' of FolderShapesDesign.
 
 ### The content of `.fearless_out`
 
-For each package `<pkg>` of the project:
+For each package `<pkg>` of the `.ownPackages` of the project:
 - `<pkg>.json`: an `Api` (below);
 - `<pkg>.jar`: the compiled code of the package;
 - `<pkg>.html` and `<pkg>.txt`: the documentation of the package, for a browser and for agents.
@@ -43,8 +59,8 @@ For the project:
 - `_error.txt`: the error `.writeError` writes;
 - `icons`: the icons of the `.preloaded` of the mains;
 - `_unfinished.txt`: see `.check`, `.compile`, `.finish`, `.dropUnfinished` and `.deleteCache`;
-- `_compile_start.txt`: written by each `.compile` before that `.compile` reads the project; its modification time is the start of the last `.compile` (see `._upToDate`).
-The files of `Base` listed above are in the base cache, written already compiled by the installation of Fearless.
+- `_compile_start.txt`: its modification time is the start of the last `.compile` (see `.check` and `.compile`).
+The 'base cache' is the folder of the installation of Fearless holding the files `base.json`, `base.jar`, `base.html` and `base.txt` of `Base`.
 
 ### The Coordinator
 
@@ -52,7 +68,8 @@ A method whose name starts with `_` is private to this file.
 To 'replace' a file is to write a new file in the same folder, then to rename the new file to the name of that file, so a reader of that file never finds a file written in part.
 ```
 Icon: { .name: Name; .image: Path }
-Claim: { .kind: ClaimKind; .icon: Icon; .optNamedExtension: Opt[FileExtension] }                           // as the source writes the claim; .kind is shortcut or openWith
+ClaimKind: { .shortcut | .openWith }
+Claim: { .kind: ClaimKind; .icon: Icon; .optNamedExtension: Opt[FileExtension] }   // as the source writes the claim: base.Shortcut[..] is .shortcut, base.OpenWith[..] is .openWith
 Main: { .name: Name; .claims: List[Claim]; .preloaded: List[Icon] }  // .preloaded: the icons of the Shortcut claims, base.IconsFearless, the icons of the PreLoadIcon of the main and the icons of the OpenWith claims, each icon once, at its first place
 Manifest: {
   .mains: List[Main]; .attenuators: List[Name]; .dataRead: List[Name]; .dataEdit: List[Name];   // .mains: each concrete main of the package; .attenuators: AttenuationDesign; .dataRead, .dataEdit: DataReadDataEditDesign
@@ -61,7 +78,7 @@ Manifest: {
 ChosenClaim: { .kind: ClaimKind; .icon: Icon; .optNamedExtension: Opt[FileExtension]; .extension: FileExtension }
 ChosenMain: { .name: Name; .claims: List[ChosenClaim]; .preloaded: List[Icon] }
 ChosenManifest: { .mains: List[ChosenMain]; .attenuators: List[Name]; .dataRead: List[Name]; .dataEdit: List[Name] }
-Core: { .types: Types; .manifest: Manifest }                                    // .types also holds the tests Coordinator._frontend generates in memory from the doc examples of the package, none for a package in a zip
+Core: { .types: Types; .manifest: Manifest }                                    // .types also holds the tests Coordinator._frontend generates in memory from the doc examples of the package, none for a package whose rank file is in a zip
 Compiled: { .jar: Content; .html: Content; .txt: Content }
 Api: { .types: Types; .inputsSnapshot: Content; .manifest: ChosenManifest }
 TakeFreeExtension: MF[List[FileExtension],Opt[FileExtension]]{}               // answered by the manager, see Autoselected extensions in ControllersDesign
