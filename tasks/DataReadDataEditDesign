@@ -14,7 +14,7 @@ The algorithms of this design specify the behaviour, not the implementation: an 
 - 'broken mount': a mount `t -> n` of a project p with `broken(p, t -> n)`:
 ```
 broken(p, t -> n)  iff  one of these holds:
-  t is not a DataRead type of p
+  p is a code project whose DataRead types are known, and t is not a DataRead type of p
   n is not the name of a registered project
   n names a project of kind idle or code
   n names a project of kind dataRead, and t is a DataEdit type
@@ -124,6 +124,19 @@ These are deterministic errors:
 An 'autoCheck' (see Project states in ControllersDesign) of a data project holds a 'read lock'; when the lock is not free, the 'autoCheck' keeps the outcome of the previous 'autoCheck' of that data project.
 Before starting a main, the manager takes the lock of every data project mounted on a DataRead type of the project, in the order of the names of their 'lock files', waiting for each lock: the 'edit lock' for a DataEdit type, a 'read lock' for the other DataRead types.
 Then the manager checks the mounts of the project, starts the main, and releases those locks.
+```
+A Code project hello mounts data project diary on greet.Diary.
+B Code project world mounts data project diary on earth.Pub.
+C A main of hello holds the 'edit lock' of diary for a minute.
+D The user runs the main earth.Show.
+E Project world is 'busy'; the status line of world says that earth.Show waits for diary.
+F The user terminates the main of hello. The manager takes the 'read lock' of diary, checks diary, and starts earth.Show.
+
+A Code project hello mounts data project diary on greet.Diary.
+B Two stages of a parallel flow of a main of hello read diary at the same moment.
+C The first stage holds a 'read lock' of diary. The second stage takes and releases a 'read lock' of diary.
+D The first stage still holds the 'read lock': a main of world asking for the 'edit lock' of diary waits until the first stage releases the 'read lock'.
+```
 
 The lock is a lock of the operating system on the 'lock file' of the data project: a shared lock for a 'read lock', an exclusive lock for the 'edit lock'.
 The 'lock file' of a data project is `locks/<hash>.lock` in the manager folder, where `<hash>` is the SHA-256 of the `base16` (see Info files in ControllersDesign) of the absolute path of the 'fsFolder' of the data project, in hexadecimal.
@@ -135,7 +148,12 @@ An edit leaves each 'file' as before the edit or as after the edit, also when th
 
 ## GUI
 
-For a code project, the Data collapsible area shows each DataRead type of the project and each mount of the project.
+For a project that is not a data project, the Data collapsible area shows each DataRead type of the project and each mount of the project.
+```
+A Code project hello mounts data project diary on greet.Diary.
+B The user chooses Kind V, Back to idle, on hello.
+C The Data collapsible area of hello shows the mount on greet.Diary exactly as it was shown when hello was a code project.
+```
 The user mounts on a DataRead type a data project whose mount is not a broken mount, or removes a mount.
 A broken mount is marked, naming what makes the mount broken.
 For a data project, the Data collapsible area shows the mounts on that data project, and the user mounts that data project on a DataRead type with no mount, when that mount is not a broken mount.
@@ -147,4 +165,3 @@ An edit builds what the edit adds as a hidden 'fsFile' or 'fsFolder' `.<uuid>.tm
 Then the edit moves the `.<uuid>.tmp` to its place with one rename.
 A delete first renames what the delete deletes to a `.<uuid>.tmp` in the root 'fsFolder'.
 A process that takes the 'edit lock' deletes every `.<uuid>.tmp` of the root 'fsFolder'.
-A process keeps one open channel to each 'lock file' and each 'inner lock file', and a lock of its own threads in front of the lock of the operating system.
