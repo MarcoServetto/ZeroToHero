@@ -743,7 +743,7 @@ E The user observes that the icon of that window is a bear.
 
 ## OpenWith and Shortcut
 
-A main can ask the manager to make the desktop of the system start the main: on a double click on any file with a given extension (`OpenWith`), or on a small file the manager creates for the main (`Shortcut`).
+A main 'claims' an extension with `OpenWith` or `Shortcut`: the main asks the manager to start the main on a double click on a file with that extension (see Opening a file). For each `Shortcut` claim, the manager also creates a shortcut file (see Shortcut files).
 
 ```
 Foo: Main, OpenWith[IconsFoo, "foo"]{ s -> ... }
@@ -754,10 +754,6 @@ Qux: Main, Shortcut[IconsQux]{ s -> ... }
 
 `IconsFoo`, `IconsBar`, `IconsBaz` and `IconsQux` are types the compiler generates for image files recognised as autoloaded assets (here `_pkg/icons/foo.png` becomes `IconsFoo`). Those types can come from any package the main can see, including `base`.
 
-Informally: `Foo` wants every `.foo` file to show the `IconsFoo` image and to open `Foo` on a double click. `Bar` wants a file `bar.fapp123` in the top level of the project of `Bar`, showing the `IconsBar` image, that starts `Bar` on a double click; that file carries no information, the file is only a handle to start the main, and the file keeps working when moved anywhere else.
-
-Mechanically `OpenWith` and `Shortcut` are the same: both claim an extension for a main. `Shortcut` additionally creates the shortcut file.
-
 ### Base
 
 ```
@@ -767,57 +763,86 @@ Shortcut[I,E]: {}
 Shortcut[I]: {}
 ```
 
-A main can implement several of those four types at once, for example `OpenWith[Icon1,"a"]` and `OpenWith[Icon2,"b"]` to claim two extensions; the icons can differ or be the same. Several `Shortcut` produce several shortcut files for the same main. Implementing the same type twice (`Shortcut[I]` inherited along two paths) counts once.
+A main can implement several of those four types. A type the main implements along several paths is one claim.
 
 ### Well formedness
 
-The Frontend checks the claims of every declaration as well formedness errors, before generating code: a declaration with `OpenWith`, `Shortcut` or `PreLoadIcon` among its supertypes also has `Main` among its supertypes; the icon is a type name with no generic arguments; the extension is a string literal type (`"txt"` and `` `txt` `` are the same extension) holding 1 to 16 characters, each `a-z` or `0-9`, not `fearless`; the extension of a `Shortcut` is `fapp` and three digits, and the extension of an `OpenWith` is not; one main claims each extension at most once, across all the `OpenWith` and `Shortcut` of the main. The Coordinator checks that the icon is the type generated for an image file (see CoordinatorDesign). The exact rules and errors are those of `inject.Methods.checkClaims` of Frontend and of the doc comments of `OpenWith`, `Shortcut` and `PreLoadIcon` in `base`.
-
-The two kinds of extension, Fearless extension and system extension, are in ReconciliatorDesign.
+The Frontend checks, before generating code, as well formedness errors:
+- a declaration with `OpenWith`, `Shortcut` or `PreLoadIcon` among its supertypes has `Main` among its supertypes;
+- the icon is a type name with no generic arguments;
+- the extension is a string literal type holding 1 to 16 characters, each `a-z` or `0-9`, other than `fearless`; `"txt"` and `` `txt` `` are the same extension;
+- the extension of a `Shortcut` is `fapp` and three digits; the extension of an `OpenWith` is not;
+- a main claims each extension at most once.
+The Coordinator checks that the icon is the type generated for an image file (see `._frontend` in The Coordinator of CoordinatorDesign).
+The exact rules and errors are those of `inject.Methods.checkClaims` of Frontend and of the doc comments of `OpenWith`, `Shortcut` and `PreLoadIcon` in `base`.
 
 ### What the manager does after `Coordinator.compile`
 
 Everything below runs in the manager after `Coordinator.compile` ends. When `Coordinator.compile` failed, only step 2 runs. A step that fails makes the compilation fail: the manager calls `Coordinator.writeError` with the error of that step (a refused `.reconcile` does not make the compilation fail, see File associations), and of the steps after that step only step 2 runs.
 
 1. Check that every `Shortcut` claim of `Coordinator.cachedMains` of the project gives a valid shortcut file name (see Shortcut files).
-2. Rebuild the in memory map (see The in memory map).
+2. Build the in memory map (see The in memory map).
 3. Create the missing shortcut files.
 4. Call `Coordinator.finish`.
 
 ### The in memory map
 
-The manager keeps `extension -> list of (project, main, icon)` in memory only. The manager builds the map at start up, in step 2 of every compilation (see What the manager does after `Coordinator.compile`), after every deletion of the `.fearless_out` of a project (the project then claims nothing), and after every `EditMetadata` that removes a `code` project.
+The manager keeps `extension -> list of (project, main, icon)` in memory only. The manager builds the map at start up, in step 2 of every compilation (see What the manager does after `Coordinator.compile`), after every deletion of the `.fearless_out` of a project, and after every `EditMetadata` that removes a `code` project.
 A build reads `Coordinator.cachedMains` of every registered `code` project whose `Coordinator.compile` is not running, and keeps the entries of each project whose `Coordinator.compile` is running.
 At start up, before building the map, the manager calls `Coordinator.dropUnfinished` of every registered `code` project.
 When a method of `Coordinator` raises or gives `Error.cacheCorrupted` for a project, the manager ends the running main or compilation of that project, if any, calls `Coordinator.deleteCache` of that project, and writes the error with `Coordinator.writeError`.
 An `Error.cacheCorrupted` of another project during step 2 of a compilation does not make that compilation fail.
-Each operation after which the manager rebuilds the map ends only after the rebuild; the same holds for everything else the manager keeps in memory.
+Each operation after which the manager builds the map ends only after the build; the same holds for everything else the manager keeps in memory.
 
 ### Autoselected extensions
 
-The Coordinator chooses the extension of a `Shortcut` or an `OpenWith` without extension (see `._autoselect` in CoordinatorDesign), asking the manager through the `takeFreeExtension` of `Coordinator.compile`.
+The Coordinator chooses the extension of a `Shortcut` or an `OpenWith` without extension (see `._autoselect` in The Coordinator of CoordinatorDesign), asking the manager through the `takeFreeExtension` of `Coordinator.compile`.
 The manager answers `takeFreeExtension` one call at a time.
 The answer is the first extension of the list that no claim in the in memory map uses and that no call answered for a compilation that has not ended yet.
 
 ### Shortcut files
 
-For each `Shortcut` claim, the manager creates a file `<name>.<extension>` in the top level of the project, next to the marker, holding a single new line, like the marker. `<name>` is the simple name of the main turned into a file name, the inverse of the rule autoloading uses to name the type of an image: each uppercase letter becomes `_` and the lowercase of that letter, except the first letter of the name, which only becomes lowercase. `FooBar` becomes `foo_bar`, `_Foo` becomes `_foo`, `Foo_1` becomes `foo_1`, `FooBAR` becomes `foo_b_a_r`.
+For each `Shortcut` claim, the manager creates a file `<name>.<extension>` in the top level of the project, holding a single new line. `<name>` is the simple name of the main turned into a file name, the inverse of the rule autoloading uses to name the type of an image: each uppercase letter becomes `_` and the lowercase of that letter, except the first letter of the name, which only becomes lowercase. `FooBar` becomes `foo_bar`, `_Foo` becomes `_foo`, `Foo_1` becomes `foo_1`, `FooBAR` becomes `foo_b_a_r`.
 
-The inverse does not exist for every type name: type names can end in primes (`Foo'`), and can contain `_` followed by a lowercase letter (`Foo_bar`), which autoloading never produces. Such a main, a main whose name turns into a 'reserved name' (`Con`, see Names in FolderShapesDesign), two mains of the project with a `Shortcut` giving the same file name and extension (`a.Bar` and `b.Bar`), or a main whose shortcut file name is the name of a top level file without extension (`readme` for `hello.Readme`), fail the compilation:
+A main with a `Shortcut` fails the compilation when:
+- the simple name of the main has no matching file name: the name ends in primes (`Foo'`), or holds `_` followed by a lowercase letter (`Foo_bar`);
+- `<name>` is a 'reserved name' (`Con`, see Names in FolderShapesDesign);
+- another main of the project with a `Shortcut` gives the same `<name>` and extension (`a.Bar` and `b.Bar`);
+- `<name>` is the name of a top level file without extension of the project (`readme` for `hello.Readme`).
+Each case has an error of its own; the error of the first case is
 `Main "hello.Foo'" can not have a Shortcut: its name has no matching file name. A main with a Shortcut has a name that can be mapped to a file name like "FooBar" can be mapped to "foo_bar".`
 
-The shortcut file is one of the `.files` of the project (see The data in CoordinatorDesign). The manager never deletes a shortcut file: the user may have copied or moved shortcut files anywhere. A shortcut file whose extension no main claims any more stays, and opening that shortcut file is an `OpenWithOrShortcut` of an extension no main claims (see Opening a file).
+The shortcut file is one of the `.files` of the project (see The data in CoordinatorDesign). The manager never deletes a shortcut file.
 
 ### Reconciling
 
-After each rebuild of the in memory map, and in each `EditMetadata` that changes `reserve`, with the `reserve` of the edit, once every other check of the edit (see Registered projects) passes, before the edit applies, the manager calls `.reconcile` of the Reconciliator (see ReconciliatorDesign) with the launcher of the manager as `command`, with all the 'captured extensions', each with an icon, with the window classes (see Desk ids and icons), and with an empty `taken`.
+The manager calls `.reconcile` of the Reconciliator (see The data in ReconciliatorDesign):
+- after each build of the in memory map;
+- in each `EditMetadata` that changes `reserve`, once every other check of the edit (see Registered projects) passes, before the edit applies, with the `reserve` of the edit.
+The arguments:
+```
+identity     the identity of the manager
+name         Fearless Manager
+command      the launcher of the manager
+extensions   each e in captured(M), with icon(e)
+taken        empty; T1 gives the taken of the .reconcile after a question
+windows      for each icon i of the .preloaded of each main m of Coordinator.cachedMains(p),
+             for each registered code project p whose Coordinator.compile is not running:
+             .windowClass <desk id of m>-<i.name>, .name the simple name of m, .target p,
+             .png the PNG of Coordinator.iconFiles(p, i)
+programIcon  the icon of the launcher of the manager
+replaced     see File associations
+```
 
 #### Desk ids and icons
 
-The icon of an extension is `Coordinator.iconFiles` of the icon of the claim (see CoordinatorDesign), or the files of the `icons` folder of the manager folder for the Fearless icon and the conflict icon (see Conflict icon).
-The desk id of a main (the `.deskId` of `Launch`, see CoordinatorDesign) is `<identity>-<hash>`: the identity of the manager (see ReconciliatorDesign), then the hash of the project folder and the name of the main.
-`.reconcile` also receives the `.preloaded` icons of every main of `Coordinator.cachedMains` of every registered `code` project whose `Coordinator.compile` is not running, each as the window class `<desk id>-<icon name>`, named by the simple name of the main, with the project folder as `.target`.
-The `programIcon` of the manager is the icon of the launcher of the manager.
+```
+icon(e) = the Fearless icon               when e = .fearless
+        = Coordinator.iconFiles(p, i)     when the in memory map gives e exactly one entry (p, m, i)
+        = the conflict icon               otherwise
+```
+The Fearless icon and the conflict icon are files of the `icons` folder of the manager folder (see Conflict icon).
+The desk id of a main (the `.deskId` of `Launch`, see The Coordinator in CoordinatorDesign) is `<identity>-<hash>`: the identity of the manager (see The data in ReconciliatorDesign), then the hash of the project folder and the name of the main.
 On Windows a running main gives its windows the `.ico` of `Coordinator.iconFiles` directly.
 
 ### Opening a file
@@ -825,55 +850,41 @@ On Windows a running main gives its windows the `.ico` of `Coordinator.iconFiles
 On `OpenWithOrShortcut <path>` the 'single' manager reacts:
 
 1. One main claims the extension: run that main as `Run` runs a selected main, leaving the selected mains as they are. The running main receives the file as its first input file (see Input files).
-2. Zero or several mains claim the extension: the 'conflict dialog', a small window, lists those mains with their icons as `project::pkg.Main`, sorted. Picking an entry sends `OpenWithOrShortcut <path> <name> <main>`, with the project and the main of that entry; that message runs the main as in 1. Closing the conflict dialog runs nothing.
-   With no main claiming the extension, the conflict dialog lists no entry.
-
-GNOME types every empty file as `application/x-zerosize` whatever the name of the file and never hands an empty file to the manager; refusing empty files everywhere (see Requests and messages) makes Windows and the other desktops behave the same.
+2. Zero or several mains claim the extension: the 'conflict dialog' lists those mains with their icons as `project::pkg.Main`, sorted by that text. Closing the conflict dialog runs nothing. `OpenWithOrShortcut <path> <name> <main>` runs `<main>` as in 1.
 
 ### Input files
 
 A running main sees its input files through `System.inputCursor` of the standard library: the list of the files given to the program, in the order they arrived.
 The list starts with the file opened by `OpenWithOrShortcut`, a document or a shortcut file alike, and starts empty for a main started by `Run`.
 Dropping files on a window of a running Fearless program adds those files at the end of the list, in the order of the drop. A drop holding anything that is not a file, a folder for example, adds nothing and is refused.
-`System.inputCursor` is a cursor on the first position of the list; `#` gives the file at that position, empty until a file arrives there, and `.next` the cursor on the next position. So a program sees a new file by asking again at the first position that was empty.
-An input file offers the reading methods of the autoloaded `TxtFile` and `ImageFile` assets, without their `AssetReadCapability` argument: the input file is itself the capability. Every read reads the file again, and a file that can not be read any more is a non deterministic error.
+`System.inputCursor` is a cursor on the first position of the list; `#` gives the file at that position, empty until a file arrives there, and `.next` the cursor on the next position.
+An input file is a `mut CapInputCursorNode` of `base`: `.label`, `.readStr`, `.readUStr`, `.readBytes` and `.readImage`. Every read reads the file again, and a file that can not be read any more is a non deterministic error.
 
 ### Messages from a running main
 
 A running main sends messages to the manager through `System.manager` of the standard library, the capability `CapManager`.
-Each method of `CapManager` sends one message, as Eclipse does: the method listens on a port, runs the manager program with a `call` ending with that port, and returns when the manager ends the connection.
-So a method of `CapManager` returns once the manager has applied the message of the method: `.run` and `.compile` return once the mains or the compilation end; `.run`, `.compile`, `.check` and `.fix` return the text the manager sent on the port after the line `Applied`; the other methods return `Void`.
-A kind is a method of its own (`.kindIdle`, `.kindCode`, `.kindDataRead`, `.kindDataEdit`): a message of a running main can not hold a kind that is not one of the four.
-`Mount` is `.mount(name, type, data)`, `Unmount` is `.unmount(name, type)`, and `Attenuate` is `.attenuate(name, main, attenuators)`.
+Each method of `CapManager` sends one message: the method listens on a port, runs the manager program with a `call` ending with that port, and returns when the manager ends the connection.
+`.run`, `.compile`, `.check` and `.fix` return the text the manager sent on the port after the line `Applied`; the other methods return `Void`.
+`Kind` is `.kindIdle(name)`, `.kindCode(name)`, `.kindDataRead(name)` or `.kindDataEdit(name)`, `Mount` is `.mount(name, type, data)`, `Unmount` is `.unmount(name, type)`, and `Attenuate` is `.attenuate(name, main, attenuators)`.
 A path is the list of the bytes naming the path, the bytes of the `Base16:` form of the path. A method whose arguments do not make a `call` (a path that is not absolute or is the root of a drive, a name that is not a `projectName`, a main, a type or an attenuator that is not a `typeName`, `.selectMains` with two equal mains) is a deterministic error of the running main: no message is sent.
 A refused message makes the method a deterministic error holding the text after the line `Refused`.
 `.quit`, `.reset`, and `.terminate` naming the project of the running main never return: the running main ends.
 
 ### Conflict icon
 
-The conflict icon is the Fearless icon with a purple `?` on top of the Fearless icon, stored as a PNG in the standard library at `base/icons/conflict.png`. The manager reads the conflict icon and the Fearless icon, `base.IconsFearless`, from the folder of `base` (see The data in CoordinatorDesign) and materialises both icons like any other icon, the PNG and, on Windows, the `.ico`, in the `icons` folder of the manager folder.
-
-The conflict icon is the autoloaded type `base.IconsConflict`. `base` autoloads the assets of `base` as if the files of `base` were under a `_base` folder: `.path` is `fear:/_base/icons/conflict.png` and `.diskPath` is `icons/conflict.png`, relative to the folder of `base`, which a running main receives as `fearlessBase.dir`.
-
-## Eclipse
-
-The Eclipse plugin and content assist are in EclipseDesign.
-
-## Error management
-An error of the Coordinator is in Coordinator (`Report`, `Violation`); an error of the manager is in Controllers, in the same (`Report`, `Violation`) classification.
+The conflict icon is `base.IconsConflict`, the image `icons/conflict.png` of the folder of `base` (see The data in CoordinatorDesign): the Fearless icon with a purple `?` on top. The manager copies the conflict icon and the Fearless icon, `base.IconsFearless`, into the `icons` folder of the manager folder: the PNG and, on Windows, the `.ico` made from the PNG.
 
 ## Future design
 
 What the design will cover later; nothing in this section is current behaviour.
 - The message files are replaced by a channel that does not depend on the file system reporting new files, for example a local socket of the 'single' manager.
-- The Output keeps only the last part of what a running main or a compilation prints, so a program printing without end does not fill the memory.
-- The GUI becomes a separate program, as for many Linux daemons: the manager has no window, and the GUI commands the 'single' manager through the manager program with a `call`, as every other program does. The GUI could be a Fearless program with some extra permissions.
-- A later double click on a file for a main already running adds that file to the input files of the running main.
-- A double click for a main already running signals the running main to wake up, for example bringing the window of the running main to the front.
+- The Output keeps only the last part of what a running main or a compilation prints.
+- The GUI becomes a separate program: the manager has no window, and the GUI commands the 'single' manager through the manager program with a `call`. The GUI could be a Fearless program with some extra permissions.
+- A double click on a file for a main already running adds that file to the input files of the running main, and signals the running main to wake up, for example bringing the window of the running main to the front.
 - A 'captured extension' that no main claims gets an icon of its own, showing that the manager holds the extension, instead of the conflict icon.
 - TODO: an error written in the Output of a project may need to offer an action that fixes the cause of that error, as the manager asks the user to let the manager hold an extension.
 - Removing or changing a data project mounted on a DataRead type of a code project shows a confirmation dialog in the GUI, naming the code projects that get a broken mount.
-- A main learns the extensions the main claims, for example through a `System` method. A main with `OpenWith[I]` gets an extension such as `ffile042`, chosen by the manager and varying between machines and compile orders; to save a document the user can later double click, the program must name the document `<something>.ffile042`.
+- A main learns the extensions the main claims, for example through a `System` method.
 
 ## Implementation notes
 
@@ -900,7 +911,7 @@ An implementation decides alone every detail the design leaves open below the co
 - A desktop that keeps windows from taking the focus, such as GNOME, may leave the manager window behind the window the user is working in; such a desktop tells the user in its own way, for example with a notification that Fearless Manager is ready.
 - The bytes of a `Base16:` path: on Windows the UTF-16 code units of the name, little endian (a name may hold an unpaired surrogate); elsewhere the bytes `sun.jnu.encoding` gives, the bytes the JVM turns names into.
 - Port of a message: a TCP port on the loopback address. The manager connects, sends the status line, then the reason of a refusal or the Output of the mains or of the compilation, as UTF-8 text, then closes the connection. Eclipse and a running main listen on a port the system picks.
-- Each case of a main that can not have a Shortcut (a name with no matching file name, a 'reserved name', two mains giving the same file name and extension) has an error of its own; the error above is the error of a name with no matching file name.
-- Registering a folder whose marker has the right name and is empty writes a newline into the marker, so the marker holds what a created marker holds: GNOME never hands an empty file to the manager (see Opening a file).
+- Registering a folder whose marker has the right name and is empty writes a newline into the marker, so the marker holds what a created marker holds: GNOME types every empty file as `application/x-zerosize`, whatever the name of the file, and never hands an empty file to the manager.
+- `base` autoloads the assets of `base` as if the files of `base` were under a `_base` folder: the `.path` of `base.IconsConflict` is `fear:/_base/icons/conflict.png` and the `.diskPath` is `icons/conflict.png`, relative to the folder of `base`, which a running main receives as the JVM property `fearlessBase.dir`.
 - A claim whose icon file can not be read shows, in the manager window, the icon generated from `project::pkg.Main`, as the icon of a project is generated from the project name.
 - The last premise of `ok(i, n)` in name inference: on a file system ignoring case, that other file and the file `n.fearless` are one file.
