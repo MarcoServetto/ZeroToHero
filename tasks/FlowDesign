@@ -10,6 +10,9 @@ They both use an imm Info object instead of an arbitrary exception object.
 `Repr` and `IsoPod` both offer reads and mutation in place (`look`, `mutate`);
 an `IsoPod` can also be opened once, giving its `iso` back and staying empty from then on.
 `Reprs#` and `IsoPods#` take an `iso T`, so two distinct `Repr`s or `IsoPod`s share no mutable object.
+`mutH` and `readH` are the 'hygienic' capabilities; a `mutH` value is a `readH` value.
+A hygienic binding can be called and passed on as an argument, but never stored, returned, sent downstream or captured by any literal.
+A `mut` method called on a hygienic receiver takes only `iso` and `imm` arguments, and a `mut` or `read` result comes back `mutH` or `readH`.
 
 ### Properties every part of the language respects
 
@@ -69,6 +72,7 @@ Elements and order:
 - 'send downstream', 'receives': a stage sends elements downstream, the next stage/terminal receives them. Not: pull, push, arrive, reach, move, go past, come out, hand on, deliver, release.
 - 'trickle': the elements go through the stages one at a time; the work on the element processed in flow order `j` comes before any work on the element at flow order `j+1`, as far as it can be observed.
 - 'materialise': collect elements into a list inside the whole flow expression.
+- 'expansion': the `ToFlow` the lambda of `flatMap` or `flatMapMut` returns for one element.
 
 Kinds of stages/terminals:
 - 'elementwise' stage: `map`, `filter`, `flatMap`, `flatMapMut`, `peek`, `mapFilter`, `readOnly`.
@@ -795,69 +799,12 @@ List[Nat] maxMerge(List[Nat] a, List[Nat] b, OrderBy[Nat] by){
 
 ## Stages and terminals
 
-Each section below is one stage/terminal, or a group of them: what follows from its desugaring in **Signatures**, and why it is designed this way.
-
-### Elementwise stages
-
-Their lambda is a `read F`, so it can not mutate anything it captured; the only possible mutable input is the element passed to it, which may be `mut`. The output for an element depends only on that element, so any element can run on any worker.
-`map` and `filter` exist as separate methods for readability and performance.
-`map` goes 1-1, so it preserves the size, and returning exactly 1 element avoids the 'sequence API' any flatMap implementation requires.
-`filter` can not change the elements or their type, and can not add elements: useful restrictions for optimisations. Returning at most one element also avoids the 'sequence API'.
-The lambda of `flatMap` and `flatMapMut` returns a list, built whole before any of its elements is sent downstream.
-
-### limit: the number is known before any element
-
-Send downstream, decrement, stop on the element that exhausts the budget; the element at flow order `n` is never processed, so no stage runs on it.
-`limit n` is the only stateful stage whose state is a counter.
-Crucially `n` is not the result of a user lambda, so it is known before any stage starts: in
-`es.flow.map{..}.limit 5 .list`
-the terminal can preallocate a Java ArrayList of size exactly five
-and run the map only on the 5 elements of es with the smallest indexes.
-Over `ParRepr` and `ParPod` this is required, not an optimisation: running the stages on the whole source and stopping the tasks once the limit is full makes positive speculation calls.
-
-When the size is unknown, as after `.map{..}.filter{..}`, an upper bound is still known, so
-under limit 50 we can run just 50 elements in parallel (possibly 5 tasks of 10), then decide how many more are needed.
-After `.flatMap` or `.flatMapMut` not even an upper bound is known; after a fence the count is known again.
-This matters most for Repr and IsoPod, where positive speculation calls are not allowed; elsewhere, avoiding unneeded positive speculation calls is just one option in the toolkit.
-Pipeline parallelism can also be effective: its only shared mutable state is how much of the limit is left, or a simple binary STOP NOW.
-
-**limit 0 throws:**\
-Most other approaches return the empty flow, but that is the mistake of the iconic functional `zip`: an answer manufactured so that the call can proceed rather than admit that something upstream is wrong. Asking for no elements while writing out a whole chain of stages signals a logic mistake. Since `n` is known before any element is processed, a user wanting `n = 0` to give the empty flow can just put an `.if` around the flow call.
-The exception is deterministic, and thrown where `.limit` is called rather than by the terminal: `n` is not a user lambda, so this does not weaken Lazy, and nothing has run yet, so nothing is left half done.
-A deterministic exception fits here:
-- The identity check over Repr and IsoPod has to be non deterministic, since a deterministic one would expose object identities; this does not apply here.
-- limit already throws deterministic exceptions for numbers too big.
-A linter can not take this over, since `.limit x` may take `x` from outside.
-
 ### scan
 
-`Flows#(1,2,3,4).scan(0, {acc, e -> acc + e}).list` returns `Lists#(1,3,6,10)`: the accumulator keeps the sum of the elements seen so far, and exactly one element, the current sum, is sent downstream per element received.
-
-`.scan` offers a simpler signature than `.actor` but loses most of the actor flexibility.
-Scan is a common concept in other approaches; the main differences are:
-- The initial accumulator is not sent downstream. Where scan sends it too, as `scanl` in Haskell and `runningFold` in Kotlin do, `n` elements in give `n+1` out, and an empty flow gives one element. Here scan goes 1-1 like map, so a size or upper bound known before it is still known after it.
-- The accumulator is `imm`. Where the state is mutable and the lambda may also skip or stop, as in Rust's `Iterator::scan`, scan is really an actor; here that is `.actor` and `.actorMut`.
-- Scan is never parallel prefix. With an associative `f`, a parallel prefix (as in Java's `Arrays.parallelPrefix`) combines partial sums of chunks, calling `f` on pairs the sequential strategy never forms. Associativity is a logical but unenforced contract: a non associative `f`, or one that throws or does not terminate on one of those pairs, would give a different result in parallel, violating **Every strategy returns what the sequential strategy returns**. So scan is sequential, and running it in a node is its only parallelism.
-
-### map with context
-
-`map(a, g)` behaves exactly like its desugaring through `actorMut`, and buys a simpler signature without affecting
-optimisation/parallelisation: `actorMut` passes the state as `mutH S` together with the sink,
-and asks for `Continue#` or `Break#`, while `map(a, g)` takes a lambda of two arguments
-returning one element.
-
-This relies on `ToIso` keeping encapsulation while producing a new version of the same conceptual data. If `ToIso` internally stores an `IsoPod`, moving the `iso` from one context to the next is easy, so a context can carry state forward.
-The expression `s.iso.close` is very predictable: its only input is the `iso s`.
-Thus we can run `s.iso.close` many times (sequentially, but it is likely very fast)
-and run map with context with data parallelism, calling
-`g#(_,e)` in parallel, each with its own `s.iso.close` result.
-Care is needed to throw the same exceptions as the desugaring.
+`Flows#(1,2,3,4).scan(0, {acc, e -> acc + e}).list` returns `Lists#(1,3,6,10)`.
 
 ### flatMap takes a finished collection
 
-**Fenced expansions:**\
-In most other approaches the lambda of `.flatMap` returns a flow, and this subtly interacts with fences/trickle down/lazy.
-Our lambda returns a `ToFlow`, a finished collection, so it builds its whole expansion before sending any element of it downstream:
 ```
 Lists#(Lists#("aa","bbb"), Lists#("c","poison","dd"), Lists#("e"))
   .flow
@@ -867,42 +814,15 @@ Lists#(Lists#("aa","bbb"), Lists#("c","poison","dd"), Lists#("e"))
   .map{s -> s.size}
   .list
 ```
-This throws: building the expansion of the element at index 1 runs its whole nested flow, which meets `"poison"`.
-With `.limit 2` it returns `Lists#(2, 3)`, since the element at index 1 is never processed.
-Where the lambda returns the inner flow instead, without the final `.list`, the same chain returns `Lists#(2, 3, 1)`: `.limit 3` stops the inner `map` before it processes `"poison"`.
-
-In our approach, any inner flow in the lambda is normal code, run in parallel when possible under the same rules as any other code.
-
-**flatMap and flatMapMut:**\
-`.flatMap` takes a `read ToFlow` and sends its elements downstream as `read` or `imm`, as `++` does; the `ToFlow` of `.flatMapMut` is `mut`, since the elements of a `read` collection are `read`.
-`.flatMap` accepts every lambda `.flatMapMut` accepts, since a `mut ToFlow[R]` is a `read ToFlow[R]`, and computes the same.
-The restricted signature allows more parallelism: no stage after it can mutate the elements of `.flatMap`, so it keeps a data parallel region going, while `.flatMapMut` ends it, since the elements it sends downstream from the same input may share `mut` objects.
+This throws: the lambda runs in full on the element at index 1, and meets `"poison"`.
+With `.limit 2` it returns `Lists#(2, 3)`: the element at index 1 is never processed.
 
 ### actor and actorMut
 
-`actor` and `actorMut` carry an actor state, `scan` an accumulator. In every case the call for one element can observe what the calls for the elements before it in flow order left behind, so the calls form a sequence, and the only parallel strategy for them is pipeline parallelism.
-Long chains of stages may still compose nodes and data parallel regions.
-
-Actor and actorMut are conceptually the same method, with different type signatures to cover more cases.
-They take an iso actor state and a lambda with three arguments: the sink, the current state and the current element.
-Where the flatMap lambda returns a list of elements, this lambda sends them downstream through the sink.
-This avoids allocating a container for them, and enables more parallelism: each element can start the next stage as soon as it is sent downstream, instead of waiting for a whole group to be computed.
-
-**Why two different type signatures:**\
-Many other approaches do 'something' if the sink is sent downstream as an element.
-In Java, with gatherers, the results are unpredictable, depending on implementation details and differing between parallel and sequential flows.
-Sending the sink, or the mutable actor state, downstream is highly counter intuitive, and even a consistent design for it would make parallelisation either unsafe or very limited.
-
-If the elements sent downstream can be mut, the sink itself, or the mutable actor state, could be sent downstream as a mut element. There are two ways to avoid this:
-- `actor` does not send mut elements downstream. Since mut can be assigned to read, read is blocked too and only imm survives; the sink stays `mut` and the state is passed as it is, and both can be used anywhere in the lambda. This simple restriction works in most cases.
-- `actorMut` uses the harder to use but more expressive hygienic types: mut elements can be sent downstream, but the actor state and the sink are sealed as `mutH`. A `mutH` binding can be called and passed on as an argument, but never stored, returned, sent downstream or captured by any literal. A `mut` method called on a hygienic receiver takes only `iso` and `imm` arguments, and a `mut` or `read` result comes back `mutH` or `readH`.
-To send many elements downstream, like every element of a list, the sink is passed to the `for` that takes a hygienic value: `xs.seqFlow.for(down, {d, x -> d.push#(d, x)})`.
-
-**Using the sink and the state of `actorMut`:**\
-In `actorMut` the sink and the state are `mutH`, and a `mutH` binding can not be captured by any literal, so they appear only as receivers and arguments in the body of the lambda itself, never inside a nested literal: not in a branch of `? {..}`, not in a `.match{..}`, a `.thenDo{..}`, a `|> {..}` or a `.do{..}`. A step that sends an element downstream conditionally computes its decision first, as a `Bool` or a `mut Opt`, sends it with `pushOpt`, and answers `Continue#` or `Break#` from that decision; `IfSome` computes such a `mut Opt`, and a helper method taking the sink and the state as `mutH` parameters gives a name to what the step needs twice. A stage that has to keep a `read` key or a `mut` element across its calls can not be an `actorMut` at all, and should not: a stage sends an element downstream or keeps it, never both. In `actor` the sink is `mut` and the state is passed as it is, so both can be used anywhere in the lambda, as the window example does.
+The calls of the lambda of `actor`, `actorMut` and `scan` run one at a time, in flow order: their only parallel strategy is pipeline parallelism.
 
 **Example for actor:**\
-Some other approaches support a 'window', for example processing a list of numbers through a sliding window of width 3:
+A sliding window of width 3:
 ```
 Lists#(1,2,3,4,5,6,7,8).flow
   .actor[mut Var[List[Nat]], List[Nat]](Vars#[List[Nat]]{}, {down, s, e -> Block#(
@@ -916,15 +836,9 @@ Trim: { #(w: List[Nat], width: Nat): List[Nat] ->
   w.size > width ? { .then -> w.subList(1); .else -> w } }
 ```
 Here map sees `[1,2,3]`; `[2,3,4]`; ...`[6,7,8]`.
-The state is a `Var` of an imm `List[Nat]`, accumulating elements to send them downstream when the window is full; the window itself is imm, so `actor` suffices.
 
 **Example for actorMut:**\
-A list of mut heroes goes through the rooms of a dungeon, each room with its own state, monsters etc.
-This runs with pipeline parallelism: the heroes loot rooms, kill monsters and sometimes die, each finding the rooms as the heroes before it in flow order left them, and we collect the
-list of heroes that survive every room.
-
-The room is what a mutH is typically made of: a large mutable graph whose leaves are imm.
-The chests are a `mut EList[mut EList[Item]]`, the monsters and the graves are `ESet`s:
+Heroes, `mut` elements, go through two rooms, each room the state of an `actorMut`, which sends downstream the heroes the room does not bury:
 ```
 Room: {
   mut .fight(strength: Nat): Nat;
@@ -933,13 +847,6 @@ Room: {
   read .buried(name: Str): Bool;
   }
 ```
-Every parameter of every `Room` method is imm, and so is every result.
-So they can be called on a mutH room, as the state of an actorMut lambda is:
-a mut method on a hygienic receiver takes only iso and imm arguments,
-and a mut or read result comes back mutH or readH,
-which can be called further but not stored or captured.
-Inside the methods the receiver is plainly mut: consuming, filling and reading the leaves
-is ordinary code.
 
 The hero and the room meet through imm values:
 ```
@@ -956,17 +863,13 @@ heroes.flow
   .actorMut[Room, mut Hero](room2, {down, s, h -> Block#(Visit#(s, h), down.pushOpt#(down, Survivor#(s, h)), Continue#)})
   .list
 ```
-`Room` can have no method taking the hero: the hero is mut.
-`Visit` is not a method of the room: it takes the mutH room and the mut hero side by side
-and nothing in it can store one into the other.
-`Survivor` only reads the room, so it takes it readH, and a mutH room is one.
 
 ### max and min keep every tie
 
-`max` and `min` send downstream every element tied for the maximum (minimum), in flow order, where other approaches return one element.
-`Maxes` makes the calls of a linear scan, one comparison per element after the first, where `_Max#` makes those of the max tree. Thus, if some of those calls throw or do not terminate, `Maxes` is not fully semantically accurate (while the desugaring of min is). `max` runs `_Max#`, as `sort` runs `_Sort#`; `Maxes` stays as the readable version.
+`max` and `min` send downstream every element tied for the maximum (minimum), in flow order.
 
-`Maxes` is the readable version of `_Max#`: the same elements when every call of `by` completes successfully, with the calls of a linear scan, one comparison per element after the first, instead of those of the max tree:
+`Maxes` is the readable version of `_Max#`.
+`Maxes` returns the elements `_Max#` returns when every call of `by` completes successfully and respects the contract of an order, with the calls of a linear scan, one comparison per element after the first, instead of those of the max tree:
 ```
 Maxes: { #[E:*,K](xs: mut List[E], by: OrderBy[imm E,K]): mut List[E] -> Block#
   .var[mut Opt[read Order[K]]] best = {{}}
@@ -986,30 +889,10 @@ MaxesStep: { #[E:*,K](best: mut Var[mut Opt[read Order[K]]], run: mut Var[mut EL
       .gt -> Block#(best.set(Opts#o), run.set(ELists#[E]), run.get.add(e), Void) } } }
 ```
 
-Both make `n-1` calls of `by` on `n` elements: the linear scan compares each element after the first with the current maximum, and the max tree makes one call per merge, over `n-1` merges. `n-1` comparisons is the least any algorithm finding the maximum makes, and the tournament method reaches it (Knuth, The Art of Computer Programming, vol. 3, 5.3.3), so running the max tree under the sequential strategy costs no extra call. It keeps at most about `log2 n` pending blocks, as the binary counter of `_Sort#` does, where the linear scan keeps one; when many elements tie, each merge concatenates two runs, where the linear scan appends each tied element once.
-The two differ in which pairs they compare. The linear scan compares each element with the current maximum, so every call depends on the answer of the call before it, and the calls can not be split between workers. The max tree compares pairs fixed by the indexes alone, so the merges of different blocks run on different workers. The difference is observable only when a call of `by` throws, does not terminate, or breaks the contract of an order.
-`Maxes` computes `by#e` once per element, as `_Max#` does.
-
-`Rev` swaps the outcome, not the arguments: `(by#t0 <=> (by#t1))#m'` computes the key of `t0` before the key of `t1`, as `by` itself does, so every call `by` receives is the same call, in the same order, in both. Ties stay ties, so the same elements are sent downstream in the same flow order, and if a call of `by` throws or does not terminate, it is the same call.
-
-### sortDistinct
-
-sortDistinct desugars to `.sort by` followed by collapsing each run of tied elements into the element of the run with the smallest index.
-The other candidates, `.distinct by .sort by` and `.sort by .distinct by`, do not typecheck when `by` is only an `OrderBy`: `.distinct` needs an `OrderHashBy`. With an `OrderHashBy`, a subtype of `OrderBy`, both typecheck, and return the elements `.sortDistinct by` returns, as `read` or `imm`, when every call of `by` completes successfully.
-Sorting before collapsing is what makes the hash unnecessary.
-Since the sort is stable, the element kept for each class is the one with the smallest index, the same one `.distinct` keeps.
-The desugaring sorts the duplicates too; dropping an element as soon as it compares equal to one already placed, for example while inserting into an ordered tree, would make other calls of `by` than `_Sort` then `_Collapse`, so no strategy does it.
-`_Collapse` keeps, of each run of tied elements, the element with the smallest index; after a stable sort the elements `by` ranks together are adjacent, so each element is compared only with the kept element before it in flow order, and the state is a single key rather than a set of all kept keys. `_Distinct` compares each element only with the kept keys of equal hash, through `_KeepNew`. Both keep each key as the `read Order[K]` that `by#e` returns, in a plain `mut Var`, and compare with `!=` (`_Collapse`) and `==` (`_Distinct`): nothing needs the key as a `K`. Everything happens inside the one call over the list, so no key outlives the call and nothing is hygienic.
-
 ### distinct and distinctMut
 
-Both keep, for each class of elements ranked together, the one with the smallest index, in flow order.
-`distinct` is not a fence: each element is sent downstream as soon as it is found new. `distinctMut` is a fence: it sends nothing downstream until it has received every element.
-The difference is observable: `.distinct by .filter p .first` runs the stages before it on the elements up to the first passing `p`, `.distinctMut by .filter p .first` on every element; `map f .distinct by .map g` throws an exception of `g` at a smaller index where `map f .distinctMut by .map g` throws one of `f` at a greater index.
-
-A stage sends an element downstream or keeps it, never both. `distinct` keeps the key `by#e .close`, a `read K` that with `by` an identity, as `{::}`, is the element itself seen through `read`; so it sends its elements downstream as `read` or `imm`, as `flatMap` does: no stage after it can mutate what a kept key aliases, the stages before it are finished with it, and nothing else in the flow reaches it. After a `distinct` the elements are `read` or `imm` for every rule that cares. `distinctMut` keeps the elements `mut`, so it may send none of them downstream while it still compares with their keys: it decides everything inside the one call of `allToAll`, as `max` and `sortDistinct` do, and no key outlives the call.
-
-`_Distinct` places each key with `_KeepNew`: `.hash` once per element, then `==` only with the kept keys of equal hash, in the order they were kept. The hash is what `OrderHashBy` adds over the `OrderBy` of sortDistinct.
+With `by` ranking no two elements of `l` together, `f` throwing on `e5` and `g` throwing on `f#e2`, `l.flow.map f .distinct by .map g .list` throws the exception of `g`, and `l.flow.map f .distinctMut by .map g .list` throws the exception of `f`.
+`.distinct by .filter p .first` runs the stages before `.distinct` on the elements up to the first one `.filter p` sends downstream; `.distinctMut by .filter p .first` runs them on every element.
 
 ### ++ is a fence, and sends read or imm elements downstream
 
@@ -1894,8 +1777,10 @@ Speed goal: close to a plain Java loop over the same work, and never slower than
 The same semantics. When the mode allows it, the terminal analyses the chain and picks a parallel strategy at run time, or the sequential strategy of stage 2.
 - Data parallelism for the regions of elementwise stages, with the fences as the boundaries between regions: the tasks send their outputs element by element, in flow order, as the mailboxes of the pseudocode; exceptions are held and discarded; a short-circuit terminal returns at its decision without waiting.
 - Positive speculation calls in `ParImm` and `ParRead`, and over `ParRepr` and `ParPod` only over `read` or `imm` elements.
+- Before a `.limit n`, when every stage since the source or the last fence sends at most one element downstream per element received, the tasks run those stages on the next `n - k` elements, with `k` the count of elements the `limit` has received, until `k == n`. Under pipeline parallelism the nodes share only the count left to the `limit`.
 - The fences run their merge trees as tasks while they receive the elements; `for` waits for every task, except where the onlyImmCapture flag lets it run in a node as it receives the elements; `forEach` runs its lambda on the calling worker as it receives the elements.
 - Pipeline parallelism for `actor`, `actorMut`, `scan`, map with context and the placement of `distinct` and `mapping`, fed by data parallel regions.
+- `.map(ctx, f)` may instead run the calls of `.iso.close` on the state in flow order, and the calls of `f` with data parallelism, each call of `f` with the result of its own call of `.iso.close`.
 - Choosing: the calling worker runs a task itself when no worker has started it; the hints; the size of the source; a static estimate of the cost of each stage where the lambdas are known; measurements of the first elements.
 - The runtime pieces of **Implementation pitfalls**: `Yield#` wherever user code runs, the catch points letting cancellation through, platform threads for user code, nested flows, memo caches never storing non deterministic exceptions, and sinks dropping what is sent through them after the call that owns them has returned.
 A reasonable order inside this stage: data parallel regions before consuming terminals over `ParImm` and `ParRead`; short-circuit terminals with positive speculation calls; fences; `ParRepr` and `ParPod`; pipeline parallelism.
@@ -2323,7 +2208,7 @@ Similarly, Fearless programs with a few occurrences of hygienics can do more, wi
 
 **The type system as the reviewer:**\
 The type system blocks what is subtly unsound for exactly the reasons this document is about, and it does so before the writer or the reader of a desugaring sees the problem; neither of us saw any of the ones below until the compiler refused the code. A desugaring that does not typecheck is the first place to suspect the design, not the type system. The cases this document met:
-- a `mutH` binding can not be captured by any literal: a `down.push#` to the hygienic sink inside a `|>`, `.match`, `.thenDo` or `? {}` literal is rejected, and the shape that is accepted is the one under **Using the sink and the state of `actorMut`**;
+- a `mutH` binding can not be captured by any literal: a `down.push#` to the hygienic sink inside a `|>`, `.match`, `.thenDo` or `? {}` literal is rejected, and the shape that is accepted computes a `mut Opt` first and sends it with `down.pushOpt#`, as **Example for actorMut** does;
 - the hygienic state takes only `iso` and `imm` values: a key `by#e .close` is a `read K` and, with `by` an identity, the element itself; keeping it while the element flows on `mut` reads what the stage after may be mutating. This one refusal gives the fences their single core method (`allToAll`) and splits `distinct` from `distinctMut`;
 - a `mut` lambda passed to `Repr.mutate` may capture `mut` bindings, and the inner entity still can not leave through them: `acc.add(c.get)` compiles and `acc.add(c)` does not;
 - no Fearless code can stop a call at a `down.push#`, so a rule that did so was not a semantics, and the call completes;
