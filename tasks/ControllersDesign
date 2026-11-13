@@ -289,7 +289,7 @@ ok(i, n)  iff  n is a 'valid segment', n != name(j) for every j < i,
                and the project folder holds no file other than the first marker named n.fearless, ignoring case
 ```
 f2, f3, ... are f followed by `2`, `3`, ....
-The first marker is renamed (or the marker is created) to match.
+The first marker is renamed (or the marker is created) to match; a created marker, and an empty first marker, then hold one newline.
 If present, the compilation cache (`.fearless_out`) of the newly registered folder is deleted (`Coordinator.deleteCache`).
 `.fearless_out` belongs to the Coordinator in every registered folder, whatever the kind of the project.
 The newly registered project is in the `idle` state.
@@ -326,6 +326,7 @@ The 'autoCheck' every three seconds may keep the outcome of the previous 'autoCh
 A request (`Check`, `Compile`, `Run`, `Fix`, `OpenWithOrShortcut`) reads the files of the project from scratch, using no outcome of an earlier 'autoCheck'.
 
 The icon of a project is the only PNG file in the folder `.config/icon` of the project, or, with no PNG file in `.config/icon`, an icon generated from the project name.
+A claim whose icon file can not be read shows, in the manager window, the icon generated from `project::pkg.Main`.
 
 ## General GUI shape
 Closing the manager window hides the manager window; an icon stays visible to show that the 'single' manager is still running.
@@ -892,26 +893,27 @@ What a rewrite needs that neither this design nor the other repositories say.
 
 An implementation decides alone every detail the design leaves open below the concepts of the design: wire formats, encodings, intervals, the library calls, the content of the files the design names (information for Eclipse can be added to `manager.info`). An implementation never adds what the user or another program can observe and the design does not describe: a file in the manager folder or in a project, a verb, a GUI element, a message, a fallback. Those go into the design first.
 
-- The stand-in for the tray: under Wayland a program can not place the windows of the program, but AWT on Linux is an X11 client (through XWayland under Wayland), so the manager places the window itself.
-  The stand-in is an AWT window of type popup. On X11 the window manager does not manage a popup window: no taskbar lists a popup window, and a popup window stays where the manager places the popup window.
-- A double click on a button presses the button twice, and the second press comes before the request of the first press changes the window, so the second press sends the same request again.
-- A main or a compilation ending alone: the JVM of each main and of each compilation is a process of its own. A process that crashes ends alone. The out of memory killer of the Linux kernel ends one process at a time, chosen by memory use, and Windows ends no group of processes either. systemd-oomd ends a whole cgroup when the memory pressure stays high; a cgroup is a group of processes the Linux kernel accounts together, and a child process starts in the cgroup of the parent process. So on Linux with systemd as init, `Fs.processBuilder` starts each child with `systemd-run --user --scope`, in a transient scope: a cgroup of its own.
-  systemd-oomd is on by default on Ubuntu with GNOME, Fedora (GNOME and COSMIC) and Omarchy. systemd-oomd is off on Arch, and missing on Debian, Kubuntu, Lubuntu, Xubuntu and openSUSE Tumbleweed. Void has no systemd.
+- The 'tray icon window' is an AWT window of type popup.
+  A Wayland client can not place its windows; AWT on Linux is an X11 client, through XWayland under Wayland.
+  On X11 the window manager does not manage a popup window: no taskbar lists a popup window, and a popup window stays where the manager places the popup window.
+- A main or a compilation ending alone: on Linux with systemd as init (`/run/systemd/system` is a folder), `Fs.processBuilder` starts each child with `systemd-run --user --scope`, in a cgroup of its own.
+  A cgroup is a group of processes the Linux kernel accounts together; systemd-oomd ends a whole cgroup, and a child process starts in the cgroup of the parent process.
 - A main or a compilation ending with the manager: the manager starts the JVM of each main and of each compilation with a 'parent lifeline' (see Processes in AttenuationDesign) on a pipe the manager holds open.
-- Removing a manager folder at once: holding the lock of `instance.lock` of the manager folder, rename the manager folder to a new name in the same folder, then delete the renamed folder. When the rename fails (on Windows a folder holding a file that a process has open may not be renamed), delete every file of the manager folder that can be deleted. A test removes a manager folder whose `instance.lock` is held open, on every desk: the test shows whether the rename works on Windows.
-- The 'single' manager: the process holding the lock (`FileChannel.tryLock`) of the file `instance.lock` in the manager folder. The operating system releases the lock when the process ends, however the process ends, so a manager that was killed leaves no stale lock.
-
-- Tray on Linux: `java.awt.SystemTray` needs an XEmbed tray, which GNOME and most Wayland desktops do not have; what those desktops show is a StatusNotifierItem on the session bus, registered with `org.kde.StatusNotifierWatcher`, the menu of the item served as `com.canonical.dbusmenu`. A desktop with no owner of the watcher name may still have an XEmbed tray (MATE, i3): there the manager uses `java.awt.SystemTray`, as on Windows. A desktop with neither has no tray. The JDK has no D-Bus client, so the manager speaks the D-Bus wire protocol itself on the `unix:path=` socket of `DBUS_SESSION_BUS_ADDRESS`.
-- Clicks on the tray icon on Linux: each desktop decides what a click on a StatusNotifierItem does.
-  Some desktops show the menu served as `com.canonical.dbusmenu` themselves.
-  Other desktops report the click to the item: `Activate` (usually a left click), `SecondaryActivate` (usually a middle click) or `ContextMenu` (usually a right click), each with the point of the click.
-  The manager answers each of these three by opening the menu of the tray icon at that point, with the same entries.
-  So the click opening the menu may differ from one desktop to another (left or right, single or double), and the menu may look different for different clicks on the same desktop; every one of those clicks opens the menu.
+- `replaced` removing a manager folder: holding the lock of `instance.lock` of the manager folder, `replaced` renames the manager folder to a new name next to the manager folder, then deletes the renamed folder.
+  When the rename fails, `replaced` deletes every file of the manager folder that can be deleted.
+  On Windows a folder holding a file that a process has open may not be renamed.
+- The 'single' manager: the process holding the lock (`FileChannel.tryLock`) of the file `instance.lock` in the manager folder. The operating system releases the lock when the process ends, however the process ends.
+- Tray on Linux: `java.awt.SystemTray` needs an XEmbed tray; GNOME and most Wayland desktops have none.
+  When the session bus has an owner of the name `org.kde.StatusNotifierWatcher`, the tray icon is a StatusNotifierItem registered with that watcher, with the menu served as `com.canonical.dbusmenu`.
+  The manager speaks the D-Bus wire protocol itself, on the `unix:path=` socket of `DBUS_SESSION_BUS_ADDRESS`.
+  Otherwise, when `java.awt.SystemTray` is supported, the manager uses `java.awt.SystemTray`, as on Windows.
+  A desktop with neither has no tray.
+- Clicks on the tray icon on Linux: some desktops show the menu served as `com.canonical.dbusmenu` themselves.
+  The other desktops call `Activate`, `SecondaryActivate` or `ContextMenu` of the item, with the point of the click; the manager answers each of the three by opening the menu of the tray icon at that point.
 - Some file systems, for example some network drives, do not report new files.
 - A desktop that keeps windows from taking the focus, such as GNOME, may leave the manager window behind the window the user is working in; such a desktop tells the user in its own way, for example with a notification that Fearless Manager is ready.
-- The bytes of a `Base16:` path: on Windows the UTF-16 code units of the name, little endian (a name may hold an unpaired surrogate); elsewhere the bytes `sun.jnu.encoding` gives, the bytes the JVM turns names into.
-- Port of a message: a TCP port on the loopback address. The manager connects, sends the status line, then the reason of a refusal or the Output of the mains or of the compilation, as UTF-8 text, then closes the connection. Eclipse and a running main listen on a port the system picks.
-- Registering a folder whose marker has the right name and is empty writes a newline into the marker, so the marker holds what a created marker holds: GNOME types every empty file as `application/x-zerosize`, whatever the name of the file, and never hands an empty file to the manager.
-- `base` autoloads the assets of `base` as if the files of `base` were under a `_base` folder: the `.path` of `base.IconsConflict` is `fear:/_base/icons/conflict.png` and the `.diskPath` is `icons/conflict.png`, relative to the folder of `base`, which a running main receives as the JVM property `fearlessBase.dir`.
-- A claim whose icon file can not be read shows, in the manager window, the icon generated from `project::pkg.Main`, as the icon of a project is generated from the project name.
+- The bytes of a `Base16:` path: on Windows the UTF-16 code units of the name, little endian (a name may hold an unpaired surrogate); elsewhere the bytes of the name as the file system holds them.
+- Port of a message: a TCP port on the loopback address; the manager sends UTF-8 text. Eclipse and a running main listen on a port the system picks.
+- GNOME types every empty file as `application/x-zerosize`, whatever the name of the file, and never hands an empty file to the manager.
+- Renaming the first marker moves the marker to a file `<random UUID>.tmp` of the project folder, then to `<name>.fearless`.
 - The last premise of `ok(i, n)` in name inference: on a file system ignoring case, that other file and the file `n.fearless` are one file.
