@@ -262,11 +262,11 @@ An accepted edit applies at once: projects the edit removes are forgotten, proje
 
 ## Registering a folder
 
-The name of a project is the name of the marker of the project: the only file with the `.fearless` extension at the top of the project folder whose name does not start with `.`, `<name>.fearless`. A project name is a 'valid segment' (see FolderShapesDesign).
+A 'marker' of a folder is a file `<name>.fearless` at the top of that folder, with `<name>` not starting with `.`. The name of a project is the `<name>` of the one marker of the project folder. A project name is a 'valid segment' (see FolderShapesDesign).
 
 A folder p with `same(D, p, p2)` for the project folder p2 of a registered project is 'registered already'.
 Registering a folder that is not 'registered already' adds the project at the end of `projects.info`, named by name inference.
-Name inference: The name is the name of the first marker of the folder in file name order, when that name is a 'valid segment' and no project before this project in `projects.info` uses that name.
+Name inference: The name is the name of the first marker of the folder in the order of the s (see Implementation notes in FolderShapesDesign), when that name is a 'valid segment' and no project before this project in `projects.info` uses that name.
 Otherwise, with f the first 64 characters of the 'fixed segment' (see FolderShapesDesign) of the folder name, the name is the first of f, and f followed by `2`, `3`, ..., that is a 'valid segment' and is not used by a project before this project in `projects.info`. The first marker is renamed (or the marker is created) to match.
 If present, the compilation cache (`.fearless_out`) of the newly registered folder is deleted (`Coordinator.deleteCache`).
 `.fearless_out` belongs to the Coordinator in every registered folder, whatever the kind of the project.
@@ -347,7 +347,7 @@ A header on one line: the project name, and the following buttons:
   - Run, for a compiled code project with one main; Run V (V an arrow down), for a compiled code project with several mains; Run greyed out, for a compiled code project with no main;
   - Terminate, while a main of the project is currently running;
   - greyed out, while a compilation of the project is currently running.
-- The Docs V button (enabled once the mains are known), opening a menu of the packages of the project, the `packages` of `State.compiled` (see CoordinatorDesign); choosing a package opens the documentation of that package (`Coordinator.docs`) with the program that opens `.html` files, which is the manager when `html` is a system extension.
+- The Docs V button (enabled once the mains are known), opening a menu of the packages of the project, the `packages` of `State.compiled` (see CoordinatorDesign); choosing a package opens the documentation of that package (`Coordinator.docs`) with the program that opens `.html` files, which is the manager while the manager 'holds' `.html` (see The data in ReconciliatorDesign).
 - The Kind V button, showing the kind of the project, like `Kind: code`, and opening a menu with one entry for each kind the project is not: "Back to idle", "Become dataRead", "Become dataEdit" and "Become code".
 - The Project V button, opening a menu with Browse, opening the project folder in the file explorer, Forget (`Forget`), Delete cache (`DeleteCache`), and Fix (`Fix`, after a confirmation dialog saying what Fix does, with the buttons Fix and Cancel, Cancel preselected).
 Kind V, Forget and Delete cache are greyed out while a main or a compilation of the project is currently running; Fix is greyed out while the project is 'in use'.
@@ -405,7 +405,7 @@ That error is shown in the Output of the project.
 
 The 'reserve' of the manager is the list of extensions `reserve` in `projects.info` (see Registered projects): extensions beyond the Fearless extensions that the manager holds also when no main claims them.
 The 'captured extensions' are the Fearless extensions (see The data in ReconciliatorDesign) and the extensions of the 'reserve'.
-The manager asks once for each extension.
+The manager asks once for each system extension, and one or more times for each Fearless extension.
 After the user accepts, `.reconcile` checks every extension again: a refusal for another extension asks about that extension.
 
 ### Invariants and transitions
@@ -434,15 +434,15 @@ I4  |family(D)| ≤ 1
 At every moment:
 ```
 I5  ∀ f. |single(D, f)| ≤ 1
-I6  M running ∧ ¬exists(folder(M))  ⇒  M is quitting, and M changes nothing on D
+I6  M running ∧ ¬exists(folder(M)) ∧ M did not delete folder(M)  ⇒  M is quitting, and M changes nothing on D
 ```
 
 The transitions:
 ```
 T1  .reconcile makes holder(D, e) = id(M) for an e whose holder is outside the Fearless family
-      only when the user accepted e in the question of that .reconcile
+      only when e ∈ taken, after the user accepted e in the question the manager asks
 
-T2  the user rejects the question for e, or .reconcile can not take e:
+T2  the user rejects the last question for e, or .reconcile can not take e:
       e ∈ fearless  ⇒  'fatal error' naming e
       otherwise     ⇒  for each p ∈ compiled(M) with e ∈ claims(p): end the mains and the compilation of p,
                         and delete the compilation cache of p (Coordinator.deleteCache);
@@ -455,14 +455,13 @@ T3  a compilation of p ends with e ∈ claims(p) \ captured(M):
 T4  forgetting a project, or a compilation whose mains no longer claim e, leaves reserve(M) as it is
 ```
 
-I2 near holds on macOS, where holding an extension with a 'declared type' also holds every other extension of that 'declared type', and on Linux, where a file whose content matches a type of the system with a high priority opens with the program of that type (see Extensions on Linux in ReconciliatorDesign).
 An `EditMetadata` adding e to the 'reserve' whose question is rejected is refused, and changes nothing: the outcome T2 gives.
 
 The `replaced` of each `.reconcile` deletes the manager folder of the program of the command that `replaced` receives, when that command is inside the program folder of a manager (see Program and manager folder) and that manager folder is not the manager folder of the program calling `.reconcile`.
 `replaced` deletes that manager folder only while holding the lock of the `instance.lock` of that folder (see The 'single' manager in Implementation notes): when a manager of that folder is running, `replaced` sends `Quit` to that manager and waits for the lock, at most 30 seconds; after that wait, `replaced` deletes every file of that manager folder that can be deleted, and that manager quits (I6).
 So the program of that command never sees a manager folder deleted in part, and no second 'single' manager of that folder can start meanwhile (I5).
 Reset deletes the manager folder also while holding the lock of its `instance.lock`.
-A 'single' manager whose manager folder is deleted quits, ending the mains and the compilations of that manager, and changes nothing else on the system.
+A 'single' manager whose manager folder another program deletes quits, ending the mains and the compilations of that manager, and changes nothing else on the system.
 
 In the stories below, Foo is a program outside the Fearless family.
 The user observes the icon of a file on the desktop and inside the file manager applications.
@@ -812,14 +811,14 @@ The answer is the first extension of the list that no claim in the in memory map
 
 For each `Shortcut` claim, the manager creates a file `<name>.<extension>` in the top level of the project, next to the marker, holding a single new line, like the marker. `<name>` is the simple name of the main turned into a file name, the inverse of the rule autoloading uses to name the type of an image: each uppercase letter becomes `_` and the lowercase of that letter, except the first letter of the name, which only becomes lowercase. `FooBar` becomes `foo_bar`, `_Foo` becomes `_foo`, `Foo_1` becomes `foo_1`, `FooBAR` becomes `foo_b_a_r`.
 
-The inverse does not exist for every type name: type names can end in primes (`Foo'`), and can contain `_` followed by a lowercase letter (`Foo_bar`), which autoloading never produces. Such a main, a main whose name turns into a Windows reserved name (`Con`), two mains of the project with a `Shortcut` giving the same file name and extension (`a.Bar` and `b.Bar`), or a main whose shortcut file name is the name of a top level file without extension (`readme` for `hello.Readme`), fail the compilation:
+The inverse does not exist for every type name: type names can end in primes (`Foo'`), and can contain `_` followed by a lowercase letter (`Foo_bar`), which autoloading never produces. Such a main, a main whose name turns into a 'reserved name' (`Con`, see Names in FolderShapesDesign), two mains of the project with a `Shortcut` giving the same file name and extension (`a.Bar` and `b.Bar`), or a main whose shortcut file name is the name of a top level file without extension (`readme` for `hello.Readme`), fail the compilation:
 `Main "hello.Foo'" can not have a Shortcut: its name has no matching file name. A main with a Shortcut has a name that can be mapped to a file name like "FooBar" can be mapped to "foo_bar".`
 
 The shortcut file is one of the `.files` of the project (see The data in CoordinatorDesign). The manager never deletes a shortcut file: the user may have copied or moved shortcut files anywhere. A shortcut file whose extension no main claims any more stays, and opening that shortcut file is an `OpenWithOrShortcut` of an extension no main claims (see Opening a file).
 
 ### Reconciling
 
-After each rebuild of the in memory map, and in each `EditMetadata` that changes `reserve`, with the `reserve` of the edit, once every other check of the edit (see Registered projects) passes, before the edit applies, the manager calls `.reconcile` of the Reconciliator (see ReconciliatorDesign) with the launcher of the manager as `command`, with all the 'captured extensions', each with an icon, with an empty `taken`, and with the window classes (see Desk ids and icons).
+After each rebuild of the in memory map, and in each `EditMetadata` that changes `reserve`, with the `reserve` of the edit, once every other check of the edit (see Registered projects) passes, before the edit applies, the manager calls `.reconcile` of the Reconciliator (see ReconciliatorDesign) with the launcher of the manager as `command`, with all the 'captured extensions', each with an icon, with the window classes (see Desk ids and icons), and with an empty `taken`. After the user accepts the extensions of a refused `.reconcile`, the manager calls `.reconcile` again with those extensions as `taken`.
 
 #### Desk ids and icons
 
@@ -909,7 +908,7 @@ An implementation decides alone every detail the design leaves open below the co
 - A desktop that keeps windows from taking the focus, such as GNOME, may leave the manager window behind the window the user is working in; such a desktop tells the user in its own way, for example with a notification that Fearless Manager is ready.
 - The bytes of a `Base16:` path: on Windows the UTF-16 code units of the name, little endian (a name may hold an unpaired surrogate); elsewhere the bytes `sun.jnu.encoding` gives, the bytes the JVM turns names into.
 - Port of a message: a TCP port on the loopback address. The manager connects, sends the status line, then the reason of a refusal or the Output of the mains or of the compilation, as UTF-8 text, then closes the connection. Eclipse and a running main listen on a port the system picks.
-- Each case of a main that can not have a Shortcut (a name with no matching file name, a reserved name, two mains giving the same file name and extension) has an error of its own; the error above is the error of a name with no matching file name.
+- Each case of a main that can not have a Shortcut (a name with no matching file name, a 'reserved name', two mains giving the same file name and extension) has an error of its own; the error above is the error of a name with no matching file name.
 - Registering a folder whose marker has the right name and is empty writes a newline into the marker, so the marker holds what a created marker holds: GNOME never hands an empty file to the manager (see Opening a file).
 - A claim whose icon file can not be read shows, in the manager window, the icon generated from `project::pkg.Main`, as the icon of a project is generated from the project name.
 - Name inference skips a name `n` while the project folder holds a file other than the marker named `n.fearless`, ignoring case: on a file system ignoring case that file would be the marker.
