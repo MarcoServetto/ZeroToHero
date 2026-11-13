@@ -63,23 +63,21 @@ The 'single' manager runs until `Quit`, `Reset`, a 'fatal error', or the deletio
 
 ## Requests and messages
 
-Everything the manager is asked to do for a project is a request, and every request is one of the requests below, whether the request comes from a message or from a GUI operation.
+A request is what one of the verbs below asks the manager to do, whether the request comes from a message or from a GUI operation.
 The 'single' manager applies the requests one at a time, in the order they arrive, each one completely before the next.
 Applying a `Run` or a `Compile` is starting the mains or the compilation; applying a `Terminate` ends once the JVM of the main has ended.
 
 A message is the file `messages/<time>-<id>.msg` in the manager folder: `<time>` is the 20 digit count of milliseconds since 1970 when the message was written, and `<id>` is a random UUID. The 'single' manager applies the message files in the order of their names, and deletes each message file after reading it.
 Only the manager program writes message files: the manager program writes `messages/<time>-<id>.tmp`, then renames `messages/<time>-<id>.tmp` to `messages/<time>-<id>.msg`, so the 'single' manager never reads a partial message. The 'single' manager deletes every `.tmp` file older than 60 seconds.
 A manager process whose `.tmp` or `.msg` name already exists picks another `<id>`; the rename never replaces an existing file.
-The 'single' manager relies on the system telling the 'single' manager when a file appears in `messages`. When a manager process becomes the 'single' manager, the 'single' manager writes a `.tmp` file in `messages` and waits for that report; no report within 5 seconds is a 'fatal error'. Some file systems, for example some network drives, do not report new files.
+The 'single' manager learns of a new message file from the report of the system that a file appeared in `messages`. When a manager process becomes the 'single' manager, the 'single' manager writes a `.tmp` file in `messages` and waits for the report of that `.tmp` file; no report within 5 seconds is a 'fatal error'.
 Every other program commanding the manager (the Eclipse plugin, a script, a test) runs the manager program with a `call` as its argument.
-GUI operations that are requests command the manager the same way, through a `call`:
-every such GUI operation has an equivalent message, and every message is either ill formed or has an equivalent GUI operation, except `Check`: the GUI offers `Check` only as the main button of a project that is not code or is 'invalid', and a `call` can send `Check` of any project.
-A request changes files (those of the manager folder, those of a project folder, the associations of the system, or the plugin and `manager.info` of an Eclipse), starts or ends a main or a compilation, writes the Output of a project, shows a window of the manager (`Show`, and `OpenWithOrShortcut <path>` when several mains claim the extension), or is `Quit`.
-The GUI operations that do none of this are not requests and have no message: Docs, Base documentation, Browse and Logs, which open another program on a file, Info, which opens the Info dialog, and the Clear button of an Output, which empties the Output. A GUI operation that finds nothing to open says so in a dialog.
-The error of an ill formed message shows in a dialog of the manager window, and on the port when the `call` has a `port`. A hidden manager window is shown first.
-Showing the manager window asks the desktop to bring the manager window to the front. A desktop that keeps windows from taking the focus, such as GNOME, may leave the manager window behind the window the user is working in; such a desktop tells the user in its own way, for example with a notification that Fearless Manager is ready.
+Every GUI operation that is a request has an equivalent message, and every verb is the verb of a GUI operation.
+Docs, Base documentation, Browse and Logs, which open another program on a file, Info, which opens the Info dialog, and the Clear button of an Output, which empties the Output, are GUI operations that are not requests and have no message. A GUI operation that finds nothing to open says so in a dialog.
+The error of an ill formed message shows in a dialog of the manager window; a hidden manager window is shown first.
+Showing the manager window asks the desktop to bring the manager window to the front.
 
-A message is a verb, then the arguments of the verb and the `port`, one per line.
+A message file holds a verb, then the arguments of the verb, then the `port` when the message comes from a `call` with a `port`, one per line.
 A verb is one of the following, written in upper camel case. Verbs about the whole manager:
 - `Show`: show the manager window; with the name of a registered project as its argument, also select that project;
 - `Register <path>`: register the folder, or the folder a file is in, then select that project; a folder 'registered already' is only selected;
@@ -105,16 +103,14 @@ Verbs about one project, taking the name of a registered project:
 `Forget`, `Kind`, `Mount`, `Unmount`, `Attenuate` and `SelectMains` are special cases of `EditMetadata`: each one is `EditMetadata` with the current `projects.info` changed in one place (the project removed, the `kind` of the project replaced, the mount of one DataRead type replaced or removed, the attenuators of one main replaced, the selected mains of the project replaced).
 Such a verb is applied, or is ill formed with the same error, exactly as that `EditMetadata` is; `Mount` is also ill formed when `<data>` is not the name of a registered project.
 Before applying the request of a call with a `port`, the manager connects to that port of this machine.
-What the manager sends on the connection starts with a line saying what became of the message: `Applied` or `Refused`.
+When the connection is made, what the manager sends on the connection starts with a line saying what became of the message: `Applied` once the request is applied, or `Refused` once the message is found ill formed.
 After `Refused`, the manager sends the error, as the dialog shows the error, and ends the connection.
 After `Applied`, the manager ends the connection at once, except for `Run`, `Compile`, `Check` and `Fix`.
 For `Run`, `Compile`, `Check` and `Fix`, after `Applied`, the manager also sends on the connection what the request writes in the Output, from the start of the request and then as the request writes it, with the marks of the Output (see Run, Compile and Check).
-The connection ends when the last main or the compilation ends, at once when no main and no compilation starts.
+The connection then ends when the last main or the compilation ends; when no main and no compilation starts, the connection ends once the text the request writes in the Output is sent.
 `Quit` and `Reset` may end the manager before the manager sends `Applied`.
-After applying `Quit` or `Reset`, the manager refuses every request it reads, with the error `Refused request "Forget": the manager is quitting.` (naming the verb of the request).
-The connection is how another program (Eclipse, a running main) knows that the manager has applied the message of that program, and follows the mains or the compilation that program asked for.
-Two more message files exist, `InvalidCall <details>` and `FatalError <details>`, written only by a manager process, about a failure of that manager process. `InvalidCall` and `FatalError` are not verbs: no `call` and no GUI operation names those messages.
-The details of `InvalidCall` and `FatalError` are every line after the first line, any number of lines.
+From the start of a `Quit` or a `Reset` until the manager ends, the manager refuses every request the manager reads, with the error `Refused request "Forget": the manager is quitting.` (naming the verb of the request).
+Two more kinds of message file, written only by a manager process about a failure of that manager process, hold `InvalidCall` or `FatalError` on the first line and the details on every line after the first line, any number of lines. `InvalidCall` and `FatalError` are not verbs: no `call` and no GUI operation names those messages.
 
 ```
 call ::= command port?
@@ -159,22 +155,31 @@ Ill formed messages:
 - `Run` of a project whose `attenuators` name a main that is not a main of the project, or an attenuator that is not an attenuator of the project (the error lists the mains, or the attenuators);
 - `Run` of a project with a broken mount, or with a DataRead type with no mount (see DataReadDataEditDesign; the error lists each broken mount, naming what makes that mount broken, and each DataRead type with no mount);
 - `Run` and `Compile` of an 'invalid' project (the error is the 'problem' of the project);
-- `Run` of a project that is not compiled, naming the state of the project; `Run` of a project with no selected main, or with a selected main that is not a main of the project (the error lists the mains of the project);
+- `Run` of a project that is 'out of date', naming that state; `Run` of a project with no selected main, or with a selected main that is not a main of the project (the error lists the mains of the project);
 - `Run`, `Compile`, `Check` or `DeleteCache` while a main or a compilation of the project is currently running;
 - `Fix` while the project is 'in use' (see Run, Compile and Check);
 - `Terminate` while a compilation of the project is currently running;
 - an `OpenWithOrShortcut` that runs a main of a project where a `Run` of only that main is ill formed (the error is the error of that `Run`).
 
 Whether a message is ill formed is decided when the 'single' manager starts applying the request of the message, after the 'autoCheck' (see Project states) of the project the request runs on, from the message and the state that 'autoCheck' finds, before anything is compiled, run or written to the Output.
-The error of an ill formed message is never in the Output: the Output of a project holds only the results of well formed requests. A failing compilation is the result of a well formed request: the request is right, the code is broken.
+The error of an ill formed message is never in the Output: the Output of a project holds only the results of well formed requests. A failing compilation is the result of a well formed request.
 
 ## Info files
 
 The files the manager writes for the manager and for Eclipse (`projects.info`, `manager.info`) are Info files: text in the Fearless character set (the characters a Fearless `Str` allows).
-An Info is a string `"..."`, a list `[a, b]`, or an object `{"key": value, ...}` whose keys are distinct strings.
-Inside an Info string, `\"` is a quote, `\\` a backslash and `\n` a newline; there is no other escape: `"\t"` is an invalid Info.
+```
+info ::= ws (string | list | object) ws
+list ::= [[] ws []] | [[] info ([,] info)* []]
+object ::= [{] ws [}] | [{] member ([,] member)* [}]
+member ::= ws string ws [:] info
+string ::= ["](strChar | [\\]["\\n])*["]
+ws ::= [ \n]*
+```
+A `strChar` is a character of the Fearless character set other than `"` and `\`.
+The keys of one object are distinct strings.
+Inside a string, `\"` is a quote, `\\` a backslash and `\n` a newline.
 
-A text that may hold characters outside the Fearless character set is a `taggedText`:
+A path in an Info file is a `taggedText`:
 ```
 taggedText ::= Str:str | UStr:uStr | base16
 base16 ::= Base16:([0-9A-F][0-9A-F])+
@@ -187,15 +192,15 @@ codePoints ::= [ ]*["]codePoint([ ]codePoint)*["] | [ ]*[`]codePoint([ ]codePoin
 codePoint ::= [0-9A-F]{1,6}
 uStrAtom ::= strAtom [.]u codePoints? | [ ]*[(] uStr [)]
 ```
-Every character of a `str` and of a `uStr` is in the Fearless character set; parentheses nest at most 100 deep.
+Parentheses nest at most 100 deep.
 Each `codePoint` is at most `10FFFF` and not from `D800` to `DFFF`.
 The text of `Str:str` is the `Str` the Fearless expression `str` evaluates to, and the text of `UStr:uStr` is the `UStr` the Fearless expression `uStr` evaluates to (see `Str` and `UStr` in the standard library: a literal holds its characters as they are, so `\n` inside a literal is two characters).
-The text of `base16` is the bytes the current file system interprets as a path; only a path is a `base16`.
+The text of `base16` is the path whose bytes are the hexadecimal pairs of `base16` (see The bytes of a `Base16:` path in Implementation notes).
 For example:
 - `"C:\data\hello"` is the path `C:\data\hello`, written in an Info as `"path": "Str:\"C:\\data\\hello\""`;
 - `"Hello"|"World"` is `Hello\nWorld`, encoded as `"Str:\"Hello\"|\"World\""`;
 - `"caf".u"00E9"` is `caf` followed by the character `00E9`, encoded as `"UStr:\"caf\".u\"00E9\""`.
-The manager writes `Str:` then `.escape` of the text when the text is a `Str`; `UStr:` then `.escape` of the text when the text is a `UStr` and not a `Str`; the `base16` of the path only when the text is a path that is neither a `Str` nor a `UStr`.
+The manager writes `Str:` then `.escape` of the path when the path is a `Str`; `UStr:` then `.escape` of the path when the path is a `UStr` and not a `Str`; the `base16` of the path when the path is neither a `Str` nor a `UStr`.
 
 ## Registered projects
 
@@ -900,6 +905,8 @@ An implementation decides alone every detail the design leaves open below the co
   Other desktops report the click to the item: `Activate` (usually a left click), `SecondaryActivate` (usually a middle click) or `ContextMenu` (usually a right click), each with the point of the click.
   The manager answers each of these three by opening the menu of the tray icon at that point, with the same entries.
   So the click opening the menu may differ from one desktop to another (left or right, single or double), and the menu may look different for different clicks on the same desktop; every one of those clicks opens the menu.
+- Some file systems, for example some network drives, do not report new files.
+- A desktop that keeps windows from taking the focus, such as GNOME, may leave the manager window behind the window the user is working in; such a desktop tells the user in its own way, for example with a notification that Fearless Manager is ready.
 - The bytes of a `Base16:` path: on Windows the UTF-16 code units of the name, little endian (a name may hold an unpaired surrogate); elsewhere the bytes `sun.jnu.encoding` gives, the bytes the JVM turns names into.
 - Port of a message: a TCP port on the loopback address. The manager connects, sends the status line, then the reason of a refusal or the Output of the mains or of the compilation, as UTF-8 text, then closes the connection. Eclipse and a running main listen on a port the system picks.
 - Each case of a main that can not have a Shortcut (a name with no matching file name, a reserved name, two mains giving the same file name and extension) has an error of its own; the error above is the error of a name with no matching file name.
