@@ -213,15 +213,13 @@ A `delete`, a `rename`, a `write`, a `makeFolder` or a `move` that the desk refu
 ## Implementation notes
 
 The code checking the 'shape rules' is `Coordinator/src/realSourceOracle`.
-The sections below say, for each desk, which operations of the desk correspond to which operations on a D.
-An operation of a desk is a program run in a shell: `sh` on Linux and macOS, PowerShell 7 (`pwsh`) on Windows.
+The commands below run in `sh` on Linux and macOS, and in PowerShell 7 (`pwsh`) on Windows.
 Each correspondence holds while no other program changes the folders that the operation reads or writes.
-A 'disk path' is a path as the desk writes it; `<disk path>`, `<disk path1>` and `<disk path2>` are the 'disk paths' corresponding to p, p1 and p2.
+The 'disk path' of a p is the path of the desk that corresponds to p; `<disk path>`, `<disk path1>` and `<disk path2>` are the 'disk paths' of p, p1 and p2.
 
 An id corresponds to a folder of the desk.
 A mount point corresponds to a 'root id'.
 The pair of the device number and the inode number that a desk gives for a folder does not correspond to an id.
-Two mount points of one shared folder of the network can give that folder two different device numbers, so two different pairs, while `same` holds for the two ps.
 
 ### Linux
 
@@ -234,12 +232,16 @@ Two mount points of one shared folder of the network can give that folder two di
 - `fileNameOk(s)`: s is the ASCII bytes of a 'valid file name' (see Names).
 - `hiddenNameOk(s)`: s is valid UTF-8, and the text of s is a 'hidden name' (see Names).
 - `okTogether(s1, s2)`: s1 and s2 are not both valid UTF-8 with texts equal after Unicode normalization (NFC) and Unicode simple case folding.
-- `timeOk(file)`: the time of the file is after 1970-01-01T00:00:00Z and at most 5 seconds after the current time. The time of a file of the folders is the last modified time, the number of seconds that the program `stat`, run as `stat -c %Y <disk path>`, prints; the time of a file of a z is the time the 'zip file' stores for that file.
+- `timeOk(file)`: the time of the file is after 1970-01-01T00:00:00Z and at most 5 seconds after the current time.
+- The time of a file of the folders is the number of seconds that `stat -c %Y <disk path>` prints; the time of a file of a z is the time the 'zip file' stores for that file.
 - `zip(file)`: the tree of the 'stored names' of the 'zip file' (see Names), split at `/`, each segment as its UTF-8 bytes, where a name ending with `/` is a z; undefined when the file is not a 'zip file', or its 'stored names' are not 'good'.
-- The mount points are the paths in the fifth field of each line of the file `/proc/self/mountinfo`, with each escape `\ooo` (three octal digits) read as the byte it stands for, for which `stat -c %F` prints `directory`, leaving out a line when another line, not on the chain of parents of that line (the second field of a line is the first field of the line of its parent), has a mount point that the path of that line starts with, comparing whole names. `/` is one of them.
+- The mount points are the paths of the lines of the file `/proc/self/mountinfo`, where:
+  - the path of a line is the fifth field of the line, with each escape `\ooo` (three octal digits) read as the byte it stands for;
+  - the parent of a line is the line whose first field is the second field of the line;
+  - a line is left out when `stat -c %F` does not print `directory` for the path of the line;
+  - a line is left out when another line, not on the chain of parents of the line, has a path that the path of the line starts with, comparing whole names.
 - A 'disk path' given to a program, whose names after the mount point `m` are s1, ..., sn, corresponds to the p `id s1..sn`, where `m` is the longest mount point the path starts with, comparing whole names, and `id` is the 'root id' corresponding to `m`.
   This holds when each `si` is one of the names that the program `find` prints for the path of `m` and s1, ..., si-1, as below, and `stat` prints `directory` for each of the paths ending at s1, ..., sn-1.
-  For example, with the mount points `/` and `/home`, the path `/home/user/proj` corresponds to `id user proj`, with `id` corresponding to `/home`.
 - The program `find`, run as `find <disk path> -mindepth 1 -maxdepth 1 -printf '%f\0'`, prints the s of the Es of the folder `at(D, p)`, each followed by the byte `0x00`.
 - The program `stat`, run as `stat -c %F <disk path>`:
   - prints `directory` when `at(D, p)` is an id;
@@ -251,38 +253,35 @@ Two mount points of one shared folder of the network can give that folder two di
 - The program `mkdir`, run as `mkdir <disk path>/s`, corresponds to `makeFolder(D, p s)`.
 - The shell command `[ ! -L <disk path2>/s2 ] && [ ! -e <disk path2>/s2 ] && mv -T <disk path1>/s1 <disk path2>/s2` corresponds to `move(D, p1 s1, p2 s2)` when no mount point m has `same(D, m, p1 s1)` or `inside(D, m, p1 s1)`; otherwise the desk refuses `move(D, p1 s1, p2 s2)`.
 - The shell command `[ ! -L <disk path>/s' ] && { [ ! -e <disk path>/s' ] || [ <disk path>/s -ef <disk path>/s' ]; } && mv -T <disk path>/s <disk path>/<n> && mv -T <disk path>/<n> <disk path>/s'`, with `<n>` an s for which `[ ! -e <disk path>/<n> ] && [ ! -L <disk path>/<n> ]` holds, corresponds to `rename(D, p s, s')`.
-- Writing the bytes of `file'` in `<disk path>/s`, then running the program `touch` as `touch -m -d @<seconds> <disk path>/s` with the time of `file'`, corresponds to `write(D, p s, file')` when `stat -c %h <disk path>/s` prints `1`, no line of `/proc/self/mountinfo` has `<disk path>/s` as its mount point, and no line has the device of `<disk path>/s` and, as its root (the fourth field), the path of `<disk path>/s` inside its file system; otherwise the desk refuses `write(D, p s, file')`.
+- Writing the bytes of `file'` in `<disk path>/s`, then running `touch -m -d @<seconds> <disk path>/s` with the time of `file'`, corresponds to `write(D, p s, file')`; the desk refuses `write(D, p s, file')` when one of these holds:
+  - `stat -c %h <disk path>/s` does not print `1`;
+  - the path of a line of `/proc/self/mountinfo` is `<disk path>/s`;
+  - a line of `/proc/self/mountinfo` has the device of `<disk path>/s` as its third field and the path of `<disk path>/s` inside its file system as its fourth field.
 - `rm -r <disk path>/s` runs after `chmod u+w` of `<disk path>`, of `<disk path>/s` when it is a folder, and of each folder inside it.
 - `mv -T <disk path1>/s1 <disk path2>/s2` runs after `chmod u+w` of `<disk path1>`, and of `<disk path1>/s1` when it is a folder.
 - The two `mv -T` of a `rename` run after `chmod u+w` of `<disk path>`.
 - Writing `<disk path>/s` runs after `chmod u+w` of `<disk path>/s`.
-- The order of the s: the first byte that differs decides, and a shorter s comes before the longer s it starts.
+- The order of the s: the lexicographic order of their bytes, each byte a number from 0 to 255.
 - The 'junk file', 'junk folder', 'fixed segment', 'fixed name' and 'clash' rules read s as text: the UTF-8 text of s, where each byte that is not part of valid UTF-8 is a character other than `a` to `z`, digits and `_`.
 
 ### macOS
 
-- An s corresponds to bytes, as on Linux.
-- `len(s)` is the number of bytes of s, as on Linux.
-- `isHidden(s)`, `isZip(s)`, `isZipOf(s1, s2)`, `folderNameOk(s)`, `fileNameOk(s)`, `hiddenNameOk(s)`, `okTogether(s1, s2)` and `zip(file)`: as on Linux.
-- `timeOk(file)`: as on Linux, with the program `stat` run as `stat -f %m <disk path>`.
-- The mount points are the paths that the program `mount`, run with no argument, prints: one line for each mount point, with the path between the first ` on ` and the last ` (`. `/` is one of them.
-- A 'disk path' given to a program corresponds to a p as on Linux.
+- As on Linux, with the `find` and `stat` below: the s, `len(s)`, `isHidden(s)`, `isZip(s)`, `isZipOf(s1, s2)`, `folderNameOk(s)`, `fileNameOk(s)`, `hiddenNameOk(s)`, `okTogether(s1, s2)`, `zip(file)`, the p of a 'disk path', `create`, `makeFolder`, `delete`, the `chmod u+w` before `rm`, `mv` and the writing of a file, the order of the s and the reading of s as text.
+- `timeOk(file)` and the time of a file: as on Linux, with `stat -f %m <disk path>` in place of `stat -c %Y <disk path>`.
+- The mount points are the paths that the program `mount`, run with no argument, prints: one line for each mount point, with the path between the first ` on ` and the last ` (`.
 - The program `find`, run as `find <disk path> -mindepth 1 -maxdepth 1 -print0`, prints `<disk path>/` followed by each s of the Es of the folder `at(D, p)`, each followed by the byte `0x00`.
 - The program `stat`, run as `stat -f %HT <disk path>`:
   - prints `Directory` when `at(D, p)` is an id;
   - prints `Regular File` when `at(D, p)` is a file;
   - prints `Symbolic Link`, `FIFO`, `Socket`, `Character Device`, `Block Device`, `Whiteout`, or any other text, when `at(D, p)` is an other;
   - fails with `No such file or directory` when `at(D, p)` is undefined.
-- `create`, `makeFolder`, the order of the s and the reading of s as text: as on Linux.
 - `move` and `rename`: the shell commands of Linux, with `mv` in place of `mv -T`.
-- `chmod u+w` runs before `rm`, `mv` and the writing of a file as on Linux.
-- The program `rm`, run as `rm -r <disk path>/s`, corresponds to `delete(D, p s)` as on Linux, with the same condition.
 - Writing the bytes of `file'` in `<disk path>/s`, then running the program `touch` as `touch -m -d <YYYY-MM-DDThh:mm:SSZ> <disk path>/s` with the time of `file'`, corresponds to `write(D, p s, file')` when `stat -f %l <disk path>/s` prints `1`; otherwise the desk refuses `write(D, p s, file')`.
 
 ### Windows
 
 - An s corresponds to 1 or more 16 bit units, none of them `0x0000`, `0x002F` (`/`) or `0x005C` (`\`), other than `.` and `..`.
-- The desk refuses a `create`, a `makeFolder`, a `move` and a `rename` to an s holding `0x003A` (`:`): NTFS takes `a:b` as a stream of the file `a`.
+- The desk refuses a `create`, a `makeFolder`, a `move` and a `rename` to an s holding `0x003A` (`:`).
 - `len(s)` is the number of 16 bit units of s.
 - `isHidden(s)`: the first unit of s is `0x002E` (`.`).
 - `isZip(s)`: the last four units of s are the units of `.zip`.
@@ -291,16 +290,18 @@ Two mount points of one shared folder of the network can give that folder two di
 - `fileNameOk(s)`: s is the units of a 'valid file name' (see Names).
 - `hiddenNameOk(s)`: the units of s, read as UTF-16, are a 'hidden name' (see Names).
 - `okTogether(s1, s2)`: the texts of s1 and s2, read as UTF-16, are not equal after Unicode normalization (NFC) and Unicode simple case folding.
-- `timeOk(file)`: as on Linux, where the last modified time is the value `LastWriteTimeUtc` of `Get-Item -LiteralPath <disk path> -Force`.
+- `timeOk(file)` and the time of a file: as on Linux, where the time of a file of the folders is the value `LastWriteTimeUtc` of `Get-Item -LiteralPath <disk path> -Force`.
 - `zip(file)`: as on Linux, with each segment as the 16 bit units of its text; undefined also when a segment holds `\`.
-- The mount points are the paths that the program `mountvol`, run with no argument, prints for each volume, like `C:\` and `C:\mnt\usb\`, the root `X:\` of each drive whose name is one letter in `Get-PSDrive -PSProvider FileSystem`, also mapped network drives and `subst` drives, and every shared folder of the network, like `\\server\share\`; the letter of a drive is uppercase.
-- `<disk path>` starts with `\\?\` (`\\?\UNC\` for a shared folder of the network), so that Windows takes each name as it is; a 'disk path' in the Output is written without that start.
+- The mount points are, with the letter of a drive in uppercase:
+  - the paths that `mountvol`, run with no argument, prints for each volume;
+  - the root `X:\` of each drive whose name is one letter `X` in `Get-PSDrive -PSProvider FileSystem`;
+  - each shared folder of the network, `\\server\share\`.
+- A command gets each 'disk path' with `\\?\` before it, and the 'disk path' of a shared folder of the network with `\\?\UNC\` in place of its starting `\\`.
 - A 'disk path' given to a program corresponds to a p as on Linux, with `\` in place of `/`, with the command `Get-ChildItem` below in place of `find`, and with `at(D, ...)` an id by the attributes below in place of `stat` printing `directory`.
-  For example, with the mount points `C:\` and `C:\mnt\usb\`, the path `C:\mnt\usb\docs\a` corresponds to `id docs a`, with `id` corresponding to `C:\mnt\usb\`.
 - The PowerShell command `Get-ChildItem -LiteralPath <disk path> -Force -Name` gives the s of the Es of the folder `at(D, p)`, as strings.
 - The PowerShell command `(Get-Item -LiteralPath <disk path> -Force).Attributes` gives the attributes at `<disk path>`. When the attributes hold `ReparsePoint`, the program `fsutil`, run as `fsutil reparsepoint query <disk path>`, prints the tag and the target at `<disk path>`.
   - `at(D, p)` is an other when the tag is `0xA000000C` (a symbolic link), `0xA000001D` (a symbolic link of WSL), `0x8000001B` (an app execution alias), `0x80000023`, `0x80000024`, `0x80000025` or `0x80000026` (a socket, a fifo or a device of WSL), or `0xA0000003` with a target other than `\??\Volume{<guid>}\` (a junction).
-  - Otherwise `at(D, p)` is an id when the attributes hold `Directory`, and a file when they do not: a folder where a volume is mounted, a OneDrive placeholder, a compressed file and a deduplicated file are folders and files.
+  - Otherwise `at(D, p)` is an id when the attributes hold `Directory`, and a file when they do not.
   - `at(D, p)` is undefined when `Get-Item` fails because nothing is at `<disk path>`.
 - The PowerShell command `New-Item -Path <disk path>\s -ItemType File` creates the file `<disk path>\s`, and fails when `at(D, p s)` is defined; it corresponds to `create(D, p s, file)` for the file with no content and the current time.
 - The PowerShell command `Remove-Item -LiteralPath <disk path>\s -Recurse -Force` corresponds to `delete(D, p s)` when no mount point m has `same(D, m, p s)` or `inside(D, m, p s)`; otherwise the desk refuses `delete(D, p s)`.
@@ -308,5 +309,5 @@ Two mount points of one shared folder of the network can give that folder two di
 - The PowerShell command `if (Get-Item -LiteralPath <disk path2>\s2 -Force -ErrorAction Ignore) { throw }; Move-Item -LiteralPath <disk path1>\s1 -Destination <disk path2>\s2` corresponds to `move(D, p1 s1, p2 s2)` with the condition of Linux.
 - The PowerShell commands `Rename-Item -LiteralPath <disk path>\s -NewName <n>` and then `Rename-Item -LiteralPath <disk path>\<n> -NewName s'`, with `<n>` an s for which `Test-Path -LiteralPath <disk path>\<n>` gives `False`, run when `Test-Path -LiteralPath <disk path>\s'` gives `False` or when s' and s are equal for `-ieq`, correspond to `rename(D, p s, s')`; otherwise the desk refuses `rename(D, p s, s')`.
 - The PowerShell command `Set-Content -LiteralPath <disk path>\s -AsByteStream -Force -Value <bytes>`, then `(Get-Item -LiteralPath <disk path>\s -Force).LastWriteTimeUtc= <time>`, with the bytes and the time of `file'`, corresponds to `write(D, p s, file')` when `GetFileInformationByHandle`, on `<disk path>\s` opened by `CreateFileW`, gives `nNumberOfLinks` 1; otherwise the desk refuses `write(D, p s, file')`.
-- The order of the s: the first unit that differs decides, and a shorter s comes before the longer s it starts.
+- The order of the s: the lexicographic order of their 16 bit units, each unit a number from 0 to 65535.
 - The 'junk file', 'junk folder', 'fixed segment', 'fixed name' and 'clash' rules read s as text: the UTF-16 text of s, where each surrogate without its pair is a character other than `a` to `z`, digits and `_`.
