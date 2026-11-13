@@ -167,8 +167,8 @@ return node(Str name:names){ if(name.size > 3){ out.send(name); }}.list;
 
 ## Current design
 
-A whole flow expression is a source, then stages, then one terminal.
-The source and the stages only record what they are, in the chain; the terminal checks the chain and runs the whole flow expression.
+The source and the stages record what they are, in the chain; the terminal checks the chain and runs the whole flow expression.
+`.limit 0` and a stage called on a flow already consumed throw where they are called, before the terminal.
 
 ### Signatures
 
@@ -176,7 +176,7 @@ The source and the stages only record what they are, in the chain; the terminal 
 ActorImpl[S:*,E:*,R]:      { read #(down: mut ActorSink[R],  state: S,      e: E): mut ContinueBreak[Void] }
 ActorImplMut[S:*,E:*,R:*]: { read #(down: mutH ActorSink[R], state: mutH S, e: E): mut ContinueBreak[Void] }
 ActorSink[E:*]: Sealed {
-  mut #(e: E): Void->_Magic!;//sends `e` downstream: the stages after it receive `e` before `#` returns.
+  mut #(e: E): Void->_Magic!;//sends `e` downstream: the stage after the actor receives `e` before `#` returns, unless a stage after the actor has already returned `Break#`; then `e` is dropped.
   read .push: ActorSinkHelper->ActorSinkHelper;
   read .pushOpt: ActorSinkOptHelper->ActorSinkOptHelper;
   }
@@ -204,9 +204,9 @@ IfSome: {
   #[E:*](b: Bool, e: E): mut Opt[E] -> b ?[mut Opt[E]]{
     .then -> Opts#e; .else -> {} 
   } }
-Yield: Sealed { #: Void->_Magic! }//returns `Void` if the current thread has not been listed for termination
+Yield: Sealed { #: Void->_Magic! }
 Rev: { #[T,K](by: OrderBy[T,K]): OrderBy[T] ->
-  {t0, t1, m -> by#t0 <=> (by#t1, {.lt -> m.gt; .eq -> m.eq; .gt -> m.lt})} 
+  {t0, t1 -> (by#t0 <=> (by#t1))#{.lt -> {::.gt}; .eq -> {::.eq}; .gt -> {::.lt}}}
   }
 _Collapse: {
   #[E:*,K](xs: mut List[E], by: OrderBy[imm E,K]): mut List[E] -> Block#
@@ -224,13 +224,9 @@ _Collapse: {
   }
 _CollapseStep: {
   #[E:*,K](last: mut Var[mut Opt[read Order[K]]], kept: mut Var[mut EList[E]], o: read Order[K], e: E): Void ->
-    last.get.match{
-      .empty -> Block#(last.set(Opts#o), kept.get.add(e), Void);
-      .some b -> o <=> (b, {
-        .lt -> Block#(last.set(Opts#o), kept.get.add(e), Void);
-        .eq -> Void;
-        .gt -> Block#(last.set(Opts#o), kept.get.add(e), Void) }) 
-      }
+    last.get.match{ .empty -> True; .some b -> o != (b.close) } ?[Void]{
+      .then -> Block#(last.set(Opts#o), kept.get.add(e), Void);
+      .else -> Void }
   }
 _MappingStep: { #[K,E:*](m: mut Map[K,E], k: K, e: E): mut Map[K,E] ->
   m.containsKey(k) ?[mut Map[K,E]]{//`Map` and `ESet` place their keys with the calls of `_KeepNew`
@@ -270,14 +266,12 @@ _Merges: { #[E:*,K](k: Nat): _TreeMerge[E,K] -> {a, b -> _MergeFrom#(a, 0, b, 0,
 _MergeFrom: { #[E:*,K](a: mut List[mut _Keyed[E,K]], i: Nat, b: mut List[mut _Keyed[E,K]], j: Nat, k: Nat, res: mut EList[mut _Keyed[E,K]]): mut List[mut _Keyed[E,K]] ->
   res.size == k ?[mut List[mut _Keyed[E,K]]]{ .then -> res.list; .else ->
   i == (a.size) ?[mut List[mut _Keyed[E,K]]]{
-    .then -> j == (b.size) ?[mut List[mut _Keyed[E,K]]]{ .then -> res.list; .else -> _MergeFrom#(a, i, b, j + 1, k, res.addAnd(b.get j)) };
-    .else -> j == (b.size) ?[mut List[mut _Keyed[E,K]]]{ .then -> _MergeFrom#(a, i + 1, b, j, k, res.addAnd(a.get i)); .else ->
+    .then -> j == (b.size) ?[mut List[mut _Keyed[E,K]]]{ .then -> res.list; .else -> _MergeFrom#(a, i, b, j + 1, k, res.add(b.get j)) };
+    .else -> j == (b.size) ?[mut List[mut _Keyed[E,K]]]{ .then -> _MergeFrom#(a, i + 1, b, j, k, res.add(a.get i)); .else ->
       a.get(i).key <= (b.get(j).key.close) ?[mut List[mut _Keyed[E,K]]]{
-        .then -> _MergeFrom#(a, i + 1, b, j, k, res.addAnd(a.get i));
-        .else -> _MergeFrom#(a, i, b, j + 1, k, res.addAnd(b.get j)) } } } } }
-_MaxMerges: { #[E:*,K]: _TreeMerge[E,K] -> {a, b -> _MaxPick#(a.getFirst.key <=> (b.getFirst.key, { .lt -> 0; .eq -> 1; .gt -> 2 }), a, b)} }
-_MaxPick: { #[E:*,K](o: Nat, a: mut List[mut _Keyed[E,K]], b: mut List[mut _Keyed[E,K]]): mut List[mut _Keyed[E,K]] ->
-  o == 0 ?[mut List[mut _Keyed[E,K]]]{ .then -> b; .else -> o == 1 ?[mut List[mut _Keyed[E,K]]]{ .then -> a ++ b; .else -> a } } }
+        .then -> _MergeFrom#(a, i + 1, b, j, k, res.add(a.get i));
+        .else -> _MergeFrom#(a, i, b, j + 1, k, res.add(b.get j)) } } } } }
+_MaxMerges: { #[E:*,K]: _TreeMerge[E,K] -> {a, b -> (a.getFirst.key <=> (b.getFirst.key))#{ .lt -> b; .eq -> a ++ b; .gt -> a }} }
 _HashedKey[K]: { read .hash: Nat; read .key: read OrderHash[K]; }
 _HashedKeys: { #[K](h: Nat, o: read OrderHash[K]): read _HashedKey[K] -> { .hash -> h; .key -> o; } }
 _Distinct: { #[E:*,K](xs: mut List[E], by: OrderHashBy[imm E,K]): mut List[E] -> Block#
@@ -290,7 +284,7 @@ _Distinct: { #[E:*,K](xs: mut List[E], by: OrderHashBy[imm E,K]): mut List[E] ->
     Continue#) } }
   .return{ kept.get.list } }
 _DistinctStep: { #[E:*,K](keys: mut Var[read List[read _HashedKey[K]]], kept: mut Var[mut EList[E]], o: read OrderHash[K], e: E): Void ->
-  _KeepNew#(keys, o) ?{ .then -> kept.get.add(e); .else -> Void } }
+  _KeepNew#(keys, o) ?{ .then -> kept.get.add(e).void; .else -> Void } }
 _KeepNew: { #[K](keys: mut Var[read List[read _HashedKey[K]]], o: read OrderHash[K]): Bool -> _KeepHashed#(keys, o, o.hash) }
 _KeepHashed: { #[K](keys: mut Var[read List[read _HashedKey[K]]], o: read OrderHash[K], h: Nat): Bool ->
   keys.get.seqFlow.any{kk -> kk.hash == h ?{ .then -> o == (kk.key.close); .else -> False }} ?{
@@ -342,7 +336,7 @@ Map[K,E:*]: {//the two channels of `.flow` have the same size, so the `get` meth
 Range[N]: ToFlow[N] { .flow: mut Flow[N]; .flow(stepSize: N): mut Flow[N]; }
 Opt[E]: ToFlow[E] {}
 UStr: ToFlow[Nat] { .flow: mut Flow[Nat]; }
-Flows: { #[R:*](r1: R, .., rn: R): mut Flow[R]; }//from 0 to 16 elements, in mode Seq
+Flows: { #[R:*](r1: R, .., rn: R): mut Flow[R]; }//from 0 to 16 elements
 
 Flow[E:*]: {
   //core terminals
@@ -362,10 +356,10 @@ Flow[E:*]: {
     this.actorMut[Void, R](Void, {down, _, e ->
       Block#(f#e .seqFlow.for(down, {d, x -> d.push#(d, x)}), Continue#)});
   mut .map[R:*](f: read F[E, R]): mut Flow[R] -> this.flatMapMut{e -> Lists#(f#e)};
-  mut .filter(f: read F[E, Bool]): mut Flow[E] -> this.flatMapMut{e -> f#e ?[mut List[E]]{ .then -> Lists#e; .else -> {} }};
+  mut .filter(f: read F[E, Bool]): mut Flow[E] -> this.flatMapMut{e -> IfSome#(f#e, e)};
   mut .flatMap[R:*](f: read F[E, read ToFlow[R]]): mut Flow[read/imm R] -> this.flatMapMut{e -> f#e .seqFlow.list};
   mut .peek(f: read F[E, Void]): mut Flow[E] -> this.map{e -> Block#(f#e, e)};
-  mut .mapFilter[R:*](f: read F[E, mut Opt[R]]): mut Flow[R] -> this.map f .filter{o -> o.isSome}.map{o -> o!};
+  mut .mapFilter[R:*](f: read F[E, mut Opt[R]]): mut Flow[R] -> this.flatMapMut{e -> f#e};
   mut .limit(n: Nat): mut Flow[E] -> n == 0 ? {
     .then -> Error.msg`.limit 0 asks a whole chain of stages for no elements`;
     .else -> this.actorMut[mut Count[Nat], E](Count.nat n, {down, s, e -> Block#(
@@ -387,12 +381,12 @@ Flow[E:*]: {
   mut .sortDistinct[K](by: OrderBy[imm E,K]): mut Flow[E] -> this.sort by .allToAll{xs -> _Collapse#(xs, by)};
   mut .distinctMut[K](by: OrderHashBy[imm E,K]): mut Flow[E] -> this.allToAll{xs -> _Distinct#(xs, by)};
   mut ++ (b: read ToFlow[E]): mut Flow[read/imm E] -> this.allToAll{xs -> _Append#(xs, b)};
-  mut .readOnly: mut Flow[read/imm E] -> this.flatMap{e -> Lists#e};
+  mut .readOnly: mut Flow[read/imm E] -> this.map[read/imm E]{e -> e};
   //desugared terminals
   mut .for[A](a: mutH A, f: mut ForEachBody[A,E]): Void -> this.allToAll{xs -> xs}.forEach(a, f);
   mut .for(f: mut MF[E,Void]): Void -> this.for(Void, {_, e -> f#e});
   mut .forEach(f: mut MF[E,Void]): Void -> this.forEach(Void, {_, e -> f#e});
-  mut .eList: mut EList[E] -> this.fold({ELists#[E]}, {acc, e -> Block#(acc.add e, acc)});
+  mut .eList: mut EList[E] -> this.fold({ELists#[E]}, {acc, e -> acc.add e});
   mut .list: mut List[E] -> this.eList.list;
   mut .eSet[E', K](asImm: mut AsImm[E, E'], by: OrderHashBy[E', K]): mut ESet[E'] ->
     this.fold({ESets#[E', K](by)}, {s, e -> s.add(asImm#e)});
@@ -462,16 +456,16 @@ BiFlow[A:*,B:*]: {
   mut .mapping[K,K0,E0:*](by: OrderHashBy[K,K0], kem: BiKeyElemMapper[A,B,K,E0]): mut Map[K,E0] ->
     this.getFold({Maps#(by)}, {m, a, b -> _BiMappingStep#(m, kem.key(a, b), kem.elem(a, b))});
   }
-TriFlow[A:*,B:*,C:*]: {//the methods of `BiFlow` over three channels, except `.withBoth` and `.mapping`, and `.fillC`
+TriFlow[A:*,B:*,C:*]: {//the methods of `BiFlow` over three channels, except `.withBoth` and `.mapping`, plus `.fillC`
   mut .with[D:*](flow: mut Flow[D]): mut QuadFlow[A,B,C,D];
   mut .enumerate: mut QuadFlow[Nat,A,B,C];
   }
-QuadFlow[A:*,B:*,C:*,D:*]: {}//the methods of `TriFlow` over four channels, except `.with` and `.enumerate`, and `.fillD`
+QuadFlow[A:*,B:*,C:*,D:*]: {}//the methods of `TriFlow` over four channels, except `.with` and `.enumerate`, plus `.fillD`
 ```
 
 ### Modes
 
-Every source records a mode: `.seqFlow`, `Flows#`, `Map.elems` and the merges record `Seq`, `.flow` with no argument records `ParImm`, and `.flow(mode)` records the mode passed. The mode changes nothing a flow expression returns: it only selects which misuse exceptions of **Misuse exceptions** apply.
+Every source records a mode: `.seqFlow`, `Flows#`, `Map.elems` and the merges (so also `Map.flow(f)`) record `Seq`; `.flow` with no argument, `Range.flow(stepSize)` and `Map.keys` record `ParImm`; `.flow(mode)` records the mode passed. The mode changes nothing a flow expression returns: it only selects which misuse exceptions of **Misuse exceptions** apply.
 
 ### Core methods
 
@@ -980,10 +974,10 @@ The mode decides which strategies the terminal may pick:
 - `ParRepr` over `mut Repr[T]` and `ParPod` over `mut IsoPod[T]`: the parallel strategies too, over elements each owning its mutable state.
 
 The source records the mode:
-- `.flow` with no argument exists only where the type of the receiver shows that every element is `imm`, and records `ParImm`: `.flow` on an imm `List` or `EList`, on a `Set` and an `ESet`, `.keys` of a `Map`, `UStr`, and the ranges (`0 =~~= 199`, `.flow(step)`).
+- `.flow` with no argument exists only where the type of the receiver shows that every element is `imm`, and records `ParImm`: `.flow` on an imm `List` or `EList`, on a `Set` and an `ESet`, `.keys` of a `Map`, `UStr`, and the ranges (`0 =~~= 199`, `.flow(stepSize)`).
 - `.seqFlow`, on every `ToFlow`, records `Seq` and `.hintSequential`.
 - `.elems` of a `Map` and the merges record `Seq` and `.hintSequential`; **Multi flows** says why for the merges.
-- `xs.flow(mode)` on a read or mut `List` or `EList` records the mode passed; the type of `mode` checks the elements: `ParImm[T:imm]`, `ParRead[T:imm,read]`, `ParRepr[T]` over `mut Repr[T]`, `ParPod[T]` over `mut IsoPod[T]`. The flow object keeps the mode passed, and the checks tell the modes apart by its type.
+- `xs.flow(mode)` on a read or mut `List`, or on a mut `EList`, records the mode passed; the type of `mode` checks the elements: `ParImm[T:imm]`, `ParRead[T:imm,read]`, `ParRepr[T]` over `mut Repr[T]`, `ParPod[T]` over `mut IsoPod[T]`. The flow object keeps the mode passed, and the checks tell the modes apart by its type.
 - `Flows#` records `Seq` and `.hintSequential`.
 - `.recoverFlow(mode)` records the mode passed for the stages after it, with no hint; the type of `mode` checks the elements, as for `.flow(mode)`. In `persons.seqFlow.map{p -> p.computeDNA}.recoverFlow(ParImm#).map{..}.list`, with `persons` a `mut List[mut Person]` and `computeDNA` returning an `imm` value, the second `map` can run in parallel. After a `++`, a `flatMap`, a `distinct`, an `actor` or a `scan` the elements are `read` or `imm`, so `.recoverFlow(ParRead#)` fits there. An `Opt` offers only `.seqFlow`, since a flow of at most one element has nothing to run in parallel: in `opt.seqFlow.flatMap f .recoverFlow(ParRead#).map g .list`, `g` can run in parallel over the elements `f` returns.
 
@@ -1288,17 +1282,17 @@ Maxes: { #[E:*,K](xs: mut List[E], by: OrderBy[imm E,K]): mut List[E] -> Block#
 MaxesStep: { #[E:*,K](best: mut Var[mut Opt[read Order[K]]], run: mut Var[mut EList[E]], o: read Order[K], e: E): Void ->
   best.get.match{
     .empty -> Block#(best.set(Opts#o), run.get.add(e), Void);
-    .some b -> o <=> (b, {
+    .some b -> (o <=> b)#{
       .lt -> Void;
       .eq -> Block#(run.get.add(e), Void);
-      .gt -> Block#(best.set(Opts#o), run.set(ELists#[E]), run.get.add(e), Void) }) } }
+      .gt -> Block#(best.set(Opts#o), run.set(ELists#[E]), run.get.add(e), Void) } } }
 ```
 
 Both make `n-1` calls of `by` on `n` elements: the linear scan compares each element after the first with the current maximum, and the max tree makes one call per merge, over `n-1` merges. `n-1` comparisons is the least any algorithm finding the maximum makes, and the tournament method reaches it (Knuth, The Art of Computer Programming, vol. 3, 5.3.3), so running the max tree under the sequential strategy costs no extra call. It keeps at most about `log2 n` pending blocks, as the binary counter of `_Sort#` does, where the linear scan keeps one; when many elements tie, each merge concatenates two runs, where the linear scan appends each tied element once.
 The two differ in which pairs they compare. The linear scan compares each element with the current maximum, so every call depends on the answer of the call before it, and the calls can not be split between workers. The max tree compares pairs fixed by the indexes alone, so the merges of different blocks run on different workers. The difference is observable only when a call of `by` throws, does not terminate, or breaks the contract of an order.
 `Maxes` computes `by#e` once per element, as `_Max#` does.
 
-`Rev` swaps the outcome, not the arguments: `by#t0 <=> (by#t1, m')` computes the key of `t0` before the key of `t1`, as `by` itself does, so every call `by` receives is the same call, in the same order, in both. Ties stay ties, so the same elements are sent downstream in the same flow order, and if a call of `by` throws or does not terminate, it is the same call.
+`Rev` swaps the outcome, not the arguments: `(by#t0 <=> (by#t1))#m'` computes the key of `t0` before the key of `t1`, as `by` itself does, so every call `by` receives is the same call, in the same order, in both. Ties stay ties, so the same elements are sent downstream in the same flow order, and if a call of `by` throws or does not terminate, it is the same call.
 
 ### sortDistinct
 
@@ -1307,7 +1301,7 @@ The other candidates, `.distinct by .sort by` and `.sort by .distinct by`, do no
 Sorting before collapsing is what makes the hash unnecessary.
 Since the sort is stable, the element kept for each class is the one with the smallest index, the same one `.distinct` keeps.
 The desugaring sorts the duplicates too; dropping an element as soon as it compares equal to one already placed, for example while inserting into an ordered tree, would make other calls of `by` than `_Sort` then `_Collapse`, so no strategy does it.
-`_Collapse` keeps, of each run of tied elements, the element with the smallest index; after a stable sort the elements `by` ranks together are adjacent, so each element is compared only with the kept element before it in flow order, and the state is a single key rather than a set of all kept keys. `_Distinct` compares each element only with the kept keys of equal hash, through `_KeepNew`. Both keep each key as the `read Order[K]` that `by#e` returns, in a plain `mut Var`, and compare with `<=>`: nothing needs the key as a `K`. Everything happens inside the one call over the list, so no key outlives the call and nothing is hygienic.
+`_Collapse` keeps, of each run of tied elements, the element with the smallest index; after a stable sort the elements `by` ranks together are adjacent, so each element is compared only with the kept element before it in flow order, and the state is a single key rather than a set of all kept keys. `_Distinct` compares each element only with the kept keys of equal hash, through `_KeepNew`. Both keep each key as the `read Order[K]` that `by#e` returns, in a plain `mut Var`, and compare with `!=` (`_Collapse`) and `==` (`_Distinct`): nothing needs the key as a `K`. Everything happens inside the one call over the list, so no key outlives the call and nothing is hygienic.
 
 ### distinct and distinctMut
 
@@ -2633,7 +2627,7 @@ The type system blocks what is subtly unsound for exactly the reasons this docum
 - a `mut` lambda passed to `Repr.mutate` may capture `mut` bindings, and the inner entity still can not leave through them: `acc.add(c.get)` compiles and `acc.add(c)` does not;
 - no Fearless code can stop a call at a `down.push#`, so a rule that did so was not a semantics, and the call completes;
 - a fence that runs its lambda as it receives the elements (**for and forEach**) is making speculative calls, whose exceptions are held like any other.
-- an empty literal `{}` where a `ToFlow` is expected is an instance of `ToFlow` itself, which is sealed and has no body: the empty branch of `filter` names its type, `?[mut List[E]]`;
+- an empty literal `{}` where a `ToFlow` is expected is an instance of `ToFlow` itself, which is sealed and has no body: the empty branch of `IfSome` names its type, `?[mut Opt[E]]`;
 - the methods of `KeyElemMapper` are `imm`, so `mapping` takes it `imm`, not `read`;
 - a signature that compiles can still promise too much: a `read .flow` on `Map` returning `mut Flow[KeyElem[K,read/imm E]]` compiles, and so does a client taking an `imm` element out of a `read` map of `mut` elements through it, since a `KeyElem` written with no capability is `imm`; only compiling such a client shows it. `Map.flow` returns a `BiFlow`, so the capability of each element is written directly in the type of its channel.
 Each rule above came out of writing the desugaring in Fearless and compiling it; the shapes that compile are in `test_max_shapes.fear` and `flow_actor_shapes.fear` of the standard library.
