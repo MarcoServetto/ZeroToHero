@@ -9,17 +9,25 @@ They may be very slow or otherwise inefficient. They are designed to be obviousl
 
 ### Terms
 
-- 'data project': a registered project of kind `dataRead` or `dataEdit`. No Fearless program writes a `dataRead` project; a main can read and write a `dataEdit` project.
+- 'data project': a registered project of kind `dataRead` or `dataEdit`.
 - 'DataRead type': a type implementing `base.DataRead`. 'DataEdit type': a type implementing `base.DataEdit`. Every DataEdit type is also a DataRead type.
-- 'mount': an entry of `mounts` in `projects.info` (see Registered projects in ControllersDesign): a data project mounted on a DataRead type of a code project.
-- 'broken mount': a mount naming a type that is not a DataRead type of the code project, a mount naming a project that is not registered (a mount whose data project was forgotten: a `Mount` naming a project that is not registered is ill formed) or that is not a data project, a mount of a `dataRead` project on a DataEdit type, and a mount of a data project with invalid content (see Project states in ControllersDesign).
+- 'mount': an entry of `mounts` in `projects.info` (see Registered projects in ControllersDesign): a data project mounted on a DataRead type of a project.
+- 'broken mount': a mount `t -> n` of a project p with `broken(p, t -> n)`:
+```
+broken(p, t -> n)  iff  one of these holds:
+  t is not a DataRead type of p
+  n is not the name of a registered project
+  n names a project of kind idle or code
+  n names a project of kind dataRead, and t is a DataEdit type
+  n names an 'invalid' project (see Project states in ControllersDesign)
+```
 - 'fsFolder': a folder of the underlying file system. 'fsFile': a file of the underlying file system.
-- 'resource space': the virtual tree that Fearless code accesses through `CapDataRead` and `CapDataEdit`: the 'fsFolder' of a data project, mapped following the rules of `Coordinator.pkgsBuilt(fsFolder, baseCache)`.
-- 'resource': an element of the 'resource space'. A 'resource' is a 'folder' or a 'file', the two kinds of 'resource' that the Fearless API exposes. For example, an 'fsFile' `foo.zip` is not a 'file', but it induces a 'folder' `foo`.
+- 'resource space': the virtual tree that Fearless code accesses through `CapDataRead` and `CapDataEdit`: the 'fsFolder' of a data project, where an 'fsFile' `x.zip` induces a 'folder' `x` holding the 'resources' of the zip (as for the `.path` of a file, see The data in CoordinatorDesign).
+- 'resource': an element of the 'resource space': a 'folder' or a 'file'.
 
 ## Base
 
-Each method of `CapDataRead` and of `CapDataEdit` acts on the data project mounted on the DataRead type, as Data projects of a running main says.
+`sys.dataRead(data)` gives a `CapDataRead` and `sys.dataEdit(data)` gives a `CapDataEdit`; each method of that capability acts on the data project mounted on the DataRead type named `data.name`, as Data projects of a running main says.
 
 Example:
 ```
@@ -32,14 +40,12 @@ ShowDiary: Main{ sys -> ... sys.dataEdit(Diary).read(List#(`y2026`, `today.txt`)
 `sys.dataRead(Diary)` gives the capability to only read the data project mounted on `Diary`.
 `sys.dataEdit(Pub)` is a type error: `Pub` is not a DataEdit type.
 
-The DataRead types of a code project are the concrete DataRead types of every package of the code project.
-A concrete DataRead type has zero generic parameters.
-`sys.dataRead(data)` and `sys.dataEdit(data)` find the data project by `data.name`.
+The DataRead types of a code project are known when `Coordinator.check` gives `State.compiled`: the `.dataRead` and the `.dataEdit` of the `.manifest` of `State.compiled` (see CoordinatorDesign).
 The manifest of `base` lists no DataRead type.
 
 ## What the compiler records
 
-The manifest of each package (the `.manifest` of `<pkg>.json`, see CoordinatorDesign) lists under `dataRead` the concrete DataRead types of the package that are not DataEdit types, and under `dataEdit` the concrete DataEdit types of the package:
+The manifest of each package (the `.manifest` of `<pkg>.json`, see CoordinatorDesign) lists under `dataRead` the summonable DataRead types (see AttenuationDesign) of the package that are not DataEdit types, and under `dataEdit` the summonable DataEdit types of the package:
 ```
 {
   "mains": { "hello.ShowDiary": [...] },
@@ -56,22 +62,37 @@ A broken mount is well formed; a `Run` of a code project with a broken mount is 
 
 ## Data projects of a running main
 
-When a `Run` starts, the manager gives each main of that `Run` the 'fsFolder' of every data project mounted on a DataRead type of the project, by the qualified name of that DataRead type.
-A process started by `CapProcess` has the mounts of the parent process (see Processes in AttenuationDesign).
-A data project that changes on disk while a main runs is not checked again.
+When the manager starts a main, the manager gives the main the 'fsFolder' and the 'lock file' of every data project mounted on a DataRead type of the project, by the qualified name of that DataRead type (the `.mounts` and the `.locks` of `Launch`, see CoordinatorDesign).
+A process started by `CapProcess` gets the data projects of the process that starts it (see Processes in AttenuationDesign).
+The manager checks the mounts of the project of a main only when the main starts: a data project that becomes 'invalid' while a main runs does not end the main.
 A main does not see the marker of a data project or the 'fsFiles' and 'fsFolders' whose name starts with "."; a path naming one of those is not valid.
-An 'fsFile' `foo.zip` induces a 'folder' `foo` holding the 'resources' of the zip: a listing, a read, a write and a delete give the same results in that 'folder' as in a 'folder' induced by an 'fsFolder', so a main can not tell the two apart.
+A listing, a read, a write and a delete give the same results in a 'folder' induced by an 'fsFile' as in a 'folder' induced by an 'fsFolder'.
 A write inside a 'folder' induced by an 'fsFile' rewrites that 'fsFile'.
 A path is the list of the 'folder' names, then the name of the 'resource'.
 `.paths` gives the names of the 'resources' in the 'folder' at the path, sorted; the empty path is the root 'folder'.
 A 'folder' name is a 'valid segment' (see FolderShapesDesign).
 A 'file' name is a 'valid file name' (see FolderShapesDesign) whose extension is not `zip` or `fearless`.
-A written path is at most 200 characters long.
+The names of a written path, joined with `/`, are at most 200 characters long.
 A write replaces the 'file' at the path, or creates the 'file' together with the missing 'folders' of the path.
 
-A delete deletes a 'file', or a 'folder' with every 'resource' in the 'folder' and the 'fsFiles' and 'fsFolders' whose name starts with "."; then the delete deletes the 'folders' that the delete leaves empty, and the 'fsFiles' that induce them.
-A path that is not valid, or a request that the 'resources' of the data project do not allow, like a path naming no 'resource', a path naming a 'resource' of the other kind, or a delete of the root 'folder', is a deterministic error.
-A data project that is not mounted, a root 'fsFolder' that can not be reached, a 'resource' that exists but can not be read or changed, and a 'folder' holding a name that is not valid are non deterministic errors.
+A delete deletes a 'file', or a 'folder' with every 'resource' in the 'folder' and the 'fsFiles' and 'fsFolders' whose name starts with "."; then the delete deletes the 'folders' other than the root 'folder' that the delete leaves empty, and the 'fsFiles' that induce them.
+These are deterministic errors:
+- a path that is not valid;
+- a path of `.paths`, of `.read` or of a delete that names no 'resource';
+- a path of `.paths` that ends with a 'file' name;
+- a path of `.read` or of a write that is empty or ends with a 'folder' name;
+- a delete of the empty path.
+
+A DataRead type with no data project given to the main, a root 'fsFolder' that can not be reached, a 'resource' that exists but can not be read or changed, and a 'folder' holding a name that is not valid are non deterministic errors.
+
+```
+A The data project diary is mounted on hello.Diary, a DataEdit type of the code project hello.
+B The folder of diary holds diary.fearless, .notes.txt, y2026/today.txt and old.zip; old.zip holds y2025/today.txt and nothing else.
+C A main of hello calls sys.dataEdit(Diary).paths(List#) and gets `old` and `y2026`.
+D The main calls sys.dataEdit(Diary).paths(List#(`old`)) and gets `y2025`.
+E The main calls sys.dataEdit(Diary).delete(List#(`old`, `y2025`, `today.txt`)).
+F The folder of diary holds diary.fearless, .notes.txt and y2026/today.txt.
+```
 
 ## Locks of data projects
 
@@ -100,7 +121,6 @@ The lock is a lock of the operating system on the 'lock file' of the data projec
 The operating system releases the locks of a process when the process ends, however the process ends.
 The 'lock file' of a data project is `locks/<hash>.lock` in the manager folder, where `<hash>` is the SHA-256 of the absolute path of the 'fsFolder' of the data project, in hexadecimal.
 The 'inner lock' is a lock of the operating system on the 'inner lock file' `locks/<hash>_inner.lock`, next to the 'lock file'.
-When a `Run` starts, the manager gives each main the 'lock file' of each data project it gives, next to the 'fsFolder'.
 The 'lock file' holds nothing, and its existence means nothing: a process creates the 'lock file' when the 'lock file' is missing.
 When the manager starts, the manager deletes every file of `locks` that is not the 'lock file' or the 'inner lock file' of a registered project, unless a process holds a lock of it.
 A process keeps one open channel to each 'lock file', with a lock of its own threads in front of the lock of the operating system: on Linux and macOS, closing any channel to a file releases every lock that the process holds on that file.
