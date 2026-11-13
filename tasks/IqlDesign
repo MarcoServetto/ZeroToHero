@@ -8,9 +8,6 @@ IQL asks the user for structured input: a dialog with named fields, each with a 
 IQL is a capability of System of its own: a program uses it with or without a Gui.
 An IQL dialog is a window built with the widgets of the Gui library, never a dialog of the toolkit.
 The IQL syntax is fluent, like the syntax of the Gui, and simpler and less flexible on purpose.
-The result of an IQL query is something the program waits on.
-One API waits on a result: the end of a process, the next input file, the result of a dialog.
-A Frame can be disabled: while a dialog is open, the frame behind it takes no input.
 
 Open: the IQL syntax, and the types Query and Answer.
 
@@ -29,18 +26,16 @@ Terms
 Threads
 =======
 
-One thread at a time runs mut code of the program.
 The thread that calls CapGui.run runs the consumer of .run, then waits until the window closes.
 Meanwhile the model thread of the frame runs the model events.
 A model event that calls CapGui.run waits in the same way until the new window closes.
-So the threads running mut code of the program form a stack, and only the top of the stack runs.
+The threads that call CapGui.run and the model threads of the frames form a stack: of these threads, only the top of the stack runs.
 The toolkit thread runs only imm code of the program: the painters.
 
 The getters
 ===========
 
 Every getter of an object reached from CapGui is mut: the frame, the widgets, the menus and their builders.
-What the user or time changes (the text of a TextField, the positions of the dividers of a Split, Frame.elapsed) is then observed only through a mut reference, as every other observation of the world.
 A getter whose name is the name of a setter with no parameter takes another name: .fills is the getter of .fill.
 The values the library gives to painters and callbacks keep read getters: Graphics, CaretGraphics, TextRoom, ScreenContext, ResizeRequest, TextEvent, UTextEvent, KeyEvent.
 Each of them describes one moment and never changes.
@@ -68,7 +63,7 @@ Model events, each registered by the setter on the left:
     _StrEditText.cleaner, _UStrEditText.cleaner, .onEdit
                                one change of the text by the user: a typed text, a text of an input method, a paste, a cut,
                                Backspace, Delete, Shift+Enter, an undo, a redo.
-                               The cleaner maker makes the cleaner of the change; .onEdit runs when the text changed.
+                               The cleaner maker makes the cleaner of each change but an undo and a redo; .onEdit runs when the text changed.
     .onCommit                  Enter, Ctrl+Enter, and the focus leaving the widget by a press elsewhere, Tab or Shift+Tab,
                                when the text differs from the committed text.
 
@@ -77,7 +72,8 @@ Library tasks run no callback: a press or a drag that moves the caret, the steps
 The toolkit thread alone handles the rest, and runs no callback:
 hover highlighting, tooltips, the wheel, scroll bars, the drag of a divider of a Split,
 a menu that is open (highlighting, keys, scrolling, closing, opening a submenu),
-the focus, except the .onCommit and the .released actions that a move of the focus causes, the composition of an input method, the full screen key, the states of the window, the drag of the Fearless corner, the repaints.
+the focus, except the .onCommit and the .released actions that a move of the focus causes,
+the composition of an input method, the full screen key, the states of the window, the drag of the Fearless corner, the repaints.
 A file dropped on the window goes to the list of the input files (CapInputCursor), with no model task.
 
 Code of the program that runs outside callbacks:
@@ -99,7 +95,6 @@ Disabling a frame
 A frame starts enabled.
 While a frame is disabled, the library drops each model event of the frame instead of queuing it: no callback of the frame starts.
 .enabled(False) also drops the model events of the frame already in its model queue.
-A ResizeRequest of a disabled frame is dropped like every other model event: the bands of a desk resize made while the frame is disabled stay until the next desk resize.
 The toolkit thread goes on as for an enabled frame.
 Each painter sees whether the frame is enabled through .enabled of its Graphics, and can draw a disabled look.
 
@@ -183,13 +178,11 @@ E The user drags the scroll bar of f. f scrolls.
 F The user answers the IQL dialog. The IQL dialog closes, and f shows the answer.
 G The user clicks Settings. An IQL dialog opens.
 ```
-An IQL dialog runs no code of the program: the library alone runs its window, so the stack of the threads running mut code of the program does not grow.
-A frame that stays enabled checks its laters from ModelFps.action, with .awaitUpTo(Duration#0) or Laters.firstUpTo(Duration#0, ...).
+An IQL dialog runs no code of the program.
 
 Implementation notes
 ====================
 
-Each handoff between two threads running mut code of the program is a happens-before edge: a queue, or a wait for a task to end.
-The library tasks are model tasks only so that the user and the program change a text widget in one order.
-Later is Sealed, so Laters.first waits on all its laters at once, with no polling.
+Each handoff between two threads of the stack is a happens-before edge: a queue, or a wait for a task to end.
+Laters.first waits on all its laters at once, with no polling.
 The revocable laters are made by a constructor internal to base.
