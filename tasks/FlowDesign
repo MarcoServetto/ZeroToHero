@@ -894,125 +894,22 @@ MaxesStep: { #[E:*,K](best: mut Var[mut Opt[read Order[K]]], run: mut Var[mut EL
 With `by` ranking no two elements of `l` together, `f` throwing on `e5` and `g` throwing on `f#e2`, `l.flow.map f .distinct by .map g .list` throws the exception of `g`, and `l.flow.map f .distinctMut by .map g .list` throws the exception of `f`.
 `.distinct by .filter p .first` runs the stages before `.distinct` on the elements up to the first one `.filter p` sends downstream; `.distinctMut by .filter p .first` runs them on every element.
 
-### ++ is a fence, and sends read or imm elements downstream
+### fold trickles
 
-`++` is a fence: every element of the receiver goes through the stages before the `++` before `++` sends any element downstream, the elements of `b` follow those of the receiver, and every element it sends downstream is `read` or `imm`. `++` reads `b` when it sends its elements downstream, after the stages before it have finished with every element: a stage before it may reach `b` through a `mut` element and change what `++` sends downstream, the same in every strategy.
+With `f` not terminating on `e1` and `h` throwing on its first call, `l.flow.map f .fold({0}, h)` throws the exception of `h`.
 
-### Consuming terminals trickle
+### get and getOpt
 
-`fold`, `foldAcc`, `mapping`, `set`, `eSet`, `sum` and `join` have work of their own that can throw or not terminate, so they are not `.list` followed by their work: with `f` not terminating on `e1`, and `h` throwing on the first call, `l.flow.map f .fold({0}, h)` throws, since the sequential strategy calls `h` on `f#e0` and never processes `e1`.
-Under pipeline parallelism such a terminal is a node of its own: it places, adds or sums the element at flow order `j` while the stage before it works on the element at flow order `j+1`.
-The terminals with no work of their own that can throw or not terminate, `list`, `eList`, `size`, `isEmpty`, `get`, `getOpt` and `last`, can be `.list` followed by their work.
-`fold`, `foldAcc`, `mapping`, `set` and `eSet` can read what their lambdas captured, as a stage can, but can not mutate anything that exists before the terminal: `fold` and `mapping` take `read` lambdas, `set` and `eSet` the `read #` of `AsImm`, and `foldAcc` mutates only the accumulator its `iso` lambda builds. So they need no fence.
-The calls of `fold` form a sequence, so its only parallelism is the node of its own, fed by the stages before it.
-
-### size runs every stage
-
-`size` just desugars to `.list.size`, even where it could be faster, because
-those optimisations are really brittle.
-In many other approaches we would have
-```
-es.map.size//fast
-es.map.filter.size//slow
-```
-
-### get, getOpt and isEmpty are consuming terminals
-
-The size is checked once every element has passed the whole chain, so
 ```
 Lists#(1,2,3).flow.map{x -> x == 3 ? {.then -> Error.msg`three`; .else -> x}}.get
 ```
-throws the exception `three`, not the exception about the size.
-Deciding at the element at index 1 would make them short-circuit terminals, and every call on an element with index greater than 1 would be a positive speculation call, which is not safe over `ParRepr` and `ParPod`.
-As consuming terminals they are parallelised exactly like `.list`.
-Implementing them as `.limit 2` followed by a check of the size is this short-circuit mistake: the example above would throw the exception about the size.
-
-`isEmpty` is `.size == 0`. As `.first.isEmpty` it would be a short-circuit terminal, with positive speculation calls, not allowed over `ParRepr` and `ParPod`, for a question whose answer is known from the size of the source whenever no stage runs user code.
-
-### set, eSet and mapping
-
-`set` and `eSet` take an `AsImm[E, E']`, whose `read #` turns each element into the `imm E'` the set holds, and an `OrderHashBy` over `E'`. `.eSet(asImm, by)` returns what adding `asImm#ej` in flow order to a fresh `mut ESet` under `by` returns, and `.set(asImm, by)` the `Set` of that `ESet`: the collection decides what adding an element `by` ranks together with one already present does.
-`.mapping(by, kem)` applies `kem.key` and `kem.elem` to each element, uses `by` to place the key among the keys already present, and throws when the key is already present. If there is a smallest index `j` such that this throws or does not terminate on `f#ej`, `l.flow.map f .mapping(by, kem)` returns what that call returns; otherwise it returns the map holding one entry per element, in flow order.
-
-**mapping throws on a repeated key:**\
-Two elements carrying the same key make `put` throw at the greater of the two indexes, so the whole flow expression
-throws rather than keeping one value and dropping the other; in other approaches the same chain may silently keep either value.
-
-Data parallel:
-
-`put` has two halves. Applying `kem.key` and `kem.elem` to `x` depends only on `x`, so it is elementwise and joins `map f` in one data parallel region: each task turns its chunk into key and element pairs.
-The placement can not be split: its calls to `by` must be the same in every strategy, so they are the calls of placing the keys one at a time, in flow order, into a single map. Building one map per chunk and merging them would call `by` on different pairs, which is observable when `by` throws or does not terminate.
-The placement then makes its calls one at a time, taking the pairs in flow order as the tasks finish them. An exception thrown by `f`, `kem.key` or `kem.elem` at index `j` is held until the placement has placed every key before `j`: if the placement finds a repeated key at a smaller index, that exception propagates instead, and the held exception is discarded (the calls at `j` are negative speculation calls).
-
-Pipeline parallelism:
-
-It can work as two nodes: one computes `map f`, `kem.key` and `kem.elem`, and one places the pairs into the map being built. The placing node receives the pairs in flow order.
-The two overlap in time: the placing node places the element at flow order `j` while the other node computes the element at flow order `j+1`. The same holds when a stage whose calls form a sequence, such as an `actor`, comes before `.mapping`: the terminal's own work on each element overlaps the work of that stage on the elements after it in flow order.
-As usual, `Yield#` is needed to cancel speculative calls that do not terminate, after an exception is thrown.
-
-`set` and `eSet` work in the same two halves: `asImm#ej` depends only on `ej`, so it is elementwise and joins the data parallel region before the terminal; the placement makes its calls of `by` one at a time, in flow order. An exception of `asImm` at index `j` is held until the placement has placed every element before `j`, as the exceptions of `kem.key` and `kem.elem` are. The flow order decides which element of each class the set receives before the others, so `.sort by .set(..)` reads the order.
-
-### for and forEach
-
-`for` needs a mut lambda to make any sense: by its nature it performs side effects on `mut` captured values. In a Java stream this makes a `forEach` whose lambda writes what a stage reads parallelism sensitive, preventing most parallelism.
-In Fearless `.for` is a fence, so such code behaves the same in every strategy.
-Receiving the elements in flow order is not enough: a `for` that runs its lambda on the element at flow order `j` as soon as it receives it, while tasks still run the stages on the elements after it, lets those stages read what the lambda writes, and in Java this is a data race. The fence waits until no task runs any stage (`m.list` or `m.join` in the pseudocode), except in the case below where nothing the lambda can mutate is visible to the stages.
-
-The fence is a semantic guarantee, and in plenty of situations it needs no materialisation:
-```
-Lists#(0,..,64).flow
-  .map{..}//could capture v
-  .for{..}
-```
-With `v` written by the `for` lambda, as in the example below, this needs materialisation only if the `map` lambda captures `v` as `read`.
-The onlyImmCapture flag decides:
-with the flag on every lambda of the stages, and with source elements that are `imm`, as in mode `ParImm`, and with no `flatMapMut`, `actorMut`, `allToAll` or `++` before it, as in the condition of `.forEach`, nothing `for` can mutate is visible to the code executed as part of the stages, so `for` can run on each element, in flow order, as soon as the stages have finished with it.
-The first two conditions are needed:
-- `read` source elements are not enough. With `m: mut List[mut Person]` and `r: read List[mut Person]` the same list, in `r.flow(ParRead#).map{p -> p.age}.for{a -> Block#(ages.add a, m.get(3).birthday)}`, with `ages` a fresh `mut EList[Nat]`, the `for` lambda captures `m`: running it on the element at index 0 before the map stage runs on index 3 changes the age `ages` holds at index 3.
-- In mode `Seq` the elements can share `mut` objects: two persons can share one `mut Address`, and the `for` call on one person can mutate what the map stage reads on the other. Under `ParRepr`, the `for` lambda is exempt from the onlyImmCapture flag and can capture a `p: mut Repr[T]` that is also an element.
-The `for` calls made this way are speculative calls: under the sequential strategy every call of every stage comes before the first `for` call, so a `for` call on the element at index `j` runs before a call of a stage at a greater index that may still throw or not terminate. As for every speculative call, its exception is held until every stage has finished with every element, and it never delays the exception of a stage: the `for` lambda runs in a node of its own, not on the calling worker, the node stops at its first exception and holds it, and the terminal returns as soon as it receives an exception of a stage, whatever the node is doing. Running the `for` lambda on the calling worker as it receives the elements would throw its exception at index `2` where the sequential strategy throws the exception of a stage at index `5`, and would not return at all where that lambda does not terminate at index `2`. Every mutation such a call makes, also while it is still running after the whole flow expression has returned, is on objects that are garbage collectable once the exception of the stage is caught. The same holds for the `mutH` value passed to `.for(a, f)`, such as the sink or the state of an enclosing `actorMut`, whose call has then thrown; the runtime still drops every element sent through a sink after the call that owns it has returned.
-This avoids materialising large ranges, as in
-`0~~10000000 .flow.map{..}.for{..}`
-as long as the `for` lambda keeps up with the stages: the stages can not wait for the node, since one of them may still throw at a greater index, so when the node falls behind their results wait for it in its mailbox, up to the whole materialisation.
-Under the sequential strategy none of this applies: `for` materialises the results of the stages before it, unless it comes directly after the source or a fence, or the backend sees that those stages can neither throw nor fail to terminate.
-
-**forEach trickles:**\
-`.forEach` is `.for` without the fence: its lambda runs on the element at flow order `j` before any stage runs on the element at flow order `j+1`, as `fold` does. Under the sequential strategy it is one loop with no list, so `0~~10000000 .flow.map{..}.forEach{..}` runs in constant memory, and its lambda runs as the results are computed, as a program printing them needs.
-The two differ only when a call throws or does not terminate: in `l.flow.map a .forEach b`, with `b` not terminating on `a#e1` and `a` throwing on `e2`, `.forEach b` never returns, and `.for b` throws the exception of `a#e2`, since it calls `a` on every element before calling `b`.
-Under a parallel strategy the stages run ahead in chunks, and the calling worker runs the lambda in flow order as it receives their results. An exception of the lambda propagates at once, since every call before it has returned, and the calls of the stages at greater indexes are negative speculation calls. Nothing of the lambda is held, and nothing of it is left running once the whole flow expression returns.
-The price is the condition of `.forEach` under **Misuse exceptions**: a stage running in parallel with the lambda must not read what the lambda writes, and only `ParImm` with the onlyImmCapture flag shows it. `.for` never throws for this reason, so the longer name is the one that may throw.
-This is the split of `distinct` and `distinctMut` the other way round: there the fence is the variant with fewer restrictions on the types, here the fence is the variant with fewer conditions to throw.
+throws `three`, not the exception of `.tryGet` about the size.
 
 ### let
 
-`let` consumes the flow into a list, passes that list to `x`, and passes `cont` both the result of `x` and the same list.
-Let is the most unusual method: it declares a local variable in the middle of a flow.
-```
-es.flow.map{i -> Persons#(..)}
-  .let stuff = {listUpToNow -> ..}
-  .seqFlow
-  .map{..}
-  .list
-```
-`let` is a utility method: `.list` followed by ordinary code over the list, so the flow expression ends at that `.list`.
-The elements are needed twice and a flow consumes once, so they are materialised here.
-Passing on the list rather than a flow makes that visible and allows parallelism:
-the user calls `.seqFlow` or `.flow(mode)` on it.
-Where `x` only reads, `let` does what `allToAll` does, but outside the flow expression: the flow after it is a new flow expression, with its own mode and checks. `l.flow.map f .allToAll{xs -> PlusTotal#(xs)}.list` computes the total and adds it to each element inside one chain, where the example below starts a second one. What is left to `let` is a continuation that mutates what it captured or returns something that is not a flow.
-
-### Short-circuit terminals
-
-`.limit 1` breaks right after sending downstream the first element it receives, so no other element is processed, and `.getOpt` can not throw about the size since it receives at most one element.
-On an empty flow the actor of `.limit 1` never runs, so `.first` is the empty `Opt`, `.any` is `False` and `.all` is `True`.
-Composing `f` with `.not` changes no call and no order, so `.none f` throws the same exception at the same element as `.any f`, and `.all f` throws the same exception at the same element as `.any{e -> f#e .not}`. `.all f` and `.any f` stop at different elements: `.any f` at the element where `f` completes successfully with `True`, `.all f` at the element where `f` completes successfully with `False`.
-`.findFirst` returns `mut Opt[E]`, as `.first` does: the element may be `mut`.
+In `.let total = {xs -> ..} .flow(ParImm#) ..` of **example with let**, `total` names the result of `x`, and `.flow(ParImm#) ..` is called on the list `let` passes to `cont`.
 
 ### Multi flows
-
-The lambda of a merge receives the elements of each channel with the capability of that channel, `mut` included: a merge over a `mut Map[Str, mut Person]` hands each `mut Person` to its lambda.
-A merge takes no mode, so no type checks that its results can be processed in parallel, and the merges record `Seq`.
-This holds also for an `imm` map: the lambda of a merge can return a fresh `mut` object, so `imm` channels do not make the results of the merge `imm`.
-`.recoverFlow(mode)` gives the parallelism back: the lambda of the merge puts what it needs of each index into a single result, and `.recoverFlow(mode)` checks the type of those results, as `.flow(mode)` checks the type of the elements of a list.
 
 **From a map:**
 ```
@@ -1023,8 +920,7 @@ people.flow{name, p -> Samples#(name, p.computeDNA)}
   .list
 ```
 with `people` a `mut Map[Str, mut Person]`, `computeDNA` returning an `imm DNA`, `Samples#` returning an `imm Sample`, and `target` an `imm DNA`.
-The lambda of the merge calls `computeDNA` on each `mut Person` with the sequential strategy.
-Each `Sample` is `imm`, so `.recoverFlow(ParImm#)` fits: the `map` stage and the `filter` stage can run with data parallelism.
+The `map` stage and the `filter` stage can run with data parallelism.
 
 **More channels:**\
 Two maps aligned by insertion order:
@@ -1036,8 +932,7 @@ left.flow.withBoth(right.flow)
   .list
 ```
 with `left` and `right` two `mut Map[Str, mut Person]`, and `Couples#` returning an `imm Couple`.
-`left.flow.withBoth(right.flow)` is a `QuadFlow` whose channels are the keys of `left`, the elements of `left`, the keys of `right` and the elements of `right`.
-The lambda of `getMerge` puts the two keys and the two `DNA` of each index into a single `imm Couple`, so `.recoverFlow(ParImm#)` fits, and the `map` stage can run with data parallelism.
+The `map` stage can run with data parallelism.
 
 ## Examples
 
@@ -1765,6 +1660,7 @@ Optimised implementations of the sequential strategy, in each base of `BaseOffen
 - Every source, stage and terminal records itself as written; every terminal runs `checkMisuse`.
 - The misuse exception texts, following the style of the messages of the Frontend.
 - One loop per chain, sending each element through the stages with no allocation per element and no JDK stream, as the pseudocode of the sequential strategy; only fences materialise.
+- `for` directly after a fence iterates the list of that fence, with no copy.
 - A `ToFlow` that a lambda of `flatMap` or `flatMapMut` returns, or that `++` takes, is iterated directly, with no flow object and no copy.
 - The rewrites of **Canonical form**: `limit` moves towards the source, a known size cuts the source, consecutive `map`s and `filter`s become one.
 - The legal rewrites of **Rewrites of combinations of stages and terminals**, such as the capped blocks of `max` then `limit`.
@@ -1778,8 +1674,9 @@ The same semantics. When the mode allows it, the terminal analyses the chain and
 - Data parallelism for the regions of elementwise stages, with the fences as the boundaries between regions: the tasks send their outputs element by element, in flow order, as the mailboxes of the pseudocode; exceptions are held and discarded; a short-circuit terminal returns at its decision without waiting.
 - Positive speculation calls in `ParImm` and `ParRead`, and over `ParRepr` and `ParPod` only over `read` or `imm` elements.
 - Before a `.limit n`, when every stage since the source or the last fence sends at most one element downstream per element received, the tasks run those stages on the next `n - k` elements, with `k` the count of elements the `limit` has received, until `k == n`. Under pipeline parallelism the nodes share only the count left to the `limit`.
-- The fences run their merge trees as tasks while they receive the elements; `for` waits for every task, except where the onlyImmCapture flag lets it run in a node as it receives the elements; `forEach` runs its lambda on the calling worker as it receives the elements.
-- Pipeline parallelism for `actor`, `actorMut`, `scan`, map with context and the placement of `distinct` and `mapping`, fed by data parallel regions.
+- The fences run their merge trees as tasks while they receive the elements; `for` waits for every task, except when `c.mode == ParImm`, every lambda of the stages carries the onlyImmCapture flag and `c.stages.none({flatMapMut, actorMut, allToAll, ++})`: then the `for` lambda runs in a node as it receives the elements, as in **example with for**; `forEach` and `fold` run their lambda on the calling worker as they receive the elements.
+- Pipeline parallelism for `actor`, `actorMut`, `scan`, map with context and the placement of `distinct`, `mapping`, `set` and `eSet`, fed by data parallel regions.
+- The calls of `kem.key` and `kem.elem` of `mapping`, and of `asImm` of `set` and `eSet`, join the data parallel region before the terminal.
 - `.map(ctx, f)` may instead run the calls of `.iso.close` on the state in flow order, and the calls of `f` with data parallelism, each call of `f` with the result of its own call of `.iso.close`.
 - Choosing: the calling worker runs a task itself when no worker has started it; the hints; the size of the source; a static estimate of the cost of each stage where the lambdas are known; measurements of the first elements.
 - The runtime pieces of **Implementation pitfalls**: `Yield#` wherever user code runs, the catch points letting cancellation through, platform threads for user code, nested flows, memo caches never storing non deterministic exceptions, and sinks dropping what is sent through them after the call that owns them has returned.
@@ -2212,7 +2109,7 @@ The type system blocks what is subtly unsound for exactly the reasons this docum
 - the hygienic state takes only `iso` and `imm` values: a key `by#e .close` is a `read K` and, with `by` an identity, the element itself; keeping it while the element flows on `mut` reads what the stage after may be mutating. This one refusal gives the fences their single core method (`allToAll`) and splits `distinct` from `distinctMut`;
 - a `mut` lambda passed to `Repr.mutate` may capture `mut` bindings, and the inner entity still can not leave through them: `acc.add(c.get)` compiles and `acc.add(c)` does not;
 - no Fearless code can stop a call at a `down.push#`, so a rule that did so was not a semantics, and the call completes;
-- a fence that runs its lambda as it receives the elements (**for and forEach**) is making speculative calls, whose exceptions are held like any other.
+- a fence that runs its lambda as it receives the elements (**example with for**) is making speculative calls, whose exceptions are held like any other.
 - an empty literal `{}` where a `ToFlow` is expected is an instance of `ToFlow` itself, which is sealed and has no body: the empty branch of `IfSome` names its type, `?[mut Opt[E]]`;
 - the methods of `KeyElemMapper` are `imm`, so `mapping` takes it `imm`, not `read`;
 - a signature that compiles can still promise too much: a `read .flow` on `Map` returning `mut Flow[KeyElem[K,read/imm E]]` compiles, and so does a client taking an `imm` element out of a `read` map of `mut` elements through it, since a `KeyElem` written with no capability is `imm`; only compiling such a client shows it. `Map.flow` returns a `BiFlow`, so the capability of each element is written directly in the type of its channel.
