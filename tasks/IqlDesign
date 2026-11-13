@@ -126,7 +126,7 @@ In every state of the window of ImprovedGuiAPI.txt, the close key and the close 
     A The Frame f is open and disabled. The ModelFps.action of f moves a ball at each model tick.
     B One second passes.
     C The program calls f.enabled(True).
-    D The user observes that the ball did not move during that second, and moves again from where the ball stopped, at the speed of one step per model tick.
+    D The user observes that the ball did not move during that second, and that the ball moves again from where the ball stopped, at the speed of one step per model tick.
 
 Open: a pair cut by .enabled(False): a key pressed before it and released after it, an .entered with no .exited, a press with no release.
 ImprovedGuiAPI.txt says that while the window is open, every .pressed of Frame.onKey is followed by exactly one .released: T3 drops the .released of a key pressed before .enabled(False).
@@ -159,24 +159,26 @@ A capability gives a later:
 
 CapRunningMain has no .await and no .awaitUpTo, and CapInputCursor has no #: the program calls .end.await, .end.awaitUpTo(time) and .file.awaitUpTo(Duration#0).
 CapProcess.run is CapProcess.start, then .end.await.
-Later is Sealed: only the library makes a later.
+Later is Sealed: only code of base makes a later.
 
     state(l)     the state of the later l: empty, or held(r), with r a value v or an error e.
     l is held    state(l) = held(r) for some r.
     dead(l)      l is a later of CapInputCursor.file, state(l) = empty, and no window of the program is open: no file can arrive at the position of l.
+    revoked(l)   l is a later that RevokableRunningMain, RevokableInputCursor or RevokableIql gives, and the Revocation of that wrapper is not started or is revoked.
 
     A later starts as held(r) when its source gave r before the later was made, and as empty otherwise.
     The source of l gives r while state(l) = empty:  state(l) := held(r).
     No other step changes state(l).
 
-    l.await                held(v): return v.  held(e): throw e.
+    l.await                revoked(l): throw the error of the Revocation.  held(v): return v.  held(e): throw e.
                            empty: block until l is held, then as above; the non deterministic error
                            `No file can arrive at this position of CapInputCursor: no window of the program is open.` as soon as dead(l).
-    l.awaitUpTo(t)         held(v): an Opt of v.  held(e): throw e.
+    l.awaitUpTo(t)         revoked(l): throw the error of the Revocation.  held(v): an Opt of v.  held(e): throw e.
                            empty: block until l is held, then as above, or until t passes: an empty Opt. With t = Duration#0 it only checks.
     Laters.first(ls, cs)   ls empty: before blocking, the deterministic error `The list of laters is empty.`
                            |ls| != |cs|: before blocking, the deterministic error, here with |ls| = 3 and |cs| = 2,
                            `3 laters and 2 callbacks: the list of laters and the list of callbacks must have the same size.`
+                           some ls[i] revoked: before blocking, the error of the Revocation of ls[i], with i the least such index.
                            block until some ls[i] is held; the non deterministic error of .await on a dead later as soon as every ls[i] is dead.
                            i: the least index with ls[i] held.
                            state(ls[i]) = held(e): throw e.
@@ -205,16 +207,15 @@ The IQL dialog of a later of CapIql.ask closes when the user answers the dialog 
       `No file can arrive at this position of CapInputCursor: no window of the program is open.`
 
 RevokableSystem.iql gives a RevokableIql.
-A later that RevokableRunningMain, RevokableInputCursor or RevokableIql gives checks its Revocation at each .await and .awaitUpTo, and Laters.first and Laters.firstUpTo check it before blocking: they throw the error of the Revocation before the start of the Revocation and after its revoke.
 The mut CapInputCursorNode that a later of RevokableInputCursor gives is a RevokableInputCursorNode under the same Revocation.
 
-A model event waits on a later as any code does: the model thread of the frame blocks, and the toolkit thread goes on repainting.
+A model event waits on a later as any code does: the model thread of the frame blocks, and the toolkit thread goes on handling the list after 'The toolkit thread alone handles the rest'.
 A frame waiting on an IQL dialog:
 
     .button{:: .text "Settings" .action{Block#
-      .do{f.enabled False}
+      .do{Block#(f.enabled False, Void)}
       .let answer= {iql.ask(SettingsQuery).await}
-      .do{f.enabled True}
+      .do{Block#(f.enabled True, Void)}
       .return{model.apply answer}
       }}
 
@@ -245,6 +246,6 @@ Implementation notes
 - Each handoff between two threads that run mut code of the program is a happens-before edge: a queue, or a wait for a task to end.
 - Later is Sealed so that Laters.first waits on all its laters at once, with no polling.
 - The Revokable wrappers make their laters with a constructor internal to base.
-- NoDownload, NoManager and NoManagerQuit give .iql -> u.iql.
+- NoManager, NoManagerQuit and the NoDownload of the doc comment of SystemAttenuator give .iql -> u.iql; ErrorSystem gives .iql -> _Revoked#".iql".
 - The model timer counts no tick due while the frame is disabled, so .enabled(True) starts no catch up.
 - The window of an IQL dialog runs its tasks (the clicks, the typing, the close button of the dialog) on a thread of its own, never on the model thread of a frame: the model thread of the frame that asked may be blocked on the later of the dialog.
