@@ -204,10 +204,10 @@ The manager writes `Str:` then `.escape` of the path when the path is a `Str`; `
 
 ## Registered projects
 
-The manager folder holds `projects.info`, the record of every registered project (the path, the kind, the selected mains, the mounts and the attenuators) and the 'reserve' (see File associations).
+The manager folder holds `projects.info`, the record of the registered projects and of the 'reserve' (see File associations).
 The manager is the only program writing `projects.info`: the manager writes the new content to another file in the manager folder, then renames that file to `projects.info`, so a reader such as Eclipse never reads a partial `projects.info`.
 
-`projects.info` is an Info file: an object with `projects`, the list of the registered projects in the order they were registered, and `reserve`:
+`projects.info` is an Info file: an object with `projects`, the list of the registered projects, and `reserve`:
 ```
 {
   "projects": [
@@ -228,33 +228,49 @@ The manager is the only program writing `projects.info`: the manager writes the 
 ```
 - `reserve`: the extensions of the 'reserve' (see File associations), each one a system extension (see The data in ReconciliatorDesign) without the dot, with 1 to 16 characters, each `a-z` or `0-9`, listed once.
 Each project has `path` and `kind`, and may have `mains`, `mounts` and `attenuators`; an absent field is the empty list or the empty object:
-- `path`: the absolute path of the project folder, as a `taggedText`; no two projects have equal `path`s. A project folder whose path corresponds to no p with `at(D, p)= id` (see Desks in FolderShapesDesign) is a project folder the manager can not reach.
-For each project folder p, with m the manager folder: not `root(D, p)`, not `same(D, p, m)`, not `inside(D, p, m)`, not `inside(D, m, p)`.
-For the project folders p1 and p2 of two different projects: not `same(D, p1, p2)`, not `inside(D, p1, p2)`.
-A project folder p for which one of the conditions on p alone does not hold, or for which the desk refuses `create(D, p s, file)` for a `same` or an `inside` whose first argument is p, is a project folder the manager can not reach; so is a project folder p2 that breaks one of these conditions together with a project folder p1 before p2 in `projects.info` that the manager can reach.
+- `path`: the absolute path of the project folder, as a `taggedText`; no two projects have `path`s with equal texts (see Info files).
+The manager can reach the project folder of the project number i of `projects.info` when the `path` of that project corresponds to a p_i (see Desks in FolderShapesDesign) with `reach(D, i)`, for m the manager folder:
+```
+reach(D, i)  iff  at(D, p_i)= id, not root(D, p_i), not same(D, p_i, m), not inside(D, p_i, m), not inside(D, m, p_i),
+                  forall j < i with reach(D, j): not same(D, p_i, p_j), not inside(D, p_i, p_j), not inside(D, p_j, p_i),
+                  and the desk refuses no create(D, p_i s, file) that a same or an inside above with first argument p_i needs
+```
 - `kind`: `idle`, `code`, `dataRead` or `dataEdit`.
 - `mains`: the selected mains, set by `SelectMains`.
 - `mounts`: for each DataRead type, the name of the data project mounted on that DataRead type (see DataReadDataEditDesign).
 - `attenuators`: for each main the attenuators the manager applies to that main, in order; a main absent from `attenuators` gets no attenuator. Naming a main or an attenuator the project does not have is well formed.
 
-`projects.info` holds no project name: the name of a project is the name of the marker in the project folder (see Registering a folder).
+`projects.info` holds no project name (see Registering a folder).
 The 'single' manager keeps the names in memory.
-A 'name lookup' gives a name to every project of `projects.info`, in the order of `projects.info`: the name of each project is the result of name inference (see Registering a folder), which renames or creates the marker when needed, so no project takes a name of a project before it in `projects.info`.
-A 'name check' of a project compares the marker in the project folder with the name in memory; when they differ, the manager does a 'name lookup'.
+A 'name lookup' gives a name to every project of `projects.info`, in the order of `projects.info`: name inference (see Registering a folder) names each project, so no project takes a name of a project before it in `projects.info`.
+A 'name check' of a project compares the name of the first marker of the project folder (none when the project folder holds no marker) with the name in memory; when the two names differ, the manager does a 'name lookup'.
 The manager does a 'name lookup' at start; before applying a request, the manager does a 'name check' of every project the request names, and a 'name lookup' when the request names a name that is not the name of a project; an 'autoCheck' of a project starts with a 'name check' of the project.
 A project folder the manager can not reach keeps the name the manager knew, and gets no name at start; the manager forgets that project (see Project states).
 
-The `mains`, `mounts` and `attenuators` of a project stay when the kind of the project changes, and a mount stays when the data project of the mount is forgotten: a later `Kind` back to `code`, or a project registered under the name of that data project, makes them work again. For example, a code project swaps real data and test data by registering one folder or the other under the name of the data project.
+The `mains`, `mounts` and `attenuators` of a project stay when the kind of the project changes, and a mount stays when the data project of the mount is forgotten.
+```
+A Project hello is a code project with the selected main hello.Hello and the attenuator base.NoManagerQuit on hello.Hello.
+B The user makes project hello an idle project.
+C The user makes project hello a code project, and compiles project hello.
+D Project hello has the selected main hello.Hello, with the attenuator base.NoManagerQuit.
+
+A Project hello is a code project with the mount of the DataRead type hello.Diary to diary. Project diary is a dataEdit project with the folder real_diary.
+B The user forgets project diary.
+C The user registers the folder test_diary, holding the marker diary.fearless.
+D The registered project is named diary, and is idle. The mount of hello.Diary is broken.
+E The user makes project diary a dataEdit project.
+F The user runs project hello. hello.Hello reads and writes the files of test_diary.
+```
 
 A `projects.info` that is not a valid Info file, or does not hold what is above other than the conditions on project folders, is a 'fatal error' pointing at the offending text in the Frontend error message style.
 
 The whole `projects.info` can be edited by hand from the GUI, or via an `EditMetadata` naming a file (outside of the manager folder) with the intended new content.
 The editor of the GUI remembers the content the editor opened; when the user commits, and `projects.info` does not hold that content, the editor refuses the commit in a dialog, and the user edits the new content again; otherwise the commit is an `EditMetadata`.
-A project of the edit is a project of `projects.info` when both have the same `path`.
+A project of the edit is a project of `projects.info` when the texts of the two `path`s are equal.
 An edit is refused, and nothing changes, when:
 - the text is not a valid Info file, or does not hold what is above other than the conditions on project folders: the error points at the offending text in the Frontend error message style;
-- the edit removes a project, or changes the kind of a project, while a main or a compilation of that project is currently running;
-- the edit changes the mounts of a project, or removes a data project mounted on a DataRead type of that project, or changes the kind or the folder of that data project, while a main of that project is currently running;
+- the edit removes a project, or changes the kind of a project, while that project is 'in use' (see Run, Compile and Check);
+- the edit changes the mounts of a project, or gives the name of a data project mounted on a DataRead type of that project to another project folder (through the 'name lookup' after the edit), while a main of that project is currently running;
 - the edit removes from `reserve` an extension that a main of a project claims, while a main or a compilation of that project is currently running.
 An accepted edit applies at once: projects the edit removes are forgotten, projects the edit adds are registered as they are, the compilation cache (`Coordinator.deleteCache`) of each added project, of each project whose kind changes and of each project whose mains claim an extension the edit removes from `reserve` is deleted, and every project gets an 'autoCheck'.
 
@@ -262,30 +278,36 @@ An accepted edit applies at once: projects the edit removes are forgotten, proje
 
 ## Registering a folder
 
-A 'marker' of a folder is a file `<name>.fearless` at the top of that folder, with `<name>` not starting with `.`. The name of a project is the `<name>` of the one marker of the project folder. A project name is a 'valid segment' (see FolderShapesDesign).
+A 'marker' of a folder is a file `<name>.fearless` at the top of that folder, with `<name>` not starting with `.`. The name of a project is the name that name inference gives the project. A project name is a 'valid segment' (see FolderShapesDesign).
 
 A folder p with `same(D, p, p2)` for the project folder p2 of a registered project is 'registered already'.
 Registering a folder that is not 'registered already' adds the project at the end of `projects.info`, named by name inference.
-Name inference: The name is the name of the first marker of the folder in the order of the s (see Implementation notes in FolderShapesDesign), when that name is a 'valid segment' and no project before this project in `projects.info` uses that name.
-Otherwise, with f the first 64 characters of the 'fixed segment' (see FolderShapesDesign) of the folder name, the name is the first of f, and f followed by `2`, `3`, ..., that is a 'valid segment' and is not used by a project before this project in `projects.info`. The first marker is renamed (or the marker is created) to match.
+Name inference gives the project number i of `projects.info` the name name(i), with m the `<name>` of the first marker of the project folder in the order of the s (see Implementation notes in FolderShapesDesign; no m when the project folder holds no marker), and f the first 64 characters of the 'fixed segment' (see FolderShapesDesign) of the name of the project folder:
+```
+name(i) = m                                            when ok(i, m)
+        = the first n of f, f2, f3, ... with ok(i, n)  otherwise
+ok(i, n)  iff  n is a 'valid segment', n != name(j) for every j < i,
+               and the project folder holds no file other than the first marker named n.fearless, ignoring case
+```
+f2, f3, ... are f followed by `2`, `3`, ....
+The first marker is renamed (or the marker is created) to match.
 If present, the compilation cache (`.fearless_out`) of the newly registered folder is deleted (`Coordinator.deleteCache`).
 `.fearless_out` belongs to the Coordinator in every registered folder, whatever the kind of the project.
 The newly registered project is in the `idle` state.
 
-Forgetting a project asks no confirmation.
-Forgetting a project removes the project from `projects.info`; nothing in the project folder is changed.
+Forgetting a project asks no confirmation, and changes nothing in the project folder.
 
 ## Project states
 
-Each project is in one of these states, shown as a badge on the tile of the project:
+Each project is in the first of these states that holds, shown as a badge on the tile of the project:
+- `code: busy`: a main or a compilation of the project is currently running;
 - `code: invalid content`, `dataRead: invalid content`, `dataEdit: invalid content`: the project folder is not 'well shaped' (see FolderShapesDesign; for code, also the checks of `Coordinator.check`, see CoordinatorDesign), the project folder holds more than one top level `.fearless` file, or the folder `.config/icon` holds more than one PNG file or a PNG file that can not be read;
 - `idle`;
 - `dataRead`, `dataEdit`;
 - `code: compilation cache out of date`: the project is 'out of date';
-- `code: compiled`: the project is neither 'invalid' nor 'out of date';
-- `code: busy`: a main or a compilation of the project is currently running.
+- `code: compiled`: the project is neither 'invalid' nor 'out of date'.
 
-A project in a state `<kind>: invalid content` is 'invalid'. The 'problem' of an 'invalid' project is the error naming which of the causes above holds.
+A project of kind code, dataRead or dataEdit is 'invalid' when a cause of the state `<kind>: invalid content` holds, also in the state `code: busy`. The 'problem' of an 'invalid' project is the error naming which of the causes above holds.
 An 'autoCheck' of a project reads the project folder and finds the state of the project and the mains of the project.
 An 'autoCheck' that finds the project 'invalid' while no compilation of the project runs writes the 'problem' into `.fearless_out/_error.txt` with `Coordinator.writeError`, for every kind of project.
 An 'autoCheck' that can not reach the project folder terminates the main or the compilation of the project, if running, and every running main of a project with a mount of that project, and shows a dialog with the error
@@ -294,13 +316,13 @@ An 'autoCheck' that can not reach the project folder terminates the main or the 
 `The project "hello" has now been removed.`
 then the 'autoCheck' is a `Forget` of the project.
 
-An 'autoCheck' of a code project is a call of `Coordinator.check` (see CoordinatorDesign), which gives the state of the project: 'invalid' with the 'problem', 'out of date' (`State.outOfDate`), or `State.compiled`. The manager checks the marker and the icon of the project before calling `Coordinator.check`.
+An 'autoCheck' of a code project checks the marker and the icon of the project, then calls `Coordinator.check` (see CoordinatorDesign), which gives the state of the project: 'invalid' with the 'problem', 'out of date' (`State.outOfDate`), or `State.compiled`.
 
 The mains of a code project are known when `Coordinator.check` gives `State.compiled`: the `.mains` of the `.manifest` of `State.compiled`.
 
 The manager is 'active' while the manager window is shown, and 'passive' while the manager window is hidden (the tray icon or the 'tray icon window' is shown) or minimized.
-A 'passive' manager becomes 'active' when the manager shows an error, or when the user shows the manager window.
-An 'active' manager notices changes made on disk by other programs: every three seconds the 'active' manager runs an 'autoCheck' of the selected project, and in turn of one other project, and updates states, badges and buttons, including moving a project in and out of 'invalid'. A project gets an 'autoCheck' when a main or a compilation of the project ends.
+Showing an error shows the manager window.
+An 'active' manager notices changes made on disk by other programs: every three seconds the 'active' manager runs an 'autoCheck' of the selected project and of one other project, taking the other projects in turn. A project gets an 'autoCheck' when a main or a compilation of the project ends.
 The 'autoCheck' every three seconds may keep the outcome of the previous 'autoCheck' of the project when every file and every folder of the project folder has a last modification time before the start of that previous 'autoCheck'.
 A request (`Check`, `Compile`, `Run`, `Fix`, `OpenWithOrShortcut`) reads the files of the project from scratch, using no outcome of an earlier 'autoCheck'.
 
@@ -911,4 +933,4 @@ An implementation decides alone every detail the design leaves open below the co
 - Each case of a main that can not have a Shortcut (a name with no matching file name, a 'reserved name', two mains giving the same file name and extension) has an error of its own; the error above is the error of a name with no matching file name.
 - Registering a folder whose marker has the right name and is empty writes a newline into the marker, so the marker holds what a created marker holds: GNOME never hands an empty file to the manager (see Opening a file).
 - A claim whose icon file can not be read shows, in the manager window, the icon generated from `project::pkg.Main`, as the icon of a project is generated from the project name.
-- Name inference skips a name `n` while the project folder holds a file other than the marker named `n.fearless`, ignoring case: on a file system ignoring case that file would be the marker.
+- The last premise of `ok(i, n)` in name inference: on a file system ignoring case, that other file and the file `n.fearless` are one file.
