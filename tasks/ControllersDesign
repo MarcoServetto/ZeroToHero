@@ -6,33 +6,32 @@ Next to the manager, and independent from the manager, Controllers also holds:
 - `agentTools`: a library driving the real pointer and keyboard, for GUI tests of any program.
 - `benchmarks`: speed measures of Fearless programs against the runtime.
 
-The manager is an island: the manager behaves the same on every system, and this is the objective of the manager.
+The manager is an island: the manager behaves the same on every system.
 When a part of the system (a tray, a dialog, a desktop shell) would make the manager behave differently than this design, the manager does not use that part that way.
 When the system does not offer what the manager needs (a display, a file system feature the manager relies on, at most one identity of the Fearless family on the system (see Refusals in ReconciliatorDesign), or each Fearless extension (see File associations)), or the manager folder exists and does not hold what the manager wrote there, the manager stops with a 'fatal error' saying so.
 This is the only concept of 'fatal error'.
 
-A 'fatal error' is shown in a dialog listing the mains and the compilations that are currently running; with no display, the error goes to the standard error of the manager program instead, and no step below waits for a dialog.
-A 'fatal error' ends the manager. This happens in order:
--The dialog shows. Nothing below happens until the dialog has been closed.
+A 'fatal error' ends the manager, in this order:
+-A dialog shows the error and lists the mains and the compilations that are currently running. Nothing below happens until the dialog has been closed. With no display, the error goes to the standard error of the manager program instead, and no step below waits for a dialog.
 -All the running mains and compilations are terminated. The manager waits until every main and compilation has terminated.
 -The manager deletes the manager folder.
 -The manager removes the setup of every identity of the Fearless family (`.eradicateAll`, see ReconciliatorDesign).
 
-Everything the manager is asked to do either happens or is refused with an error naming what was refused and the reason of the refusal; nothing is silently skipped.
+Everything the manager is asked to do either happens or is refused with an error naming what was refused and the reason of the refusal.
 
 The algorithms of this design are a contract on the behaviour: a specification, not a suggested implementation.
 They may be very slow or otherwise inefficient. They are designed to be obviously correct; implementing them as they are may be a terrible idea.
 
 ## Program and manager folder
 
-A manager is one program folder, `fearlessManaged<version>`, for example `fearlessManaged0_001`.
+The program folder of a manager is `fearlessManaged<version>`, for example `fearlessManaged0_001`.
 On macOS the program folder is the application `fearlessManaged<version>.app`.
-The 'launcher' of the manager is the executable file of the program folder that starts the manager program.
+The 'launcher' of the manager is the executable file of the program folder that started the manager program; the program folder holds two launchers (see The data in ReconciliatorDesign).
 The manager folder of a manager is `fearless<version>`, next to the program folder, on every system. The manager folder holds everything the manager remembers; deleting the manager folder makes the manager start from nothing.
 A manager folder that can not be created is a 'fatal error' naming the manager folder.
 
 ## Starting the 'single' manager
-Starting the manager program leaves one message in the manager folder, or two for the path of a folder or of a `.fearless` file. Several OS processes running the manager can be alive at the same time, and one of them is the 'single' manager: the OS process running the manager that handles the messages.
+A 'manager process' is an OS process running the manager program. Several manager processes can be alive at the same time, and at most one of them is the 'single' manager: the manager process that handles the messages.
 
 The manager program takes:
 - zero arguments: the message is `Show`;
@@ -47,35 +46,20 @@ For example:
 "FearlessCommandRegister Base16:2F646174612F68656C6C6F"
 ```
 (the last one registers `/data/hello` on Linux).
-macOS passes an opened file to an OS process running the manager as an event, not as an argument.
+macOS passes an opened file to a manager process as an event, not as an argument.
 The launcher script of the 'helper bundle' of the manager (see Extensions on macOS in ReconciliatorDesign) starts the manager with the one argument `FearlessCommandOpened`.
 On macOS the one argument `FearlessCommandOpened` leaves no message; on every other system `FearlessCommandOpened` is a bad argument.
 The messages of an event are the messages of one argument not starting with `FearlessCommand`, for each path of the event.
 On macOS the 'single' manager leaves the messages of every event.
-On macOS an OS process running the manager that is not the 'single' manager, started with zero arguments or with `FearlessCommandOpened`, waits up to 2 seconds for one event after writing its message files, then leaves the messages of that event.
-An OS process running the manager that is not the 'single' manager ends after writing its message files; an OS process running the manager that becomes the 'single' manager applies its own message files like every other message file.
-An OS process running the manager started with two or more arguments, or with a bad argument, leaves the message `InvalidCall` with the details. When the 'single' manager handles `InvalidCall`, the 'single' manager shows the error in a dialog and continues running.
-An OS process running the manager encountering a 'fatal error' while another process holds the lock of `instance.lock` (see The 'single' manager in Implementation notes) leaves the message `FatalError` with the details and ends normally.
+On macOS a manager process that is not the 'single' manager, started with zero arguments or with `FearlessCommandOpened`, waits up to 2 seconds for one event after writing its message files, then leaves the messages of that event.
+A manager process that is not the 'single' manager ends after writing its message files; a manager process that becomes the 'single' manager applies its own message files like every other message file.
+A manager process started with two or more arguments, or with a bad argument, leaves the message `InvalidCall` with the details. When the 'single' manager handles `InvalidCall`, the 'single' manager shows the error in a dialog and continues running.
+A manager process encountering a 'fatal error' while another process holds the lock of `instance.lock` (see The 'single' manager in Implementation notes) leaves the message `FatalError` with the details and ends normally.
 The 'single' manager handles `FatalError` as a 'fatal error'.
-An OS process running the manager encountering a 'fatal error' while no other process holds the lock of `instance.lock` handles that 'fatal error' as above.
-An OS process running the manager encountering a 'fatal error' before that OS process running the manager knows the path of its manager folder (the program was not started by the launcher of a manager, or the system does not read file names as UTF-8) only shows the error, then ends: that OS process running the manager deletes no folder, leaves no message, and removes no setup.
+A manager process encountering a 'fatal error' while no other process holds the lock of `instance.lock` handles that 'fatal error' with the steps at the top of this document.
+A manager process encountering a 'fatal error' before that manager process knows the path of its manager folder (the program was not started by the launcher of a manager, or the system does not read file names as UTF-8) only shows the error, then ends: that manager process deletes no folder, leaves no message, and removes no setup.
 
-The 'single' manager runs until Quit, or until a 'fatal error'.
-
-Closing the manager window hides the manager window; an icon stays visible to show that the 'single' manager is still running.
-On macOS the icon is the Dock icon of the manager, and the manager shows no tray icon.
-Clicking the Dock icon is `Show`.
-The Quit of macOS (in the menu of the Dock icon, in the application menu, and Cmd+Q) ends the 'single' manager and every main and compilation the manager runs.
-On any other system with a tray (a system tray or StatusNotifierItem), the icon is a tray icon.
-On Windows every system has a tray: the notification area of the taskbar.
-Clicking the tray icon, with any button, opens the menu of the tray icon: Show manager and Quit manager.
-
-On a system with no tray, the manager shows the icon itself.
-The manager window is closed and replaced with the 'tray icon window': a window of the size of a tray icon, with no title bar and no border, holding only the Fearless icon, in the bottom right corner of the screen and always above the other windows.
-Clicking the 'tray icon window', with any button, opens the menu of the tray icon.
-For half a second after that menu shows, a press or a release on the entries of that menu does nothing.
-An entry of that menu is chosen by a click: a press and a release of a button on that same entry.
-Showing the manager removes the 'tray icon window' and shows the manager window.
+The 'single' manager runs until `Quit`, `Reset`, a 'fatal error', or the deletion of the manager folder (see I6 in File associations).
 
 ## Requests and messages
 
@@ -85,8 +69,8 @@ Applying a `Run` or a `Compile` is starting the mains or the compilation; applyi
 
 A message is the file `messages/<time>-<id>.msg` in the manager folder: `<time>` is the 20 digit count of milliseconds since 1970 when the message was written, and `<id>` is a random UUID. The 'single' manager applies the message files in the order of their names, and deletes each message file after reading it.
 Only the manager program writes message files: the manager program writes `messages/<time>-<id>.tmp`, then renames `messages/<time>-<id>.tmp` to `messages/<time>-<id>.msg`, so the 'single' manager never reads a partial message. The 'single' manager deletes every `.tmp` file older than 60 seconds.
-An OS process running the manager whose `.tmp` or `.msg` name already exists picks another `<id>`; the rename never replaces an existing file.
-The 'single' manager relies on the system telling the 'single' manager when a file appears in `messages`. When an OS process running the manager becomes the 'single' manager, the 'single' manager writes a `.tmp` file in `messages` and waits for that report; no report within 5 seconds is a 'fatal error'. Some file systems, for example some network drives, do not report new files.
+A manager process whose `.tmp` or `.msg` name already exists picks another `<id>`; the rename never replaces an existing file.
+The 'single' manager relies on the system telling the 'single' manager when a file appears in `messages`. When a manager process becomes the 'single' manager, the 'single' manager writes a `.tmp` file in `messages` and waits for that report; no report within 5 seconds is a 'fatal error'. Some file systems, for example some network drives, do not report new files.
 Every other program commanding the manager (the Eclipse plugin, a script, a test) runs the manager program with a `call` as its argument.
 GUI operations that are requests command the manager the same way, through a `call`:
 every such GUI operation has an equivalent message, and every message is either ill formed or has an equivalent GUI operation, except `Check`: the GUI offers `Check` only as the main button of a project that is not code or is 'invalid', and a `call` can send `Check` of any project.
@@ -129,7 +113,7 @@ The connection ends when the last main or the compilation ends, at once when no 
 `Quit` and `Reset` may end the manager before the manager sends `Applied`.
 After applying `Quit` or `Reset`, the manager refuses every request it reads, with the error `Refused request "Forget": the manager is quitting.` (naming the verb of the request).
 The connection is how another program (Eclipse, a running main) knows that the manager has applied the message of that program, and follows the mains or the compilation that program asked for.
-Two more message files exist, `InvalidCall <details>` and `FatalError <details>`, written only by an OS process running the manager, about a failure of that OS process running the manager. `InvalidCall` and `FatalError` are not verbs: no `call` and no GUI operation names those messages.
+Two more message files exist, `InvalidCall <details>` and `FatalError <details>`, written only by a manager process, about a failure of that manager process. `InvalidCall` and `FatalError` are not verbs: no `call` and no GUI operation names those messages.
 The details of `InvalidCall` and `FatalError` are every line after the first line, any number of lines.
 
 ```
@@ -161,7 +145,7 @@ typeName ::= (?!(con|prn|aux|nul|com[1-9]|lpt[1-9])[.])[a-z][a-z0-9_]*[.]_*[A-Z]
 ```
 The `typeName1..typeNamen` of `FearlessCommandSelectMains` are all different.
 The `base16` of a `call` names an absolute path that is not the root of a drive.
-An argument starting with `FearlessCommand` is a bad argument when the argument is not a `call`.
+An argument starting with `FearlessCommand` is a bad argument when the argument is not a `call`, except `FearlessCommandOpened` on macOS (see Starting the 'single' manager).
 
 Ill formed messages:
 - a port where no program of this machine accepts the connection;
@@ -318,6 +302,20 @@ A request (`Check`, `Compile`, `Run`, `Fix`, `OpenWithOrShortcut`) reads the fil
 The icon of a project is the only PNG file in the folder `.config/icon` of the project, or, with no PNG file in `.config/icon`, an icon generated from the project name.
 
 ## General GUI shape
+Closing the manager window hides the manager window; an icon stays visible to show that the 'single' manager is still running.
+On macOS the icon is the Dock icon of the manager, and the manager shows no tray icon.
+Clicking the Dock icon is `Show`.
+The Quit of macOS (in the menu of the Dock icon, in the application menu, and Cmd+Q) is `Quit`.
+On any other system with a tray (a system tray or StatusNotifierItem), the icon is a tray icon.
+On Windows every system has a tray: the notification area of the taskbar.
+Clicking the tray icon, with any button, opens the menu of the tray icon: Show manager (`Show`) and Quit manager (`Quit`).
+
+On a system with no tray, closing the manager window replaces the manager window with the 'tray icon window': a window of the size of a tray icon, with no title bar and no border, holding only the Fearless icon, in the bottom right corner of the screen and always above the other windows.
+Clicking the 'tray icon window', with any button, opens the menu of the tray icon.
+For half a second after that menu shows, a press or a release on the entries of that menu does nothing.
+An entry of that menu is chosen by a click: a press and a release of a button on that same entry.
+`Show` removes the 'tray icon window' and shows the manager window.
+
 Dropping files or folders on the manager window is a `Register` of each folder or `.fearless` file dropped, and an `OpenWithOrShortcut` of each other file dropped.
 Every button is disabled for half a second after it is pressed.
 
