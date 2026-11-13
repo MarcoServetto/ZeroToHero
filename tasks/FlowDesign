@@ -465,12 +465,12 @@ QuadFlow[A:*,B:*,C:*,D:*]: {}//the methods of `TriFlow` over four channels, exce
 
 ### Modes
 
-Every source records a mode: `.seqFlow`, `Flows#`, `Map.elems` and the merges (so also `Map.flow(f)`) record `Seq`; `.flow` with no argument, `Range.flow(stepSize)` and `Map.keys` record `ParImm`; `.flow(mode)` records the mode passed. The mode changes nothing a flow expression returns: it only selects which misuse exceptions of **Misuse exceptions** apply.
+Every source records a mode: `.seqFlow`, `Flows#`, `Map.elems` and the merges (so also `Map.flow(f)`) record `Seq` and `.hintSequential`; `.flow` with no argument, `Range.flow(stepSize)` and `Map.keys` record `ParImm`; `.flow(mode)` records the mode passed. The mode changes nothing a flow expression returns: it selects which misuse exceptions of **Misuse exceptions** apply, and which strategies the terminal may pick (**Sources and modes**).
 
 ### Core methods
 
 The core methods have a direct implementation, given here as pseudocode.
-`for(E e: in)` receives the elements the stage before sends downstream, in flow order, one at a time: the stages before run on the element at flow order `j+1` only after the body has finished with the element at flow order `j`. `in.list` receives every element into a fresh list first. `out` is the sink of the stage, as in **Signatures**. `stop` ends the receiving: no stage before runs on any other element.
+`for(E e: in)` receives the elements the stage before sends downstream, in flow order, one at a time: the stages before run on the element at flow order `j+1` only after the body has finished with the element at flow order `j`. `in.list` receives every element into a fresh list first. `out` is the sink of the stage, an `ActorSink` of **Signatures**: `out.send(x)` is `out#x`. `stop` ends the receiving: no stage before runs on any other element.
 
 **`fold(acc, f)`**:
 ```
@@ -499,12 +499,10 @@ for(R r: f#xs){ out.send(r); }
 Var[List[_HashedKey[K]]] keys= {};
 for(E e: in){ if(_KeepNew#(keys, by#e)){ out.send(e); } }
 ```
-**`suppressMisuseExceptions`** records a flag in the chain:
+**`suppressMisuseExceptions`** is recorded in the chain, where `checkMisuse` reads it:
 ```
 for(E e: in){ out.send(e); }
 ```
-It can be called anywhere in the flow expression and tells the terminal to ignore the misuse exceptions checks. 
-It is a global flag, it can not say which misuse exceptions it is meant for.
 
 **`hintSequential`** and **`hintParallel`** record a hint in the chain:
 ```
@@ -515,7 +513,7 @@ for(E e: in){ out.send(e); }
 ```
 for(E e: in){ out.send(e); }
 ```
-The stages after it run in the mode passed, with no hint. It is not a fence.
+The part it starts has the mode passed, and holds only the hints written after the `.recoverFlow`.
 
 **sources**:
 ```
@@ -536,22 +534,22 @@ for(Nat i: 0 ..< c1.size){ out.send(f#(c1.get i, .., cn.get i)); }
 
 ### From the desugarings to the misuse exceptions
 
-The signatures and the core methods above are the whole semantics of `Base:Defensive` (see `BaseOffensiveDefensiveNaive`). A desugared method runs its desugaring when it is called, so a flow expression is a chain of core methods, and no misuse exception is ever thrown: where `Base:Offensive` throws one, `Base:Defensive` runs the flow expression as the desugarings say.
+The signatures and the core methods above are the whole semantics of `Base:Defensive` (see `BaseOffensiveDefensiveNaive`): a desugared method runs its desugaring when it is called, and no misuse exception is ever thrown.
 
-The misuse exceptions of `Base:Offensive` are decided on the chain as the user wrote it, such as `.map f .limit n`, not on the core methods it desugars to, such as two `actorMut`. So in `Base:Offensive` every source, stage and terminal also records itself, as written, and every terminal runs `checkMisuse` on that record before any element is sent downstream.
+The misuse exceptions of `Base:Offensive` are decided on the chain as the user wrote it, such as `.map f .limit n`, not on the core methods it desugars to, such as two `actorMut`.
 
 ### Misuse exceptions
 
-A misuse exception is a non deterministic exception a flow expression throws to warn the user that they may have done some mistake in their code.
-Misuse exceptions are thrown by the terminals, so the code implementing the terminal must have enough knowledge and context to check for those conditions. Thus the content of user provided lambdas is not used to determine if a misuse exception should be thrown.
+A misuse exception is a non deterministic exception the terminal throws to report a likely mistake in the whole flow expression.
+`checkMisuse` decides from the chain, the elements of the source and the onlyImmCapture flag of each lambda; `checkMisuse` never runs a lambda.
 
 Every terminal starts with `checkMisuse(c)`, where `c` is its chain:
-- `c.mode`, `c.source` (the elements of the source), `c.stages` (in order, indexed from `0`), `c.terminal`;
-- `c.parts`: the parts of the chain; `p.hints` are the `.hintSequential` and `.hintParallel` of the part `p`, in order, starting with one `.hintSequential` when `p` starts at a source of mode `Seq`; a hint is not in `c.stages`;
+- `c.mode` (the mode the source records), `c.source` (the elements of the source), `c.stages` (in order, indexed from `0`), `c.terminal`;
+- `c.parts`: the parts of the chain; `p.hints` are the hints of the part `p`; a hint is not in `c.stages`;
 - `c.lambdas`: every lambda of the chain; `l.owner` is the stage/terminal `l` is an argument of;
 - `l.onlyImmCapture`: `l` captures only `imm` values; a top level declaration used as a value and every `imm` lambda carry it.
 
-A shape pattern matches a contiguous part of the source, the stages and the terminal: `..` is any sequence, possibly empty, `X*` any sequence of stages in the set `X`, `X+` a non empty one, `s[i]` the stage at index `i`, `source` the source. In a message, `<s>` of a stage/terminal `s` is `show(s)`, and `<a>` of an argument `a` is `showArg(a)`:
+A shape pattern matches a contiguous part of the source, the stages and the terminal: `..` is any sequence, possibly empty, `X*` any sequence of stages in the set `X`, `X+` a non empty one, `s[i]` the stage at index `i`, `source` the source. In a message, `<s>` of a stage/terminal `s` is `show(s)`, `<X>` of a sequence `X` of stages/terminals is the `show` of each, joined with a space, and `<a>` of an argument `a` is `showArg(a)`:
 ```
 Str show(Step s)= s.name + match s.args{
   [] -> "";
@@ -623,7 +621,7 @@ CountChanging= {filter, flatMap, flatMapMut, mapFilter}
 ReadsEmpty=  {map, readOnly, ++, scan, sort, distinct, distinctMut, sortDistinct, max, min, limit}* .isEmpty
 ReadsCount=  {map, readOnly, ++, scan, sort, limit}* .size
 ReadsElems=  ({map, readOnly, ++, sort, max, min} + CountChanging)* (
-               {.get, .getOpt, .sum(sn)} with sn the SumNumber of Nat, Byte or Num
+               {get, getOpt, sum(sn)} with sn the SumNumber of Nat, Byte or Num
              | (CountChanging + {distinct, distinctMut, sortDistinct, max, min}) ReadsCount
              | CountChanging ReadsEmpty )
 ReadsFirst=  {map, readOnly, ++, scan, distinct, distinctMut, limit}* .first
@@ -633,10 +631,10 @@ Void checkShape(Chain c){
   for(Part p: c.parts){ if(p.hints.size > 1){ throw
     "A flow takes at most one of `.hintSequential` and `.hintParallel` in each part between `.recoverFlow` calls, but this part has "+p.hints.size+". A flow started with `.seqFlow`, `Flows#`, `Map.elems` or a merge of a `BiFlow`, `TriFlow` or `QuadFlow` already has `.hintSequential`. Keep only one."; } }
   match c.shape{
-    .. s[i] rest with s in {sort}, rest in ReadsEmpty | ReadsCount | ReadsElems
-    .. s[i] rest with s in {map, scan}, rest in ReadsEmpty | ReadsCount
-    .. s[i] rest with s in {distinct, distinctMut}, rest in ReadsEmpty | ReadsFirst
-    .. s[i] rest with s in {sortDistinct, max, min}, rest in ReadsEmpty
+    .. s rest with s in {sort}, rest in ReadsEmpty | ReadsCount | ReadsElems
+    .. s rest with s in {map, scan}, rest in ReadsEmpty | ReadsCount
+    .. s rest with s in {distinct, distinctMut}, rest in ReadsEmpty | ReadsFirst
+    .. s rest with s in {sortDistinct, max, min}, rest in ReadsEmpty
       -> throw "`<s>` is pointless: `<rest>` reads only "+match rest{
         ReadsEmpty -> "whether there are elements";
         ReadsCount -> "how many elements there are";
@@ -673,17 +671,15 @@ Every message of `checkMisuse` ends with: "To keep this shape, call `.suppressMi
 <HELP ME WITH WORDING> for every message above.
 
 
-## Execution model vs actual execution behaviour.
+## Execution model vs actual execution behaviour
 
-All that we have described up to here is the reference behaviour.
-The whole point is that the actual code running flows only need to be observably equivalent to this (sequential) behaviour we discussed, while it can internally be implemented in a wide variety of different ways for performance reasons. Crucially not all the flows are supposed to be executed in the same way or by the same code, some will be sequential, some will be in a mixture of data and nodes parallelism; some will be compiled in optimised Java statements by the backend.
-However, from an observability perspective, the result of the flow is going to be exactly the same of the result dictated by the reference behaviour we just discussed. This includes non termination and the specific leaked exception in case multiple branches would throw/non terminate.
-Note how this is supposed to hold for absolutely any kind of (compiling) user code, not just 'well behaving code'; for example A `by` breaking its conventional ordering contract should not be able to expose any behavioural change at all; the user still can not use it as a tool to discover if some flow is being run sequentially or in parallel.
-Parallelism is just a compiler optimisation, the user must be fully shielded by any behaviourally observable effect of any kind of compiler optimisation.
-The following is excluded:
-- effects on the machine when capabilities are used (IO, debug etc)
-- the presence and content of non deterministic exceptions
-- the program performance.
+**Current design** is the reference behaviour.
+An implementation may run a whole flow expression with any strategy, or compile it to other code, provided that the whole flow expression returns what the reference behaviour returns, including which deterministic exception propagates when several calls throw.
+This holds for every user code that compiles, also when a lambda breaks a contract, such as a `by` that is not an order.
+The following may differ from the reference behaviour:
+- what calls of capability objects do on the machine, such as output and debug, also in a speculative call;
+- which non deterministic exception, if any, a call the sequential strategy makes throws, such as a stack overflow on a worker with a smaller stack;
+- the performance.
 
 
 //From here below it is all still unreviewed.
