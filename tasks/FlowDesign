@@ -1,7 +1,6 @@
 # Flow API design
 
-The algorithms of this design are a contract on the behaviour: a specification, not a suggested implementation.
-They may be very slow or otherwise inefficient. They are designed to be obviously correct; implementing them as they are may be a terrible idea.
+The algorithms of this design specify the behaviour, not the implementation.
 
 ### Fearless facts
 
@@ -714,13 +713,13 @@ A mode is what the chain records, not a Fearless type: `ParImm`, `ParRead`, `Par
 
 Whether an element is `imm` or only `read` is known to the type system alone: the runtime can not tell them apart. So `ParImm` is never discovered from the elements: it comes from `.flow` with no argument, where the type of the receiver shows it, or from `ParImm#`, where the type of `mode` checks it.
 
-Every strategy, the sequential strategy included, runs the mode checks before any element is sent downstream: the identity check over a source of mode `ParRepr` or `ParPod`, the onlyImmCapture check on every lambda of a flow of mode `ParRepr` or `ParPod` except those of `for`, `forEach` and `let`, the check that no stage/terminal of a flow of mode `ParRepr` or `ParPod` needs positive speculation calls, the condition of `.forEach`, and the deceptive shape exceptions. Each throws a misuse exception.
+In `Base:Offensive`, every strategy, the sequential strategy included, runs `checkMisuse` before any element is sent downstream.
 
 ### Misuse exceptions and the parallel strategies
 
 The identity check is not a consequence of racing: the sequential strategy runs it too, and skipping it would make the strategy observable. A parallel strategy may run it on the calling worker while the tasks run, provided it completes before the result of any task is used: when two tasks race on one `Repr`, the non deterministic exception is thrown whatever the race did.
 
-No `imm` value can reach a `mut Repr` or `mut IsoPod`, so with the flag each task reaches no `Repr` or `IsoPod` but its own element; the lambda of `for` runs once every stage has finished. The backend sets the flag on the lambda objects, visible to the runtime (in Java), not in Fearless; when the lambdas are written in place, the flag is checked when compiling and leaves no code.
+No `imm` value can reach a `mut Repr` or `mut IsoPod`, so with the flag each task reaches no `Repr` or `IsoPod` but its own element; the lambda of `for` runs once every stage has finished. The backend marks the lambda objects carrying the flag with the `OnlyImmCapture` marker interface of the runtime (in Java), not visible in Fearless; when the lambdas are written in place, the flag is checked when compiling and leaves no code.
 
 Over `ParRepr` and `ParPod`, and before a `.recoverFlow` in mode `Seq`, a speculating stage receives its elements as `mut`, so it could run in parallel only with positive speculation calls, which may mutate elements the sequential strategy never processes; so such a flow expression throws the misuse exception of `checkDecisions` under **Misuse exceptions**. Ending the flow expression before the decision point costs little: `.list` directly after a fence takes the list the fence has already materialised.
 
@@ -1878,16 +1877,15 @@ Merges keeping only `3` elements would skip calls of `by`, and so skip their exc
 
 ## Plan
 
-The implementation proceeds in four stages. Stage 1 has the semantics of `Base:Defensive`, with no misuse exceptions; from Stage 2 on, every stage has the same semantics, including every exception, every misuse exception and every call of `by`: a program can not tell which stage runs it, except by its speed and by the non deterministic exceptions it can observe through `mut CapTry`. Each stage keeps the one before it as the oracle for its tests.
+The implementation proceeds in four stages. Stage 1 has the semantics of `Base:Defensive`; from Stage 2 on, every stage has the same semantics, including every exception, every misuse exception and every call of `by`: two stages differ only as **Execution model vs actual execution behaviour** allows. Each stage keeps the one before it as the oracle for its tests.
 Each stage lands as a sequence of small PRs, each checkable against this document line by line: a signature change and the implementation behind it are separate PRs, and no PR introduces a runtime, a cancellation model and an API at once.
 
-### Stage 1: Naive
+### Stage 1: Desugarings
 
-No parallelism and no misuse exceptions: the semantics of `Base:Defensive`, implemented as `Base:DefensiveNaive`. The desugarings of **Signatures** are the implementation, written in Fearless; the core methods are magic following their pseudocode. `.limit 0` and single use still throw their deterministic exceptions.
+No parallelism: the semantics of `Base:Defensive`, implemented as `Base:DefensiveNaive`. The desugarings of **Signatures** are the implementation, written in Fearless; the core methods are magic following their pseudocode. `.limit 0` and single use still throw their deterministic exceptions.
 Stage 1 has the whole API: every signature of **Signatures** exists in `base`, so that every method can have its doc comment and its examples.
 A method whose only job is to record something for the checks and the strategies of a later stage does nothing else in Stage 1: `.suppressMisuseExceptions`, `.hintSequential`, `.hintParallel` and `.recoverFlow` send every element downstream, as in **Core methods**, and record nothing.
 Each of them consumes the flow it is called on, as every stage does.
-No check runs in Stage 1, so no misuse exception is ever thrown: two hints in the same part of a flow throw only from Stage 2 on.
 This stage is the `Flow` of `base` until Stage 2 replaces it; from then on it lives in the tests, as the oracle.
 `Yield#` gets its meaning at Stage 3, the first stage that can cancel anything.
 
@@ -1895,7 +1893,7 @@ The flow object records only the core methods of its chain. The terminal sends e
 
 The core methods of **Core methods** have a direct implementation; `distinct`, and the placement of `mapping`, `set` and `eSet`, place keys with the calls of `_KeepNew`, in the runtime. Everything else desugars; `max` and `min` run `_Max#`, not `Maxes`: the calls of `by` fixed here must be those of Stage 3, which runs the max tree.
 
-What the Naive stage fixes once, for every stage after it:
+What Stage 1 fixes once, for every stage after it:
 - the calls of `by` of `_Sort`, `_Max`, `_Collapse` and `_KeepNew`: changing any of them later is a change of semantics.
 
 Tests: every example of this document, as **Tests** under **Implementation pitfalls** describes, under `.suppressMisuseExceptions` where the example throws a misuse exception; the integration projects on what a parallel flow promises (order, the exception at the smallest index, nothing run after a decision, termination).
@@ -1906,10 +1904,10 @@ Speed is not a goal: `sort` may be slow and `limit` may run through an actor.
 Each item is one session of work: it names what is open, where in this document the answer goes, the options with the one recommended, and when it is done. Items 1 and 2 are what the implementation needs and this document does not describe yet; 3 and 4 can run alongside the implementation. Nothing here changes what a flow expression returns when every call completes.
 
 1. **Where the shape and the checks live.**\
-Open in **Stage 2: Sequential**. Options: (a) the flow object keeps the chain as Fearless data (the mode, one step per stage/terminal with its lambdas and the `limit` numbers) and the checks are Fearless over it, with two magic predicates: whether a lambda carries the onlyImmCapture flag (the backend marks such lambdas with the `OnlyImmCapture` marker interface of the runtime) and whether two elements of the source are identity equal; (b) chain and checks in the runtime. Recommended: (a). Goes in **Stage 2: Sequential**. Done when the step data type and the two predicates are named there.
+Open in **Stage 2: Sequential**. Options: (a) the flow object keeps the chain as Fearless data (the mode, one step per stage/terminal with its lambdas and the `limit` numbers) and the checks are Fearless over it, with two magic predicates: whether a lambda carries the onlyImmCapture flag and whether two elements of the source are identity equal; (b) chain and checks in the runtime. Recommended: (a). Goes in **Stage 2: Sequential**. Done when the step data type and the two predicates are named there.
 
 2. **Tests as the oracle.**\
-**Stage 1: Naive** lists them; to define: the harness for a lambda that does not terminate (a loop with no exit, and the test declaring a timeout, as `testFlowTermination` does), the harness for a `by` breaking its contract, and the list of the examples of this document as test names, each with the indexes at which its lambdas throw. Done when every example has a test name and the two harnesses exist in `testing.fear` or the integration projects.
+**Stage 1: Desugarings** lists them; to define: the harness for a lambda that does not terminate (a loop with no exit, and the test declaring a timeout, as `testFlowTermination` does), the harness for a `by` breaking its contract, and the list of the examples of this document as test names, each with the indexes at which its lambdas throw. Done when every example has a test name and the two harnesses exist in `testing.fear` or the integration projects.
 
 3. **Message texts.**\
 Every `<HELP ME WITH WORDING>` of this document: the messages of **Misuse exceptions**. Written in the style of the messages of the Frontend: the shape verbatim, what is wrong, the shape to write instead. Can be done one message at a time as the checks are implemented.
@@ -1919,14 +1917,14 @@ The sink of `actor` as `mut` or `mutH` (a `down.push#` inside `Repr.mutate` afte
 
 ### Stage 2: Sequential
 
-The misuse exceptions of **Misuse exceptions** on top of the semantics of Stage 1, in each of `Base:Offensive`, `Base:Defensive` and `Base:Naive` as `BaseOffensiveDefensiveNaive` says, and optimised implementations of the sequential strategy.
+Optimised implementations of the sequential strategy, in each base of `BaseOffensiveDefensiveNaive`; in `Base:Offensive`, the misuse exceptions of **Misuse exceptions** on top of them.
 - Every source, stage and terminal records itself as written; every terminal runs `checkMisuse`.
 - The misuse exception texts, following the style of the messages of the Frontend.
 - One loop per chain, sending each element through the stages with no allocation per element and no JDK stream, as the pseudocode of the sequential strategy; only fences materialise.
 - The rewrites of **Canonical form**: `limit` moves towards the source, a known size cuts the source, consecutive `map`s and `filter`s become one.
 - The legal rewrites of **Rewrites of combinations of stages and terminals**, such as the capped blocks of `max` then `limit`.
 - The checks run once per terminal, not once per element; the identity check is one `IdentityHashMap` pass over the source.
-Tests: every test of the Naive stage, each misuse exception through `checkNonDetErr`, plus differential tests running random chains, random lambdas (some throwing, some not respecting `by`'s contract) and random sources under both stages and comparing what they return.
+Tests: every test of Stage 1, each misuse exception through `checkNonDetErr`, plus differential tests running random chains, random lambdas (some throwing, some not respecting `by`'s contract) and random sources under both stages and comparing what they return.
 Speed goal: close to a plain Java loop over the same work, and never slower than a JDK sequential stream.
 
 ### Stage 3: Parallel dynamic
@@ -1946,7 +1944,7 @@ Speed goal: benchmarks with CPU bound lambdas that do not allocate, compared wit
 
 The same semantics as stage 3. When a whole flow expression is written in one place, from the source to the terminal with the lambdas written in place (the most common case), the backend generates Java methods for it, as the pseudocode of the examples: one for the sequential strategy, one or more for the parallel strategies, and a check at the top choosing between them, on the same information stage 3 uses. Every lambda written in place is inlined, and the state of an actor becomes local variables.
 - Inlining the lambdas makes the static cost estimate and the legal rewrites that need to know that a lambda can not throw or fail to terminate (as `{::>3}` over a `Nat` in **sort then filter**) available.
-- The onlyImmCapture flag is known from the literals, and the misuse exceptions are known at compile time: the backend can also report them as it compiles, but the generated code still throws them.
+- The misuse exceptions are known at compile time: the backend can also report them as it compiles, but the generated code still throws them.
 - A flow expression that is not written in one place, as a flow passed to a method, still runs through the library of stage 3.
 Tests: the pseudocode of the examples as the expected output of the generator for their flow expressions; every test of the stages before it with each flow expression written in one place and passed through a method, comparing the two.
 
