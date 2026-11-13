@@ -19,8 +19,7 @@ A 'fatal error' ends the manager, in this order:
 
 Everything the manager is asked to do either happens or is refused with an error naming what was refused and the reason of the refusal.
 
-The algorithms of this design are a contract on the behaviour: a specification, not a suggested implementation.
-They may be very slow or otherwise inefficient. They are designed to be obviously correct; implementing them as they are may be a terrible idea.
+The algorithms of this design specify the behaviour, not the implementation.
 
 ## Program and manager folder
 
@@ -238,7 +237,7 @@ reach(D, i)  iff  at(D, p_i)= id, not root(D, p_i), not same(D, p_i, m), not ins
 - `kind`: `idle`, `code`, `dataRead` or `dataEdit`.
 - `mains`: the selected mains, set by `SelectMains`.
 - `mounts`: for each DataRead type, the name of the data project mounted on that DataRead type (see DataReadDataEditDesign).
-- `attenuators`: for each main the attenuators the manager applies to that main, in order; a main absent from `attenuators` gets no attenuator. Naming a main or an attenuator the project does not have is well formed.
+- `attenuators`: for each main the attenuators the manager applies to that main, in order, an attenuator possibly more than once; a main absent from `attenuators` gets no attenuator. Naming a main or an attenuator the project does not have is well formed.
 
 `projects.info` holds no project name (see Registering a folder).
 The 'single' manager keeps the names in memory.
@@ -451,8 +450,8 @@ M                  the manager; id(M) its identity; folder(M) its manager folder
 D                  the desktop of the system
 fearless           the Fearless extensions: .fearless, .fapp000 .. .fapp999, .ffile000 .. .ffile999
 reserve(M)         the 'reserve' of M: the list reserve of projects.info (see Registered projects)
-compiled(M)        the registered projects of M whose .fearless_out holds a compilation
-claims(p)          the extensions the mains of p claim
+cached(M)          the registered projects of M whose .fearless_out holds a <pkg>.json
+claims(p)          the extensions of the claims of Coordinator.cachedMains of p
 captured(M)        the 'captured extensions' of M: fearless union reserve(M)
 setup(D, i)        the extensions the setup of the identity i names on D
 holder(D, e)       the program D opens a file x<e> with
@@ -464,7 +463,7 @@ After every `.reconcile` of M that ends with no refusal, once the EditMetadata c
 ```
 I1  setup(D, id(M)) = captured(M)
 I2  forall e in captured(M). holder(D, e) = id(M)
-I3  forall p in compiled(M). claims(p) subset of captured(M)
+I3  forall p in cached(M). claims(p) subset of captured(M)
 I4  |family(D)| <= 1
 ```
 At every moment:
@@ -483,7 +482,7 @@ T2  the user rejects the last question for e, or .reconcile can not take e:
       e in fearless  =>  'fatal error' naming e
       the user rejects the last question for e, and the EditMetadata of this .reconcile adds e to reserve(M)
                     =>  that EditMetadata is refused, and changes nothing
-      otherwise     =>  for each p in compiled(M) with e in claims(p): end the mains and the compilation of p,
+      otherwise     =>  for each p in cached(M) with e in claims(p): end the mains and the compilation of p,
                         and delete the compilation cache of p (Coordinator.deleteCache);
                         reserve(M) := reserve(M) \ {e};
                         .reconcile again
@@ -829,7 +828,7 @@ On `OpenWithOrShortcut <path>` the 'single' manager reacts:
 2. Zero or several mains claim the extension: the 'conflict dialog', a small window, lists those mains with their icons as `project::pkg.Main`, sorted. Picking an entry sends `OpenWithOrShortcut <path> <name> <main>`, with the project and the main of that entry; that message runs the main as in 1. Closing the conflict dialog runs nothing.
    With no main claiming the extension, the conflict dialog lists no entry.
 
-GNOME types every empty file as `application/x-zerosize` whatever the name of the file and never hands an empty file to the manager; refusing empty files everywhere (see Ill formed messages in Requests and messages) makes Windows and the other desktops behave the same.
+GNOME types every empty file as `application/x-zerosize` whatever the name of the file and never hands an empty file to the manager; refusing empty files everywhere (see Requests and messages) makes Windows and the other desktops behave the same.
 
 ### Input files
 
@@ -845,7 +844,7 @@ A running main sends messages to the manager through `System.manager` of the sta
 Each method of `CapManager` sends one message, as Eclipse does: the method listens on a port, runs the manager program with a `call` ending with that port, and returns when the manager ends the connection.
 So a method of `CapManager` returns once the manager has applied the message of the method: `.run` and `.compile` return once the mains or the compilation end; `.run`, `.compile`, `.check` and `.fix` return the text the manager sent on the port after the line `Applied`; the other methods return `Void`.
 A kind is a method of its own (`.kindIdle`, `.kindCode`, `.kindDataRead`, `.kindDataEdit`): a message of a running main can not hold a kind that is not one of the four.
-`Mount` is `.mount(name, type, data)`, and `Unmount` is `.unmount(name, type)`.
+`Mount` is `.mount(name, type, data)`, `Unmount` is `.unmount(name, type)`, and `Attenuate` is `.attenuate(name, main, attenuators)`.
 A path is the list of the bytes naming the path, the bytes of the `Base16:` form of the path. A method whose arguments do not make a `call` (a path that is not absolute or is the root of a drive, a name that is not a `projectName`, a main, a type or an attenuator that is not a `typeName`, `.selectMains` with two equal mains) is a deterministic error of the running main: no message is sent.
 A refused message makes the method a deterministic error holding the text after the line `Refused`.
 `.quit`, `.reset`, and `.terminate` naming the project of the running main never return: the running main ends.
@@ -874,7 +873,6 @@ What the design will cover later; nothing in this section is current behaviour.
 - A 'captured extension' that no main claims gets an icon of its own, showing that the manager holds the extension, instead of the conflict icon.
 - TODO: an error written in the Output of a project may need to offer an action that fixes the cause of that error, as the manager asks the user to let the manager hold an extension.
 - Removing or changing a data project mounted on a DataRead type of a code project shows a confirmation dialog in the GUI, naming the code projects that get a broken mount.
-- A data project folder can be deleted when the folder is left empty, and so can a zip, since a zip is a folder for a main. Deleting something and writing it again "the same" can then give another structure on disk: what was a zip can come back as a plain folder. How to handle this is to be discussed.
 - A main learns the extensions the main claims, for example through a `System` method. A main with `OpenWith[I]` gets an extension such as `ffile042`, chosen by the manager and varying between machines and compile orders; to save a document the user can later double click, the program must name the document `<something>.ffile042`.
 
 ## Implementation notes
@@ -888,7 +886,7 @@ An implementation decides alone every detail the design leaves open below the co
 - A double click on a button presses the button twice, and the second press comes before the request of the first press changes the window, so the second press sends the same request again.
 - A main or a compilation ending alone: the JVM of each main and of each compilation is a process of its own. A process that crashes ends alone. The out of memory killer of the Linux kernel ends one process at a time, chosen by memory use, and Windows ends no group of processes either. systemd-oomd ends a whole cgroup when the memory pressure stays high; a cgroup is a group of processes the Linux kernel accounts together, and a child process starts in the cgroup of the parent process. So on Linux with systemd as init, `Fs.processBuilder` starts each child with `systemd-run --user --scope`, in a transient scope: a cgroup of its own.
   systemd-oomd is on by default on Ubuntu with GNOME, Fedora (GNOME and COSMIC) and Omarchy. systemd-oomd is off on Arch, and missing on Debian, Kubuntu, Lubuntu, Xubuntu and openSUSE Tumbleweed. Void has no systemd.
-- A main or a compilation ending with the manager: the JVM of each main and of each compilation reads its standard input, a pipe the manager holds open, and halts when that standard input ends. So a manager that ends, however the manager ends, ends every main and every compilation the manager started.
+- A main or a compilation ending with the manager: the manager starts the JVM of each main and of each compilation with a 'parent lifeline' (see Processes in AttenuationDesign) on a pipe the manager holds open.
 - Removing a manager folder at once: holding the lock of `instance.lock` of the manager folder, rename the manager folder to a new name in the same folder, then delete the renamed folder. When the rename fails (on Windows a folder holding a file that a process has open may not be renamed), delete every file of the manager folder that can be deleted. A test removes a manager folder whose `instance.lock` is held open, on every desk: the test shows whether the rename works on Windows.
 - The 'single' manager: the process holding the lock (`FileChannel.tryLock`) of the file `instance.lock` in the manager folder. The operating system releases the lock when the process ends, however the process ends, so a manager that was killed leaves no stale lock.
 

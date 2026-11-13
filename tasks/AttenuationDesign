@@ -3,8 +3,7 @@
 How a Fearless main gets less than the full authority of `System`,
 and how a main runs another main of the same project in a new process with the same attenuators or more.
 
-The algorithms of this design are a contract on the behaviour: a specification, not a suggested implementation.
-They may be very slow or otherwise inefficient. They are designed to be obviously correct; implementing them as they are may be a terrible idea.
+The algorithms of this design specify the behaviour, not the implementation.
 
 ### Fearless facts
 
@@ -14,7 +13,6 @@ A main is `Main: CaptureFree { .main(sys: mut System): Void }`; the runtime give
 Observable Determinism: a method with no mut parameters, receiver included, returns structurally equivalent results for structurally equivalent inputs; non termination and deterministic exceptions are results.
 A non deterministic exception is caught only by a `CapTry`, and a `CapTry` comes only from a `System`.
 A type implementing `CaptureFree` captures nothing. A type implementing `CaptureFree` with no abstract methods and zero generic parameters has one instance, and its type name denotes that instance: the type is 'summonable'. A top level type captures nothing by construction; a type declared inside a method captures nothing only when it implements `CaptureFree`.
-The Fearless manager runs each main in a JVM of its own, started with the folder of the project and the data projects mounted on the DataRead types of the project (DataReadDataEditDesign).
 `Info` is the one value with a text form that parses back: `Info.str` is JSON text, `Infos.fromStr` reads it.
 
 ### Terms
@@ -128,13 +126,14 @@ CapProcess: ToIso[CapProcess], WidenTo[CapProcess]{
 The new process applies the attenuators of this process, in their order, then the attenuators of `.with`, in their order, then `attenuators` in their order.
 An attenuator `A` that keeps `.process` gives `u.process.with A`.
 
-The new process starts as this one started: same first input file, same data projects, same manager, same desk identity, same working folder; it prints to the output of this process. A file dropped on a window of a process arrives on the `CapInputCursor` of that process.
+The new process starts as this one started: same first input file, same data projects, same manager, same desk id (see Desk ids and icons in ControllersDesign), same working folder; it prints to the output of this process. A file dropped on a window of a process arrives on the `CapInputCursor` of that process.
+The Output has no mark for a process that `CapProcess` starts (see Run, Compile and Check in ControllersDesign).
 `.run` accepts every summonable `Main` of every package of the project; the new process finds the main by its type name, as it finds an attenuator.
 A process that can not start, or that ends before its main ends (a JVM error, a kill), is a non deterministic error of `.run`.
 The end of a process also ends every process it started.
 
 Implementation details:
-- the 'parent lifeline' of a process is its standard input: a process started with `-Dfearless.parentLifeline=stdin` ends when its standard input reaches its end, which the end of its parent causes; the manager starts every main with that property, and a new process inherits the property with the input arguments;
+- the 'parent lifeline' of a process is its standard input: a process started with `-Dfearless.parentLifeline=stdin` ends when its standard input reaches its end, which the end of its parent causes; a new process inherits the property with the input arguments;
 - the attenuators of a process are the system property `fearlessAttenuators`,
 the qualified type names separated by commas; no property means no attenuator;
 - the `Main.java` of each package summons each attenuator by reflection from its qualified name;
@@ -144,12 +143,9 @@ the qualified type names separated by commas; no property means no attenuator;
 
 ### Manager
 
-The compiler records the attenuators of a package where it records its mains: the `.attenuators` of the `.manifest` of `<pkg>.json` (see CoordinatorDesign).
-
-`attenuators` in `projects.info` (see Info files in ControllersDesign) gives the attenuators of each main.
+The `.attenuators` of the `.manifest` of `<pkg>.json` (see CoordinatorDesign) are the `SystemAttenuator` types of the package with no abstract method.
 The attenuators of `base` are attenuators of every project: the `base.json` of the base cache holds a manifest with no main and the attenuators of `base`, and `Coordinator.check` merges that manifest with the manifests of the project (`._mergedManifest` in CoordinatorDesign).
-The manager starts each main with its attenuators as the `.attenuators` of `Launch` (see CoordinatorDesign).
-An attenuator may be listed more than once. `CapManager` gets `mut .attenuate(name: Str, main: Str, attenuators: List[Str]): Void`, the message `Attenuate` (see Messages from a running main in ControllersDesign).
+The manager starts each main with the attenuators that `attenuators` of `projects.info` gives the main (see Registered projects in ControllersDesign), as the `.attenuators` of `Launch` (see CoordinatorDesign).
 
 The project area shows the attenuators in the Attenuators collapsible area (see Project area contains, top to bottom in ControllersDesign).
 
@@ -158,11 +154,9 @@ TODO: default attenuators: a main absent from `attenuators` gets the default lis
 ### Limits
 
 - State of an attenuator is per process. An attenuator counting calls (a download quota) starts from zero in every new process, so a main can get a fresh quota by starting a child.
-- The manager starts each main with `-DfearlessDesk.id=<id>`, one id per main of a project. The runtime sets the window class of every window of the program to that id (`WM_CLASS` on X11, the application user model id on Windows), and the manager writes a `.desktop` file with that class, the name and the icon of the main: this is how the desk shows the windows of a main under its name and icon. A new process inherits the arguments of its parent JVM, so the desk shows its windows under the name and icon of the parent main. The parent could pass the id of the main it starts.
 
 ### Open questions
 
-- The Output marks: the manager marks where each main starts and ends; the output of a new process is inside the output of its parent main, with no mark of its own. A parent that wants a mark prints it.
 - TODO: an automated test of a process started from a deployed image, so that the `java.management` requirement of the images is tested on every system. The manager is controlled by messages, so a Controllers test can run the deployed manager on a project whose main calls `sys.process.run`: `FearlessCommandRegister`, `FearlessCommandKind`, `FearlessCommandCompile` and `FearlessCommandRun` with a port, reading the Output from the port and comparing it with the expected text. A `TestAgentTools` scenario on a desk is the alternative that also tests the window.
 
 ### Second step: a process that runs beside its parent

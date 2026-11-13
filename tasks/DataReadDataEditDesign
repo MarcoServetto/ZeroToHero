@@ -4,8 +4,7 @@ How a Fearless main reads and edits the 'resources' of a data project.
 The code declares the types naming the data the code needs.
 The user of the manager mounts a data project on each of those types, picking the data project from a menu.
 
-The algorithms of this design are a contract on the behaviour: a specification, not a suggested implementation.
-They may be very slow or otherwise inefficient. They are designed to be obviously correct; implementing them as they are may be a terrible idea.
+The algorithms of this design specify the behaviour, not the implementation.
 
 ### Terms
 
@@ -58,7 +57,7 @@ The manifest of each package (the `.manifest` of `<pkg>.json`, see CoordinatorDe
 ## Mounts
 
 A data project can be mounted on several DataRead types, of one code project or of several code projects.
-A broken mount is well formed; a `Run` of a code project with a broken mount is ill formed (see Ill formed messages in ControllersDesign).
+A broken mount in `projects.info` is well formed.
 
 ## Data projects of a running main
 
@@ -74,6 +73,8 @@ A 'folder' name is a 'valid segment' (see FolderShapesDesign).
 A 'file' name is a 'valid file name' (see FolderShapesDesign) whose extension is not `zip` or `fearless`.
 The names of a written path, joined with `/`, are at most 200 characters long.
 A write replaces the 'file' at the path, or creates the 'file' together with the missing 'folders' of the path.
+TODO: a delete that leaves the root 'folder' empty also deletes the root 'fsFolder'.
+TODO: a write after a delete that removed the 'fsFile' `x.zip` creates the 'fsFolder' `x`, not `x.zip`: whether a write keeps the zip is to be decided.
 
 A delete deletes a 'file', or a 'folder' with every 'resource' in the 'folder' and the 'fsFiles' and 'fsFolders' whose name starts with "."; then the delete deletes the 'folders' other than the root 'folder' that the delete leaves empty, and the 'fsFiles' that induce them.
 These are deterministic errors:
@@ -105,7 +106,7 @@ An 'operation' is a call of a method of `CapDataRead` or `CapDataEdit`, or a rea
 Each 'operation' holds the lock from its start to its end: a 'read lock' for `.paths` and for the reads, the 'edit lock' for a write and for a delete.
 An 'operation' that can not take the lock waits until it can; Fearless code observes the wait only as time.
 
-`sys.locked(reads, edits, f)` holds, for the whole run of `f`, a 'read lock' of the data project mounted on each DataRead type of `reads` and the 'edit lock' of the data project mounted on each DataEdit type of `edits`, and returns what `f` returns.
+`sys.locked(reads, edits, f)`, a `mut` method of `System`, holds, for the whole run of `f`, a 'read lock' of the data project mounted on each DataRead type of `reads` and the 'edit lock' of the data project mounted on each DataEdit type of `edits`, and returns what `f` returns.
 A data project named more than once, through several types or in both lists, is locked once: with the 'edit lock' when one of its types is in `edits`.
 `.locked` takes the locks one at a time, in the order of the names of their 'lock files', and releases every lock when `f` has ended, normally or with an error, and every process that the process of `.locked` started while `f` runs has ended.
 The 'lock group' of a `.locked` is the process of `.locked` while `f` runs, every process that this process starts while `f` runs, and every process that a process of the 'lock group' starts.
@@ -113,7 +114,6 @@ A process of the 'lock group' gets the 'lock files' of the `.locked` and their m
 The 'operations' of the 'lock group' on the data projects of `reads` and `edits` hold the 'inner lock' of the data project instead of the lock, in the same mode; a write or a delete on a data project locked with a 'read lock', and an 'operation' of the 'lock group' on a data project that is not in `reads` or `edits`, are deterministic errors.
 A process runs at most one `.locked` at a time: a `.locked` waits while another `.locked` of the same process runs; a `.locked` inside the `f` of a `.locked`, and a `.locked` of a process of a 'lock group' started by `CapProcess`, are deterministic errors.
 So every process takes the locks of `.locked` in the same order, a process that waits for a lock holds only locks that come earlier in that order, and two processes never wait for each other.
-`.locked` is a method of `System`: an attenuator gives it as the other methods of `System`, `ErrorSystem` revokes it, and `RevokableSystem` checks the `Revocation` before it.
 
 The manager holds a 'read lock' during each scan of a data project; when the lock is not free, the manager skips that scan and keeps the state found by the previous scan.
 
