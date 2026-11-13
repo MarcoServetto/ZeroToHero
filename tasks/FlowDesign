@@ -148,8 +148,8 @@ return res.list;
 The pseudocode uses a few primitives:
 - `m : Mailbox[T]`: elements in flow order, possibly followed by one exception. `for(T x: m){..}` waits for each element in turn, and throws the exception in its place; `m.join` waits for the end of `m`, and throws its exception if any. `m.list` and `m.first` are sequential methods of `Mailbox`.
 - `fork(Range c: Chunks#n){..}` splits the indexes `0 ..< n` into chunks and starts one task per chunk, running the block on some worker. The block sends elements with `out.send(x)`. `fork` returns the mailbox of what the blocks send: chunk after chunk in index order, and in sending order inside one chunk. An exception thrown by a block takes the place of the next element of its chunk and ends the mailbox: what the chunks after it send is discarded.
-`fork(List[T] c: Chunks#m){..}` does the same over the elements of the mailbox `m`, forming each chunk as it receives its elements.
-`node(T x: m){..}` over a mailbox or a list `m` processes the elements one at a time, in flow order, sending with `out.send(x)`, and returns the mailbox of what it sends; it may update the local variables declared just before it, which no other code uses. All nodes in a pseudocode section start at the same time, so that they can work in parallel (as soon/as long as they all have elements).
+`fork(List[T] c: Chunks#m){..}` does the same over the elements of the mailbox `m`, forming each chunk as it receives its elements. An exception met in `m` comes after what the chunks of the elements before it send, and ends the mailbox.
+`node(T x: m){..}` over a mailbox or a list `m` processes the elements one at a time, in flow order, sending with `out.send(x)`, and returns the mailbox of what it sends; it may update the local variables declared just before it, which no other code uses. An exception thrown by the block, or met in `m`, takes the place of the next element the node sends, and ends the mailbox of the node. All nodes in a pseudocode section start at the same time, so that they can work in parallel (as soon/as long as they all have elements).
 - `Mailbox[T] feed= Mailbox#;` is an empty mailbox the code itself feeds, with `feed.send(x)` and `feed.close`.
 - `IdentityCheck#rs` throws a non deterministic exception when two elements of `rs` are identity equal.
 - `KeySet#by` is a hash set placing its keys with the calls of `_KeepNew`; `s.add(x)` returns whether `x` was new.
@@ -1247,77 +1247,11 @@ return node(Nat v: m){ out.send(g#v); }.list;
 ```
 No strategy makes positive speculation calls: no element after index `2` is ever processed.
 
-**example with actorMut**\
-```
-l.flow
-  .map f
-  .actorMut[mut Var[Nat], Nat](Vars#[Nat]0, {down, s, e ->
-    Block#(s.set(s.get + e), down.push#(down, s.get), Continue#)})
-  .map g .list
-```
-
-Let `h` be the actor lambda, `s` the state built by `Vars#[Nat]0`, `down` the sink that applies `g` to each value sent through it, and `sj` the sum of `f#e0` up to `f#ej`. If there is a smallest index `j` such that `h#(down, s, f#ej)` throws or does not terminate, the whole flow expression returns what `h#(down, s, f#ej)` returns.\
-Otherwise the whole flow expression returns the list of `g#s0` to `g#s7`.
-
-The actor can not be split: the call for one element observes what the calls for the elements before it in flow order left in the state.
-
-Data parallel:
-
-`map f` and `map g` run in chunks, with the actor making its calls one at a time between the two data parallel regions. The regions still overlap in time: no fence is needed, since the actor sends one element downstream at a time, and each chunk of its output goes to a `map g` task as soon as it is full.
-One cost remains: the actor needs the elements in flow order, so the results of `map f` are put back in flow order before the actor receives them; parallelising only chunks of limited size bounds the reordering buffer.
-
-Pipeline parallelism:
-
-This is the natural strategy for an `actorMut`: a `map f` node, the actor node and a `map g` node that also builds the list. The actor node owns `s` as local mutable data and receives the elements in flow order, so there is no reordering buffer. Several actor stages in a row each become a node, running pipeline parallel with each other.
-The cost is that `map f` and `map g` get one node each. The two strategies compose: a `map` node can be replaced by a data parallel region feeding the actor node in order, which is the data parallel version above.
-In both strategies, an exception thrown at index `j` propagates only if nothing throws at a smaller index; the calls on greater indexes are negative speculation calls, and the state `s` they mutated is garbage collectable once the exception is caught.
-
-Sequential strategy:
-```
-Nat s= 0;
-EList[Nat] res= EList#;
-for(Nat e: l){
-  s= s + f#e;
-  res.add(g#s);
-  }
-return res.list;
-```
-The `Var` of the actor state becomes the local `s`: it is `iso`, so nothing else can reach it.
-
-Data parallel:
-```
-Mailbox[Nat] vs= fork(Range c: Chunks#(l.size)){
-  for(Nat j: c){ out.send(f#(l.get(j))); }
-  };
-Nat s= 0;
-Mailbox[Nat] ss= node(Nat v: vs){ s= s + v; out.send(s); };
-return fork(List[Nat] c: Chunks#ss){
-  for(Nat x: c){ out.send(g#x); }
-  }.list;
-```
-The actor node receives the results of `map f` in flow order: the mailbox `vs` is the reordering buffer.
-An exception of `f` at index `j` is received by the actor node after the elements before it, is sent on after their sums, and is received by the terminal after the results of `g` on those sums: it propagates only if no call of `g` before it in flow order throws, as under the sequential strategy.
-
-Pipeline parallelism:
-```
-Mailbox[Nat] vs= node(Nat e: l){ out.send(f#e); };
-Nat s= 0;
-Mailbox[Nat] ss= node(Nat v: vs){ s= s + v; out.send(s); };
-EList[Nat] res= EList#;
-for(Nat x: ss){ res.add(g#x); }
-return res.list;
-```
-
 **example with for**\
 `l.flow.map{_ -> v.get} .for{x -> Block#(acc.add x, v.set(v.get + 1))}`\
 with `v` a fresh `mut Var[Nat]` holding `0`, and `acc` a fresh `mut EList[Nat]`.
 
-If there is a smallest index `j` such that `v.get |> {x -> Block#(acc.add x, v.set(v.get + 1))}` throws or does not terminate, the whole flow expression returns what `v.get |> {x -> Block#(acc.add x, v.set(v.get + 1))}` returns.\
-Otherwise the whole flow expression returns `Void`, and afterwards `acc` holds eight times `0` and `v` holds `8`.
-
-The `map` lambda reads `v` and the terminal lambda writes `v`. In many other approaches `forEach` is not a fence, and `acc` may end up holding `0` to `7` instead.
-
-With the fence the map stage can run with data parallelism: every `v.get` reads the same `0`, and no code executed as part of a stage reads what the terminal writes, since the `for` lambda runs after the fence.
+The whole flow expression returns `Void`, and afterwards `acc` holds eight times `0` and `v` holds `8`.
 
 Sequential strategy:
 ```
@@ -1341,8 +1275,7 @@ for(Nat x: xs){
   }
 return Void;
 ```
-The `map` lambda captures `v`, so the `for` lambda can not run before every task has finished: it would change what the tasks still running read.
-With `{_ -> 0}` in place of `{_ -> v.get}` the `map` lambda carries the onlyImmCapture flag, and with `l` an `imm List` the `for` lambda runs as it receives the elements, and `xs` is not needed:
+With `{_ -> 0}` in place of `{_ -> v.get}` the `map` lambda carries the onlyImmCapture flag, the `for` lambda runs in a node as it receives the elements, and `xs` is not needed:
 ```
 Mailbox[Nat] m= fork(Range c: Chunks#(l.size)){
   for(Nat j: c){ out.send(0); }
@@ -1359,11 +1292,10 @@ done.join;
 if(held.isSome){ throw held!; }
 return Void;
 ```
-The `for` lambda runs in a node, in flow order, as the sequential strategy runs it. The node keeps its own exception and skips the elements after it, so that an exception of the `map` lambda at a greater index, which the sequential strategy meets first, wins; the calling worker reads `m` itself, so that such an exception leaves the whole flow expression at once, also while the node is inside a `for` call that does not terminate; and the terminal waits for the node only once every call of the `map` lambda has returned. With `{_ -> 0}` the calls of the `map` lambda can not throw, so here the node is only cheaper than `xs`; with a `map` lambda that can, the three precautions are what keeps the strategy observably equal to the fence.
 
 **example with forEach**\
 `l.flow.map a .forEach b`\
-with `l` an `imm List`, `a` a `read F[Nat,Nat]` carrying the onlyImmCapture flag, and `b` a `mut MF[Nat,Void]`.
+with `a` a `read F[Nat,Nat]` carrying the onlyImmCapture flag, and `b` a `mut MF[Nat,Void]`.
 
 If there is a smallest index `j` such that `a#ej` or `b#(a#ej)` throws or does not terminate, the whole flow expression returns what the first of the two that does returns. Otherwise it returns `Void`, after calling `b` on every `a#ej` in flow order.
 With `b` not terminating on `a#e1` and `a` throwing on `e2`, it never returns, where `l.flow.map a .for b` throws the exception of `a#e2`.
@@ -1381,7 +1313,6 @@ Mailbox[Nat] m= fork(Range c: Chunks#(l.size)){
 for(Nat x: m){ b#x; }
 return Void;
 ```
-The calling worker runs `b` in flow order as it receives the results of `a`. An exception of `a` at index `j` is received after the results before it, so it propagates only if no call of `b` before it throws, and a call of `b` that does not terminate stops the whole flow expression, as under the sequential strategy. `b` needs no node of its own: its calls form a sequence, as those of `fold` do.
 
 **example with let**\
 ```
@@ -1395,8 +1326,6 @@ l.flow
 
 If there is a smallest index `j` such that `f#ej` throws or does not terminate, the whole flow expression returns what `f#ej` returns.\
 Otherwise, let `total` be the checked sum of the `f#ej` over every index `j`, in flow order: if it overflows, the whole flow expression returns that exception. Otherwise, if there is a smallest index `j` such that `f#ej + total` overflows, it returns that exception; otherwise it returns the list holding `f#ej + total` at each index `j`.
-
-The result of every `f#ej` is needed twice, so `let` materialises the flow up to that point as a list.
 
 Sequential strategy:
 ```
@@ -1420,9 +1349,7 @@ return fork(Range c: Chunks#(xs.size)){
   for(Nat j: c){ out.send(xs.get(j) + total); }
   }.list;
 ```
-The sum runs only once every call of `f` has returned, as `let` passes the whole list to its lambda.
-
-With `{xs -> xs.seqFlow.fold({0}, {a, x -> a.aluAddWrap x})}` in place of `{xs -> xs.seqFlow.sum 0}`, the sum can not throw or fail to terminate, so it runs inside the loop of `f`, and the loop computing `total` disappears:
+With `{xs -> xs.seqFlow.fold({0}, {a, x -> a.aluAddWrap x})}` in place of `{xs -> xs.seqFlow.sum 0}`, the sum can neither throw nor fail to terminate, and the sequential strategy may compute it inside the loop of `f`:
 ```
 EList[Nat] xs= EList#;
 Nat total= 0;
@@ -1435,33 +1362,18 @@ EList[Nat] res= EList#;
 for(Nat x: xs){ res.add(x + total); }
 return res.list;
 ```
-The checked `+` of `.sum` throws on overflow, so inside the loop of `f` its exception would have to be held until every call of `f` has returned.
 
 **example with distinct, on a repeated element**\
 ```
-Lists#(1, 1, 2).flow.map f
+xs.flow.map f
   .distinct by .filter {::>3}.list
 ```
-with `by` an `OrderHashBy[Nat]`.
+with `xs` the list `Lists#(1, 1, 2)`, `ei` its element at index `i`, and `by` an `OrderHashBy[Nat]`.
 
-If there is a smallest index `i` such that `f#ei |> {e -> ...}` throws or does not terminate, the whole flow expression returns what `f#ei |> {e -> ...}` returns. The body of that pipe `|>` places `e` among the values already kept and, when `e` is kept, applies `{::>3}` to `e`; the body makes the calls of `_KeepNew`: the key of `e` and its `.hash`, then `==` with the kept values of equal hash, in the order they were kept.\
-Otherwise the whole flow expression returns, in flow order, those of the kept values greater than `3`, where the kept values are decided only by the calls of `by`:
-- `f#1` at index `0` is kept;
-- `f#1` at index `1` is kept when `by` ranks it apart from the `f#1` at index `0`;
-- `f#2` at index `2` is kept when `by` ranks it apart from every kept value.
+If there is a smallest index `i` such that `f#ei`, the key `by#(f#ei)`, or `_KeepNew` on that key throws or does not terminate, the whole flow expression returns what that call returns.\
+Otherwise the whole flow expression returns, in flow order, the `f#ei` greater than `3` for which `_KeepNew` returns `True`.
 
 The two `f#1` are structurally equivalent, but a `by` whose `.cmp` answers `.lt` to every call keeps both of them.
-
-Data parallel:
-
-`map f` runs in chunks, and so can computing the key and hash of each result, which depend only on that element; the placement runs sequentially, in flow order, as under `mapping`. The kept elements are given in chunks to `filter` tasks as soon as they are kept, without waiting for the `map` or `distinct` stage to finish, and `.list` joins the chunks in order.
-An exception thrown at index `i`, by code executed as part of the map, distinct or filter stage, propagates only if nothing throws at a smaller index; otherwise it is discarded (the calls at greater indexes are negative speculation calls).
-
-Pipeline parallelism:
-
-A `map f` node, a `distinct` node and a `filter` node, the `filter` node also building the list. Each node receives the elements in flow order, so the `distinct` node needs no reordering: it keeps the kept keys as local mutable data, a hash set shared with no one, and sends each kept element downstream at once. The `map f` node can also compute the keys, leaving the `distinct` node only the placement.
-
-With `xs` the list `Lists#(1, 1, 2)`.
 
 Sequential strategy:
 ```
@@ -1505,34 +1417,6 @@ return fork(List[Nat] c: Chunks#ks){
     }
   }.list;
 ```
-Which of the two data parallel versions is faster is discussed under **Choosing between strategies**.
-
-**example with sort and limit**\
-`l.flow.map f .sort by .limit 3 .list`\
-with `by` an `OrderBy[Nat]`.
-
-If there is a smallest index `j` such that `f#ej` throws or does not terminate, the whole flow expression returns what `f#ej` returns.\
-Otherwise, if some calls of `by.cmp(...)` made by the sorting process throw or do not terminate, let `c` be the one the sorting process makes before the others: the whole flow expression returns what `c` returns.\
-Otherwise, let `v0,...,v7` be the `f#ej` in `by` order, ties ordered by smallest index: the whole flow expression returns `Lists#(v0, v1, v2)`.
-
-Sequential strategy:
-```
-EList[Nat] vs= EList#;
-for(Nat e: l){ vs.add(f#e); }
-return _Sort#(vs, by, vs.size).take(3);
-```
-Data parallel:
-```
-Mailbox[Nat] m= fork(Range c: Chunks#(l.size)){
-  for(Nat j: c){ out.send(f#(l.get(j))); }
-  };
-MergeTree[Nat] s= MergeTree#(by, l.size);
-for(Nat v: m){ s.add(v); }
-return s.list.take(3);
-```
-The loop over `m` adds the elements in flow order, whatever the order in which the tasks finish; the merges of the blocks of different chunks run while the tasks of the chunks after them are still running.
-Pipeline parallelism is the same code, with `Mailbox[Nat] m= node(Nat e: l){ out.send(f#e); };`.
-Merges keeping only `3` elements would skip calls of `by`, and so skip their exceptions: legal only where every call of `by` is known to complete successfully.
 
 ## Plan
 
