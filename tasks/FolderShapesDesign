@@ -25,7 +25,7 @@ v ::= visible | hidden
 - In a folder, the s of the Es are distinct.
 - In a z, the s of the Zs are distinct.
 
-`s`, `file` and `other` are atoms; a `file` has a content and a time. `len(s)` is a natural number.
+`id`, `s`, `file` and `other` are atoms; a `file` has a content and a time. `len(s)` is a natural number.
 `isHidden(s)`, `isZip(s)`, `isZipOf(s1, s2)`, `folderNameOk(s)`, `fileNameOk(s)`, `hiddenNameOk(s)`, `okTogether(s1, s2)` and `timeOk(file)` are predicates, and `zip(file)` is a z or undefined.
 The implementation notes define them for each desk.
 The ids of a D are the 'root ids'.
@@ -55,9 +55,8 @@ write(D, p s, file')= ids; folders id{Es s -> file' Es'} folders'
                      with D= ids; folders id{Es s -> file Es'} folders'
                           at(D, p)= id
 ```
-When `at(D, p)` is a file f, or a z inside zip(f), `add`, `delete`, `rename` and `write` on `p s` change zip(f), and f is written again from the changed zip(f), with the current time.
+When `at(D, p)` is a file f, or a z inside zip(f), with `at(D, p')= f`, an `add`, `delete`, `rename` or `write` on `p s` is `write(D, p', f')`, where f' is the 'zip file' (see Fix) written from zip(f) changed by that operation, with the current time.
 A `move` of a z to a folder of D adds a folder with a new id, holding the Zs of that z, each z among them moved in the same way.
-A 'checkable folder property' is a predicate on Ds and ps that never compares two ids; `valid`, `same` and `inside` below are 'checkable folder properties'.
 ```
 names(D, id)= Es              with id{Es} in D
 names(D, {Zs})= Zs
@@ -65,7 +64,7 @@ names(D, file)= names(D, zip(file))
 valid(D, p)         iff  at(D, p)= id, names(D, id) not empty, ok(D, names(D, id), visible, 0, 0)
 ok(D, s1 -> t1 .. sk -> tk, v, l, d)
                     iff  forall i, j in 1..k with i != j: okTogether(si, sj)
-                         forall i, j in 1..k with i != j: (v= visible, not isHidden(si), isZip(si)) implies (not isZipOf(si, sj))
+                         forall i, j in 1..k: (v= visible, not isHidden(si)) implies not isZipOf(si, sj)
                          forall i in 1..k: okEntry(D, si, ti, v, l+len(si), d)
 okEntry(D, s, t, v, L, d)
                     iff  one of these holds:
@@ -84,7 +83,7 @@ inside(D, p1, p2)   iff  at(D, p1)= id1, at(D, p2)= id2, exists s1..sn with n > 
 
 ## Entries
 
-An 'entry' is a p s1..sn, with p the project folder, n > 0 and `at(D, p s1..sn)` defined, such that each file that `at` goes through is a 'zip'.
+An 'entry' is a p s1..sn, with p the project folder, n > 0, `at(D, p s1..sn)` defined, and p s1..si a 'zip' for each i < n with `at(D, p s1..si)` a file.
 An 'entry' p s1..sn is 'hidden' when `isHidden(si)` for an i in 1..n, and 'visible' otherwise.
 A 'zip' is a 'visible' 'entry' p s1..sn with `at(D, p s1..sn)` a file and `isZip(sn)`.
 The 'path' of an 'entry' p s1..sn is s1, ..., sn joined with `/`, where each si, with i < n, of a 'zip' p s1..si counts without its ending `.zip`: the file `a.fear` of `lib/x.zip` has the 'path' `lib/x/a.fear`.
@@ -93,26 +92,26 @@ The 'path' of an 'entry' p s1..sn is s1, ..., sn joined with `/`, where each si,
 
 A project folder p is 'well shaped' when `valid(D, p)` holds; the 'shape rules' are the premises of `valid`, `ok` and `okEntry`.
 The 'problem' (see Project states in ControllersDesign) of a project whose project folder is not 'well shaped' states one broken 'shape rule' and lists the 'paths' breaking that 'shape rule' (none for a project folder holding no 'entry').
-The code checking the 'shape rules' is `Coordinator/src/realSourceOracle`.
 
 ## Names
 
-A 'valid segment' holds only lowercase letters (`a` to `z`), digits (`0` to `9`) and `_`, starts with a letter or `_`, and is not `con`, `prn`, `aux`, `nul`, `com1` to `com9` or `lpt1` to `lpt9`.
+A 'reserved name' is `con`, `prn`, `aux`, `nul`, `conin$`, `conout$`, `com1` to `com9`, `lpt1` to `lpt9`, or `com` or `lpt` followed by U+00B9, U+00B2 or U+00B3.
+A 'valid segment' holds only lowercase letters (`a` to `z`), digits (`0` to `9`) and `_`, starts with a letter or `_`, and is not a 'reserved name'.
 A 'valid file name' is one of:
 - a 'valid segment', a dot and an extension of 1 to 16 lowercase letters or digits (`0` to `9`);
 - a 'valid segment', a dot and one of `css.map`, `d.ts`, `d.ts.map`, `js.map`, `min.css`, `min.js`, `tar.bz2`, `tar.gz`, `tar.lz`, `tar.lz4`, `tar.xz`, `tar.zst`.
 
 A 'hidden name':
 - does not end with a dot or a space;
-- holds no control character, no U+FFFD, no surrogate without its pair, and none of `<`, `>`, `:`, `"`, `/`, `\`, `|`, `?`, `*`;
-- before the first dot, without its ending spaces, in lowercase, is not `con`, `prn`, `aux`, `nul`, `conin$`, `conout$`, `com1` to `com9`, `lpt1` to `lpt9`, or `com` or `lpt` followed by U+00B9, U+00B2 or U+00B3;
+- holds no control character (U+0000 to U+001F and U+007F to U+009F), no U+FFFD, no surrogate without its pair, and none of `<`, `>`, `:`, `"`, `/`, `\`, `|`, `?`, `*`;
+- before the first dot, without its ending spaces, in lowercase, is not a 'reserved name';
 - is at most 255 bytes long in UTF-8.
 
 A 'zip file' is a file in the zip format where each file its central directory stores is stored or deflated, and not encrypted.
 The 'stored names' of a 'zip file' are the names its central directory stores. The 'stored names' are 'good' when:
 - every name is valid UTF-8, holds no NUL character, and, without one `/` at its end, holds no segment that is empty, `.` or `..`;
 - no name is stored twice, comparing the names without one `/` at their end;
-- no name starts with the name of a file followed by `/`.
+- no name starts with another stored name that does not end with `/`, followed by `/`.
 
 ## Fix
 
@@ -212,6 +211,7 @@ A `delete`, a `rename`, a `write`, a `makeFolder` or a `move` that the desk refu
 
 ## Implementation notes
 
+The code checking the 'shape rules' is `Coordinator/src/realSourceOracle`.
 The sections below say, for each desk, which operations of the desk correspond to which operations on a D.
 An operation of a desk is a program run in a shell: `sh` on Linux and macOS, PowerShell 7 (`pwsh`) on Windows.
 Each correspondence holds while no other program changes the folders that the operation reads or writes.
