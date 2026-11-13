@@ -25,15 +25,16 @@ Terms
     handler            code of the program that a setter of the list of 'The handlers' registers, and that the library runs on the model thread of a frame.
     model event        a model task that runs a handler.
     library task       a model task that runs only code of the library.
+    later              an object of type Later, with one source.
+    source             what gives the result of a later: the end of a process, the arrival of a file at a position of CapInputCursor, the closing of an IQL dialog.
+    result             what a source gives: a value v, or an error e.
 
 Threads
 =======
 
-One thread at a time runs mut code of the program.
-The thread that calls CapGui.run runs the consumer of .run, then waits until the window closes.
-Meanwhile the model thread of the frame runs the model events.
-A model event that calls CapGui.run waits in the same way until the new window closes.
-So the threads running mut code of the program form a stack, and only the top of the stack runs.
+The thread that calls CapGui.run, the main thread or a model thread, runs the consumer of .run, then waits until the window of the new frame closes.
+Meanwhile the model thread of the new frame runs the model events.
+So the threads running mut code of the program form a stack, and only the top of the stack runs: one thread at a time runs mut code of the program.
 The toolkit thread runs only imm code of the program: the painters.
 
 The getters
@@ -111,7 +112,7 @@ Disabling a frame
           the window of F does not open (after the consumer) or closes (after a model event), and the CapGui.run of F throws the non deterministic error
           `The frame is disabled and no model event of the frame runs or waits: no code can enable the frame again.`
 
-On a disabled frame, the toolkit thread handles all that the toolkit thread handles on an enabled frame: the list after 'The toolkit thread alone handles the rest'.
+The toolkit thread handles the list after 'The toolkit thread alone handles the rest' on a disabled frame too.
 Each painter sees whether the frame is enabled through .enabled of its Graphics, and can draw a disabled look.
 
     A The Frame f is open. A model event of f disabled f and waits on a later. The window has the aspect ratio of the virtual pixel space: no band shows.
@@ -150,10 +151,6 @@ Open: whether the widgets of the library draw a disabled look of their own.
 Waiting
 =======
 
-    later      an object of type Later: it holds the result of one source, once the source gives the result.
-    source     what gives the result of a later: the end of a process, the arrival of a file at a position of CapInputCursor, the closing of an IQL dialog.
-    result     what a source gives: a value, or an error.
-
     Later: Sealed{}
     Later[T:**]: Later{
       mut .await: T;
@@ -174,8 +171,10 @@ A capability gives a later:
 CapRunningMain has no .await and no .awaitUpTo, and CapInputCursor has no #: .end.await, .end.awaitUpTo(time) and .file.awaitUpTo(Duration#0) take the places of those three methods.
 CapProcess.run is CapProcess.start, then .end.await.
 Later is Sealed: only code of base makes a later.
+RevokableSystem.iql gives a RevokableIql.
+The mut CapInputCursorNode that a later of RevokableInputCursor gives is a RevokableInputCursorNode under the same Revocation.
 
-    state(l)     the state of the later l: empty, or held(r), with r a value v or an error e.
+    state(l)     the state of the later l: empty, or held(r), with r the result of the source of l.
     l is held    state(l) = held(r) for some r.
     dead(l)      l is a later of CapInputCursor.file, state(l) = empty, and no window of the program is open: no file can arrive at the position of l.
     revoked(l)   l is a later that RevokableRunningMain, RevokableInputCursor or RevokableIql gives, and the Revocation of that wrapper is not started or is revoked.
@@ -187,8 +186,8 @@ Later is Sealed: only code of base makes a later.
     l.await                revoked(l): throw the error of the Revocation.  held(v): return v.  held(e): throw e.
                            empty: block until l is held, then as above; the non deterministic error
                            `No file can arrive at this position of CapInputCursor: no window of the program is open.` as soon as dead(l).
-    l.awaitUpTo(t)         revoked(l): throw the error of the Revocation.  held(v): an Opt of v.  held(e): throw e.
-                           empty: block until l is held, then as above, or until t passes: an empty Opt. With t = Duration#0 it only checks.
+    l.awaitUpTo(t)         as l.await, but held(v): an Opt of v; empty: block until l is held, then as above, or until t passes: an empty Opt;
+                           a dead l gives no error. With t = Duration#0 it only checks.
     Laters.first(ls, cs)   ls empty: before blocking, the deterministic error `The list of laters is empty.`
                            |ls| != |cs|: before blocking, the deterministic error, here with |ls| = 3 and |cs| = 2,
                            `3 laters and 2 callbacks: the list of laters and the list of callbacks must have the same size.`
@@ -219,10 +218,7 @@ The IQL dialog of a later of CapIql.ask closes when the user answers the dialog 
     B The user answers the IQL dialog.
     C The IQL dialog closes. No window of the program is open, and the .await throws the non deterministic error of .await on a dead later.
 
-RevokableSystem.iql gives a RevokableIql.
-The mut CapInputCursorNode that a later of RevokableInputCursor gives is a RevokableInputCursorNode under the same Revocation.
-
-A model event waits on a later as any code does: the model thread of the frame blocks, and the toolkit thread goes on handling the list after 'The toolkit thread alone handles the rest'.
+A model event waits on a later as any code does: the model thread of the frame blocks.
 The waits of a model task, on a later or in a CapGui.run, cut the model task into parts.
 A frame shows the changes that a part makes to that frame only once that part ends, whichever frame runs the model task: the rule of ImprovedGuiAPI.txt 'the frame shows the result only when the task ends' holds for each part.
 The repaints of a frame keep running while a model task of the frame waits, and show the changes of the parts that ended, .enabled of the Graphics included.
@@ -253,7 +249,7 @@ A frame waiting on an IQL dialog:
     I The user observes the new settings in f and no grey cover; the Button of E has run no action, and the TextField does not show the text typed in E.
 
 An IQL dialog runs no mut code of the program: the Query is imm, and the library runs the window of the dialog, so the stack of the threads running mut code of the program does not grow.
-A frame that stays enabled checks its laters from ModelFps.action, with .awaitUpTo(Duration#0) or Laters.firstUpTo(Duration#0, ...):
+A frame that stays enabled and checks a later at each model tick, with .awaitUpTo(Duration#0) or Laters.firstUpTo(Duration#0, ...) in ModelFps.action:
 
     A The Frame f is open and enabled. The model of f holds b, a later of CapRunningMain.end.
       At each model tick the ModelFps.action of f calls b.awaitUpTo(Duration#0); on a value, the action sets the text of a Label of f to "built".
