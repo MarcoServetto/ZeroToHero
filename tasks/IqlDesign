@@ -14,7 +14,7 @@ An IQL dialog runs no mut code of the program: the Query is imm, and the library
 The IQL syntax is fluent like the Gui syntax, simpler and less flexible on purpose.
 
 Open: the IQL syntax, Query and Answer.
-Open: an IQL dialog that no code waits on any more, and one still open when the main returns: CapIql has no way to close a dialog.
+An IQL dialog stays open until the user answers it or closes its window, or the program ends, also when no code waits on its Later.
 
 The handlers
 ============
@@ -49,43 +49,38 @@ Model tasks that run no handler: a press or a drag that moves the caret, the ste
 Disabling a Frame
 =================
 
-    Frame:{ ...
-      mut .enabled(Bool): mut Frame;
-      mut .enabled: Bool;
-      }
+    Frame:{ ... mut .whileDisabled[R:*](scope: mut MF[R]): mut Action[R]; }
     Graphics:{ ... read .enabled: Bool; }
 
-A Frame opens enabled.
-While a Frame is disabled, each model task of the Frame is dropped instead of queued: no handler of the Frame runs, .onClose and .onResize included, and no caret moves.
-.enabled(False) also drops the model tasks already queued.
-The toolkit thread goes on as for an enabled Frame: the repaints, hover, tooltips, the wheel, scroll bars, the drag of a divider of a Split, the focus, the composition of an input method, the states of the window, the drag of the Fearless corner, a file dropped on the window.
-A painter sees .enabled of its Graphics, and can draw a disabled look.
+Running the Action of f.whileDisabled(scope) disables f, runs scope, and enables f again when scope returns or throws; the Action gives what scope returns.
+When a key chord or a mouse button is held for f, the Action gives an Info naming it, and scope does not run.
+Held for f: its .pressed reached a handler of f, and its .released has not.
+On a disabled f, the Action runs scope and leaves f disabled.
 
-ImprovedGuiAPI.txt: a frame shows the result of a model task only when the task ends.
-A wait inside a model task, on a Later or in CapGui.run, counts as an end: during the wait, every Frame shows the changes made before the wait.
-
-A Frame disabled and not closed when the consumer of its CapGui.run or one of its handlers returns can never be enabled again.
-Then the window closes, or does not open, and CapGui.run throws the deterministic error
-`This Frame is disabled and no handler of it is running, so no code can enable it again.`
-
-Open: a key pressed before .enabled(False) and released after it: ImprovedGuiAPI.txt says every .pressed of Frame.onKey gets exactly one .released.
-Open: whether the widgets of the library draw a disabled look of their own.
+While f is disabled:
+- a model task that runs a handler is dropped instead of queued, .onClose, .onResize and the model ticks included; disabling f drops those already queued;
+- a model task that runs no handler runs on the toolkit thread, at once;
+- a key chord or a mouse button pressed reaches no handler, and neither does its release, also after f is enabled again;
+- the toolkit thread goes on as for an enabled Frame: the repaints, hover, tooltips, the wheel, scroll bars, the drag of a divider of a Split, the focus, the composition of an input method, the states of the window, the drag of the Fearless corner, a file dropped on the window;
+- each change to f shows at once, not at the end of the model task that runs scope;
+- the widgets of the library draw a disabled look, and a painter sees .enabled of its Graphics.
+When f is enabled again, the library runs the .exited and .entered that a layout moving the widgets under the pointer would run.
 
 A dialog in front of a Frame
 ============================
 
-    .button{:: .text "Settings" .action{Block#
-      .do{Block#(f.enabled False, Void)}
-      .let answer= {sys.iql.ask(SettingsQuery).await}
-      .do{Block#(f.enabled True, Void)}
-      .return{model.apply answer}
+    .button{:: .text "Settings" .action{
+      f.whileDisabled{model.apply(sys.iql.ask(SettingsQuery).await)}.catch{_ -> Void}
       }}
 
-    A The Frame f is open, with the Button above. A painter of f draws a grey cover when .enabled of its Graphics is False.
+    A The Frame f is open, with the Button above.
     B The user clicks Settings.
-    C The IQL dialog opens, and the user observes the grey cover on f.
-    D The user clicks a Button of f, types in a TextField of f, and clicks the close button of the desk border of f.
-    E The user observes that f stays open and unchanged.
+    C The IQL dialog opens, and the user observes the disabled look of f.
+    D The user clicks a Button of f, types in a TextField of f, presses Ctrl+A in it, and clicks the close button of the desk border of f.
+    E The user observes that f stays open, and that the text of the TextField is unchanged and all selected.
     F The user answers the dialog.
-    G The dialog closes; the user observes f with the new settings and no grey cover.
-    H The user observes that the Button of D ran no action, and that the TextField does not hold the text typed in D.
+    G The dialog closes; the user observes f with the new settings, no disabled look, and nothing done by the Button of D.
+
+    A The Frame f is open, with the Button above; f.onKey has a .pressed action for the key chord A.
+    B The user holds A and clicks Settings.
+    C No dialog opens, and f stays enabled: the Action gives an Info naming A, and the .catch drops it.
