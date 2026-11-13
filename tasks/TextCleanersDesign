@@ -3,7 +3,7 @@ Text cleaners
 
 A 'cleaner' turns bytes into text, one byte at a time.
 A 'cleaner maker' makes a fresh cleaner from a 'starting text'.
-Each change of the text of a TextField, UTextField, TextArea or UTextArea by the user goes through the cleaner maker of the widget.
+Each change of the text of a TextField, UTextField, TextArea or UTextArea goes through the cleaner maker of the widget.
 
     UStrCleaner:{ mut .nextByte(b: Byte): UStr; mut .end: UStr; }
     StrCleaner:{ mut .nextByte(b: Byte): Str; mut .end: Str; }
@@ -27,7 +27,7 @@ Each change of the text of a TextField, UTextField, TextArea or UTextArea by the
     StrCleaners:{
       .softText: imm F[Str, mut StrCleaner];
       .softLine: imm F[Str, mut StrCleaner];
-      the other methods of UStrCleaners, with Str for UStr
+      the methods of UStrCleaners but .text and .line, with Str for UStr
       }
 
 A cleaner maker returned by a method of UStrCleaners or StrCleaners with a parameter calls that parameter once for each cleaner it makes: the result is the 'fixer' or the 'scalar cleaner' of that cleaner.
@@ -36,7 +36,7 @@ A 'run' of a cleaner maker m on an input (.size counts scalar values):
 
     run(m, input):
       out:= ""; start:= ""; c:= m#(start); fed:= false
-      for b in input, in order: fed:= true; cut(c.nextByte(b))
+      for b in input: fed:= true; cut(c.nextByte(b))
       if fed && !cut(c.end) { return out }
       while start != "":
         was:= start
@@ -51,10 +51,10 @@ A 'run' of a cleaner maker m on an input (.size counts scalar values):
 
 The encoding cleaners:
 A 'bad unit' is a part of the input that the encoding rejects; its BadTextReason tells why.
-.utf8OrElse(fixer) decodes UTF-8; each bad unit gives the result of the fixer of the cleaner.
+.utf8OrElse decodes UTF-8; each bad unit gives the result of the fixer of the cleaner.
 .utf16LeOrElse, .utf16BeOrElse, .utf32LeOrElse, .utf32BeOrElse, .asciiOrElse and .latin1OrElse do the same with their encodings.
-.utf8 decodes UTF-8; a bad unit is a deterministic exception holding the BadTextReason, the byte offset and the bytes of the bad unit.
-An encoding cleaner returns its starting text as it is, in front of the first character or bad unit it decodes, or at its .end.
+.utf8 decodes UTF-8; each bad unit throws a deterministic exception holding the BadTextReason, the byte offset and the bytes of the bad unit.
+An encoding cleaner returns its starting text as it is, in front of the first scalar value or bad unit it decodes, or at its .end.
 A cleaner of the library returns the empty text while it holds a byte of an unfinished sequence.
 
 The normalizing cleaners do their steps in order:
@@ -65,27 +65,17 @@ The normalizing cleaners do their steps in order:
     StrCleaners.softText: decode UTF-8; bad unit -> ?; drop U+FEFF; break -> newline; tab -> space; NFKD; drop what is not in Str
     StrCleaners.softLine: StrCleaners.softText; newline -> space
 
-A normalizing cleaner normalizes its starting text followed by the text it decodes.
+A normalizing cleaner does its steps on its starting text followed by the text it decodes.
 No cleaner of the library depends on the locale.
 
-.utf8Then(cleaner) makes cleaners that decode UTF-8.
+.utf8Then makes cleaners that decode UTF-8.
 Each of them calls .nextScalar of its scalar cleaner with each scalar value of the starting text, then with each scalar value it decodes, with U+FFFD for a bad unit, and calls .end of its scalar cleaner at its own .end.
 Each of them returns the results of its scalar cleaner, concatenated.
 
 Reading:
-A read of a file with a cleaner maker returns the result of the run of the cleaner maker on the bytes of the file.
-A download with a cleaner maker returns the result of the run of the cleaner maker on the bytes of the response body.
-
-    CapInputCursorNode:{ ...
-      mut .readStr(cleaner: imm F[Str, mut StrCleaner]): Str;
-      mut .readUStr(cleaner: imm F[UStr, mut UStrCleaner]): UStr;
-      mut .readBytes: List[Byte];
-      ...
-      }
-
-TxtFile has .readStr(cap, cleaner), .readUStr(cap, cleaner), .consumeStr(requestId, cleaner) and .consumeUStr(requestId, cleaner).
-CapAssetRead has .readStr and .readUStr with a cleaner maker in the same way.
+.readStr and .readUStr of CapInputCursorNode and of CapAssetRead, and .readStr, .readUStr, .consumeStr and .consumeUStr of TxtFile return the result of the run of their cleaner maker on the bytes of the file.
+.downloadStr and .downloadUStr of CapDownload return the result of the run of their cleaner maker on the bytes of the response body.
 
 Implementation notes:
 The cleaners of the library are Java classes.
-A cleaner of the library and a run return a cached text for a result of size 0 or 1; for size 1, the text of Byte.size1Str or Byte.size1UStr.
+A cleaner of the library and a run return a cached text for a result of size 0, or of size 1 with a scalar value of at most 255; for size 1, the text of Byte.size1Str or Byte.size1UStr.
