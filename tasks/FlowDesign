@@ -528,7 +528,7 @@ for(E e: <the elements of the receiver, in its order>){ out.send(e); }
 ```
 
 **multi flow methods**: a multi flow holds its channels `c1, .., cn` as lists. `Map.flow` makes a `BiFlow` whose channels are the keys and the elements of the map, in insertion order.
-`tryGetMerge(f)` returns an `Action` holding a message with the sizes of the channels when the channels differ in size, before any call of `f`; otherwise it returns `.ok` of the flow whose source is:
+`tryGetMerge(f)` returns an `Action` holding an `Info` with the sizes of the channels when the channels differ in size, before any call of `f`; otherwise it returns `.ok` of the flow whose source is:
 ```
 for(Nat i: 0 ..< c1.size){ out.send(f#(c1.get i, .., cn.get i)); }
 ```
@@ -556,7 +556,7 @@ Every terminal starts with `checkMisuse(c)`, where `c` is its chain:
 - `c.lambdas`: every lambda of the chain; `l.owner` is the stage/terminal `l` is an argument of;
 - `l.onlyImmCapture`: `l` captures only `imm` values; a top level declaration used as a value and every `imm` lambda carry it.
 
-A shape pattern matches a contiguous part of the source, the stages and the terminal: `..` is any sequence, possibly empty, `X*` any sequence of stages in the set `X`, `X+` a non empty one, `s[i]` the stage at index `i`, `source` the source. In a message, `<s>` of a stage/terminal `s` is `show(s)`, `<X>` of a sequence `X` of stages/terminals is the `show` of each, joined with a space, and `<a>` of an argument `a` is `showArg(a)`:
+A shape pattern matches a contiguous part of the source, the stages and the terminal: `..` is any sequence, possibly empty, `X*` any sequence of stages in the set `X`, `X+` a non empty one, `s[i]` the stage at index `i`, `source` the source. In an exception text, `<s>` of a stage/terminal `s` is `show(s)`, `<X>` of a sequence `X` of stages/terminals is the `show` of each, joined with a space, and `<a>` of an argument `a` is `showArg(a)`:
 ```
 Str show(Step s)= s.name + match s.args{
   [] -> "";
@@ -674,8 +674,8 @@ Void checkShape(Chain c){
     }
   }
 ```
-Every message of `checkMisuse` ends with: "To keep this shape, call `.suppressMisuseExceptions` on the flow."
-<HELP ME WITH WORDING> for every message above.
+Every exception text of `checkMisuse` ends with: "To keep this shape, call `.suppressMisuseExceptions` on the flow."
+<HELP ME WITH WORDING> for every text above.
 
 
 ## Execution model vs actual execution behaviour
@@ -710,19 +710,19 @@ In `Base:Offensive`, every strategy, the sequential strategy included, runs `che
 
 No `imm` value can reach a `mut Repr` or `mut IsoPod`, so with the flag each task reaches no `Repr` or `IsoPod` but its own element; the lambda of `for` runs once every stage has finished. The backend marks the lambda objects carrying the flag with the `OnlyImmCapture` marker interface of the runtime (in Java), not visible in Fearless; when the lambdas are written in place, the flag is checked when compiling and leaves no code.
 
-Over `ParRepr` and `ParPod`, and in a chain of mode `Seq` holding a `.recoverFlow`, no strategy makes a positive speculation call executed as part of a stage/terminal at index `i` with `mutReach(i)`; `checkDecisions` throws on the shapes that would need one. Negative speculation calls are allowed over `ParRepr` and `ParPod`, also while they still run after the whole flow expression has returned.
+Over `ParRepr` and `ParPod`, and in a chain of mode `Seq` containing a `.recoverFlow`, no strategy makes a positive speculation call executed as part of a stage/terminal at index `i` with `mutReach(i)`; `checkDecisions` throws on the shapes that would need one. Negative speculation calls are allowed over `ParRepr` and `ParPod`, also while they still run after the whole flow expression has returned.
 
 **Over `read` or `imm` elements:**\
 The stage/terminal at index `i` runs over `read` or `imm` elements when `c.mode in {ParImm, ParRead} || !mutReach(i)` (**Misuse exceptions**).
 
 ### Duplicated `mut` elements
 
-Every `mut` object a stage creates is reachable from nowhere else, until a `flatMapMut` or an `actorMut`: they can send one `mut` object downstream as two elements, or as parts of two elements, like two pairs holding the same `Person`.
+Every `mut` object a stage creates is reachable from nowhere else, until a `flatMapMut` or an `actorMut`: they can send one `mut` object downstream as two elements, or as parts of two elements, like two pairs containing the same `Person`.
 ```
 numbers.flow.map{n -> Persons#n}.flatMapMut{p -> Lists#(p, p)}.filter{..}.list
 ```
 The lambda of `filter` is a `read F`: it can not mutate what it captured, but it can mutate its `mut` parameter, so two tasks running `filter` on the two copies would race on one `Person`.
-No identity check can find the shared parts, so the elements a `flatMapMut` or an `actorMut` sends downstream from the same input can not be given to different tasks, by any split into chunks, including one after a fence, until a `++` or a `distinct` as below. The list an `allToAll` with an arbitrary `f` returns may hold one `mut` object twice in the same way; `sort`, `max`, `min`, `sortDistinct`, `distinctMut` and `++` are recorded under their own names in the chain and return each element they received once, so they add no sharing, and a data parallel region can start after them unless the elements already shared `mut` objects.
+No identity check can find the shared parts, so the elements a `flatMapMut` or an `actorMut` sends downstream from the same input can not be given to different tasks, by any split into chunks, including one after a fence, until a `++` or a `distinct` as below. The list an `allToAll` with an arbitrary `f` returns may contain one `mut` object twice in the same way; `sort`, `max`, `min`, `sortDistinct`, `distinctMut` and `++` are recorded under their own names in the chain and return each element they received once, so they add no sharing, and a data parallel region can start after them unless the elements already shared `mut` objects.
 `++` sends every element downstream as `read` or `imm`, so no stage after it can mutate an element, and elements sharing `mut` objects can go to different tasks.
 `distinct`, though not a fence, does the same when only `limit`s stand between the `distinct` and the last `flatMapMut`, `actorMut` or fence before the `distinct`. `flatMap`, `scan` and `actor` never restore the split, though they send `read` or `imm` elements downstream.
 
@@ -731,7 +731,7 @@ No identity check can find the shared parts, so the elements a `flatMapMut` or a
 The calls of `by` are fixed by `_Sort`, `_Max`, `_Collapse` and `_KeepNew`, and every strategy makes the same calls.
 
 **Holding:**\
-In every parallel strategy, an exception thrown by a call `c` is held until it is known whether the sequential strategy makes `c` and whether every call the sequential strategy makes before `c` completes successfully. The exception propagates when both are known to hold, and is discarded when either is known not to hold; if a call the sequential strategy makes before `c` does not terminate, the exception is held forever.
+In every parallel strategy, an exception thrown by a call `c` is held until it is known whether the sequential strategy makes `c` and whether every call the sequential strategy makes before `c` completes successfully. The exception propagates when both are known to be true, and is discarded when either is known to be false; if a call the sequential strategy makes before `c` does not terminate, the exception is held forever.
 
 **Decision points:**\
 A decision point is a call of an `actor` or `actorMut` lambda returning `Break#`: after it, the actor receives no other element. `limit` desugars to such an `actorMut`, and the short-circuit terminals desugar to `.limit 1`.
@@ -744,7 +744,12 @@ Non deterministic exceptions are discarded exactly as the deterministic ones: a 
 
 ### A `Break#` while the call before it is still running
 
-A stage after an `actor` or `actorMut` may return `Break#` on an element the actor sent downstream while the actor call that sent it is still running: the elements of a `flatMapMut` expansion after the one that fills a `limit`, or the code between two calls of `down.push#`. That call is one the sequential strategy makes, and it completes: an element sent downstream after the break is dropped, the rest of the call runs, and what it throws or whether it terminates is part of what the whole flow expression returns; no element is processed once it has returned. With the actor ``{down, s, e -> Block#(down.push#(down, e), Error.msg`after`, Continue#)}`` before `.limit 1 .list`, the whole flow expression throws `after`. Under pipeline parallelism the actor node may already be running the calls on the elements after it when the break is received: those calls are positive speculation calls, held as **Holding** says; where **Misuse exceptions and the parallel strategies** allows no positive speculation call, the actor node runs in lockstep with the stage after it.
+A stage after an `actor` or `actorMut` may return `Break#` on an element the actor sent downstream while the actor call that sent it is still running: the elements of a `flatMapMut` expansion after the one that fills a `limit`, or the code between two calls of `down.push#`.
+That call is one the sequential strategy makes, and it completes: an element sent downstream after the break is dropped, the rest of the call runs, and what it throws or whether it terminates is part of what the whole flow expression returns.
+No element is processed once the whole flow expression has returned.
+With the actor ``{down, s, e -> Block#(down.push#(down, e), Error.msg`after`, Continue#)}`` before `.limit 1 .list`, the whole flow expression throws `after`.
+Under pipeline parallelism the actor node may already be running the calls on the elements after it when the break is received: those calls are positive speculation calls, held as **Holding** says.
+Where **Misuse exceptions and the parallel strategies** allows no positive speculation call, the actor node runs in lockstep with the stage after it.
 
 ### Cancellation: `Yield#`
 
@@ -1446,7 +1451,7 @@ Options: (a) the flow object keeps the chain as Fearless data (the mode, one ste
 ### Stage 2: Sequential
 
 Optimised implementations of the sequential strategy, in each base of `BaseOffensiveDefensiveNaive`; in `Base:Offensive`, the misuse exceptions of **Misuse exceptions** on top of them.
-- The misuse exception texts, following the style of the messages of the Frontend.
+- The misuse exception texts, following the style of the errors of the Frontend.
 - One loop per chain, sending each element through the stages with no allocation per element and no JDK stream, as the pseudocode of the sequential strategy; only fences materialise.
 - `for` directly after a fence iterates the list of that fence, with no copy.
 - A `ToFlow` that a lambda of `flatMap` or `flatMapMut` returns, or that `++` takes, is iterated directly, with no flow object and no copy.
