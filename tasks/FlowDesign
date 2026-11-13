@@ -145,12 +145,15 @@ for(Person p: ps){
   }
 return res.list;
 ```
-The parallel strategies use a few primitives:
+The pseudocode uses a few primitives:
 - `m : Mailbox[T]`: elements in flow order, possibly followed by one exception. `for(T x: m){..}` waits for each element in turn, and throws the exception in its place; `m.join` waits for the end of `m`, and throws its exception if any. `m.list` and `m.first` are sequential methods of `Mailbox`.
 - `fork(Range c: Chunks#n){..}` splits the indexes `0 ..< n` into chunks and starts one task per chunk, running the block on some worker. The block sends elements with `out.send(x)`. `fork` returns the mailbox of what the blocks send: chunk after chunk in index order, and in sending order inside one chunk. An exception thrown by a block takes the place of the next element of its chunk and ends the mailbox: what the chunks after it send is discarded.
 `fork(List[T] c: Chunks#m){..}` does the same over the elements of the mailbox `m`, forming each chunk as it receives its elements.
 `node(T x: m){..}` over a mailbox or a list `m` processes the elements one at a time, in flow order, sending with `out.send(x)`, and returns the mailbox of what it sends; it may update the local variables declared just before it, which no other code uses. All nodes in a pseudocode section start at the same time, so that they can work in parallel (as soon/as long as they all have elements).
 - `Mailbox[T] feed= Mailbox#;` is an empty mailbox the code itself feeds, with `feed.send(x)` and `feed.close`.
+- `IdentityCheck#rs` throws a non deterministic exception when two elements of `rs` are identity equal.
+- `KeySet#by` is a hash set placing its keys with the calls of `_KeepNew`; `s.add(x)` returns whether `x` was new.
+- `Slots#n` holds an `Opt` per index, empty until a task sets it.
 - when the pseudocode completes (return or exception), it cancels through `Yield#` every task and node still running.
 
 The flow expression above becomes, with data parallelism:
@@ -937,9 +940,6 @@ The `map` stage can run with data parallelism.
 ## Examples
 
 Each example states what the whole flow expression returns, then shows its strategies as pseudocode.
-In the pseudocode below, `_Sort#(vs, by, k)` sorts `vs` with the merge tree of **The calls of `by`**, and `MergeTree#(by, n)` makes the same calls of `by` while receiving the elements one at a time.
-In the pseudocode below, `IdentityCheck#rs` throws a non deterministic exception when two elements of `rs` are identity equal.
-In the pseudocode below, `KeySet#by` is a hash set placing its keys with the calls of `_KeepNew`; `s.add(x)` returns whether `x` was new.
 
 **example with a fence**\
 ```
@@ -947,32 +947,11 @@ l.flow.map f .sort by .filter {::>3}.first
 ```
 with `by` an `OrderBy[Nat]`.
 
-It throws no deceptive shape exception because a decision point follows the filter. `l.flow.map f .sort by .filter {::>3}.list` would throw.
+Throws no deceptive shape exception; with `.list` in place of `.first` it throws one.
 
 If there is a smallest index `j` such that `f#ej` throws or does not terminate, the whole flow expression returns what `f#ej` returns.\
 Otherwise, if some calls of `by.cmp(...)` made by the sorting process throw or do not terminate, let `c` be the one the sorting process makes before the others: the whole flow expression returns what `c` returns.\
-Otherwise, let `v0,...,vn` be the `f#ej` in `by` order, ties ordered by smallest index, and let `k` be the smallest number such that `{::>3}` applied to `vk` does not complete successfully with `False`.\
-When no such `k` exists, the whole flow expression returns the empty `Opt`. When `{::>3}` applied to `vk` throws or does not terminate, the whole flow expression returns what that call returns.\
-Otherwise the whole flow expression returns `Opts#(vk)`.
-
-The calls of `by` the sorting process makes, and their order, are those of `_Sort`.
-
-Data parallel:
-
-The map stage can run with data parallelism, and the sort can place each `f#ej` as it receives it.
-No exception thrown by code executed as part of the filter stage propagates before every call of `f` and of `by.cmp` has completed successfully, and before the sort has fixed the flow order after it. The `f#ej` are `imm`, so a filter call on `f#ej` depends only on `f#ej`, and it can run as soon as `f#ej` is computed, while the sort is still running: a positive speculation call, allowed in `ParImm` and `ParRead`.
-For example, if the filter call on `f#e6` throws, that exception is held. If `f#e2` then throws, and `f#e0` and `f#e1` complete successfully, the exception of `f#e2` propagates and the held exception is discarded. If every call of `f` and `by.cmp` completes successfully, the held exception propagates only if every filter call on the elements before `f#e6` in the flow order after the sort completes successfully with `False`.
-
-After the fence the sorted sequence is finished and of known size, so the filter stage can run with data parallelism again. The terminal `.first` controls this, by running chunks of elements in flow order with positive speculation calls.
-
-To preserve the observable behaviour, let `e` be the element, smallest in flow order, whose filter call does not complete successfully with `False`: the results of the filter calls on the elements after `e` in flow order are discarded. The call on `e` could complete successfully with `True`, throw or not terminate. If it does not terminate, it remains uncertain which element is `e`, so the other filter results can never be used.
-
-Pipeline parallelism:
-
-The map node sends elements downstream; the sort node can use an algorithm like insertion sort to place them one by one as it receives them,
-and must finish sorting before sending anything downstream.
-The filter stage and the `first` terminal can be merged into a single
-FilterFirst node that sends a cancel signal to the other nodes when it finds an element passing the filter.
+Otherwise, let `v0,...,v7` be the `f#ej` in `by` order, ties ordered by smallest index: the whole flow expression returns `Opts#(vk)` for the smallest `k` such that `vk > 3`, or the empty `Opt` when no such `k` exists.
 
 Sequential strategy:
 ```
@@ -984,8 +963,6 @@ for(Nat v: _Sort#(vs, by, vs.size)){
   }
 return Opt#;
 ```
-The sort starts only once every call of `f` has returned.
-
 Data parallel:
 ```
 Mailbox[Nat] m= fork(Range c: Chunks#(l.size)){
@@ -999,21 +976,7 @@ for(Nat v: s.list){
   }
 return Opt#;
 ```
-Here the merges run while `f` runs, each as a task of its own, so they can not stop the calls of `f`.
 Pipeline parallelism is the same code, with `Mailbox[Nat] m= node(Nat e: l){ out.send(f#e); };`.
-
-Merging sort and filter would sort fewer elements, and so make other calls of `by` than `_Sort`: no strategy does it. Under the sequential strategy it would be:
-```
-EList[Nat] ps= EList#;
-for(Nat e: l){
-  Nat v= f#e;
-  if(v > 3){ ps.add(v); }
-  }
-for(Nat v: _Sort#(ps, by, 1)){ return Opts#v; }
-return Opt#;
-```
-With `k` of `1`, each merge makes at most one call of `by`: the sort is a search for the minimum.
-The filter now runs on every element: its calls are positive speculation calls. `{::>3}` over a `Nat` can not throw or fail to terminate, so running it inside the loop of `f` is not observable; with a filter that can, this merge is not legal.
 
 **example with elementwise work after a fence**\
 `l.flow.map f .sort by .map g .list`\
@@ -1023,14 +986,11 @@ If there is a smallest index `j` such that `f#ej` throws or does not terminate, 
 Otherwise, if some calls of `by.cmp(...)` made by the sorting process throw or do not terminate, let `c` be the one the sorting process makes before the others: the whole flow expression returns what `c` returns.\
 Otherwise, let `v0,...,v7` be the `f#ej` in `by` order, ties ordered by smallest index. If there is a smallest number `k` such that `g#vk` throws or does not terminate, the whole flow expression returns what `g#vk` returns. Otherwise the whole flow expression returns the list of `g#v0` to `g#v7`.
 
-The fence puts every call of `g` after every call of `by`, but the elements are `imm`: `g` can not change what `by` reads, and `g#vk` depends only on `vk`, not on its place in flow order.
-So `g` can run on each `f#ej` in parallel with the sort rather than after it; the sort carries each result next to its element. The calls of `g` do not run in the tasks of `f`: a call of `g` that does not terminate would stop the calls of `f` after it in that task, and one of those may throw.
-Only the exceptions of `g` are held until the fence: the place in flow order of `f#ej` after the sort is known only when the sort finishes, so an exception thrown by `g` is held until then, and propagates only if no call of `f` or of `by`, and no call of `g` on an element before it in flow order, throws or does not terminate. A call of `g` that does not terminate is cancelled through `Yield#` when one of those throws.
+The calls of `g` never run in the tasks of `f`.
 
-This needs the elements the fence receives to be `read` or `imm`. In
+Running `g` while the sort runs needs the elements the fence receives to have a `read` or `imm` type. In
 `numbers.flow.map{n -> Persons#n}.sort{p -> p.age}.map{p -> Block#(p.birthday, p)}.list`
 the `map` after the fence mutates what `by` reads, and running it early would change the order.
-Unlike merging sort and filter to sort fewer elements, running the stages after the fence early leaves the calls of `by` unchanged.
 
 Sequential strategy:
 ```
@@ -1046,10 +1006,10 @@ Mailbox[Nat] m= fork(Range c: Chunks#(l.size)){
   for(Nat j: c){ out.send(f#(l.get(j))); }
   };
 List[Nat] vs= m.list;
-MergeTree[Nat] s= MergeTree#(by, vs);
+MergeTree[Nat] s= MergeTree#({j -> by#(vs.get(j))}, vs.size);
 for(Nat j: vs.indexes){ s.add(j); }
 Slots[Nat] ws= Slots#(vs.size);
-Mailbox[Nat] gs= fork(Range c: Chunks#(vs.size)){
+Mailbox[Void] gs= fork(Range c: Chunks#(vs.size)){
   for(Nat j: c){ ws.set(j, g#(vs.get(j))); }
   };
 EList[Nat] res= EList#;
@@ -1060,58 +1020,29 @@ for(Nat j: s.list){
   }
 return res.list;
 ```
-Here `MergeTree#(by, vs)` sorts indexes, comparing the elements of `vs` at those indexes, and `Slots#n` holds an `Opt` per index, empty until a task sets it.
-Nothing ever reads `gs`, so no exception of `g` is held: a slot left empty, because its call threw, did not terminate or has not run yet, is computed again by the loop over the sorted indexes, which calls `g` in the flow order after the sort, as the sequential strategy does. By Determinism the call returns what the call in the task returned, and completing cancels the tasks still running.
-Each chunk task stops at its first exception, leaving empty the slots after it; the loop computes them.
+Nothing ever reads `gs`, so no exception of `g` is held: a slot left empty, because its call threw, did not terminate or has not run yet, is computed again by the loop over the sorted indexes, which calls `g` in the flow order after the sort, as the sequential strategy does. By Determinism the call returns what the call in the task returned.
 
 **example with a short-circuit terminal**\
 `` l.flow.map{x -> x == 5 ? {.then -> Error.msg`five`; .else -> x}}.first ``
 
-This code returns `Opts#(0)`; the exception of the element at index 5 is never thrown. Any strategy that runs the map lambda on the element at index 5 has to either discard that exception or throw a non deterministic exception.\
-In other approaches a parallel strategy may non deterministically let that exception propagate.
+This code returns `Opts#(0)`; the exception of the element at index 5 is never thrown.
 
-The canonical form moves the `limit 1` of `.first` before the `map`, so an optimising backend processes only the element at index `0`; the strategies below are those of a `first` after a stage a `limit` can not move before, as the `filter` of the next example, shown on this simpler chain.
+The canonical form moves the `limit 1` of `.first` before the `map`: the map lambda runs only on the element at index `0`.
 
 Sequential strategy:
 ```
-for(Nat e: l){
+for(Nat e: l.take(1)){
   if(e == 5){ Error.msg`five`; }
   return Opts#e;
   }
 return Opt#;
-```
-Data parallel, with positive speculation calls, allowed in `ParImm` and `ParRead`:
-```
-return fork(Range c: Chunks#(l.size)){
-  for(Nat j: c){
-    Nat e= l.get(j);
-    if(e == 5){ Error.msg`five`; }
-    out.send(e);
-    break;
-    }
-  }.first;
-```
-Each task stops after its first element: no other element of its chunk can come first. The task whose chunk starts at index 5, if any, throws, but in the mailbox that exception comes after `0`: the terminal returns before receiving it, and completing cancels the tasks still running.
-
-Pipeline parallelism:
-```
-return node(Nat e: l){ if(e == 5){ Error.msg`five`; } out.send(e); }.first;
 ```
 
 **example with filter, under a short-circuit terminal**\
 `l.flow.filter{x -> P#x}.any{x -> Q#x}`\
 with `P` and `Q` of type `read F[Nat,Bool]`.
 
-The whole flow expression returns `True` if there is an index `i` such that:
-
-- `P#ei && {Q#ei}` completes successfully with `True`
-- forall `j<i`, `P#ej && {Q#ej}` completes successfully with `False`
-
-It returns `False` if `P#ej && {Q#ej}` completes successfully with `False` for every index `j`.
-
-If neither case applies, there is a smallest index `i` such that `P#ei && {Q#ei}` throws or does not terminate, and the whole flow expression returns what that expression returns.
-
-This example shows clearly what "trickle the elements through the stages one at a time" means.
+If there is a smallest index `i` such that `P#ei && {Q#ei}` does not complete successfully with `False`, the whole flow expression returns what `P#ei && {Q#ei}` returns; otherwise it returns `False`.
 
 Sequential strategy:
 ```
@@ -1150,14 +1081,10 @@ rs.flow(ParRepr#)
     > 3}
   .size
 ```
-If any two `Repr`s (or `IsoPod`s in an equivalent example) are identity equal, a non deterministic exception is thrown.
+If any two `Repr`s are identity equal, a non deterministic exception is thrown.
 
-If there is a smallest index `j` such that `rj.mutate{c -> Block#(c++, c.get)}` throws or does not terminate, the whole flow expression returns what `rj.mutate{c -> Block#(c++, c.get)}` returns. Thanks to strong exception safety, how many elements in the flow/list have been mutated is not observable: every element is garbage collectable once the exception is caught.\
+If there is a smallest index `j` such that `rj.mutate{c -> Block#(c++, c.get)}` throws or does not terminate, the whole flow expression returns what `rj.mutate{c -> Block#(c++, c.get)}` returns.\
 Otherwise the whole flow expression returns the number of indices `j` where `rj` holds more than `3` after being increased, and afterwards every `rj` in `rs` holds one more than `rj` held before the flow.
-
-Every element is increased, the rejected elements included, and `rs` still holds every element, so the increases are readable once the whole flow expression has completed successfully.
-
-The filter stage can run with data parallelism while `size` is the terminal.
 
 Sequential strategy:
 ```
@@ -1195,10 +1122,7 @@ rs.flow(ParRepr#)
     > 3}
   .any {r->r.look{..}}
 ```
-In many other approaches the parallel strategy makes positive speculation calls, and the increases on elements after the decision survive the whole flow expression.
-We can not accept this.
-This is exactly code screaming 'parallel' that is only safe to execute sequentially,
-so it throws a misuse exception, even when the optimiser would 'want' to run it sequentially.
+This throws the misuse exception of `checkDecisions`, with `s` the `filter` and `d` the `any`.
 
 A fence before the short-circuit terminal does not help:
 ```
@@ -1209,7 +1133,7 @@ rs.flow(ParRepr#)
   .sort {..}
   .any {r->r.look{..}}
 ```
-The fence lets the filter stage run in parallel with no positive speculation calls, but the elements after `.sort` are still `mut Repr`s and the lambda of `any` can mutate them, so the `any` can run in parallel only with positive speculation calls: this throws the misuse exception too. Written as
+The elements after `.sort` are still `mut Repr`s: this throws the misuse exception of `checkDecisions`, with `s` and `d` the `any`. Written as
 ```
 rs.flow(ParRepr#)
   .filter{r -> r.mutate{
@@ -1220,7 +1144,7 @@ rs.flow(ParRepr#)
   .seqFlow
   .any {r->r.look{..}}
 ```
-the first flow expression runs the filter stage in parallel and ends at the fence, and the second runs the `any` with the sequential strategy, as its source asks.
+it throws no misuse exception.
 
 **example with `++` as a fence before positive speculation calls, over ParRepr**
 ```
@@ -1233,11 +1157,10 @@ with `rs` a `mut List[mut Repr[Individual]]` and `Individual: { read .fitness: N
 
 If any two `Repr`s are identity equal, a non deterministic exception is thrown.
 If there is a smallest index `j` such that `rj.mutate{i -> i.evaluate}` throws or does not terminate, the whole flow expression returns what `rj.mutate{i -> i.evaluate}` returns.\
-Otherwise every `Repr` in `rs` is evaluated, and the flow behaves as `.any` over them.
+Otherwise every `Repr` in `rs` is evaluated; then, if there is a smallest index `j` such that `rj.look{i -> i.fitness > 90}` does not complete successfully with `False`, the whole flow expression returns what that call returns; otherwise it returns `False`.
 
-Without the `++`, the `any` could decide before the `map` runs on every element, so running the `map` in parallel makes positive speculation calls that mutate, and the whole flow expression throws the misuse exception.
-With it, the `map` runs on every element in every strategy: a data parallel region with no positive speculation calls.
-Unlike `.sort`, `++` also turns every element `read`: after it no stage can mutate a `Repr`, the fence ensures that nothing else is still mutating them, and the lambdas carry the onlyImmCapture flag, so they reach nothing else mutable. Positive speculation calls in the `any` terminal are then unobservable, as in `ParRead`. The same holds after every stage of `ToRead`: the stages after it run over `read` or `imm` elements. A `map` after such a stage may create `mut` objects, but they reach no `Repr` or `IsoPod` of the source, so the stages after it can not mutate anything that exists before the flow.
+With the `++`, the `map` runs on every element in every strategy: a data parallel region with no positive speculation calls.
+`++` is in `ToRead`: for the `any`, `mutReach` is false, `checkDecisions` throws nothing, and positive speculation calls are allowed (**Misuse exceptions and the parallel strategies**).
 
 Sequential strategy:
 ```
@@ -1248,11 +1171,9 @@ for(mut Repr[Individual] r: rs){
   }
 return False;
 ```
-The `map` returns its own element, so the list the fence materialises is `rs` itself.
-
 Data parallel, with positive speculation calls after the fence:
 ```
-Mailbox[Nat] done= fork(Range c: Chunks#(rs.size)){
+Mailbox[Void] done= fork(Range c: Chunks#(rs.size)){
   for(Nat j: c){ rs.get(j).mutate{i -> i.evaluate}; }
   };
 IdentityCheck#rs;
@@ -1265,7 +1186,6 @@ return fork(Range c: Chunks#(rs.size)){
     }
   }.first.isSome;
 ```
-`done.join` is the fence: the second data parallel region starts only once every `Repr` is evaluated.
 
 **example with size**\
 `` l.flow.map{x -> Error.msg`boom`}.size ``
