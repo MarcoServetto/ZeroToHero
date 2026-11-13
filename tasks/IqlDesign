@@ -8,10 +8,10 @@ IQL asks the user for structured input: a dialog with named fields, each with a 
 IQL is a capability of System of its own: a program uses it with or without a Gui.
 An IQL dialog is a window built with the widgets of the Gui library, never a dialog of the toolkit.
 The IQL syntax is fluent, like the syntax of the Gui, and simpler and less flexible on purpose.
-The program waits on a later: the end of a process, the arrival of a file at a position of CapInputCursor, the answer of an IQL dialog; one API waits on every later.
+The program waits on a later: the end of a process, the arrival of a file at a position of CapInputCursor, the closing of an IQL dialog; one API waits on every later.
 A Frame can be disabled: a disabled frame drops every model event; a program can disable a frame while the program waits on an IQL dialog.
 
-Open: the IQL syntax; Query and Answer stand for the types of an IQL query and of its answer; an Answer also tells that the user closed the dialog.
+Open: the IQL syntax; Query and Answer stand for the types of an IQL query and of its answer; an Answer also tells that the user closed the window of the dialog.
 
 Terms
 =====
@@ -108,7 +108,7 @@ Disabling a frame
           not enabled(F)  =>  the model event is dropped: no handler of F runs for it
     T4  F.enabled(True):  enabled(F) := True
 
-The toolkit thread goes on as for an enabled frame: the repaints, hover, tooltips, scrolling, the states of the window.
+On a disabled frame, the toolkit thread handles all that the toolkit thread handles on an enabled frame: the list after 'The toolkit thread alone handles the rest'.
 Each painter sees whether the frame is enabled through .enabled of its Graphics, and can draw a disabled look.
 
     A The Frame f is open and disabled. The window has the aspect ratio of the virtual pixel space: no band shows.
@@ -124,7 +124,7 @@ Each painter sees whether the frame is enabled through .enabled of its Graphics,
     A The Frame f is open and disabled. The ModelFps.action of f moves a ball at each model tick.
     B One second passes.
     C The program calls f.enabled(True).
-    D The user observes that the ball did not move during that second, and moves again from where the ball stopped.
+    D The user observes that the ball did not move during that second, and moves again from where the ball stopped, at the speed of one step per model tick.
 
 Open: a pair cut by .enabled(False): a key pressed before it and released after it, an .entered with no .exited, a press with no release.
 ImprovedGuiAPI.txt says that while the window is open, every .pressed of Frame.onKey is followed by exactly one .released: T3 drops the .released of a key pressed before .enabled(False).
@@ -135,7 +135,7 @@ Waiting
 =======
 
     later      an object of type Later: it holds the result of one source, once the source gives the result.
-    source     what gives the result of a later: the end of a process, the arrival of a file at a position of CapInputCursor, the answer of an IQL dialog.
+    source     what gives the result of a later: the end of a process, the arrival of a file at a position of CapInputCursor, the closing of an IQL dialog.
     result     what a source gives: a value, or an error.
 
     Later: Sealed{}
@@ -153,7 +153,7 @@ A capability gives a later:
     System:{ ... mut .iql: mut CapIql; }
     CapRunningMain[R]:{ ... mut .end: mut Later[R]; mut .terminate: Void; }
     CapInputCursor:{ ... mut .file: mut Later[mut CapInputCursorNode]; mut .next: mut CapInputCursor; }
-    CapIql:{ mut .ask(query: Query): mut Later[Answer]; }
+    CapIql: ToIso[CapIql], WidenTo[CapIql]{ mut .ask(query: Query): mut Later[Answer]; }
 
 CapRunningMain has no .await and no .awaitUpTo, and CapInputCursor has no #: the program calls .end.await, .end.awaitUpTo(time) and .file.awaitUpTo(Duration#0).
 CapProcess.run is CapProcess.start, then .end.await.
@@ -171,7 +171,9 @@ Later is Sealed: only the library makes a later.
                            `No file can arrive at this position of CapInputCursor: no window of the program is open.` as soon as dead(l).
     l.awaitUpTo(t)         held(v): an Opt of v.  held(e): throw e.
                            empty: block until l is held, at most t; still empty after t: an empty Opt. With t = Duration#0 it only checks.
-    Laters.first(ls, cs)   ls empty, or |ls| != |cs|: a deterministic error, before blocking.
+    Laters.first(ls, cs)   ls empty: before blocking, the deterministic error `The list of laters is empty.`
+                           |ls| != |cs|: before blocking, the deterministic error, here with |ls| = 3 and |cs| = 2,
+                           `3 laters and 2 callbacks: the list of laters and the list of callbacks must have the same size.`
                            block until some ls[i] is held; the non deterministic error of .await on a dead later as soon as every ls[i] is dead.
                            i: the least index with ls[i] held.
                            state(ls[i]) = held(e): throw e.
@@ -188,12 +190,13 @@ Later is Sealed: only the library makes a later.
       {"answered"}
       ))}
 
-The IQL dialog of a later of CapIql.ask closes exactly when the source of the later gives the result: when the user answers the dialog, or closes the window of the dialog.
+The IQL dialog of a later of CapIql.ask closes when the user answers the dialog or closes the window of the dialog; then the source of the later gives an Answer.
 RevokableSystem.iql gives a RevokableIql.
 A later that RevokableRunningMain, RevokableInputCursor or RevokableIql gives checks its Revocation at each .await and .awaitUpTo, and Laters.first and Laters.firstUpTo check it before blocking: they throw the error of the Revocation before the start of the Revocation and after its revoke.
+The mut CapInputCursorNode that a later of RevokableInputCursor gives is a RevokableInputCursorNode under the same Revocation.
 
 A model event waits on a later as any code does: the model thread of the frame blocks, and the toolkit thread goes on repainting.
-A frame waiting on a dialog:
+A frame waiting on an IQL dialog:
 
     .button{:: .text "Settings" .action{Block#
       .do{f.enabled False}
@@ -212,7 +215,15 @@ A frame waiting on a dialog:
     H The user observes the new settings in f, and nothing of the click and of the typing of D.
 
 An IQL dialog runs no mut code of the program: the Query is imm, and the library runs the window of the dialog, so the stack of the threads running mut code of the program does not grow.
-A frame that stays enabled checks its laters from ModelFps.action, with .awaitUpTo(Duration#0) or Laters.firstUpTo(Duration#0, ...).
+A frame that stays enabled checks its laters from ModelFps.action, with .awaitUpTo(Duration#0) or Laters.firstUpTo(Duration#0, ...):
+
+    A The Frame f is open and enabled. The model of f holds b, a later of CapRunningMain.end.
+      At each model tick the ModelFps.action of f calls b.awaitUpTo(Duration#0); on a value, the action sets the text of a Label of f to "built".
+    B The user types in a TextField of f while the process runs.
+    C The user observes each typed character in the TextField at once.
+    D The process ends.
+    E At the next model tick the user observes "built" in the Label.
+
 Open: an IQL dialog whose later no code waits on any more (a later that lost a Laters.first, a later asked by a frame that closed), and an IQL dialog still open when the main returns: CapIql has no way to close a dialog.
 
 Implementation notes
@@ -223,3 +234,4 @@ Implementation notes
 - The Revokable wrappers make their laters with a constructor internal to base.
 - NoDownload, NoManager and NoManagerQuit give .iql -> u.iql.
 - The model timer counts no tick due while the frame is disabled, so .enabled(True) starts no catch up.
+- The window of an IQL dialog runs its library tasks on a thread of its own, never on the model thread of a frame: the model thread of the frame that asked may be blocked on the later of the dialog.
