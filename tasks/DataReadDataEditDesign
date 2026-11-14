@@ -57,13 +57,10 @@ The manifest of each package (the `.manifest` of `<pkg>.json`, see CoordinatorDe
 ## Mounts
 
 A data project can be mounted on several DataRead types, of one code project or of several code projects.
-A broken mount in `projects.info` is well formed.
 
 ## Data projects of a running main
 
-When the manager starts a main, the manager gives the main the 'fsFolder' and the 'lock file' of every data project mounted on a DataRead type of the project, by the qualified name of that DataRead type (the `.mounts` and the `.locks` of `Launch`, see CoordinatorDesign).
-A process started by `CapProcess` gets the data projects of the process that starts it (see Processes in AttenuationDesign).
-The mounts of the project are checked once, at the start of a 'mains chain' (see Run, Compile and Check in ControllersDesign). A data project that becomes 'invalid' during a 'mains chain' ends the 'mains chain' (see Files changing while a 'mains chain' runs in ControllersDesign).
+When the manager starts a main, the manager gives the main every data project mounted on a DataRead type of the project, by the qualified name of that DataRead type (the `.mounts` and the `.locks` of `Launch`, see CoordinatorDesign).
 A listing, a read, a write and a delete give the same results in a 'folder' induced by an 'fsFile' as in a 'folder' induced by an 'fsFolder'.
 A write inside a 'folder' induced by an 'fsFile' rewrites that 'fsFile'.
 A path is the list of the 'folder' names, then the name of the 'resource'.
@@ -101,62 +98,43 @@ D The call returns only `notes2.txt`.
 
 ## Locks of data projects
 
-Each data project has one lock, which a process holds as a 'read lock' or as the 'edit lock'.
-Any number of processes hold a 'read lock' at the same time; a process holds the 'edit lock' only while no other process holds the lock.
+Each data project has one lock, held as a 'read lock' or as the 'edit lock'.
+Any number of 'read locks' of a data project are held at the same time; the 'edit lock' is held only while no other lock of that data project is held.
 
 An 'operation' is a call of a method of `CapDataRead` or `CapDataEdit`, or a read of the `CapInputCursorNode` that `.read` gave.
 Each 'operation' holds the lock from its start to its end: a 'read lock' for `.paths` and for the reads, the 'edit lock' for a write and for a delete.
 An 'operation' that can not take the lock waits until it can.
 
-`sys.locked(reads, edits, f)`, a `mut` method of `System`, holds, for the whole run of `f`, a 'read lock' of the data project mounted on each DataRead type of `reads` and the 'edit lock' of the data project mounted on each DataEdit type of `edits`, and returns what `f` returns.
+`sys.locked(reads, edits, f)`, a `mut` method of `System`, holds, for the whole evaluation of `f`, a 'read lock' of the data project mounted on each DataRead type of `reads` and the 'edit lock' of the data project mounted on each DataEdit type of `edits`, and returns what `f` returns.
 A data project named more than once, through several types or in both lists, is locked once: with the 'edit lock' when one of its types is in `edits`.
-`.locked` takes the locks one at a time, in the order of the names of their 'lock files', and releases every lock when `f` has ended and every process that the process of `.locked` started while `f` runs has ended.
-The 'lock group' of a `.locked` is the process of `.locked` while `f` runs, and every process that a process of the 'lock group' starts.
-A process of the 'lock group' gets the 'lock files' of the `.locked` and their modes when it starts, and ends only after every process it started has ended.
-An 'operation' of the 'lock group' on a data project of `reads` or `edits` holds the 'inner lock' of that data project instead of the lock, in the same mode.
-A process runs at most one `.locked` at a time: a `.locked` waits while another `.locked` of the same process runs.
+`.locked` takes the locks one at a time, in an order of the data projects that is the same for every `.locked`.
+The 'lock group' of a `.locked` is the evaluation of `f`, and the evaluation of every main that `CapProcess` starts in the 'lock group'.
+`.locked` releases every lock when the 'lock group' has ended.
+An 'operation' of the 'lock group' on a data project of `reads` or `edits` waits for no lock of that `.locked`; two 'operations' of the 'lock group' on one data project hold that data project as two 'operations' outside any `.locked` do.
+A `.locked` waits while another `.locked` of the same main runs.
 These are deterministic errors:
 - a write or a delete of the 'lock group' on a data project only in `reads`;
 - an 'operation' of the 'lock group' on a data project not in `reads` or `edits`;
-- a `.locked` inside the `f` of a `.locked`;
-- a `.locked` of a process of a 'lock group' started by `CapProcess`;
-- a process of a 'lock group' calling `.run` of `CapManager` (see Messages from a running main in ControllersDesign).
+- a `.locked` in the 'lock group' of a `.locked`;
+- a call of `.run` of `CapManager` (see Messages from a running main in ControllersDesign) in the 'lock group' of a `.locked`.
+```
+A (greet.DiaryEdit->diary) in hello.mounts, with greet.DiaryEdit a DataEdit type
+B (earth.Pub->diary) in world.mounts
+C greet.Writer, a main of hello, evaluates `sys.locked(edits: greet.DiaryEdit, f)`
+D `f` calls `sys.manager.run(world)`
+E the call is a deterministic error of greet.Writer, and the manager receives no `Run`
+F one may expect a refusal of the manager, as for a 'busy' project; but an 'operation' of world on diary would wait for the 'edit lock' that `f` holds, while `f` waits for the end of the 'mains chain' of world
+
+A (greet.Diary->diary) in hello.mounts
+B two stages of a parallel flow of a main of hello read diary at the same moment
+C the first stage holds a 'read lock' of diary
+D the second stage takes and releases a 'read lock' of diary
+E an 'operation' of a main of world asking for the 'edit lock' of diary waits until the first stage releases its 'read lock'
+```
 
 An 'autoCheck' (see Project states in ControllersDesign) of a data project holds a 'read lock'; when the lock is not free, the 'autoCheck' keeps the outcome of the previous 'autoCheck' of that data project.
-At the start of a 'mains chain' (see Run, Compile and Check in ControllersDesign), the manager takes the lock of every data project mounted on a DataRead type of the project, in the order of the names of their 'lock files', waiting for each lock: the 'edit lock' for a DataEdit type, a 'read lock' for the other DataRead types.
-Then the manager checks the mounts of the project, starts the first main, and releases those locks.
-```
-A Code project hello mounts data project diary on greet.Diary.
-B Code project world mounts data project diary on earth.Pub.
-C A main of hello holds the 'edit lock' of diary for a minute.
-D The user runs the main earth.Show.
-E Project world is 'busy'; the status line of world says that earth.Show waits for diary.
-F The user terminates the main of hello. The manager takes the 'read lock' of diary, checks diary, and starts earth.Show.
 
-A Code project hello mounts data project diary on greet.Diary.
-B Code project world mounts data project diary on earth.Pub.
-C A main of hello holds the 'edit lock' of diary.
-D The user runs the main earth.Show. Project world is 'busy'; the status line of world says that earth.Show waits for diary.
-E The user presses Terminate on world. Project world is not 'busy'.
-
-A Code project hello mounts data project diary on greet.DiaryEdit, a DataEdit type.
-B Code project world mounts data project diary on earth.Pub.
-C The user runs the main greet.Writer. Inside `sys.locked(edits: greet.DiaryEdit)`, greet.Writer calls `sys.manager.run(world)`.
-D One may expect the manager to refuse the `Run`, as for a 'busy' project; instead the call is a deterministic error of greet.Writer, and no message is sent: a `Run` of world would wait for the 'edit lock' that greet.Writer holds, while greet.Writer waits for the end of that `Run`.
-
-A Code project hello mounts data project diary on greet.Diary.
-B Two stages of a parallel flow of a main of hello read diary at the same moment.
-C The first stage holds a 'read lock' of diary. The second stage takes and releases a 'read lock' of diary.
-D The first stage still holds the 'read lock': a main of world asking for the 'edit lock' of diary waits until the first stage releases the 'read lock'.
-```
-
-The lock is a lock of the operating system on the 'lock file' of the data project: a shared lock for a 'read lock', an exclusive lock for the 'edit lock'.
-The 'lock file' of a data project is `locks/<hash>.lock` in the manager folder, where `<hash>` is the SHA-256 of the `base16` (see Info files in ControllersDesign) of the absolute path of the 'fsFolder' of the data project, in hexadecimal.
-The 'inner lock' is a lock of the operating system on the 'inner lock file' `locks/<hash>_inner.lock`, next to the 'lock file'.
-The 'lock file' and the 'inner lock file' hold nothing; a process creates a missing 'lock file' or 'inner lock file'.
-When the manager starts, the manager deletes every file of `locks` that is not the 'lock file' or the 'inner lock file' of a registered project, unless a process holds a lock of it.
-
-An edit leaves each 'file' as before the edit or as after the edit, also when the process ends during the edit.
+An edit leaves each 'file' as before the edit or as after the edit, also when the main ends during the edit.
 
 ## GUI
 
@@ -177,3 +155,9 @@ An edit builds what the edit adds as a hidden 'fsFile' or 'fsFolder' `.<uuid>.tm
 Then the edit moves the `.<uuid>.tmp` to its place with one rename.
 A delete first renames what the delete deletes to a `.<uuid>.tmp` in the root 'fsFolder'.
 A process that takes the 'edit lock' deletes every `.<uuid>.tmp` of the root 'fsFolder'.
+A lock is a lock of the operating system on the 'lock file' of the data project: a shared lock for a 'read lock', an exclusive lock for the 'edit lock'.
+The 'lock file' of a data project is `locks/<hash>.lock` in the manager folder, where `<hash>` is the SHA-256 of the `base16` (see Info files in ControllersDesign) of the absolute path of the 'fsFolder' of the data project, in hexadecimal.
+`.locked` takes the locks in the order of the names of their 'lock files'.
+The 'lock group': the process of a main that `CapProcess` starts in a 'lock group' gets the 'lock files' of the `.locked` and their modes when it starts, and ends only after every process it started has ended; an 'operation' of the 'lock group' takes, in place of the lock, a lock of the operating system on the 'inner lock file' `locks/<hash>_inner.lock`, next to the 'lock file', in the same mode.
+The 'lock file' and the 'inner lock file' hold nothing; a process creates a missing 'lock file' or 'inner lock file'.
+When the manager starts, the manager deletes every file of `locks` that is not the 'lock file' or the 'inner lock file' of a registered project, unless a process holds a lock of it.

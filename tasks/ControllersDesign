@@ -56,7 +56,7 @@ On macOS the one argument `FearlessCommandOpened` writes no message; on every ot
 The messages of an event are the messages of one argument not starting with `FearlessCommand`, for each path of the event.
 On macOS the 'single' manager writes the messages of every event.
 On macOS a 'fresh' manager process that can not take the lock, started with zero arguments or with `FearlessCommandOpened`, waits up to 2 seconds for one event after writing its messages, then writes the messages of that event.
-A 'fresh' manager process that can not take the lock ends after writing its messages; a manager process that becomes the 'single' manager applies its own messages like every other message.
+A manager process that becomes the 'single' manager applies its own messages like every other message.
 A manager process started with two or more arguments, or with a bad argument, writes the message `InvalidCall` with the error naming the first bad argument, or saying that the manager program takes at most one argument. When the 'single' manager handles `InvalidCall`, the 'single' manager shows the error in a dialog and continues running.
 ```
 A No manager process is running.
@@ -88,7 +88,7 @@ The 'single' manager runs until `Quit`, `Reset`, a 'fatal error', or the deletio
 ## Requests and messages
 
 A 'request' is what one of the verbs below asks the manager to do, whether the request comes from a message or from a GUI operation.
-The 'single' manager applies the requests one at a time, in the order they arrive, each one completely before the next, except a `Quit` message (see `replaced` in File associations) and a `Run` waiting for the locks of its data projects (see Locks of data projects in DataReadDataEditDesign).
+The 'single' manager applies the requests one at a time, in the order they arrive, each one completely before the next, except a `Quit` message (see `replaced` in File associations).
 Applying a `Run` or a `Compile` is starting the 'mains chain' or the compilation; applying a `Terminate` ends once the 'mains chain' has ended.
 
 A 'message' is the file `messages/<time>-<id>.msg` in the manager folder: `<time>` is the 20 digit count of milliseconds since 1970 when the message was written, and `<id>` is a random UUID. The 'single' manager applies the messages in the order of their names, and deletes each message after reading it.
@@ -98,7 +98,7 @@ The 'single' manager learns of a new message from the report of the desk that a 
 Every other program commanding the manager (the Eclipse plugin, a script, a test) runs the manager program with a `call` as its argument.
 Every GUI operation that is a request has an equivalent message, and every verb is the verb of a GUI operation.
 Docs, Base documentation, Browse, Logs and Fearless demos, which open another program on a file or a web page, Info, which opens the Info dialog, the Clear button of an Output, which empties the Output, and Import zip, which writes files and then sends requests, are GUI operations that are not requests and have no message. A GUI operation that finds nothing to open says so in a dialog.
-The error of an ill formed message, except a message read while the manager is quitting, shows in a dialog of the manager window; a hidden manager window is shown first.
+The error of an ill formed message, except a message read while the manager is quitting, shows in a dialog of the manager window.
 Showing the manager window asks the desk to bring the manager window to the front.
 
 A message contains a verb, then the arguments of the verb, then the `port` when the message comes from a `call` with a `port`, one per line.
@@ -189,7 +189,6 @@ C The manager refuses: /data/a/sub is inside the folder of project a.
 ```
 
 Whether a message is ill formed is decided when the 'single' manager starts applying the request of the message, after the 'autoCheck' (see Project states) of the project the request runs on, from the message and the state that 'autoCheck' finds, before anything is compiled, run or written to the Output.
-The broken mounts of a `Run` are decided once the manager holds the locks of the data projects (see Locks of data projects in DataReadDataEditDesign).
 The error of an ill formed message is never in the Output: the Output of a project contains only the results of well formed requests. A failing compilation is the result of a well formed request.
 
 ## Info files
@@ -276,12 +275,11 @@ A 'name check' of a project compares the name of the first marker of the project
 The manager does a 'name lookup' at start; before applying a request, the manager does a 'name check' of every project the request names, and a 'name lookup' when the request names a name that is not the name of a project; an 'autoCheck' of a project starts with a 'name check' of the project.
 A project folder the manager can not reach keeps the name the manager knew, and gets no name at start (see the 'unreachable dialog' in Project states).
 
-The `mains`, `mounts` and `attenuators` of a project stay when the kind of the project changes, and a mount stays when the data project of the mount is forgotten.
 ```
-A Project hello is a code project with the selected main greet.Hello and the attenuator base.NoManagerQuit on greet.Hello.
+A Project hello is a code project with the selected main greet.Hello and the attenuator base.NoManagerQuit on greet.Hello, and (greet.Diary->diary) in hello.mounts.
 B The user makes project hello an idle project.
 C The user makes project hello a code project, and compiles project hello.
-D Project hello has the selected main greet.Hello, with the attenuator base.NoManagerQuit.
+D Project hello has the selected main greet.Hello, with the attenuator base.NoManagerQuit, and (greet.Diary->diary) in hello.mounts.
 
 A Code project hello mounts data project diary on greet.Diary. Project diary is a dataEdit project with the folder real_diary.
 B The user forgets project diary.
@@ -341,8 +339,7 @@ A project of kind code, dataRead or dataEdit is 'invalid' when a cause of the st
 An 'autoCheck' of a project reads the project folder and finds the state of the project and the mains of the project.
 An 'autoCheck' that finds the project 'invalid' while no compilation of the project runs writes the 'problem' into `.fearless_out/_error.txt` with `Coordinator.writeError`, for every kind of project.
 An 'autoCheck' that can not reach the project folder ends the 'mains chain' or the compilation of the project, if running, and every 'mains chain' of a project with a mount of that project, and shows the 'unreachable dialog' of the project: the error `The folder "/home/user/hello" of a registered project is unreachable.`, with the buttons Locate and Forget.
-The manager shows one 'unreachable dialog' at a time.
-Forget, and closing the 'unreachable dialog', are a `Forget` of the project.
+Closing the 'unreachable dialog' is a `Forget` of the project.
 Locate opens a folder picker, then sends an `EditMetadata` giving the picked folder as the `path` of the project; a refused `EditMetadata` shows its error, then the 'unreachable dialog' again.
 ```
 A Code project hello has the folder /home/user/hello, and mounts data project diary on greet.Diary.
@@ -492,27 +489,25 @@ Every entry of `projects.info` about a project except `path` shows in the projec
 
 ## Run, Compile and Check
 
-A 'mains chain' of a project runs from the start of the application of a `Run` to the end of the last main of that `Run`: the manager takes the locks of the data projects of the project (see Locks of data projects in DataReadDataEditDesign), then runs the selected mains one after the other. An `OpenWithOrShortcut` running a main runs a 'mains chain' of that one main.
+A 'mains chain' of a project runs the selected mains of one `Run`, one after the other, from the start of the first main to the end of the last one. An `OpenWithOrShortcut` running a main runs a 'mains chain' of that one main.
 A project runs at most one thing at a time: a compilation or a 'mains chain'.
 A 'compilation' of a project runs from the start of `Coordinator.compile` to the end of the last step of What the manager does after `Coordinator.compile`.
 A project is 'busy' while a 'mains chain' or a compilation of the project runs, or a 'mains chain' of a project with a mount of the project runs.
 Everything the mains of a 'mains chain' or a compilation print goes to the Output, and the Output marks where each main and the compilation start and end, and how each of them ended.
 
-- A compilation runs in a JVM of its own, and each main runs in a JVM of its own (`Coordinator.run`, see CoordinatorDesign).
-- The report of a `Check`, and the changes of a `Fix` (see Fix in FolderShapesDesign), go to the Output; a `Check` and a `Fix` start no JVM, and the Output has no marks for a `Check` or a `Fix`.
-- Terminate ends the 'mains chain': the JVM of the running main ends, and no further main of the 'mains chain' starts.
-- The mounts of the project are checked once, at the start of the 'mains chain', while the manager holds the locks of the data projects; a broken mount makes the `Run` ill formed. One may expect a check before each main; during a 'mains chain' no mount can break: the mounted data projects are 'busy', the mounts of the project can not change, and a data project that becomes 'invalid' ends the 'mains chain' (see Files changing while a 'mains chain' runs).
+- The report of a `Check`, and the changes of a `Fix` (see Fix in FolderShapesDesign), go to the Output, and the Output has no marks for a `Check` or a `Fix`.
 - A main or a compilation that crashes, or that takes all the memory, ends alone: the manager and the 'mains chains' and compilations of the other projects keep running.
 
 
 ### Files changing while a 'mains chain' runs
 An 'autoCheck' of a project with a running 'mains chain' that finds the project 'invalid' or 'out of date' ends that 'mains chain', and writes in the Output of the project the error `Some files inside the project "hello" were updated while main "hello.Hello" was running.`
-An 'autoCheck' of a data project that finds the data project 'invalid' ends every 'mains chain' of a project with a mount of that data project, and writes in the Output of the project of each such 'mains chain' the error `The data project "diary" became invalid while main "hello.Hello" was running.` <HELP ME WITH WORDING>
 ```
-A Code project hello mounts data project diary on greet.Diary.
-B The user runs greet.Hello.
-C The user renames the folder y2026 of diary to Y2026 with the file explorer.
-D An 'autoCheck' of diary finds diary 'invalid': the manager ends the 'mains chain' of hello, and the Output of hello holds the error.
+A (greet.Diary->diary) in hello.mounts
+B the 'mains chain' of hello is running, at the main greet.Hello
+C the user renames the folder y2026 of diary to Y2026 with the file explorer
+D an 'autoCheck' of diary finds diary 'invalid'
+E the 'mains chain' of hello ends
+F the Output of hello ends with `The data project "diary" became invalid while main "greet.Hello" was running.` <HELP ME WITH WORDING>
 ```
 
 
@@ -902,7 +897,6 @@ The Frontend checks, before generating code, as well formedness errors:
 - the extension is a string literal type containing 1 to 16 characters, each `a-z` or `0-9`, other than `fearless`; `"txt"` and `` `txt` `` are the same extension;
 - the extension of a `Shortcut` is `fapp` and three digits; the extension of an `OpenWith` is not;
 - a main claims each extension at most once.
-The Coordinator checks that the icon is the type generated for an image file (see `._frontend` in The Coordinator of CoordinatorDesign).
 The exact rules and errors are those of `inject.Methods.checkClaims` of Frontend and of the doc comments of `OpenWith`, `Shortcut` and `PreLoadIcon` in `base`.
 
 ### What the manager does after `Coordinator.compile`
@@ -970,7 +964,6 @@ icon(e) = the Fearless icon               when e = .fearless
         = Coordinator.iconFiles(p, i)     when the in memory map gives e exactly one entry (p, m, i)
         = the conflict icon               otherwise
 ```
-The Fearless icon and the conflict icon are files of the `icons` folder of the manager folder (see Conflict icon).
 The desk id of a main (the `.deskId` of `Launch`, see The Coordinator in CoordinatorDesign) is `<identity>-<hash>`: the identity of the manager (see The data in ReconciliatorDesign), then the hash of the project folder and the name of the main.
 On Windows a running main gives its windows the `.ico` of `Coordinator.iconFiles` directly.
 
@@ -1023,6 +1016,7 @@ An implementation decides alone every detail the design leaves open below the co
 - The 'tray icon window' is an AWT window of type popup.
   A Wayland client can not place its windows; AWT on Linux is an X11 client, through XWayland under Wayland.
   On X11 no taskbar lists a popup window, and a popup window stays where the manager places the popup window.
+- Each main and each compilation runs in a JVM of its own (`Coordinator.run`, see CoordinatorDesign).
 - A main or a compilation ending alone: on Linux with systemd as init (`/run/systemd/system` is a folder), `Fs.processBuilder` starts each child with `systemd-run --user --scope`, in a cgroup of its own.
   A cgroup is a group of processes the Linux kernel accounts together; systemd-oomd ends a whole cgroup, and a child process starts in the cgroup of the parent process.
 - A main or a compilation ending with the manager: the manager starts the JVM of each main and of each compilation with a 'parent lifeline' (see Processes in AttenuationDesign) on a pipe the manager holds open.
