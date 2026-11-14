@@ -4,22 +4,29 @@ How a Fearless main reads and edits the 'resources' of a data project.
 The code declares the types naming the data the code needs.
 The user of the manager mounts a data project on each of those types, picking the data project from a menu.
 
-The algorithms of this design are a contract on the behaviour: a specification, not a suggested implementation.
-They may be very slow or otherwise inefficient. They are designed to be obviously correct; implementing them as they are may be a terrible idea.
+The algorithms of this design specify the behaviour, not the implementation: an implementation may take the steps of an algorithm in another order, or in another way, when no person and no program can tell the difference, also after a crash.
 
 ### Terms
 
-- 'data project': a registered project of kind `dataRead` or `dataEdit`. No Fearless program writes a `dataRead` project; a main can read and write a `dataEdit` project.
+- 'data project': a registered project of kind `dataRead` or `dataEdit`.
 - 'DataRead type': a type implementing `base.DataRead`. 'DataEdit type': a type implementing `base.DataEdit`. Every DataEdit type is also a DataRead type.
-- 'mount': an entry of `mounts` in `projects.info` (see Registered projects in ControllersDesign): a data project mounted on a DataRead type of a code project.
-- 'broken mount': a mount naming a type that is not a DataRead type of the code project, a mount naming a project that is not registered (a mount whose data project was forgotten: a `Mount` naming a project that is not registered is ill formed) or that is not a data project, a mount of a `dataRead` project on a DataEdit type, and a mount of a data project with invalid content (see Project states in ControllersDesign).
+- 'mount': an entry of `mounts` in `projects.info` (see Registered projects in ControllersDesign): a data project mounted on a DataRead type of a project.
+- 'broken mount': a mount `t -> n` of a project p with `broken(p, t -> n)`:
+```
+broken(p, t -> n)  iff  one of these holds:
+  p is a code project whose DataRead types are known, and t is not a DataRead type of p
+  n is not the name of a registered project
+  n names a project of kind idle or code
+  n names a project of kind dataRead, and t is a DataEdit type
+  n names an 'invalid' project (see Project states in ControllersDesign)
+```
 - 'fsFolder': a folder of the underlying file system. 'fsFile': a file of the underlying file system.
-- 'resource space': the virtual tree that Fearless code accesses through `CapDataRead` and `CapDataEdit`: the 'fsFolder' of a data project, mapped following the rules of `Coordinator.pkgsBuilt(fsFolder, baseCache)`.
-- 'resource': an element of the 'resource space'. A 'resource' is a 'folder' or a 'file', the two kinds of 'resource' that the Fearless API exposes. For example, an 'fsFile' `foo.zip` is not a 'file', but it induces a 'folder' `foo`.
+- 'resource space': the virtual tree that Fearless code accesses through `CapDataRead` and `CapDataEdit`: the 'fsFolder' of a data project, where an 'fsFile' `x.zip` induces a 'folder' `x` holding the 'resources' of the zip (as for the `.path` of a file, see The data in CoordinatorDesign).
+- 'resource': an element of the 'resource space': a 'folder' or a 'file'.
 
 ## Base
 
-Each method of `CapDataRead` and of `CapDataEdit` acts on the data project mounted on the DataRead type, as Data projects of a running main says.
+`sys.dataRead(data)` gives a `CapDataRead` and `sys.dataEdit(data)` gives a `CapDataEdit`; each method of that capability acts on the data project mounted on the DataRead type named `data.name`, as Data projects of a running main says.
 
 Example:
 ```
@@ -32,14 +39,12 @@ ShowDiary: Main{ sys -> ... sys.dataEdit(Diary).read(List#(`y2026`, `today.txt`)
 `sys.dataRead(Diary)` gives the capability to only read the data project mounted on `Diary`.
 `sys.dataEdit(Pub)` is a type error: `Pub` is not a DataEdit type.
 
-The DataRead types of a code project are the concrete DataRead types of every package of the code project.
-A concrete DataRead type has zero generic parameters.
-`sys.dataRead(data)` and `sys.dataEdit(data)` find the data project by `data.name`.
+The DataRead types of a code project are known when `Coordinator.check` gives `State.compiled`: the `.dataRead` and the `.dataEdit` of the `.manifest` of `State.compiled` (see CoordinatorDesign).
 The manifest of `base` lists no DataRead type.
 
 ## What the compiler records
 
-The manifest of each package (the `.manifest` of `<pkg>.json`, see CoordinatorDesign) lists under `dataRead` the concrete DataRead types of the package that are not DataEdit types, and under `dataEdit` the concrete DataEdit types of the package:
+The manifest of each package (the `.manifest` of `<pkg>.json`, see CoordinatorDesign) lists under `dataRead` the summonable DataRead types (see AttenuationDesign) of the package that are not DataEdit types, and under `dataEdit` the summonable DataEdit types of the package:
 ```
 {
   "mains": { "hello.ShowDiary": [...] },
@@ -52,68 +57,111 @@ The manifest of each package (the `.manifest` of `<pkg>.json`, see CoordinatorDe
 ## Mounts
 
 A data project can be mounted on several DataRead types, of one code project or of several code projects.
-A broken mount is well formed; a `Run` of a code project with a broken mount is ill formed (see Ill formed messages in ControllersDesign).
+A broken mount in `projects.info` is well formed.
 
 ## Data projects of a running main
 
-When a `Run` starts, the manager gives each main of that `Run` the 'fsFolder' of every data project mounted on a DataRead type of the project, by the qualified name of that DataRead type.
-A process started by `CapProcess` has the mounts of the parent process (see Processes in AttenuationDesign).
-A data project that changes on disk while a main runs is not checked again.
-A main does not see the marker of a data project or the 'fsFiles' and 'fsFolders' whose name starts with "."; a path naming one of those is not valid.
-An 'fsFile' `foo.zip` induces a 'folder' `foo` holding the 'resources' of the zip: a listing, a read, a write and a delete give the same results in that 'folder' as in a 'folder' induced by an 'fsFolder', so a main can not tell the two apart.
+When the manager starts a main, the manager gives the main the 'fsFolder' and the 'lock file' of every data project mounted on a DataRead type of the project, by the qualified name of that DataRead type (the `.mounts` and the `.locks` of `Launch`, see CoordinatorDesign).
+A process started by `CapProcess` gets the data projects of the process that starts it (see Processes in AttenuationDesign).
+The manager checks the mounts of the project of a main only when the main starts: a data project that becomes 'invalid' while a main runs does not end the main.
+A listing, a read, a write and a delete give the same results in a 'folder' induced by an 'fsFile' as in a 'folder' induced by an 'fsFolder'.
 A write inside a 'folder' induced by an 'fsFile' rewrites that 'fsFile'.
 A path is the list of the 'folder' names, then the name of the 'resource'.
 `.paths` gives the names of the 'resources' in the 'folder' at the path, sorted; the empty path is the root 'folder'.
 A 'folder' name is a 'valid segment' (see FolderShapesDesign).
 A 'file' name is a 'valid file name' (see FolderShapesDesign) whose extension is not `zip` or `fearless`.
-A written path is at most 200 characters long.
+The names of a written path, joined with `/`, are at most 200 characters long.
 A write replaces the 'file' at the path, or creates the 'file' together with the missing 'folders' of the path.
+TODO: a delete that leaves the root 'folder' empty also deletes the root 'fsFolder'.
+TODO: a write after a delete that removed the 'fsFile' `x.zip` creates the 'fsFolder' `x`, not `x.zip`: whether a write keeps the zip is to be decided.
 
-A delete deletes a 'file', or a 'folder' with every 'resource' in the 'folder' and the 'fsFiles' and 'fsFolders' whose name starts with "."; then the delete deletes the 'folders' that the delete leaves empty, and the 'fsFiles' that induce them.
-A path that is not valid, or a request that the 'resources' of the data project do not allow, like a path naming no 'resource', a path naming a 'resource' of the other kind, or a delete of the root 'folder', is a deterministic error.
-A data project that is not mounted, a root 'fsFolder' that can not be reached, a 'resource' that exists but can not be read or changed, and a 'folder' holding a name that is not valid are non deterministic errors.
+A delete deletes a 'file', or a 'folder' with every 'resource' in the 'folder', the 'fsFiles' and 'fsFolders' whose name starts with ".", and the 'fsFiles' with extension `fearless`; then the delete deletes the 'folders' other than the root 'folder' that the delete leaves empty, and the 'fsFiles' that induce them.
+These are deterministic errors:
+- a path that is not valid;
+- a path of `.paths`, of `.read` or of a delete that names no 'resource';
+- a path of `.paths` that ends with a 'file' name;
+- a path of `.read` or of a write that is empty or ends with a 'folder' name;
+- a delete of the empty path.
+
+A DataRead type with no data project given to the main, a root 'fsFolder' that can not be reached, a 'resource' that exists but can not be read or changed, and a 'folder' holding an 'entry' that breaks a 'shape rule' (see Shape rules in FolderShapesDesign) are non deterministic errors.
+
+```
+A Code project hello mounts data project diary on greet.Diary.
+B The folder of diary holds diary.fearless, .notes.txt, y2026/today.txt and old.zip; old.zip holds y2025/today.txt and nothing else.
+C A main of hello calls sys.dataEdit(Diary).paths(List#) and gets `old` and `y2026`.
+D The main calls sys.dataEdit(Diary).paths(List#(`old`)) and gets `y2025`.
+E The main calls sys.dataEdit(Diary).delete(List#(`old`, `y2025`, `today.txt`)).
+F The folder of diary holds diary.fearless, .notes.txt and y2026/today.txt.
+
+A Code project hello mounts data project diary on greet.Diary.
+B The folder of diary holds diary.fearless, sub/notes.fearless and sub/notes2.txt; diary is not 'invalid'.
+C A main of hello calls sys.dataEdit(Diary).paths(List#(`sub`)).
+D The call returns only `notes2.txt`.
+```
 
 ## Locks of data projects
 
-Each data project has one lock, held by processes: running mains, processes started by `CapProcess`, and the manager.
-A process holds the lock in one of two modes: a 'read lock' or the 'edit lock'.
+Each data project has one lock, which a process holds as a 'read lock' or as the 'edit lock'.
 Any number of processes hold a 'read lock' at the same time; a process holds the 'edit lock' only while no other process holds the lock.
-A main takes a 'read lock' through any DataRead type, and the 'edit lock' only through a DataEdit type.
 
-An 'operation' is a call of a method of `CapDataRead` or `CapDataEdit`, or a read of a 'file' that `.read` gave.
+An 'operation' is a call of a method of `CapDataRead` or `CapDataEdit`, or a read of the `CapInputCursorNode` that `.read` gave.
 Each 'operation' holds the lock from its start to its end: a 'read lock' for `.paths` and for the reads, the 'edit lock' for a write and for a delete.
-An 'operation' that can not take the lock waits until it can; Fearless code observes the wait only as time.
+An 'operation' that can not take the lock waits until it can.
 
-`sys.locked(reads, edits, f)` holds, for the whole run of `f`, a 'read lock' of the data project mounted on each DataRead type of `reads` and the 'edit lock' of the data project mounted on each DataEdit type of `edits`, and returns what `f` returns.
+`sys.locked(reads, edits, f)`, a `mut` method of `System`, holds, for the whole run of `f`, a 'read lock' of the data project mounted on each DataRead type of `reads` and the 'edit lock' of the data project mounted on each DataEdit type of `edits`, and returns what `f` returns.
 A data project named more than once, through several types or in both lists, is locked once: with the 'edit lock' when one of its types is in `edits`.
-`.locked` takes the locks one at a time, in the order of the names of their 'lock files', and releases every lock when `f` has ended, normally or with an error, and every process that the process of `.locked` started while `f` runs has ended.
-The 'lock group' of a `.locked` is the process of `.locked` while `f` runs, every process that this process starts while `f` runs, and every process that a process of the 'lock group' starts.
+`.locked` takes the locks one at a time, in the order of the names of their 'lock files', and releases every lock when `f` has ended and every process that the process of `.locked` started while `f` runs has ended.
+The 'lock group' of a `.locked` is the process of `.locked` while `f` runs, and every process that a process of the 'lock group' starts.
 A process of the 'lock group' gets the 'lock files' of the `.locked` and their modes when it starts, and ends only after every process it started has ended.
-The 'operations' of the 'lock group' on the data projects of `reads` and `edits` hold the 'inner lock' of the data project instead of the lock, in the same mode; a write or a delete on a data project locked with a 'read lock', and an 'operation' of the 'lock group' on a data project that is not in `reads` or `edits`, are deterministic errors.
-A process runs at most one `.locked` at a time: a `.locked` waits while another `.locked` of the same process runs; a `.locked` inside the `f` of a `.locked`, and a `.locked` of a process of a 'lock group' started by `CapProcess`, are deterministic errors.
-So every process takes the locks of `.locked` in the same order, a process that waits for a lock holds only locks that come earlier in that order, and two processes never wait for each other.
-`.locked` is a method of `System`: an attenuator gives it as the other methods of `System`, `ErrorSystem` revokes it, and `RevokableSystem` checks the `Revocation` before it.
+An 'operation' of the 'lock group' on a data project of `reads` or `edits` holds the 'inner lock' of that data project instead of the lock, in the same mode.
+A process runs at most one `.locked` at a time: a `.locked` waits while another `.locked` of the same process runs.
+These are deterministic errors:
+- a write or a delete of the 'lock group' on a data project only in `reads`;
+- an 'operation' of the 'lock group' on a data project not in `reads` or `edits`;
+- a `.locked` inside the `f` of a `.locked`;
+- a `.locked` of a process of a 'lock group' started by `CapProcess`.
 
-The manager holds a 'read lock' during each scan of a data project; when the lock is not free, the manager skips that scan and keeps the state found by the previous scan.
+An 'autoCheck' (see Project states in ControllersDesign) of a data project holds a 'read lock'; when the lock is not free, the 'autoCheck' keeps the outcome of the previous 'autoCheck' of that data project.
+Before starting a main, the manager takes the lock of every data project mounted on a DataRead type of the project, in the order of the names of their 'lock files', waiting for each lock: the 'edit lock' for a DataEdit type, a 'read lock' for the other DataRead types.
+Then the manager checks the mounts of the project, starts the main, and releases those locks.
+```
+A Code project hello mounts data project diary on greet.Diary.
+B Code project world mounts data project diary on earth.Pub.
+C A main of hello holds the 'edit lock' of diary for a minute.
+D The user runs the main earth.Show.
+E Project world is 'busy'; the status line of world says that earth.Show waits for diary.
+F The user terminates the main of hello. The manager takes the 'read lock' of diary, checks diary, and starts earth.Show.
+
+A Code project hello mounts data project diary on greet.Diary.
+B Two stages of a parallel flow of a main of hello read diary at the same moment.
+C The first stage holds a 'read lock' of diary. The second stage takes and releases a 'read lock' of diary.
+D The first stage still holds the 'read lock': a main of world asking for the 'edit lock' of diary waits until the first stage releases the 'read lock'.
+```
 
 The lock is a lock of the operating system on the 'lock file' of the data project: a shared lock for a 'read lock', an exclusive lock for the 'edit lock'.
-The operating system releases the locks of a process when the process ends, however the process ends.
-The 'lock file' of a data project is `locks/<hash>.lock` in the manager folder, where `<hash>` is the SHA-256 of the absolute path of the 'fsFolder' of the data project, in hexadecimal.
+The 'lock file' of a data project is `locks/<hash>.lock` in the manager folder, where `<hash>` is the SHA-256 of the `base16` (see Info files in ControllersDesign) of the absolute path of the 'fsFolder' of the data project, in hexadecimal.
 The 'inner lock' is a lock of the operating system on the 'inner lock file' `locks/<hash>_inner.lock`, next to the 'lock file'.
-When a `Run` starts, the manager gives each main the 'lock file' of each data project it gives, next to the 'fsFolder'.
-The 'lock file' holds nothing, and its existence means nothing: a process creates the 'lock file' when the 'lock file' is missing.
+The 'lock file' and the 'inner lock file' hold nothing; a process creates a missing 'lock file' or 'inner lock file'.
 When the manager starts, the manager deletes every file of `locks` that is not the 'lock file' or the 'inner lock file' of a registered project, unless a process holds a lock of it.
-A process keeps one open channel to each 'lock file', with a lock of its own threads in front of the lock of the operating system: on Linux and macOS, closing any channel to a file releases every lock that the process holds on that file.
 
-An edit leaves the 'fsFolder' of the data project valid at every moment, also when the process ends during the edit.
-The edit builds what it adds as a hidden 'fsFile' or 'fsFolder' `.<uuid>.tmp` in the root 'fsFolder': the new 'fsFile', the rewritten zip, or the missing 'fsFolders' holding the new 'fsFile'.
-Then the edit moves the `.<uuid>.tmp` to its place with one rename.
-A process that takes the 'edit lock' deletes every `.<uuid>.tmp` of the root 'fsFolder'.
+An edit leaves each 'file' as before the edit or as after the edit, also when the process ends during the edit.
 
 ## GUI
 
-For a code project, the Data collapsible area shows each DataRead type of the project and each mount of the project.
-The user mounts on a DataRead type a data project whose mount is not a broken mount, or removes the mount of a DataRead type.
+For a project that is not a data project, the Data collapsible area shows each DataRead type of the project and each mount of the project.
+```
+A Code project hello mounts data project diary on greet.Diary.
+B The user chooses Kind V, Back to idle, on hello.
+C The Data collapsible area of hello shows the mount on greet.Diary exactly as it was shown when hello was a code project.
+```
+The user mounts on a DataRead type a data project whose mount is not a broken mount, or removes a mount.
 A broken mount is marked, naming what makes the mount broken.
 For a data project, the Data collapsible area shows the mounts on that data project, and the user mounts that data project on a DataRead type with no mount, when that mount is not a broken mount.
 Every change is a `Mount` or an `Unmount`.
+
+## Implementation notes
+
+An edit builds what the edit adds as a hidden 'fsFile' or 'fsFolder' `.<uuid>.tmp` in the root 'fsFolder': the new 'fsFile', the rewritten zip, or the missing 'fsFolders' holding the new 'fsFile'.
+Then the edit moves the `.<uuid>.tmp` to its place with one rename.
+A delete first renames what the delete deletes to a `.<uuid>.tmp` in the root 'fsFolder'.
+A process that takes the 'edit lock' deletes every `.<uuid>.tmp` of the root 'fsFolder'.

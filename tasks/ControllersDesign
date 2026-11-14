@@ -1,43 +1,46 @@
 # Controllers design
 
-Controllers holds the Fearless manager: a desktop program that keeps a set of project folders, compiles those projects, runs the mains of those projects, and connects those projects to the desktop and to Eclipse.
-Next to the manager, and independent from the manager, Controllers also holds:
-- `fearlessPluginProject`: the Eclipse plugin showing the projects of a manager inside Eclipse, with content assist (see EclipseDesign).
+Controllers contains the Fearless manager: a desktop program that keeps a set of project folders, compiles those projects, runs the mains of those projects, and connects those projects to the desk and to Eclipse.
+Next to the manager, and independent from the manager, Controllers also contains:
+- `fearlessPluginProject`: the Eclipse plugin (see EclipseDesign).
 - `agentTools`: a library driving the real pointer and keyboard, for GUI tests of any program.
 - `benchmarks`: speed measures of Fearless programs against the runtime.
 
-The manager is an island: the manager behaves the same on every system, and this is the objective of the manager.
-When a part of the system (a tray, a dialog, a desktop shell) would make the manager behave differently than this design, the manager does not use that part that way.
-When the system does not offer what the manager needs (a display, a file system feature the manager relies on, at most one identity of the Fearless family on the system (see Refusals in ReconciliatorDesign), or each Fearless extension (see File associations)), or the manager folder exists and does not hold what the manager wrote there, the manager stops with a 'fatal error' saying so.
+The manager is an island: the manager behaves the same on every desk.
+When a part of the desk (a tray, a dialog, a desktop shell) would make the manager behave differently than this design, the manager does not use that part that way.
+When the desk does not offer what the manager needs (a display to the manager process that becomes the 'single' manager, a file system feature the manager relies on, at most one identity of the Fearless family on the desk (see Refusals in ReconciliatorDesign), or each Fearless extension (see File associations)), or the manager folder exists and does not contain what the manager wrote there, the manager ends with a 'fatal error' saying so.
 This is the only concept of 'fatal error'.
 
-A 'fatal error' is shown in a dialog listing the mains and the compilations that are currently running; with no display, the error goes to the standard error of the manager program instead, and no step below waits for a dialog.
-A 'fatal error' ends the manager. This happens in order:
--The dialog shows. Nothing below happens until the dialog has been closed.
--All the running mains and compilations are terminated. The manager waits until every main and compilation has terminated.
+A 'fatal error' ends the manager, in this order:
+-A dialog shows the error and lists the mains and the compilations that are running. Nothing below happens until the dialog has been closed. With no display, the error goes to the standard error of the manager program instead, and no step below waits for a dialog.
+-All the running mains and compilations are ended. The manager waits until every main and compilation has ended.
 -The manager deletes the manager folder.
 -The manager removes the setup of every identity of the Fearless family (`.eradicateAll`, see ReconciliatorDesign).
 
-Everything the manager is asked to do either happens or is refused with an error naming what was refused and the reason of the refusal; nothing is silently skipped.
+Everything the manager is asked to do either happens or is refused with an error naming what was refused and the reason of the refusal.
 
-The algorithms of this design are a contract on the behaviour: a specification, not a suggested implementation.
-They may be very slow or otherwise inefficient. They are designed to be obviously correct; implementing them as they are may be a terrible idea.
+The algorithms of this design specify the behaviour, not the implementation: an implementation may take the steps of an algorithm in another order, or in another way, when no person and no program can tell the difference, also after a crash.
 
 ## Program and manager folder
 
-A manager is one program folder, `fearlessManaged<version>`, for example `fearlessManaged0_001`.
+The program folder of a manager is `fearlessManaged<version>`, for example `fearlessManaged0_001`.
 On macOS the program folder is the application `fearlessManaged<version>.app`.
-The 'launcher' of the manager is the executable file of the program folder that starts the manager program.
-The manager folder of a manager is `fearless<version>`, next to the program folder, on every system. The manager folder holds everything the manager remembers; deleting the manager folder makes the manager start from nothing.
+The 'launcher' of the manager is the executable file of the program folder that started the manager program; the program folder contains two launchers, with the identities `<i>` and `<i>w` in the Fearless family (see The data in ReconciliatorDesign).
+The manager folder of a manager is `fearless<version>`, next to the program folder, on every desk. The manager folder contains everything the manager remembers; deleting the manager folder makes the manager start from nothing.
 A manager folder that can not be created is a 'fatal error' naming the manager folder.
 
 ## Starting the 'single' manager
-Starting the manager program leaves one message in the manager folder, or two for the path of a folder or of a `.fearless` file. Several OS processes running the manager can be alive at the same time, and one of them is the 'single' manager: the OS process running the manager that handles the messages.
+A 'manager process' is an OS process running the manager program.
+A manager process is 'fresh' when it starts.
+A 'fresh' manager process becomes a 'single candidate' when it takes the lock of the `instance.lock` of its manager folder (see The 'single' manager in Implementation notes).
+A 'single candidate' becomes the 'single' manager when its first `.reconcile` (see Reconciling) ends with no refusal.
+A manager process never goes back to an earlier state.
+Only the 'single' manager handles the messages, except `Quit` (see `replaced` in File associations).
 
 The manager program takes:
 - zero arguments: the message is `Show`;
 - one argument starting with `FearlessCommand<Verb>`, a `call` (see Requests and messages): the message is the verb `<Verb>` with the arguments of the verb and the `port` that follow in the `call`;
-- one argument not starting with `FearlessCommand`: the path of a file or a folder, as the system passes the path when the file is opened (for example by a double click); the messages are `Register` with that path, then `Show`, for a folder or a `.fearless` file, and the message is `OpenWithOrShortcut` with that path otherwise.
+- one argument not starting with `FearlessCommand`: the path of a file or a folder, as the desk passes the path when the file is opened (for example by a double click); the messages are `Register` with that path, then `Show`, for a folder or a `.fearless` file, and the message is `OpenWithOrShortcut` with that path otherwise.
 For example:
 ```
 "FearlessCommandQuit"
@@ -47,55 +50,58 @@ For example:
 "FearlessCommandRegister Base16:2F646174612F68656C6C6F"
 ```
 (the last one registers `/data/hello` on Linux).
-macOS passes an opened file to an OS process running the manager as an event, not as an argument.
-The launcher script of the 'helper bundle' of the manager (see Extensions on macOS in ReconciliatorDesign) starts the manager with the one argument `FearlessCommandOpened`.
-On macOS the one argument `FearlessCommandOpened` leaves no message; on every other system `FearlessCommandOpened` is a bad argument.
+macOS passes an opened file to a manager process as an 'event', not as an argument.
+The script of the 'helper bundle' of the manager (see Extensions on macOS in ReconciliatorDesign) starts the manager with the one argument `FearlessCommandOpened`.
+On macOS the one argument `FearlessCommandOpened` writes no message; on every other desk `FearlessCommandOpened` is a bad argument.
 The messages of an event are the messages of one argument not starting with `FearlessCommand`, for each path of the event.
-On macOS the 'single' manager leaves the messages of every event.
-On macOS an OS process running the manager that is not the 'single' manager, started with zero arguments or with `FearlessCommandOpened`, waits up to 2 seconds for one event after writing its message files, then leaves the messages of that event.
-An OS process running the manager that is not the 'single' manager ends after writing its message files; an OS process running the manager that becomes the 'single' manager applies its own message files like every other message file.
-An OS process running the manager started with two or more arguments, or with a bad argument, leaves the message `InvalidCall` with the details. When the 'single' manager handles `InvalidCall`, the 'single' manager shows the error in a dialog and continues running.
-An OS process running the manager encountering a 'fatal error' while another process holds the lock of `instance.lock` (see The 'single' manager in Implementation notes) leaves the message `FatalError` with the details and ends normally.
-The 'single' manager handles `FatalError` as a 'fatal error'.
-An OS process running the manager encountering a 'fatal error' while no other process holds the lock of `instance.lock` handles that 'fatal error' as above.
-An OS process running the manager encountering a 'fatal error' before that OS process running the manager knows the path of its manager folder (the program was not started by the launcher of a manager, or the system does not read file names as UTF-8) only shows the error, then ends: that OS process running the manager deletes no folder, leaves no message, and removes no setup.
+On macOS the 'single' manager writes the messages of every event.
+On macOS a 'fresh' manager process that can not take the lock, started with zero arguments or with `FearlessCommandOpened`, waits up to 2 seconds for one event after writing its messages, then writes the messages of that event.
+A 'fresh' manager process that can not take the lock ends after writing its messages; a manager process that becomes the 'single' manager applies its own messages like every other message.
+A manager process started with two or more arguments, or with a bad argument, writes the message `InvalidCall` with the error naming the first bad argument, or saying that the manager program takes at most one argument. When the 'single' manager handles `InvalidCall`, the 'single' manager shows the error in a dialog and continues running.
+```
+A No manager process is running.
+B The user starts the manager program, and the manager process encounters a 'fatal error'.
+C The manager process becomes a 'single candidate', and ends with the 'fatal error'.
 
-The 'single' manager runs until Quit, or until a 'fatal error'.
+A The 'single' manager is running.
+B The user starts the manager program again, and the new manager process encounters a 'fatal error'.
+C The new manager process writes the message FatalError with the error, and ends with exit status 0.
+D The 'single' manager ends with that 'fatal error'.
 
-Closing the manager window hides the manager window; an icon stays visible to show that the 'single' manager is still running.
-On macOS the icon is the Dock icon of the manager, and the manager shows no tray icon.
-Clicking the Dock icon is `Show`.
-The Quit of macOS (in the menu of the Dock icon, in the application menu, and Cmd+Q) ends the 'single' manager and every main and compilation the manager runs.
-On any other system with a tray (a system tray or StatusNotifierItem), the icon is a tray icon.
-On Windows every system has a tray: the notification area of the taskbar.
-Clicking the tray icon, with any button, opens the menu of the tray icon: Show manager and Quit manager.
+A No manager process is running.
+B A script, in a session with no display, runs the manager program with FearlessCommandRun hello.
+C The manager process becomes a 'single candidate', and ends with a 'fatal error': no display. The error goes to the standard error.
 
-On a system with no tray, the manager shows the icon itself.
-The manager window is closed and replaced with the 'tray icon window': a window of the size of a tray icon, with no title bar and no border, holding only the Fearless icon, in the bottom right corner of the screen and always above the other windows.
-Clicking the 'tray icon window', with any button, opens the menu of the tray icon.
-For half a second after that menu shows, a press or a release on the entries of that menu does nothing.
-An entry of that menu is chosen by a click: a press and a release of a button on that same entry.
-Showing the manager removes the 'tray icon window' and shows the manager window.
+A The 'single' manager is running.
+B A script, in a session with no display, runs the manager program with FearlessCommandRun hello.
+C The manager process writes the message Run hello, and ends.
+D The 'single' manager runs project hello.
+```
+```
+A The user runs the manager program without the launcher of a manager.
+B The manager process can not know its manager folder.
+C The manager process shows the error, and ends. The manager process deletes no folder, writes no message, and removes no setup.
+```
+
+The 'single' manager runs until `Quit`, `Reset`, a 'fatal error', or the deletion of the manager folder (see I3 in File associations).
 
 ## Requests and messages
 
-Everything the manager is asked to do for a project is a request, and every request is one of the requests below, whether the request comes from a message or from a GUI operation.
-The 'single' manager applies the requests one at a time, in the order they arrive, each one completely before the next.
+A 'request' is what one of the verbs below asks the manager to do, whether the request comes from a message or from a GUI operation.
+The 'single' manager applies the requests one at a time, in the order they arrive, each one completely before the next, except a `Quit` message (see `replaced` in File associations) and a `Run` waiting for the locks of its data projects (see Locks of data projects in DataReadDataEditDesign).
 Applying a `Run` or a `Compile` is starting the mains or the compilation; applying a `Terminate` ends once the JVM of the main has ended.
 
-A message is the file `messages/<time>-<id>.msg` in the manager folder: `<time>` is the 20 digit count of milliseconds since 1970 when the message was written, and `<id>` is a random UUID. The 'single' manager applies the message files in the order of their names, and deletes each message file after reading it.
-Only the manager program writes message files: the manager program writes `messages/<time>-<id>.tmp`, then renames `messages/<time>-<id>.tmp` to `messages/<time>-<id>.msg`, so the 'single' manager never reads a partial message. The 'single' manager deletes every `.tmp` file older than 60 seconds.
-An OS process running the manager whose `.tmp` or `.msg` name already exists picks another `<id>`; the rename never replaces an existing file.
-The 'single' manager relies on the system telling the 'single' manager when a file appears in `messages`. When an OS process running the manager becomes the 'single' manager, the 'single' manager writes a `.tmp` file in `messages` and waits for that report; no report within 5 seconds is a 'fatal error'. Some file systems, for example some network drives, do not report new files.
+A 'message' is the file `messages/<time>-<id>.msg` in the manager folder: `<time>` is the 20 digit count of milliseconds since 1970 when the message was written, and `<id>` is a random UUID. The 'single' manager applies the messages in the order of their names, and deletes each message after reading it.
+Only the manager program writes messages: the manager program writes `messages/<time>-<id>.tmp`, then renames `messages/<time>-<id>.tmp` to `messages/<time>-<id>.msg`, so the 'single' manager never reads a partial message. The 'single' manager deletes every `.tmp` file older than 60 seconds.
+A manager process whose `.tmp` or `.msg` name already exists picks another `<id>`; the rename never replaces an existing file.
+The 'single' manager learns of a new message from the report of the desk that a file appeared in `messages`. When a manager process becomes the 'single' manager, the 'single' manager writes a `.tmp` file in `messages` and waits for the report of that `.tmp` file; no report within 5 seconds is a 'fatal error'.
 Every other program commanding the manager (the Eclipse plugin, a script, a test) runs the manager program with a `call` as its argument.
-GUI operations that are requests command the manager the same way, through a `call`:
-every such GUI operation has an equivalent message, and every message is either ill formed or has an equivalent GUI operation, except `Check`: the GUI offers `Check` only as the main button of a project that is not code or is 'invalid', and a `call` can send `Check` of any project.
-A request changes files (those of the manager folder, those of a project folder, the associations of the system, or the plugin and `manager.info` of an Eclipse), starts or ends a main or a compilation, writes the Output of a project, shows a window of the manager (`Show`, and `OpenWithOrShortcut <path>` when several mains claim the extension), or is `Quit`.
-The GUI operations that do none of this are not requests and have no message: Docs, Base documentation, Browse and Logs, which open another program on a file, Info, which opens the Info dialog, and the Clear button of an Output, which empties the Output. A GUI operation that finds nothing to open says so in a dialog.
-The error of an ill formed message shows in a dialog of the manager window, and on the port when the `call` has a `port`. A hidden manager window is shown first.
-Showing the manager window asks the desktop to bring the manager window to the front. A desktop that keeps windows from taking the focus, such as GNOME, may leave the manager window behind the window the user is working in; such a desktop tells the user in its own way, for example with a notification that Fearless Manager is ready.
+Every GUI operation that is a request has an equivalent message, and every verb is the verb of a GUI operation.
+Docs, Base documentation, Browse, Logs and Fearless demos, which open another program on a file or a web page, Info, which opens the Info dialog, the Clear button of an Output, which empties the Output, and Import zip, which writes files and then sends requests, are GUI operations that are not requests and have no message. A GUI operation that finds nothing to open says so in a dialog.
+The error of an ill formed message, except a message read while the manager is quitting, shows in a dialog of the manager window; a hidden manager window is shown first.
+Showing the manager window asks the desk to bring the manager window to the front.
 
-A message is a verb, then the arguments of the verb and the `port`, one per line.
+A message contains a verb, then the arguments of the verb, then the `port` when the message comes from a `call` with a `port`, one per line.
 A verb is one of the following, written in upper camel case. Verbs about the whole manager:
 - `Show`: show the manager window; with the name of a registered project as its argument, also select that project;
 - `Register <path>`: register the folder, or the folder a file is in, then select that project; a folder 'registered already' is only selected;
@@ -104,37 +110,33 @@ A verb is one of the following, written in upper camel case. Verbs about the who
 - `ConnectEclipse <path>`: connect the Eclipse found from the path, then say so in a dialog, asking to restart Eclipse if Eclipse is running and to open the Fearless perspective;
 - `EditMetadata <path>`: replace `projects.info` with the content of the file at the path (see Registered projects for when the edit is refused);
 - `OpenWithOrShortcut <path>`: open the file with the main claiming the extension of the file; when zero or several mains claim that extension, show the conflict dialog (see Opening a file). Double clicking the file on the desktop is the GUI operation of `OpenWithOrShortcut <path>`.
-- `OpenWithOrShortcut <path> <name> <main>`: open the file with the main `<main>` of the project `<name>`, one of the mains claiming the extension of the file. Picking a main in the window that `OpenWithOrShortcut <path>` shows is the GUI operation of `OpenWithOrShortcut <path> <name> <main>`.
+- `OpenWithOrShortcut <path> <name> <main>`: open the file with the main `<main>` of the project `<name>`, one of the mains claiming the extension of the file. Picking a main in the conflict dialog is the GUI operation of `OpenWithOrShortcut <path> <name> <main>`.
 Verbs about one project, taking the name of a registered project:
 - `Run <name>`: select the project and run the selected mains of the project, in the order of the selected mains;
 - `Compile <name>`: select the project and compile the project if the project is 'out of date'; otherwise the Output says `The project "hello" was already up to date and compiled.`;
 - `Check <name>`: select the project and report in the Output of the project the 'problem' of the project, or that the project is 'out of date', or that the project is neither 'invalid' nor 'out of date';
-- `Terminate <name>`: select the project and end the main of the project currently running, if any;
+- `Terminate <name>`: select the project and end the running main of the project, if any;
 - `DeleteCache <name>`: select the project and delete the compilation cache of the project;
 - `Kind <name> <kind>`: set the kind of the project to `<kind>`;
 - `Forget <name>`: forget the project;
 - `Fix <name>`: select the project and fix the project folder (see Fix in FolderShapesDesign);
 - `Mount <name> <type> <data>`: set the mount of the DataRead type `<type>` of the project to the data project `<data>` (see DataReadDataEditDesign);
 - `Unmount <name> <type>`: remove the mount of the DataRead type `<type>` of the project;
-- `Attenuate <name> <main> <attenuator1>..<attenuatorn>`: set the attenuators of the main `<main>` of the project to the attenuators `<attenuator1>..<attenuatorn>`, applied in order; no `<attenuator>` removes all the attenuators of `<main>` (see the Manager section of AttenuationDesign);
+- `Attenuate <name> <main> <attenuator1>..<attenuatorn>`: set the attenuators of the main `<main>` of the project to the attenuators `<attenuator1>..<attenuatorn>`, applied in order; no `<attenuator>` removes all the attenuators of `<main>` (see Manager in AttenuationDesign);
 - `SelectMains <name> <main1>..<mainn>`: set the selected mains of the project to the mains given; no `<main>` removes the selected mains;
 `Forget`, `Kind`, `Mount`, `Unmount`, `Attenuate` and `SelectMains` are special cases of `EditMetadata`: each one is `EditMetadata` with the current `projects.info` changed in one place (the project removed, the `kind` of the project replaced, the mount of one DataRead type replaced or removed, the attenuators of one main replaced, the selected mains of the project replaced).
-Such a verb is applied, or is ill formed with the same error, exactly as that `EditMetadata` is; `Mount` is also ill formed when `<data>` is not the name of a registered project.
-Before applying the request of a call with a `port`, the manager connects to that port of this machine.
-What the manager sends on the connection starts with a line saying what became of the message: `Applied` or `Refused`.
+Such a verb is applied, or is ill formed with the same error, exactly as that `EditMetadata` is.
+Before applying the request of a `call` with a `port`, the manager connects to that port of this machine.
+When the connection is made, what the manager sends on the connection starts with a line saying what became of the message: `Applied` once the request is applied, or `Refused` once the message is found ill formed.
 After `Refused`, the manager sends the error, as the dialog shows the error, and ends the connection.
 After `Applied`, the manager ends the connection at once, except for `Run`, `Compile`, `Check` and `Fix`.
 For `Run`, `Compile`, `Check` and `Fix`, after `Applied`, the manager also sends on the connection what the request writes in the Output, from the start of the request and then as the request writes it, with the marks of the Output (see Run, Compile and Check).
-The connection ends when the last main or the compilation ends, at once when no main and no compilation starts.
+The connection then ends when the last main or the compilation ends; when no main and no compilation starts, the connection ends once the text the request writes in the Output is sent.
 `Quit` and `Reset` may end the manager before the manager sends `Applied`.
-After applying `Quit` or `Reset`, the manager refuses every request it reads, with the error `Refused request "Forget": the manager is quitting.` (naming the verb of the request).
-The connection is how another program (Eclipse, a running main) knows that the manager has applied the message of that program, and follows the mains or the compilation that program asked for.
-Two more message files exist, `InvalidCall <details>` and `FatalError <details>`, written only by an OS process running the manager, about a failure of that OS process running the manager. `InvalidCall` and `FatalError` are not verbs: no `call` and no GUI operation names those messages.
-The details of `InvalidCall` and `FatalError` are every line after the first line, any number of lines.
+Two more kinds of message, written only by a manager process about a failure of that manager process, contain `InvalidCall` or `FatalError` on the first line and the error, as a dialog shows the error, on the lines after the first line. `InvalidCall` and `FatalError` are not verbs: no `call` and no GUI operation names those messages.
 
 ```
-call ::= command port?
-command ::= FearlessCommandShow projectName?
+call ::= (FearlessCommandShow projectName?
   | FearlessCommandQuit
   | FearlessCommandReset
   | FearlessCommandRegister base16
@@ -153,21 +155,22 @@ command ::= FearlessCommandShow projectName?
   | FearlessCommandMount projectName typeName projectName
   | FearlessCommandUnmount projectName typeName
   | FearlessCommandAttenuate projectName typeName typeName1..typeNamen
-  | FearlessCommandSelectMains projectName typeName1..typeNamen
+  | FearlessCommandSelectMains projectName typeName1..typeNamen) port?
 kind ::= idle | code | dataRead | dataEdit
 port ::= Port:1 .. Port:65535
-projectName ::= (?!(con|prn|aux|nul|com[1-9]|lpt[1-9])$)[a-z_][a-z0-9_]{0,190}
+projectName ::= a 'valid segment' (see Names in FolderShapesDesign)
 typeName ::= (?!(con|prn|aux|nul|com[1-9]|lpt[1-9])[.])[a-z][a-z0-9_]*[.]_*[A-Z][A-Za-z0-9_]*'*
 ```
 The `typeName1..typeNamen` of `FearlessCommandSelectMains` are all different.
 The `base16` of a `call` names an absolute path that is not the root of a drive.
-An argument starting with `FearlessCommand` is a bad argument when the argument is not a `call`.
+An argument starting with `FearlessCommand` is a 'bad argument' when the argument is not a `call`, except `FearlessCommandOpened` on macOS (see Starting the 'single' manager).
 
 Ill formed messages:
 - a port where no program of this machine accepts the connection;
-- a name that is not the name of a registered project; the error lists the registered projects, except for the `<name>` of `OpenWithOrShortcut <path> <name> <main>`, whose error lists the mains claiming the extension of the file (see the `OpenWithOrShortcut <path> <name> <main>` entry below);
-- a `Register` whose folder (the path, or the folder holding the file of the path) corresponds to no p with `at(D, p)= id` (see Desks in FolderShapesDesign), or corresponds to a p with `root(D, p)`, with `same(D, p, m)`, `inside(D, p, m)` or `inside(D, m, p)` for m the manager folder, or with `inside(D, p, p2)` or `inside(D, p2, p)` for the project folder p2 of a registered project, or for which the desk refuses a `create` that these `same` and `inside` need;
-- a `ConnectEclipse` whose path leads to no Eclipse folder, and an `EditMetadata` whose path names no file;
+- every message the manager reads from the start of a `Quit` or a `Reset` until the manager ends, with the error `Refused request "Forget": the manager is quitting.` (naming the verb of the message);
+- a `projectName` that is not the name of a registered project; the error lists the registered projects, except for the `<name>` of `OpenWithOrShortcut <path> <name> <main>`, whose error lists the mains claiming the extension of the file (see the `OpenWithOrShortcut <path> <name> <main>` entry below);
+- a `Register` whose folder (the path, or the folder containing the file of the path) is not 'registered already' and, added at the end of `projects.info`, is a project folder the manager can not reach (see `reach` in Registered projects);
+- a `ConnectEclipse` whose path leads to no 'Eclipse folder' (see EclipseDesign), and an `EditMetadata` whose path names no file;
 - an `OpenWithOrShortcut` whose path names no file or names an empty file;
 - an `OpenWithOrShortcut <path> <name> <main>` where `<main>` of `<name>` is not one of the mains claiming the extension of the file, also when `<name>` is not a registered project (the error lists the mains claiming the extension);
 - an `EditMetadata` that Registered projects refuses;
@@ -175,22 +178,36 @@ Ill formed messages:
 - `Run` of a project whose `attenuators` name a main that is not a main of the project, or an attenuator that is not an attenuator of the project (the error lists the mains, or the attenuators);
 - `Run` of a project with a broken mount, or with a DataRead type with no mount (see DataReadDataEditDesign; the error lists each broken mount, naming what makes that mount broken, and each DataRead type with no mount);
 - `Run` and `Compile` of an 'invalid' project (the error is the 'problem' of the project);
-- `Run` of a project that is not compiled, naming the state of the project; `Run` of a project with no selected main, or with a selected main that is not a main of the project (the error lists the mains of the project);
-- `Run`, `Compile`, `Check` or `DeleteCache` while a main or a compilation of the project is currently running;
-- `Fix` while the project is 'in use' (see Run, Compile and Check);
-- `Terminate` while a compilation of the project is currently running;
+- `Run` of a project that is 'out of date', naming that state; `Run` of a project with no selected main, or with a selected main that is not a main of the project (the error lists the mains of the project);
+- `Run`, `Compile`, `Check`, `DeleteCache` or `Fix` of a 'busy' project (see Run, Compile and Check);
+- `Terminate` while a compilation of the project is running;
 - an `OpenWithOrShortcut` that runs a main of a project where a `Run` of only that main is ill formed (the error is the error of that `Run`).
+```
+A Project a has the folder /data/a.
+B The user asks to register the folder /data/a/sub.
+C The manager refuses: /data/a/sub is inside the folder of project a.
+```
 
 Whether a message is ill formed is decided when the 'single' manager starts applying the request of the message, after the 'autoCheck' (see Project states) of the project the request runs on, from the message and the state that 'autoCheck' finds, before anything is compiled, run or written to the Output.
-The error of an ill formed message is never in the Output: the Output of a project holds only the results of well formed requests. A failing compilation is the result of a well formed request: the request is right, the code is broken.
+The broken mounts of a `Run` are decided once the manager holds the locks of the data projects (see Locks of data projects in DataReadDataEditDesign).
+The error of an ill formed message is never in the Output: the Output of a project contains only the results of well formed requests. A failing compilation is the result of a well formed request.
 
 ## Info files
 
 The files the manager writes for the manager and for Eclipse (`projects.info`, `manager.info`) are Info files: text in the Fearless character set (the characters a Fearless `Str` allows).
-An Info is a string `"..."`, a list `[a, b]`, or an object `{"key": value, ...}` whose keys are distinct strings.
-Inside an Info string, `\"` is a quote, `\\` a backslash and `\n` a newline; there is no other escape: `"\t"` is an invalid Info.
+```
+info ::= ws (string | list | object) ws
+list ::= [[] ws []] | [[] info ([,] info)* []]
+object ::= [{] ws [}] | [{] member ([,] member)* [}]
+member ::= ws string ws [:] info
+string ::= ["](strChar | [\\]["\\n])*["]
+ws ::= [ \n]*
+```
+A `strChar` is a character of the Fearless character set other than `"` and `\`.
+The keys of one object are distinct strings.
+Inside a string, `\"` is a quote, `\\` a backslash and `\n` a newline.
 
-A text that may hold characters outside the Fearless character set is a `taggedText`:
+A path in an Info file is a `taggedText`:
 ```
 taggedText ::= Str:str | UStr:uStr | base16
 base16 ::= Base16:([0-9A-F][0-9A-F])+
@@ -203,22 +220,22 @@ codePoints ::= [ ]*["]codePoint([ ]codePoint)*["] | [ ]*[`]codePoint([ ]codePoin
 codePoint ::= [0-9A-F]{1,6}
 uStrAtom ::= strAtom [.]u codePoints? | [ ]*[(] uStr [)]
 ```
-Every character of a `str` and of a `uStr` is in the Fearless character set; parentheses nest at most 100 deep.
+Parentheses nest at most 100 deep.
 Each `codePoint` is at most `10FFFF` and not from `D800` to `DFFF`.
-The text of `Str:str` is the `Str` the Fearless expression `str` evaluates to, and the text of `UStr:uStr` is the `UStr` the Fearless expression `uStr` evaluates to (see `Str` and `UStr` in the standard library: a literal holds its characters as they are, so `\n` inside a literal is two characters).
-The text of `base16` is the bytes the current file system interprets as a path; only a path is a `base16`.
+The text of `Str:str` is the `Str` the Fearless expression `str` evaluates to, and the text of `UStr:uStr` is the `UStr` the Fearless expression `uStr` evaluates to (see `Str` and `UStr` in the standard library: a literal contains its characters as they are, so `\n` inside a literal is two characters).
+The text of `base16` is the path whose bytes are the hexadecimal pairs of `base16` (see The bytes of a `Base16:` path in Implementation notes).
 For example:
-- `"C:\data\hello"` is the path `C:\data\hello`, written in an Info as `"path": "Str:\"C:\\data\\hello\""`;
+- `"C:\data\hello"` is the path `C:\data\hello`, written in an Info file as `"path": "Str:\"C:\\data\\hello\""`;
 - `"Hello"|"World"` is `Hello\nWorld`, encoded as `"Str:\"Hello\"|\"World\""`;
 - `"caf".u"00E9"` is `caf` followed by the character `00E9`, encoded as `"UStr:\"caf\".u\"00E9\""`.
-The manager writes `Str:` then `.escape` of the text when the text is a `Str`; `UStr:` then `.escape` of the text when the text is a `UStr` and not a `Str`; the `base16` of the path only when the text is a path that is neither a `Str` nor a `UStr`.
+The manager writes `Str:` then `.escape` of the path when the path is a `Str`; `UStr:` then `.escape` of the path when the path is a `UStr` and not a `Str`; the `base16` of the path when the path is neither a `Str` nor a `UStr`.
 
 ## Registered projects
 
-The manager folder holds `projects.info`, the record of every registered project (the path, the kind, the selected mains, the mounts and the attenuators) and the 'reserve' (see File associations).
-The manager is the only program writing `projects.info`: the manager writes the new content to another file in the manager folder, then renames that file to `projects.info`, so a reader such as Eclipse never reads a partial `projects.info`.
+The manager folder contains `projects.info`, the record of the registered projects and of the 'reserve' (see File associations).
+The manager is the only program writing `projects.info`, and 'replaces' `projects.info` (see The Coordinator in CoordinatorDesign).
 
-`projects.info` is an Info file: an object with `projects`, the list of the registered projects in the order they were registered, and `reserve`:
+`projects.info` is an Info file: an object with `projects`, the list of the registered projects, and `reserve`:
 ```
 {
   "projects": [
@@ -237,233 +254,319 @@ The manager is the only program writing `projects.info`: the manager writes the 
   "reserve": ["htm"]
 }
 ```
-- `reserve`: the extensions of the 'reserve' (see File associations), each one a system extension (see The data in ReconciliatorDesign) without the dot, with 1 to 16 characters, each `a-z` or `0-9`, listed once.
-Each project has `path` and `kind`, and may have `mains`, `mounts` and `attenuators`; an absent field is the empty list or the empty object:
-- `path`: the absolute path of the project folder, as a `taggedText`; no two projects have equal `path`s. A project folder whose path corresponds to no p with `at(D, p)= id` (see Desks in FolderShapesDesign) is a project folder the manager can not reach.
-For each project folder p, with m the manager folder: not `root(D, p)`, not `same(D, p, m)`, not `inside(D, p, m)`, not `inside(D, m, p)`.
-For the project folders p1 and p2 of two different projects: not `same(D, p1, p2)`, not `inside(D, p1, p2)`.
-A project folder p for which one of the conditions on p alone does not hold, or for which the desk refuses `create(D, p s, file)` for a `same` or an `inside` whose first argument is p, is a project folder the manager can not reach; so is a project folder p2 that breaks one of these conditions together with a project folder p1 before p2 in `projects.info` that the manager can reach.
+- `reserve`: the extensions of the 'reserve' (see File associations), each one a system extension (see File associations) without the dot, with 1 to 16 characters, each `a-z` or `0-9`, listed once.
+`projects.info` has no member other than `projects` and `reserve`.
+Each project has `path` and `kind`, may have `mains`, `mounts` and `attenuators`, and has no other member; an absent member is the empty list or the empty object:
+- `path`: the absolute path of the project folder, as a `taggedText`; no two projects have `path`s with equal texts (see Info files).
+The manager can reach the project folder of the project number i of `projects.info` when the `path` of that project corresponds to a p_i (see Desks and Implementation notes in FolderShapesDesign) with `reach(D, i)`, for m the manager folder:
+```
+reach(D, i)  iff  at(D, p_i)= id, not root(D, p_i), not same(D, p_i, m), not inside(D, p_i, m), not inside(D, m, p_i),
+                  forall j < i with reach(D, j): not same(D, p_i, p_j), not inside(D, p_i, p_j), not inside(D, p_j, p_i),
+                  and the desk refuses no create(D, p_i s, file) that a same or an inside above with first argument p_i needs
+```
 - `kind`: `idle`, `code`, `dataRead` or `dataEdit`.
-- `mains`: the selected mains, set by `SelectMains`.
-- `mounts`: for each DataRead type, the name of the data project mounted on that DataRead type (see DataReadDataEditDesign).
-- `attenuators`: for each main the attenuators the manager applies to that main, in order; a main absent from `attenuators` gets no attenuator. Naming a main or an attenuator the project does not have is well formed.
+- `mains`: the selected mains, set by `SelectMains`: distinct `typeName`s (see the grammar in Requests and messages).
+- `mounts`: for each DataRead type, a `typeName`, the name of the data project mounted on that DataRead type, a `projectName` (see DataReadDataEditDesign).
+- `attenuators`: for each main, a `typeName`, the attenuators the manager applies to that main, in order, each a `typeName`, an attenuator possibly more than once; a main absent from `attenuators` gets no attenuator. Naming a main or an attenuator the project does not have is well formed.
 
-`projects.info` holds no project name: the name of a project is the name of the marker in the project folder (see Registering a folder).
+`projects.info` contains no project name (see Registering a folder).
 The 'single' manager keeps the names in memory.
-A 'name lookup' gives a name to every project of `projects.info`, in the order of `projects.info`: the name of each project is the result of name inference (see Registering a folder), which renames or creates the marker when needed, so no project takes a name of a project before it in `projects.info`.
-A 'name check' of a project compares the marker in the project folder with the name in memory; when they differ, the manager does a 'name lookup'.
+A 'name lookup' gives a name to every project of `projects.info`, in the order of `projects.info`: name inference (see Registering a folder) names each project, so no project takes a name of a project before it in `projects.info`.
+A 'name check' of a project compares the name of the first marker of the project folder (none when the project folder contains no marker) with the name in memory; when the two names differ, the manager does a 'name lookup'.
 The manager does a 'name lookup' at start; before applying a request, the manager does a 'name check' of every project the request names, and a 'name lookup' when the request names a name that is not the name of a project; an 'autoCheck' of a project starts with a 'name check' of the project.
-A project folder the manager can not reach keeps the name the manager knew, and gets no name at start; the manager forgets that project (see Project states).
+A project folder the manager can not reach keeps the name the manager knew, and gets no name at start (see the 'unreachable dialog' in Project states).
 
-The `mains`, `mounts` and `attenuators` of a project stay when the kind of the project changes, and a mount stays when the data project of the mount is forgotten: a later `Kind` back to `code`, or a project registered under the name of that data project, makes them work again. For example, a code project swaps real data and test data by registering one folder or the other under the name of the data project.
+The `mains`, `mounts` and `attenuators` of a project stay when the kind of the project changes, and a mount stays when the data project of the mount is forgotten.
+```
+A Project hello is a code project with the selected main greet.Hello and the attenuator base.NoManagerQuit on greet.Hello.
+B The user makes project hello an idle project.
+C The user makes project hello a code project, and compiles project hello.
+D Project hello has the selected main greet.Hello, with the attenuator base.NoManagerQuit.
 
-A `projects.info` that is not a valid Info file, or does not hold what is above other than the conditions on project folders, is a 'fatal error' pointing at the offending text in the Frontend error message style.
+A Code project hello mounts data project diary on greet.Diary. Project diary is a dataEdit project with the folder real_diary.
+B The user forgets project diary.
+C The user registers the folder test_diary, containing the marker diary.fearless.
+D The registered project is named diary, and is idle. The mount of greet.Diary is broken.
+E The user makes project diary a dataEdit project.
+F The user runs project hello. greet.Hello reads and writes the files of test_diary.
+```
+
+A `projects.info` that is not a valid Info file, or does not contain what is above other than the conditions on project folders, is a 'fatal error' pointing at the offending text in the style of the errors of the Frontend.
 
 The whole `projects.info` can be edited by hand from the GUI, or via an `EditMetadata` naming a file (outside of the manager folder) with the intended new content.
-The editor of the GUI remembers the content the editor opened; when the user commits, and `projects.info` does not hold that content, the editor refuses the commit in a dialog, and the user edits the new content again; otherwise the commit is an `EditMetadata`.
-A project of the edit is a project of `projects.info` when both have the same `path`.
+The editor of the GUI remembers the content the editor opened; when the user commits, and `projects.info` does not contain that content, the editor refuses the commit in a dialog, and the user edits the new content again; otherwise the commit is an `EditMetadata`.
+A project of the edit is a project of `projects.info` when the texts of the two `path`s are equal.
 An edit is refused, and nothing changes, when:
-- the text is not a valid Info file, or does not hold what is above other than the conditions on project folders: the error points at the offending text in the Frontend error message style;
-- the edit removes a project, or changes the kind of a project, while a main or a compilation of that project is currently running;
-- the edit changes the mounts of a project, or removes a data project mounted on a DataRead type of that project, or changes the kind or the folder of that data project, while a main of that project is currently running;
-- the edit removes from `reserve` an extension that a main of a project claims, while a main or a compilation of that project is currently running.
-An accepted edit applies at once: projects the edit removes are forgotten, projects the edit adds are registered as they are, the compilation cache (`Coordinator.deleteCache`) of each added project, of each project whose kind changes and of each project whose mains claim an extension the edit removes from `reserve` is deleted, and every project gets an 'autoCheck'.
+- the text is not a valid Info file, or does not contain what is above other than the conditions on project folders: the error points at the offending text in the style of the errors of the Frontend;
+- the edit adds a project whose project folder the manager can not reach;
+- the edit removes a project, or changes the kind of a project, while that project is 'busy' (see Run, Compile and Check);
+- the edit changes the mounts of a project, or gives the name of a data project mounted on a DataRead type of that project to another project folder (through the 'name lookup' after the edit), while a main of that project is running;
+- the edit removes from `reserve` an extension that a main of a project claims, while that project is 'busy'.
+An accepted edit applies at once: projects the edit removes are forgotten, projects the edit adds are registered as they are, the compilation cache of each added project, of each project whose kind changes and of each project whose mains claim an extension the edit removes from `reserve` is deleted (`Coordinator.deleteCache`), and every project gets an 'autoCheck'.
 
 
 
 ## Registering a folder
 
-The name of a project is the name of the marker of the project: the only file with the `.fearless` extension at the top of the project folder whose name does not start with `.`, `<name>.fearless`. A project name is a 'valid segment' (see FolderShapesDesign).
+A 'marker' of a folder is a file `<name>.fearless` at the top of that folder, with `<name>` not starting with `.`. The name of a project is the name that name inference gives the project. A project name is a 'valid segment' (see FolderShapesDesign).
 
 A folder p with `same(D, p, p2)` for the project folder p2 of a registered project is 'registered already'.
 Registering a folder that is not 'registered already' adds the project at the end of `projects.info`, named by name inference.
-Name inference: The name is the name of the first marker of the folder in file name order, when that name is a 'valid segment' and no project before this project in `projects.info` uses that name.
-Otherwise, with f the first 64 characters of the 'fixed segment' (see FolderShapesDesign) of the folder name, the name is the first of f, and f followed by `2`, `3`, ..., that is a 'valid segment' and is not used by a project before this project in `projects.info`. The first marker is renamed (or the marker is created) to match.
-If present, the compilation cache (`.fearless_out`) of the newly registered folder is deleted (`Coordinator.deleteCache`).
-`.fearless_out` belongs to the Coordinator in every registered folder, whatever the kind of the project.
+'Name inference' gives the project number i of `projects.info` the name name(i), with m the `<name>` of the first marker of the project folder in the order of the s (see Implementation notes in FolderShapesDesign; no m when the project folder contains no marker), and f the first 64 characters of the 'fixed segment' (see FolderShapesDesign) of the name of the project folder:
+```
+name(i) = m                                            when ok(i, m)
+        = the first n of f, f2, f3, ... with ok(i, n)  otherwise
+ok(i, n)  iff  n is a 'valid segment', n != name(j) for every j < i,
+               and the project folder contains no file other than the first marker named n.fearless, ignoring case
+```
+f2, f3, ... are f followed by `2`, `3`, ....
+The first marker is renamed (or the marker is created) to match; a created marker, and an empty first marker, then contain one newline.
+The 'compilation cache' of a project is the folder `.fearless_out` of the project folder; the compilation cache belongs to the Coordinator, whatever the kind of the project.
+If present, the compilation cache of the newly registered project is deleted (`Coordinator.deleteCache`).
 The newly registered project is in the `idle` state.
 
-Forgetting a project asks no confirmation.
-Forgetting a project removes the project from `projects.info`; nothing in the project folder is changed.
+Forgetting a project asks no confirmation, and changes nothing in the project folder.
 
 ## Project states
 
-Each project is in one of these states, shown as a badge on the tile of the project:
-- `code: invalid content`, `dataRead: invalid content`, `dataEdit: invalid content`: the project folder is not 'well shaped' (see FolderShapesDesign; for code, also the checks of `Coordinator.check`, see CoordinatorDesign), the project folder holds more than one top level `.fearless` file, or the folder `.config/icon` holds more than one PNG file or a PNG file that can not be read;
+Each project is in the first of these states that holds, shown as a badge on the tile of the project:
+- `<kind>: busy`: the project is 'busy';
+- `<kind>: invalid content`: the project folder is not 'well shaped' (see FolderShapesDesign; for code, also the checks of `Coordinator.check`, see CoordinatorDesign), the project folder contains more than one marker, or the folder `.config/icon` contains more than one PNG file or a PNG file that can not be read;
 - `idle`;
 - `dataRead`, `dataEdit`;
 - `code: compilation cache out of date`: the project is 'out of date';
-- `code: compiled`: the project is neither 'invalid' nor 'out of date';
-- `code: busy`: a main or a compilation of the project is currently running.
+- `code: compiled`: the project is neither 'invalid' nor 'out of date'.
 
-A project in a state `<kind>: invalid content` is 'invalid'. The 'problem' of an 'invalid' project is the error naming which of the causes above holds.
+A project of kind code, dataRead or dataEdit is 'invalid' when a cause of the state `<kind>: invalid content` holds, also in the state `<kind>: busy`. The 'problem' of an 'invalid' project is the error naming one of the causes above that hold.
 An 'autoCheck' of a project reads the project folder and finds the state of the project and the mains of the project.
 An 'autoCheck' that finds the project 'invalid' while no compilation of the project runs writes the 'problem' into `.fearless_out/_error.txt` with `Coordinator.writeError`, for every kind of project.
-An 'autoCheck' that can not reach the project folder terminates the main or the compilation of the project, if running, and every running main of a project with a mount of that project, and shows a dialog with the error
-`The project "hello" connects to the folder "/home/user/hello".`
-`This folder is now unreachable.`
-`The project "hello" has now been removed.`
-then the 'autoCheck' is a `Forget` of the project.
+An 'autoCheck' that can not reach the project folder ends the main or the compilation of the project, if running, and every running main of a project with a mount of that project, and shows the 'unreachable dialog' of the project: the error `The folder "/home/user/hello" of a registered project is unreachable.`, with the buttons Locate and Forget.
+The manager shows one 'unreachable dialog' at a time.
+Forget, and closing the 'unreachable dialog', are a `Forget` of the project.
+Locate opens a folder picker, then sends an `EditMetadata` giving the picked folder as the `path` of the project; a refused `EditMetadata` shows its error, then the 'unreachable dialog' again.
+```
+A Code project hello has the folder /home/user/hello, and mounts data project diary on greet.Diary.
+B The user moves /home/user/hello to /home/user/old/hello.
+C An 'autoCheck' of project hello can not reach /home/user/hello.
+D The manager shows the 'unreachable dialog' of project hello.
+E The user presses Locate, and picks /home/user/old/hello.
+F Project hello has the folder /home/user/old/hello, and mounts data project diary on greet.Diary.
 
-An 'autoCheck' of a code project is a call of `Coordinator.check` (see CoordinatorDesign), which gives the state of the project: 'invalid' with the 'problem', 'out of date' (`State.outOfDate`), or `State.compiled`. The manager checks the marker and the icon of the project before calling `Coordinator.check`.
+A The folders of the projects hello and world are unreachable.
+B The manager shows the 'unreachable dialog' of project hello. The user presses Forget.
+C The manager forgets project hello, then shows the 'unreachable dialog' of project world.
+```
+
+An 'autoCheck' of a code project checks the marker and the icon of the project, then calls `Coordinator.check` (see CoordinatorDesign), which gives the state of the project: 'invalid' with the 'problem', 'out of date' (`State.outOfDate`), or `State.compiled`.
 
 The mains of a code project are known when `Coordinator.check` gives `State.compiled`: the `.mains` of the `.manifest` of `State.compiled`.
 
-The manager is 'active' while the manager window is shown, and 'passive' while the manager window is hidden (the tray icon or the 'tray icon window' is shown) or minimized.
-A 'passive' manager becomes 'active' when the manager shows an error, or when the user shows the manager window.
-An 'active' manager notices changes made on disk by other programs: every three seconds the 'active' manager runs an 'autoCheck' of the selected project, and in turn of one other project, and updates states, badges and buttons, including moving a project in and out of 'invalid'. A project gets an 'autoCheck' when a main or a compilation of the project ends.
+Showing an error shows the manager window.
+While the manager window is shown and not minimized, the manager notices changes made on disk by other programs: every three seconds the manager runs an 'autoCheck' of the selected project and of one other project, taking the other projects in turn. A project gets an 'autoCheck' when a main or a compilation of the project ends.
 The 'autoCheck' every three seconds may keep the outcome of the previous 'autoCheck' of the project when every file and every folder of the project folder has a last modification time before the start of that previous 'autoCheck'.
 A request (`Check`, `Compile`, `Run`, `Fix`, `OpenWithOrShortcut`) reads the files of the project from scratch, using no outcome of an earlier 'autoCheck'.
 
 The icon of a project is the only PNG file in the folder `.config/icon` of the project, or, with no PNG file in `.config/icon`, an icon generated from the project name.
+A claim whose icon file can not be read shows, in the manager window, the icon generated from `project::pkg.Main`.
 
 ## General GUI shape
+Closing the manager window hides the manager window.
+```
+A The 'single' manager is running and shows the manager window.
+B The user closes the manager window.
+C The user, following the conventions of the desk, is easily able to see that the 'single' manager is still running.
+```
+On macOS the manager shows this with the Dock icon of the manager, and shows no tray icon.
+Clicking the Dock icon is `Show`.
+The Quit of macOS (in the menu of the Dock icon, in the application menu, and Cmd+Q) is `Quit`.
+On any other desk with a tray (a system tray or StatusNotifierItem), the manager shows this with a tray icon.
+Windows always has a tray: the notification area of the taskbar.
+Clicking the tray icon, with any button, opens the menu of the tray icon: Show manager (`Show`) and Quit manager (`Quit`).
+
+On a desk with no tray, closing the manager window replaces the manager window with the 'tray icon window': a window of the size of a tray icon, with no title bar and no border, containing only the Fearless icon, in the bottom right corner of the screen and always above the other windows.
+Clicking the 'tray icon window', with any button, opens the menu of the tray icon.
+For half a second after that menu shows, a press or a release on the entries of that menu does nothing.
+An entry of that menu is chosen by a click: a press and a release of a button on that same entry.
+`Show` removes the 'tray icon window' and shows the manager window.
+
 Dropping files or folders on the manager window is a `Register` of each folder or `.fearless` file dropped, and an `OpenWithOrShortcut` of each other file dropped.
 Every button is disabled for half a second after it is pressed.
 
-A menu bar at the top, with the Manager menu: Add folder (`Register`, through a file picker), Edit project metadata (`EditMetadata`), Connect Eclipse (`ConnectEclipse`), Base documentation (`Coordinator.docs` of the package `base`, with any folder), Info (the Info dialog), Reset (`Reset`, after a confirmation dialog saying what Reset does, with the buttons Reset and Cancel, Cancel preselected), Quit (`Quit`); and the Store menu: Fearless demos (opens `https://marcoservetto.github.io/fearless_demos/` with the program that opens web pages), Import zip.
+A menu bar at the top, with two menus:
+```
+Manager menu:
+  Add folder              `Register`, through a file picker
+  Edit project metadata   `EditMetadata`
+  Connect Eclipse         `ConnectEclipse`, through a file picker of a file or a folder
+  Base documentation      `Coordinator.docs` of the package `base`, with any folder
+  Info                    the Info dialog
+  Reset                   `Reset`, after a confirmation dialog saying what Reset does, with the buttons Reset and Cancel, Cancel preselected
+  Quit                    `Quit`
+Store menu:
+  Fearless demos          opens `https://marcoservetto.github.io/fearless_demos/` with the program that opens web pages
+  Import zip              see below
+```
 The Info dialog shows the 'drawing line' of this machine (`Coordinator.drawing`, see CoordinatorDesign; the 'drawing line' is defined in the Implementation notes of ImprovedGuiAPI.txt), with the button Close.
 
-Import zip asks, in a dialog, for the URL of a zip, `https:` or `file:`, whose file name is `<name>_app.zip`, `<name>_edu_app.zip`, `<name>_lib.zip` or `<name>_edu_lib.zip`, where `<name>` starts with a lowercase letter and holds only lowercase letters, digits and `_`. The dialog refuses any other URL, shows that the zip is downloading, and shows the error of a download or of a zip that does not hold what follows. `<zip>` is the file name of the zip without `.zip`.
-- An app zip holds the marker `<name>.fearless` at its top level, and may hold PNG files in `.config/icon` at its top level. The import makes the folder `<zip>` in the folder `fearless_imported_zips` next to the manager folder, and puts there the zip and a copy of the marker and of the PNG files of `.config/icon` (`_app`), or the files and the folders of the zip (`_edu_app`). Then the import sends `Register` of that folder, and `Kind` code and `Compile` of the registered project.
-- A lib zip goes into the folder `lib` of the selected project: the zip (`_lib`), or the files and the folders of the zip in the folder `lib/<zip>` (`_edu_lib`). With no selected project, the dialog asks to select a project first.
-- When the folder or the zip the import writes exists already, the import asks whether to replace it, and refuses while the project of that folder compiles or runs a main.
+Import zip asks, in a dialog, for the URL of a zip, `https:` or `file:`, whose file name is `<name>_app.zip`, `<name>_edu_app.zip`, `<name>_lib.zip` or `<name>_edu_lib.zip`, where `<name>` starts with a lowercase letter and contains only lowercase letters, digits and `_`; a file name ending with `_edu_app.zip` or `_edu_lib.zip` is a `<name>_edu_app.zip` or a `<name>_edu_lib.zip`. The dialog refuses any other URL, shows that the zip is downloading, and shows the error of a download or of a zip that does not contain what follows. `<zip>` is the file name of the zip without `.zip`.
+A `<name>_app.zip` or `<name>_edu_app.zip` contains the marker `<name>.fearless` at the top level of the zip. The import writes, with `fearless_imported_zips` next to the manager folder:
+```
+<name>_app.zip      the folder fearless_imported_zips/<zip>, containing <zip>.zip, and the marker and the PNG files of .config/icon of the zip
+<name>_edu_app.zip  the folder fearless_imported_zips/<zip>, containing the files and the folders of the zip
+<name>_lib.zip      the file lib/<zip>.zip of the selected project
+<name>_edu_lib.zip  the folder lib/<zip> of the selected project, containing the files and the folders of the zip
+```
+Then the import sends `Register` of `fearless_imported_zips/<zip>`, and `Kind` code and `Compile` of the registered project. With no selected project, the dialog refuses a `<name>_lib.zip` or `<name>_edu_lib.zip`, asking to select a project first.
+When the folder or the file the import writes exists already, the import asks whether to replace that folder or that file, and refuses while the project of that folder or that file is 'busy'.
 
-A simplified 'desktop with icons' fills the manager window under the menu bar while no project is selected; while a project is selected, the simplified desktop takes the left side of a vertical divider, and the project area takes the right side.
+The 'desktop with icons' fills the manager window under the menu bar while no project is selected; while a project is selected, the 'desktop with icons' takes the left side of a vertical divider, and the project area takes the right side.
 Tiles represent the registered projects, sorted by name: each tile shows the project icon with the state badge of the project, and the project name under the project icon.
-A busy project (compiling or running) shows an animated badge.
+A 'busy' project shows an animated badge.
 Clicking a tile is `Show` with the name of the project of the tile.
 Double clicking the tile of a project in the state `code: compiled` is `Run` of that project; for a project with one main, the `Run` comes after a `SelectMains` naming that main. For any other project, and for a project with no main, or with several mains and no selected main, a double click is a click.
 
-## Project area contains, top to bottom:
+## Project area
 
-A header on one line: the project name, and the following buttons:
-- The main button, by the state of the project:
+Top to bottom:
+```
+header          every project
+status line     every project
+selected mains  a project with selected mains that shows no Run V
+shortcut files  a code project with a shortcut file in the top level of the project folder
+Output          every project
+Tests           a code project
+Attenuators     a code project, a project with attenuators
+Extensions      a code project whose mains claim extensions with OpenWith
+Data            a code project, a data project, a project with mounts
+Logs            a code project
+```
+
+Header, on one line: the project name, and the following buttons:
+- The main button, the first of these that holds:
+  - Terminate, while a main of the project is running;
+  - greyed out, while a compilation of the project is running;
   - Check, for a project that is not code, and for an 'invalid' code project;
-  - Compile, for a code project that is not compiled;
-  - Run, for a compiled code project with one main; Run V (V an arrow down), for a compiled code project with several mains; Run greyed out, for a compiled code project with no main;
-  - Terminate, while a main of the project is currently running;
-  - greyed out, while a compilation of the project is currently running.
-- The Docs V button (enabled once the mains are known), opening a menu of the packages of the project, the `packages` of `State.compiled` (see CoordinatorDesign); choosing a package opens the documentation of that package (`Coordinator.docs`) with the program that opens `.html` files, which is the manager when `html` is a system extension.
+  - Compile, for an 'out of date' code project;
+  - Run, for a code project with one main: a `SelectMains` naming that main, then `Run` of the project; Run V (V an arrow down), for a code project with several mains; Run greyed out, for a code project with no main.
+- The Docs V button (enabled once the mains are known), opening a menu of the packages of the project, the `packages` of `State.compiled` (see CoordinatorDesign); choosing a package opens the documentation of that package (`Coordinator.docs`) with the program that opens `.html` files, which is the manager while the manager 'holds' `.html` (see The data in ReconciliatorDesign).
 - The Kind V button, showing the kind of the project, like `Kind: code`, and opening a menu with one entry for each kind the project is not: "Back to idle", "Become dataRead", "Become dataEdit" and "Become code".
 - The Project V button, opening a menu with Browse, opening the project folder in the file explorer, Forget (`Forget`), Delete cache (`DeleteCache`), and Fix (`Fix`, after a confirmation dialog saying what Fix does, with the buttons Fix and Cancel, Cancel preselected).
-Kind V, Forget and Delete cache are greyed out while a main or a compilation of the project is currently running; Fix is greyed out while the project is 'in use'.
-Under the header, a status line: the project icon, then the state of the project as Project states names it, followed, for an 'invalid' project, by the first line of the 'problem', for a busy project by what is running, and by a note for each broken mount of the project.
+Kind V, Forget, Delete cache and Fix are greyed out while the project is 'busy'.
 
-Pressing Run V opens a drop-down menu showing the mains of the project and the selected mains that are not mains of the project, each with a checkbox, the selected mains checked, and a Run button at the end of the list, disabled while no entry is checked or a checked entry is not a main of the project. Checking or unchecking an entry is a `SelectMains` naming the checked entries. That Run button is `Run` of the project; the Run button of a project with one main is a `SelectMains` naming that main, then `Run` of the project.
-A project with selected mains that shows no Run V shows the selected mains in the project area, with a Remove button: a `SelectMains` naming no main.
-  
-For a code project whose mains have a `Shortcut`, after the header we see each shortcut file present in the project folder under the name the manager gives that shortcut file (see Shortcut files), and only those, as the simplified desktop shows a project: the icon of the `Shortcut`, with the name of the shortcut file under the icon.
-Double clicking a shortcut file there is `OpenWithOrShortcut` with the path of that shortcut file: the very message a double click on that file on the desktop of the system sends.
+Pressing Run V opens a drop-down menu showing the mains of the project and the selected mains that are not mains of the project, each with a checkbox, the selected mains checked, and a Run button at the end of the list, disabled while no entry is checked or a checked entry is not a main of the project. Checking or unchecking an entry is a `SelectMains` naming the checked entries. That Run button is `Run` of the project.
 
+Status line: the project icon, then the state of the project as Project states names it, followed, for an 'invalid' project, by the first line of the 'problem', for a 'busy' project by what is running, and by a note for each broken mount of the project.
 
-For every project, we have the Output, a 'collapsible area': an area with vertical scroll bars and a max size of 1/2 of the height of the manager window; the Output has a Clear button on the title of the Output. What the main button produces always goes to the Output, and the Output keeps everything until the Output is cleared or the next `Run`, `Compile`, `Check` or `Fix` of the project starts.
+Selected mains: the selected mains, with a Remove button: a `SelectMains` naming no main.
 
-For a code project, after the Output we see the Tests 'collapsible area', a tree like the JUnit view of Eclipse, as the last 'autoCheck' of the project found the unit test logs (`.out/logs/_base/unit_test_log$<time>.log`):
-- one top level node for each unit test log written since the last `Run` of the project started, in the order the logs were written (none when that `Run` wrote no unit test log), or, before any `Run` of the project since the manager started, for the newest unit test log; the node names the main of that `Run` that was running when the log was written (or, with no such main, the time of the log), with the counts, like `hello.MyTests: 3 passed, 1 failed, 0 disabled`, and a green mark, or a red mark when a test case failed;
+Shortcut files: for each `Shortcut` claim of a main of the project whose shortcut file (see Shortcut files in OpenWith and Shortcut) is in the top level of the project folder, the icon of the `Shortcut`, with the name of the shortcut file under the icon.
+Double clicking a shortcut file there is `OpenWithOrShortcut` with the path of that shortcut file.
+
+A 'collapsible area' has a title and a body: clicking the title hides or shows the body; the body has a vertical scroll bar and is at most half the height of the manager window.
+Each part from the Output to the Logs is a 'collapsible area' with that part as title.
+
+Output: a Clear button on the title. The Output keeps everything until the Output is cleared, or until a well formed `Run`, `Compile`, `Check` or `Fix` of the project, or an `OpenWithOrShortcut` running a main of the project, starts.
+
+Tests: a tree, as the last 'autoCheck' of the project found the unit test logs (`.out/logs/_base/unit_test_log$<time>.log`):
+- one top level node for each unit test log written since the last `Run` of the project, or `OpenWithOrShortcut` running a main of the project, started, in the order the logs were written, or, before any such start since the manager started, for the newest unit test log; the node names the main of that `Run` or `OpenWithOrShortcut` that was running when the log was written (or, with no such main, the time of the log), with the counts, like `hello.MyTests: 3 passed, 1 failed, 0 disabled`, and a green mark, or a red mark when a test case failed;
 - under each top level node, one node per test case of the log, with the name of the test case and a green, red or grey mark for passed, failed or disabled;
 - under a failed test case, the lines of the text of the failure.
 A top level node with a failed test case, and a failed test case, start expanded; the other nodes start collapsed.
 
-Every entry of `projects.info` about a project except `path` shows in the project area of that project, and every entry has a GUI operation that removes that entry.
+Attenuators: one block for each main of the project and for each main that `attenuators` names, sorted by name: the attenuators applied to that main in order, each with Remove, Up and Down buttons, then a drop down of the attenuators of the project, with an Add button. Every change is an `Attenuate` of that main.
+```
+A Project hello has the attenuator greet.NoGui on main greet.Hello.
+B The user renames the type greet.NoGui to greet.NoWindow in the code of project hello, and compiles project hello.
+C The Attenuators area shows greet.NoGui on greet.Hello, marked as not in the project.
+```
 
-For a code project, and for any project with `attenuators`, after the Output and the Tests we see the Attenuators 'collapsible area', one block per main: the attenuators applied to that main in order, each with Remove, Up and Down buttons, then a drop down of the attenuators of the project, with an Add button. Every change is an `Attenuate` of that main. An attenuator type or a main type that is not in the `.manifest` of the `State.compiled` of this project is displayed with a graphical mark, the same mark that flags projects whose file names are not valid Fearless file names.
+Extensions: one block per main with an `OpenWith` claim:
+  "Extensions this main opens:" (the extension of each `OpenWith` claim of that main, with its icon),
+  "Conflicting extensions:" (each of those extensions another main also claims, naming that main).
 
-For a code project whose mains claim extensions (`OpenWith`), after the Attenuators we see a 'collapsible area', one block per main claiming extensions:
-  "Extensions this main opens:" (each extension with its icon),
-  "Conflicting extensions:" (each extension another main also claims, naming that main).
+Data: see DataReadDataEditDesign.
 
-For a code project, for a data project, and for any project with `mounts`, we see the Data 'collapsible area' (see DataReadDataEditDesign).
+Logs: the log files the mains wrote in `.out/logs`, with a Logs button opening that folder in the file explorer.
 
-For a code project we have the Logs 'collapsible area', showing the log files the mains wrote in `.out/logs`, with a Logs button opening that folder in the file explorer.
-
+Every entry of `projects.info` about a project except `path` shows in the project area of that project, and every entry except `kind` has a GUI operation that removes that entry.
 
 ## Run, Compile and Check
 
 A project runs at most one thing at a time: a compilation, or the mains of one `Run`, one after the other.
-A compilation of a project runs from the start of `Coordinator.compile` to the end of the last step of What the manager does after `Coordinator.compile`.
-A project is 'in use' while a main or a compilation of the project is currently running, and while a main of a project with a mount of the project is currently running.
-Everything a running main or a compilation prints goes to the Output, and the Output marks where each main and the compilation start and end, and how each of them ended, so that Eclipse and the user know when the mains of a `Run` or the compilation are over.
+A 'compilation' of a project runs from the start of `Coordinator.compile` to the end of the last step of What the manager does after `Coordinator.compile`.
+A project is 'busy' while a main or a compilation of the project is running, a main of the project waits for the locks of its data projects, or a main of a project with a mount of the project is running.
+Everything a running main or a compilation prints goes to the Output, and the Output marks where each main and the compilation start and end, and how each of them ended.
 
-- Compile (code projects): the compiler runs in its own JVM.
-- Run (code projects): each main runs in its own JVM (`Coordinator.run`, see CoordinatorDesign).
-- Check (every project): the report of the `Check` goes to the Output; nothing runs, and the Output has no marks for a `Check`.
-- Fix (every project): the changes of the `Fix` go to the Output (see Fix in FolderShapesDesign); nothing runs, and the Output has no marks for a `Fix`.
+- A compilation runs in a JVM of its own, and each main runs in a JVM of its own (`Coordinator.run`, see CoordinatorDesign).
+- The report of a `Check`, and the changes of a `Fix` (see Fix in FolderShapesDesign), go to the Output; a `Check` and a `Fix` start no JVM, and the Output has no marks for a `Check` or a `Fix`.
 - Terminate ends the running main: the JVM of that main ends, and no further main of that `Run` starts.
 - A main or a compilation that crashes, or that takes all the memory, ends alone: the manager and the mains and compilations of the other projects keep running.
 
 
 ### Files changing while a main runs
-An 'autoCheck' of a project with a running main that finds the project 'invalid' or 'out of date' terminates that main with the error `Some files inside the project "hello" were updated while main "hello.Hello" was running.`
-That error is shown in the Output of the project.
+An 'autoCheck' of a project with a running main that finds the project 'invalid' or 'out of date' ends that main, and writes in the Output of the project the error `Some files inside the project "hello" were updated while main "hello.Hello" was running.`
 
 
 ## File associations
-
-The 'reserve' of the manager is the list of extensions `reserve` in `projects.info` (see Registered projects): extensions beyond the Fearless extensions that the manager holds also when no main claims them.
-The 'captured extensions' are the Fearless extensions (see The data in ReconciliatorDesign) and the extensions of the 'reserve'.
-The manager asks once for each extension.
-After the user accepts, `.reconcile` checks every extension again: a refusal for another extension asks about that extension.
 
 ### Invariants and transitions
 
 ```
 M                  the manager; id(M) its identity; folder(M) its manager folder
-D                  the desktop of the system
-fearless           the Fearless extensions: .fearless, .fapp000 .. .fapp999, .ffile000 .. .ffile999
-reserve(M)         the extensions of the 'reserve' of M
-compiled(M)        the registered projects of M whose .fearless_out holds a compilation
-claims(p)          the extensions the mains of p claim
-captured(M)        fearless ∪ reserve(M)
-setup(D, i)        the extensions the setup of the identity i names on D
-holder(D, e)       the program D opens a file x<e> with
-family(D)          the identities of the Fearless family with a setup on D
-single(D, f)       the OS processes of D that are the 'single' manager of the manager folder f
+D                  the desk (see Desks in FolderShapesDesign)
+fearless           the 'Fearless extensions': .fearless, .fapp000 .. .fapp999, .ffile000 .. .ffile999; every other extension is a 'system extension'
+reserve(M)         the 'reserve' of M: the list reserve of projects.info (see Registered projects)
+cached(M)          the registered projects of M whose compilation cache contains a <pkg>.json
+claims(p)          the extensions of the claims of Coordinator.cachedMains of p
+captured(M)        the 'captured extensions' of M: fearless union reserve(M)
+single(D)          the manager processes of D that are the 'single' manager
 ```
 
-After every `.reconcile` of M that ends with no refusal, while no other program changes D:
+After every `.reconcile` of M that ends with no refusal, once T3 and the EditMetadata calling that `.reconcile`, if any, apply, while no other program changes D, R1 to R4 (see The data in ReconciliatorDesign) hold with i = id(M) and E = captured(M), and:
 ```
-I1  setup(D, id(M)) = captured(M)
-I2  ∀ e ∈ captured(M). holder(D, e) = id(M)
-I3  ∀ p ∈ compiled(M). claims(p) ⊆ captured(M)
-I4  |family(D)| ≤ 1
+I1  forall p in cached(M). claims(p) subset of captured(M)
 ```
 At every moment:
 ```
-I5  ∀ f. |single(D, f)| ≤ 1
-I6  M running ∧ ¬exists(folder(M))  ⇒  M is quitting, and M changes nothing on D
+I2  |single(D)| <= 1
+I3  M running && !exists(folder(M)) && M did not delete folder(M)  =>  M is applying Quit, and M changes nothing on D
 ```
 
 The transitions:
 ```
-T1  .reconcile makes holder(D, e) = id(M) for an e whose holder is outside the Fearless family
-      only when the user accepted e in the question of that .reconcile
+T1  a .reconcile of M refuses:
+      M calls .ask with the refusal (see Refusals in ReconciliatorDesign);
+      .ask gives taken, the extensions the user lets M hold, and givenUp, the extensions the user gives up;
+      givenUp = {}  =>  .reconcile again, with taken
+      .reconcile keeps refusing  =>  after a number of .ask that each manager implementation chooses, a 'fatal error' naming the refusal
 
-T2  the user rejects the question for e, or .reconcile can not take e:
-      e ∈ fearless  ⇒  'fatal error' naming e
-      otherwise     ⇒  for each p ∈ compiled(M) with e ∈ claims(p): end the mains and the compilation of p,
+T2  e in givenUp:
+      e in fearless  =>  .reconcile again, or a 'fatal error' naming e
+      the EditMetadata of this .reconcile adds e to reserve(M)
+                    =>  that EditMetadata is refused, and changes nothing
+      otherwise     =>  for each p in cached(M) with e in claims(p): end the mains and the compilation of p,
                         and delete the compilation cache of p (Coordinator.deleteCache);
                         reserve(M) := reserve(M) \ {e};
                         .reconcile again
 
-T3  a compilation of p ends with e ∈ claims(p) \ captured(M):
-      reserve(M) := reserve(M) ∪ {e}, and .reconcile (T2 if the question for e is rejected)
+T3  a .reconcile of M ends with no refusal:
+      forall p in cached(M). reserve(M) := reserve(M) union (claims(p) \ fearless)
 
-T4  forgetting a project, or a compilation whose mains no longer claim e, leaves reserve(M) as it is
+T4  only T2, T3 and an EditMetadata change reserve(M)
 ```
 
-I2 near holds on macOS, where holding an extension with a 'declared type' also holds every other extension of that 'declared type', and on Linux, where a file whose content matches a type of the system with a high priority opens with the program of that type (see Extensions on Linux in ReconciliatorDesign).
-An `EditMetadata` adding e to the 'reserve' whose question is rejected is refused, and changes nothing: the outcome T2 gives.
-
 The `replaced` of each `.reconcile` deletes the manager folder of the program of the command that `replaced` receives, when that command is inside the program folder of a manager (see Program and manager folder) and that manager folder is not the manager folder of the program calling `.reconcile`.
-`replaced` deletes that manager folder only while holding the lock of the `instance.lock` of that folder (see The 'single' manager in Implementation notes): when a manager of that folder is running, `replaced` sends `Quit` to that manager and waits for the lock, at most 30 seconds; after that wait, `replaced` deletes every file of that manager folder that can be deleted, and that manager quits (I6).
-So the program of that command never sees a manager folder deleted in part, and no second 'single' manager of that folder can start meanwhile (I5).
-Reset deletes the manager folder also while holding the lock of its `instance.lock`.
-A 'single' manager whose manager folder is deleted quits, ending the mains and the compilations of that manager, and changes nothing else on the system.
+`replaced` deletes that manager folder only while holding the lock of the `instance.lock` of that folder (see The 'single' manager in Implementation notes).
+When a manager process holds that lock, `replaced` writes a `Quit` message with a port into the manager folder, and waits for the lock:
+- A 'single candidate' and the 'single' manager read a `Quit` message as soon as the `Quit` message arrives, also while applying another request.
+- On the connection of the port, the manager process sends the identifier of its OS process, then, every 2 seconds until the manager process ends, a 'progress line': at most 80 characters saying what the manager process is doing and how much of it is done, with no time in it (`Ending the mains: 2 of 5 ended.`).
+- When 10 seconds pass with no 'progress line' different from the 'progress line' before it, `replaced` ends that OS process.
+The `Quit` message and the 'progress lines' are the same for every version of the manager.
 
+The 'portable Fearless' is the program of Coordinator that compiles and runs the project folder given as its argument.
 In the stories below, Foo is a program outside the Fearless family.
-The user observes the icon of a file on the desktop and inside the file manager applications.
-The user observes the icon of a window in every place where the desktop of the system shows the windows of the running programs.
+The user observes the icon of a file on the desktop and in the file explorer.
+The user observes the icon of a window in every place where the desk shows the windows of the running programs.
 
 ### Holding extensions
 
@@ -477,42 +580,42 @@ E The user observes that the icon of a.fearless is the Fearless icon, and that t
 A No program holds a Fearless extension, except Foo, which holds .fapp123.
 B The user starts the manager, with no registered project and an empty 'reserve'.
 C The manager calls .reconcile.
-D .reconcile refuses because Foo holds .fapp123.
-E The manager shows a dialog asking the user to let the manager hold .fapp123.
+D .reconcile refuses.
+E The manager calls .ask. A dialog asks the user to let the manager hold .fapp123.
 F The user rejects.
 G Either the manager asks again or the manager fails with a fatal error.
   Different manager implementations can choose how many times to ask again, and how to ask the user for a confirmation before the fatal error.
 
 A The manager is running and holds the Fearless extensions. No program holds .md.
-B The manager compiles project hello. Main hello.Hello claims .md.
+B The manager compiles project hello. Main greet.Hello claims .md.
 C The manager calls .reconcile.
 D The manager holds the Fearless extensions and .md. .md is in the 'reserve'.
 
 A The manager is running and holds the Fearless extensions. Foo holds .md.
-B The manager compiles project hello. Main hello.Hello claims .md.
+B The manager compiles project hello. Main greet.Hello claims .md.
 C The manager calls .reconcile.
-D .reconcile refuses because Foo holds .md.
-E The manager shows a dialog naming .md, Foo and main hello.Hello, and asking the user to let the manager hold .md.
+D .reconcile refuses.
+E The manager calls .ask. A dialog names .md and Foo, and asks the user to let the manager hold .md.
 F The user accepts.
 G The manager calls .reconcile, taking .md.
 H The manager holds the Fearless extensions and .md. .md is in the 'reserve'.
 I The user observes that Foo and the manager are in the list of the programs that can open a.md. The manager is named Fearless Manager, with the icon of the launcher of the manager.
 
 A The manager is running and holds the Fearless extensions. Foo holds .md.
-B The manager compiles project hello. Main hello.Hello claims .md.
+B The manager compiles project hello. Main greet.Hello claims .md.
 C The manager calls .reconcile.
-D .reconcile refuses because Foo holds .md.
-E The manager shows a dialog asking the user to let the manager hold .md.
+D .reconcile refuses.
+E The manager calls .ask. A dialog asks the user to let the manager hold .md.
 F The user rejects.
-G The manager deletes the compilation cache of project hello: project hello is not compiled.
+G The manager deletes the compilation cache of project hello: project hello is 'out of date'.
 H The manager calls .reconcile.
 I The manager holds the Fearless extensions. .md is not in the 'reserve'. Foo holds .md.
 
 A The manager is running and holds the Fearless extensions. Foo holds .md.
 B The user adds .md to the 'reserve'.
 C The manager calls .reconcile.
-D .reconcile refuses because Foo holds .md.
-E The manager shows a dialog asking the user to let the manager hold .md.
+D .reconcile refuses.
+E The manager calls .ask. A dialog asks the user to let the manager hold .md.
 F The user accepts.
 G The manager calls .reconcile, taking .md.
 H The manager holds the Fearless extensions and .md.
@@ -521,76 +624,113 @@ I The user observes that the icon of a.md is the conflict icon.
 A The manager is running and holds the Fearless extensions. Foo holds .md.
 B The user adds .md to the 'reserve'.
 C The manager calls .reconcile.
-D .reconcile refuses because Foo holds .md.
-E The manager shows a dialog asking the user to let the manager hold .md.
+D .reconcile refuses.
+E The manager calls .ask. A dialog asks the user to let the manager hold .md.
 F The user rejects.
 G The manager refuses the edit: .md is not in the 'reserve'.
 H The manager holds the Fearless extensions.
 
-A The manager is running and holds the Fearless extensions. Foo holds .pdf, and the system lets no other program change the program holding .pdf.
-B The manager compiles project hello. Main hello.Hello claims .pdf.
+A The manager is running and holds the Fearless extensions. Foo holds .pdf, and the desk lets no other program change the program holding .pdf.
+B The manager compiles project hello. Main greet.Hello claims .pdf.
 C The manager calls .reconcile.
-D .reconcile refuses because Foo holds .pdf.
-E The manager shows a dialog asking the user to let the manager hold .pdf.
+D .reconcile refuses.
+E The manager calls .ask. A dialog asks the user to let the manager hold .pdf.
 F The user accepts.
 G The manager calls .reconcile, taking .pdf.
-H .reconcile refuses because it can not take .pdf.
-I The manager deletes the compilation cache of project hello: project hello is not compiled.
-J The manager calls .reconcile.
-K The manager holds the Fearless extensions. .pdf is not in the 'reserve'.
+H .reconcile refuses.
+I The manager calls .ask. A dialog tells the user that the desk lets no other program hold .pdf. The user gives up .pdf.
+J The manager deletes the compilation cache of project hello: project hello is 'out of date'.
+K The manager calls .reconcile.
+L The manager holds the Fearless extensions. .pdf is not in the 'reserve'.
+
+A The manager is running and holds the Fearless extensions. Foo holds .pdf, and the desk lets no other program change the program holding .pdf.
+B The user adds .pdf to the 'reserve'.
+C The manager calls .reconcile.
+D .reconcile refuses.
+E The manager calls .ask. A dialog asks the user to let the manager hold .pdf.
+F The user accepts.
+G The manager calls .reconcile, taking .pdf.
+H .reconcile refuses.
+I The manager calls .ask. A dialog tells the user that the desk lets no other program hold .pdf. The user gives up .pdf.
+J The manager refuses the edit: .pdf is not in the 'reserve'.
+K The manager holds the Fearless extensions.
+
+A The manager is running and holds the Fearless extensions. Foo holds .md and .txt.
+B The manager compiles project hello. Main greet.Hello claims .md and .txt.
+C The manager calls .reconcile.
+D .reconcile refuses.
+E The manager calls .ask. A dialog asks the user to let the manager hold .md and .txt. The user accepts .md and rejects .txt.
+F The manager deletes the compilation cache of project hello: project hello is 'out of date'.
+G The manager calls .reconcile.
+H The manager holds the Fearless extensions. Neither .md nor .txt is in the 'reserve'.
+
+A The manager is running and holds the Fearless extensions. The desk does not let the programs the user runs change the folder of the icons of the extensions.
+B The manager compiles project hello. Main greet.Hello claims .foo.
+C The manager calls .reconcile.
+D .reconcile refuses.
+E The manager calls .ask. A dialog tells the user that Fearless can not change the folder of the icons, and how to give Fearless that permission.
+F The user gives the permission in the desk, and closes the dialog.
+G The manager calls .reconcile.
+H The manager holds the Fearless extensions and .foo.
 ```
 
-### Preferences of the system
+### Preferences of the desk
 
 ```
-A The manager is running and holds the Fearless extensions and .md. Main hello.Hello of the compiled project hello claims .md.
-B The user sets a preference of the system so that Foo holds .fapp123.
+A The manager is running and holds the Fearless extensions.
+B The user sets a preference of the desk so that Foo holds .fapp123.
 C The manager compiles project world.
 D The manager calls .reconcile.
-E .reconcile refuses because Foo holds .fapp123.
-F The manager shows a dialog asking the user to let the manager hold .fapp123.
+E .reconcile refuses.
+F The manager calls .ask. A dialog asks the user to let the manager hold .fapp123.
 G The user accepts.
 H The manager calls .reconcile, taking .fapp123.
-I The manager holds the Fearless extensions and .md.
+I The manager holds the Fearless extensions.
 
 A The manager is running and holds the Fearless extensions.
-B The user sets a preference of the system so that Foo holds .fearless.
+B The user sets a preference of the desk so that Foo holds .fearless.
 C The manager compiles project world.
 D The manager calls .reconcile.
-E .reconcile refuses because Foo holds .fearless.
-F The manager shows a dialog asking the user to let the manager hold .fearless.
+E .reconcile refuses.
+F The manager calls .ask. A dialog asks the user to let the manager hold .fearless.
 G The user rejects.
 H Either the manager asks again or the manager fails with a fatal error.
   Different manager implementations can choose how many times to ask again, and how to ask the user for a confirmation before the fatal error.
 
-A The manager is running and holds the Fearless extensions and .md. Main hello.Hello of the compiled project hello claims .md. hello.Hello is running.
-B The user sets a preference of the system so that Foo holds .md.
-C The user forgets project world.
+A The manager is running and holds the Fearless extensions and .md. Main greet.Hello of the compiled project hello claims .md. greet.Hello is running.
+B The user sets a preference of the desk so that Foo holds .md.
+C The user forgets the code project world.
 D The manager calls .reconcile.
-E .reconcile refuses because Foo holds .md.
-F The manager shows a dialog asking the user to let the manager hold .md.
+E .reconcile refuses.
+F The manager calls .ask. A dialog asks the user to let the manager hold .md.
 G The user rejects.
-H The manager ends hello.Hello, and deletes the compilation cache of project hello: project hello is not compiled.
+H The manager ends greet.Hello, and deletes the compilation cache of project hello: project hello is 'out of date'.
 I The manager calls .reconcile.
 J The manager holds the Fearless extensions. .md is not in the 'reserve'. Foo holds .md.
 
 A The manager is not running and holds the Fearless extensions and .md.
-B The user sets a preference of the system so that Foo holds .md.
+B The user sets a preference of the desk so that Foo holds .md.
 C The user starts the manager.
 D The manager calls .reconcile.
-E .reconcile refuses because Foo holds .md.
-F The manager shows a dialog asking the user to let the manager hold .md.
+E .reconcile refuses.
+F The manager calls .ask. A dialog asks the user to let the manager hold .md.
 G The user accepts.
 H The manager calls .reconcile, taking .md.
 I The manager holds the Fearless extensions and .md.
 
 A The manager is running and holds the Fearless extensions. Foo holds .txt.
-B The user sets a preference of the system so that the manager holds .txt.
+B The user sets a preference of the desk so that the manager holds .txt.
 C The manager compiles project hello.
 D The manager calls .reconcile.
 E The manager holds the Fearless extensions and .txt. .txt is not in the 'reserve'.
 F The user double clicks a.txt.
 G The manager shows the conflict dialog with no entry.
+
+A The manager is running and holds the Fearless extensions and .md, through a preference the user set in the desk.
+B The manager compiles project hello.
+C The manager calls .reconcile.
+D .reconcile replaces the preference of the user for .md with the setup of the manager, asking nothing.
+E The manager holds the Fearless extensions and .md.
 ```
 
 ### Releasing extensions
@@ -600,56 +740,40 @@ A The manager is running and holds the Fearless extensions and .md.
 B The user quits the manager.
 C The manager is not running and holds the Fearless extensions and .md.
 
-A The manager is running and holds the Fearless extensions and .md. No main claims .md.
-B The user removes .md from the 'reserve'.
-C The manager calls .reconcile.
-D The manager holds the Fearless extensions.
-
-A The manager is running and holds the Fearless extensions and .md. Only main hello.Hello claims .md. No main and no compilation of project hello is running.
+A The manager is running and holds the Fearless extensions and .md. Only main greet.Hello claims .md. No main and no compilation of project hello is running.
 B The user removes .md from the 'reserve'.
 C The manager calls .reconcile.
 D The manager deletes the compilation cache of project hello.
 E The manager holds the Fearless extensions.
 
-A The manager is running and holds the Fearless extensions and .md. Main hello.Hello claims .md. hello.Hello is running.
+A The manager is running and holds the Fearless extensions and .md. Main greet.Hello claims .md. greet.Hello is running.
 B The user removes .md from the 'reserve'.
-C The manager refuses to remove .md from the 'reserve', because hello.Hello claims .md and hello.Hello is running.
+C The manager refuses the edit: greet.Hello claims .md and greet.Hello is running.
 D The manager holds the Fearless extensions and .md.
-
-A The manager is running and holds the Fearless extensions and .md. Only main hello.Hello claims .md.
-B The user forgets project hello.
-C The manager holds the Fearless extensions and .md. .md is in the 'reserve'.
-D The user double clicks a.md.
-E The manager shows the conflict dialog with no entry.
-
-A The manager is running and holds the Fearless extensions and .md.
-B The user resets the manager.
-C The manager deletes the manager folder of the manager.
-D The manager calls .eradicateAll.
-E No program of the Fearless family holds any extension.
 ```
 
 ### Other programs of the Fearless family
 
 ```
-A Manager M1 is not running and holds the Fearless extensions and .md.
-B The user starts manager M2, of another version, with no registered project and an empty 'reserve'.
-C M2 calls .reconcile.
-D The manager folder of M1 is deleted.
-E M1 holds no extension. M2 holds the Fearless extensions.
-
-A Manager M1 is running and holds the Fearless extensions and .md.
-B The user starts manager M2, of another version, with no registered project and an empty 'reserve'.
+A Manager M1 is running and holds the Fearless extensions and .md. .md is in the 'reserve' of manager M2.
+B The user starts manager M2, of another version.
 C M2 calls .reconcile.
 D M2 sends Quit to M1, and waits until M1 has quit. M1 ends the mains and the compilations of M1.
 E The manager folder of M1 is deleted.
-F M1 holds no extension. M2 holds the Fearless extensions.
+F M1 holds no extension. M2 holds the Fearless extensions and .md.
 
-A Manager M1 is not running and holds the Fearless extensions and .md. .md is in the 'reserve' of manager M2.
+A Manager M1 is running and holds the Fearless extensions. Main greet.Hello of M1 is running, and takes 6 seconds to end.
 B The user starts manager M2, of another version.
 C M2 calls .reconcile.
-D The manager folder of M1 is deleted.
-E M1 holds no extension. M2 holds the Fearless extensions and .md.
+D M2 sends Quit to M1. M1 sends a 'progress line' every 2 seconds, and ends greet.Hello.
+E M1 quits. The manager folder of M1 is deleted.
+F M2 holds the Fearless extensions.
+
+A Manager M1 is running and holds the Fearless extensions. M1 applies an EditMetadata waiting for the lock of the Fearless family.
+B The user starts manager M2, of another version. The .reconcile of M2 holds the lock of the Fearless family.
+C M2 sends Quit to M1. M1 sends the same 'progress line' every 2 seconds.
+D 10 seconds later, M2 ends M1. The manager folder of M1 is deleted.
+E M2 holds the Fearless extensions.
 
 A Manager M is not running and holds the Fearless extensions and .md. The program folder of M is inside folder a.
 B The user moves the program folder of M into folder b, and starts M.
@@ -675,16 +799,11 @@ D P sends Quit to M, and waits until M has quit. M ends the mains and the compil
 E The manager folder of M is deleted.
 F M holds no extension. P holds one extension: .fearless.
 
-A The portable Fearless P holds one extension: .fearless.
-B The user starts manager M, with no registered project and an empty 'reserve'.
-C M calls .reconcile.
-D P holds no extension. M holds the Fearless extensions.
-
 A Foo holds .fearless.
 B The user starts the portable Fearless P.
 C P calls .reconcile.
-D .reconcile refuses because Foo holds .fearless.
-E P shows a dialog asking the user to let P hold .fearless.
+D .reconcile refuses.
+E P calls .ask. A dialog asks the user to let P hold .fearless.
 F The user accepts.
 G P calls .reconcile, taking .fearless.
 H P holds one extension: .fearless.
@@ -692,64 +811,59 @@ H P holds one extension: .fearless.
 A Foo holds .fearless.
 B The user starts the portable Fearless P.
 C P calls .reconcile.
-D .reconcile refuses because Foo holds .fearless.
-E P shows a dialog asking the user to let P hold .fearless.
+D .reconcile refuses.
+E P calls .ask. A dialog asks the user to let P hold .fearless.
 F The user rejects.
 G Either P asks again or P ends with an error naming .fearless and Foo.
   Different implementations of the portable Fearless can choose how many times to ask again.
 
-A The setup of P1 and the setup of P2 are on the system. P1 and P2 are programs of the Fearless family.
+A P1 and P2 are programs of the Fearless family, each with a setup on the desk.
 B The user starts manager M.
 C M calls .reconcile.
-D M fails with a fatal error naming P1 and P2.
-E No program of the Fearless family holds any extension.
+D .reconcile refuses.
+E M calls .ask. A dialog names P1 and P2, and asks the user to remove all of them but one. The user removes neither, and closes the dialog.
+F Either M asks again or M fails with a fatal error naming P1 and P2.
+G After the fatal error, no program of the Fearless family holds any extension.
 ```
 
 ### Icons
 
 ```
 A The manager is running and holds the Fearless extensions and .foo. No main claims .foo.
-B The manager compiles project hello. Main hello.Hello claims .foo with the icon IconsBear.
+B The manager compiles project hello. Main greet.Hello claims .foo with the icon IconsBear.
 C The manager calls .reconcile.
 D The user observes that the icon of a.foo is a bear.
 
-A The manager is running and holds the Fearless extensions and .foo. Main hello.Hello claims .foo with the icon IconsBear.
-B The user changes the image of IconsBear into a cat. The manager compiles project hello.
+A The manager is running and holds the Fearless extensions and .foo. Main greet.Hello claims .foo with the icon IconsBear.
+B The user replaces the file src/_greet/icons/bear.png of project hello with a picture of a cat, and compiles project hello.
 C The manager calls .reconcile.
 D The user observes that the icon of a.foo is a cat.
 
-A The manager is running and holds the Fearless extensions and .foo. Main hello.Hello claims .foo with the icon IconsBear.
-B The manager compiles project world. Main world.World claims .foo with the icon IconsCat.
+A The manager is running and holds the Fearless extensions and .foo. Main greet.Hello claims .foo with the icon IconsBear.
+B The manager compiles project world. Main earth.World claims .foo with the icon IconsCat.
 C The manager calls .reconcile.
 D The user observes that the icon of a.foo is the conflict icon.
 
-A The manager is running and holds the Fearless extensions and .foo. Main hello.Hello claims .foo with the icon IconsBear.
-B The manager compiles project world. Main world.World claims .foo with the icon IconsBear.
+A The manager is running and holds the Fearless extensions and .foo. Main greet.Hello claims .foo with the icon IconsBear.
+B The manager compiles project world. Main earth.World claims .foo with the icon IconsBear.
 C The manager calls .reconcile.
 D The user observes that the icon of a.foo is the conflict icon.
 
-A The manager is running and holds the Fearless extensions and .foo. Main hello.Hello claims .foo with the icon IconsBear. Main world.World claims .foo with the icon IconsCat.
-B The user forgets project world.
-C The manager calls .reconcile.
-D The user observes that the icon of a.foo is a bear.
-
-A The manager is running and holds the Fearless extensions and .foo. Only main hello.Hello claims .foo, with the icon IconsBear.
+A The manager is running and holds the Fearless extensions and .foo. Only main greet.Hello claims .foo, with the icon IconsBear.
 B The user forgets project hello.
 C The manager calls .reconcile.
 D The user observes that the icon of a.foo is the conflict icon.
 
-A The manager is running. Main hello.Hello implements PreLoadIcon[IconsBear].
+A The manager is running. The selected main greet.Hello of project hello implements PreLoadIcon[IconsBear].
 B The manager compiles project hello.
 C The manager calls .reconcile.
-D The manager runs hello.Hello. hello.Hello opens a window with the icon IconsBear.
+D The user runs project hello. greet.Hello opens a window with the icon IconsBear.
 E The user observes that the icon of that window is a bear.
 ```
 
-TODO: an error written in the Output of a project may need to offer an action that fixes the cause of that error, as the manager asks the user to let the manager hold an extension.
-
 ## OpenWith and Shortcut
 
-A main can ask the manager to make the desktop of the system start the main: on a double click on any file with a given extension (`OpenWith`), or on a small file the manager creates for the main (`Shortcut`).
+A main 'claims' an extension with `OpenWith` or `Shortcut`: the main asks the manager to start the main on a double click on a file with that extension (see Opening a file). For each `Shortcut` claim, the manager also creates a shortcut file (see Shortcut files).
 
 ```
 Foo: Main, OpenWith[IconsFoo, "foo"]{ s -> ... }
@@ -760,10 +874,6 @@ Qux: Main, Shortcut[IconsQux]{ s -> ... }
 
 `IconsFoo`, `IconsBar`, `IconsBaz` and `IconsQux` are types the compiler generates for image files recognised as autoloaded assets (here `_pkg/icons/foo.png` becomes `IconsFoo`). Those types can come from any package the main can see, including `base`.
 
-Informally: `Foo` wants every `.foo` file to show the `IconsFoo` image and to open `Foo` on a double click. `Bar` wants a file `bar.fapp123` in the top level of the project of `Bar`, showing the `IconsBar` image, that starts `Bar` on a double click; that file carries no information, the file is only a handle to start the main, and the file keeps working when moved anywhere else.
-
-Mechanically `OpenWith` and `Shortcut` are the same: both claim an extension for a main. `Shortcut` additionally creates the shortcut file.
-
 ### Base
 
 ```
@@ -773,57 +883,86 @@ Shortcut[I,E]: {}
 Shortcut[I]: {}
 ```
 
-A main can implement several of those four types at once, for example `OpenWith[Icon1,"a"]` and `OpenWith[Icon2,"b"]` to claim two extensions; the icons can differ or be the same. Several `Shortcut` produce several shortcut files for the same main. Implementing the same type twice (`Shortcut[I]` inherited along two paths) counts once.
+A main can implement several of those four types. A type the main implements along several paths is one claim.
 
 ### Well formedness
 
-The Frontend checks the claims of every declaration as well formedness errors, before generating code: a declaration with `OpenWith`, `Shortcut` or `PreLoadIcon` among its supertypes also has `Main` among its supertypes; the icon is a type name with no generic arguments; the extension is a string literal type (`"txt"` and `` `txt` `` are the same extension) holding 1 to 16 characters, each `a-z` or `0-9`, not `fearless`; the extension of a `Shortcut` is `fapp` and three digits, and the extension of an `OpenWith` is not; one main claims each extension at most once, across all the `OpenWith` and `Shortcut` of the main. The Coordinator checks that the icon is the type generated for an image file (see CoordinatorDesign). The exact rules and errors are those of `inject.Methods.checkClaims` of Frontend and of the doc comments of `OpenWith`, `Shortcut` and `PreLoadIcon` in `base`.
-
-The two kinds of extension, Fearless extension and system extension, are in ReconciliatorDesign.
+The Frontend checks, before generating code, as well formedness errors:
+- a declaration with `OpenWith`, `Shortcut` or `PreLoadIcon` among its supertypes has `Main` among its supertypes;
+- the icon is a type name with no generic arguments;
+- the extension is a string literal type containing 1 to 16 characters, each `a-z` or `0-9`, other than `fearless`; `"txt"` and `` `txt` `` are the same extension;
+- the extension of a `Shortcut` is `fapp` and three digits; the extension of an `OpenWith` is not;
+- a main claims each extension at most once.
+The Coordinator checks that the icon is the type generated for an image file (see `._frontend` in The Coordinator of CoordinatorDesign).
+The exact rules and errors are those of `inject.Methods.checkClaims` of Frontend and of the doc comments of `OpenWith`, `Shortcut` and `PreLoadIcon` in `base`.
 
 ### What the manager does after `Coordinator.compile`
 
 Everything below runs in the manager after `Coordinator.compile` ends. When `Coordinator.compile` failed, only step 2 runs. A step that fails makes the compilation fail: the manager calls `Coordinator.writeError` with the error of that step (a refused `.reconcile` does not make the compilation fail, see File associations), and of the steps after that step only step 2 runs.
 
 1. Check that every `Shortcut` claim of `Coordinator.cachedMains` of the project gives a valid shortcut file name (see Shortcut files).
-2. Rebuild the in memory map (see The in memory map).
+2. Build the in memory map (see The in memory map).
 3. Create the missing shortcut files.
 4. Call `Coordinator.finish`.
 
 ### The in memory map
 
-The manager keeps `extension -> list of (project, main, icon)` in memory only. The manager builds the map at start up, in step 2 of every compilation (see What the manager does after `Coordinator.compile`), after every deletion of the `.fearless_out` of a project (the project then claims nothing), and after every `EditMetadata` that removes a `code` project.
+The manager keeps `extension -> list of (project, main, icon)` in memory only. The manager builds the map at start up, in step 2 of every compilation (see What the manager does after `Coordinator.compile`), after every deletion of the compilation cache of a project, and after every `EditMetadata` that removes a `code` project.
 A build reads `Coordinator.cachedMains` of every registered `code` project whose `Coordinator.compile` is not running, and keeps the entries of each project whose `Coordinator.compile` is running.
 At start up, before building the map, the manager calls `Coordinator.dropUnfinished` of every registered `code` project.
 When a method of `Coordinator` raises or gives `Error.cacheCorrupted` for a project, the manager ends the running main or compilation of that project, if any, calls `Coordinator.deleteCache` of that project, and writes the error with `Coordinator.writeError`.
 An `Error.cacheCorrupted` of another project during step 2 of a compilation does not make that compilation fail.
-Each operation after which the manager rebuilds the map ends only after the rebuild; the same holds for everything else the manager keeps in memory.
+Each operation after which the manager builds the map ends only after the build.
 
 ### Autoselected extensions
 
-The Coordinator chooses the extension of a `Shortcut` or an `OpenWith` without extension (see `._autoselect` in CoordinatorDesign), asking the manager through the `takeFreeExtension` of `Coordinator.compile`.
+The Coordinator chooses the extension of a `Shortcut` or an `OpenWith` without extension (see `._autoselect` in The Coordinator of CoordinatorDesign), asking the manager through the `takeFreeExtension` of `Coordinator.compile`.
 The manager answers `takeFreeExtension` one call at a time.
 The answer is the first extension of the list that no claim in the in memory map uses and that no call answered for a compilation that has not ended yet.
 
 ### Shortcut files
 
-For each `Shortcut` claim, the manager creates a file `<name>.<extension>` in the top level of the project, next to the marker, holding a single new line, like the marker. `<name>` is the simple name of the main turned into a file name, the inverse of the rule autoloading uses to name the type of an image: each uppercase letter becomes `_` and the lowercase of that letter, except the first letter of the name, which only becomes lowercase. `FooBar` becomes `foo_bar`, `_Foo` becomes `_foo`, `Foo_1` becomes `foo_1`, `FooBAR` becomes `foo_b_a_r`.
+For each `Shortcut` claim, the manager creates a file `<name>.<extension>` in the top level of the project, containing a single new line. `<name>` is the simple name of the main turned into a file name, the inverse of the rule autoloading uses to name the type of an image: each uppercase letter becomes `_` and the lowercase of that letter, except the first letter of the name, which only becomes lowercase. `FooBar` becomes `foo_bar`, `_Foo` becomes `_foo`, `Foo_1` becomes `foo_1`, `FooBAR` becomes `foo_b_a_r`.
 
-The inverse does not exist for every type name: type names can end in primes (`Foo'`), and can contain `_` followed by a lowercase letter (`Foo_bar`), which autoloading never produces. Such a main, a main whose name turns into a Windows reserved name (`Con`), two mains of the project with a `Shortcut` giving the same file name and extension (`a.Bar` and `b.Bar`), or a main whose shortcut file name is the name of a top level file without extension (`readme` for `hello.Readme`), fail the compilation:
+A main with a `Shortcut` fails the compilation when:
+- the simple name of the main has no matching file name: the name ends in primes (`Foo'`), or contains `_` followed by a lowercase letter (`Foo_bar`);
+- `<name>` is a 'reserved name' (`Con`, see Names in FolderShapesDesign);
+- another main of the project with a `Shortcut` gives the same `<name>` and extension (`a.Bar` and `b.Bar`);
+- `<name>` is the name of a top level file without extension of the project (`readme` for `hello.Readme`).
+Each case has an error of its own; the error of the first case is
 `Main "hello.Foo'" can not have a Shortcut: its name has no matching file name. A main with a Shortcut has a name that can be mapped to a file name like "FooBar" can be mapped to "foo_bar".`
 
-The shortcut file is one of the `.files` of the project (see The data in CoordinatorDesign). The manager never deletes a shortcut file: the user may have copied or moved shortcut files anywhere. A shortcut file whose extension no main claims any more stays, and opening that shortcut file is an `OpenWithOrShortcut` of an extension no main claims (see Opening a file).
+The shortcut file is one of the `.files` of the project (see The data in CoordinatorDesign). The manager never deletes a shortcut file.
 
 ### Reconciling
 
-After each rebuild of the in memory map, and in each `EditMetadata` that changes `reserve`, with the `reserve` of the edit, once every other check of the edit (see Registered projects) passes, before the edit applies, the manager calls `.reconcile` of the Reconciliator (see ReconciliatorDesign) with the launcher of the manager as `command`, with all the 'captured extensions', each with an icon, with an empty `taken`, and with the window classes (see Desk ids and icons).
+The manager calls `.reconcile` of the Reconciliator (see The data in ReconciliatorDesign):
+- after each build of the in memory map;
+- in each `EditMetadata` that changes `reserve`, once every other check of the edit (see Registered projects) passes, before the edit applies, with the `reserve` of the edit.
+The arguments:
+```
+identity     the identity of the manager
+name         Fearless Manager
+command      the launcher of the manager
+extensions   each e in captured(M), and in claims(p) for each p in cached(M), with icon(e)
+taken        empty; T1 gives the taken of the .reconcile after an .ask
+windows      for each icon i of the .preloaded of each main m of Coordinator.cachedMains(p),
+             for each registered code project p whose Coordinator.compile is not running:
+             .windowClass <desk id of m>-<i.name>, .name the simple name of m, .target p,
+             .png the PNG of Coordinator.iconFiles(p, i)
+programIcon  the icon of the launcher of the manager
+replaced     see File associations
+```
 
 #### Desk ids and icons
 
-The icon of an extension is `Coordinator.iconFiles` of the icon of the claim (see CoordinatorDesign), or the files of the `icons` folder of the manager folder for the Fearless icon and the conflict icon (see Conflict icon).
-The desk id of a main (the `.deskId` of `Launch`, see CoordinatorDesign) is `<identity>-<hash>`: the identity of the manager (see ReconciliatorDesign), then the hash of the project folder and the name of the main.
-`.reconcile` also receives the `.preloaded` icons of every main of `Coordinator.cachedMains` of every registered `code` project whose `Coordinator.compile` is not running, each as the window class `<desk id>-<icon name>`, named by the simple name of the main, with the project folder as `.target`.
-The `programIcon` of the manager is the icon of the launcher of the manager.
+```
+icon(e) = the Fearless icon               when e = .fearless
+        = Coordinator.iconFiles(p, i)     when the in memory map gives e exactly one entry (p, m, i)
+        = the conflict icon               otherwise
+```
+The Fearless icon and the conflict icon are files of the `icons` folder of the manager folder (see Conflict icon).
+The desk id of a main (the `.deskId` of `Launch`, see The Coordinator in CoordinatorDesign) is `<identity>-<hash>`: the identity of the manager (see The data in ReconciliatorDesign), then the hash of the project folder and the name of the main.
 On Windows a running main gives its windows the `.ico` of `Coordinator.iconFiles` directly.
 
 ### Opening a file
@@ -831,55 +970,40 @@ On Windows a running main gives its windows the `.ico` of `Coordinator.iconFiles
 On `OpenWithOrShortcut <path>` the 'single' manager reacts:
 
 1. One main claims the extension: run that main as `Run` runs a selected main, leaving the selected mains as they are. The running main receives the file as its first input file (see Input files).
-2. Zero or several mains claim the extension: the 'conflict dialog', a small window, lists those mains with their icons as `project::pkg.Main`, sorted. Picking an entry sends `OpenWithOrShortcut <path> <name> <main>`, with the project and the main of that entry; that message runs the main as in 1. Closing the conflict dialog runs nothing.
-   With no main claiming the extension, the conflict dialog lists no entry.
-
-GNOME types every empty file as `application/x-zerosize` whatever the name of the file and never hands an empty file to the manager; refusing empty files everywhere (see Ill formed messages) makes Windows and the other desktops behave the same.
+2. Zero or several mains claim the extension: the 'conflict dialog' lists those mains with their icons as `project::pkg.Main`, sorted by that text. Closing the conflict dialog runs nothing. `OpenWithOrShortcut <path> <name> <main>` runs `<main>` as in 1.
 
 ### Input files
 
-A running main sees its input files through `System.inputCursor` of the standard library: the list of the files given to the program, in the order they arrived.
+A running main sees its input files through the `System` of the standard library: the list of the files given to the program, in the order they arrived; the list grows while the main runs.
 The list starts with the file opened by `OpenWithOrShortcut`, a document or a shortcut file alike, and starts empty for a main started by `Run`.
-Dropping files on a window of a running Fearless program adds those files at the end of the list, in the order of the drop. A drop holding anything that is not a file, a folder for example, adds nothing and is refused.
-`System.inputCursor` is a cursor on the first position of the list; `#` gives the file at that position, empty until a file arrives there, and `.next` the cursor on the next position. So a program sees a new file by asking again at the first position that was empty.
-An input file offers the reading methods of the autoloaded `TxtFile` and `ImageFile` assets, without their `AssetReadCapability` argument: the input file is itself the capability. Every read reads the file again, and a file that can not be read any more is a non deterministic error.
+Dropping files on a window of a running Fearless program adds those files at the end of the list, in the order of the drop. A drop containing anything that is not a file, a folder for example, adds nothing and is refused.
+Every read of an input file reads the file again, and a file that can not be read any more is a non deterministic error.
 
 ### Messages from a running main
 
 A running main sends messages to the manager through `System.manager` of the standard library, the capability `CapManager`.
-Each method of `CapManager` sends one message, as Eclipse does: the method listens on a port, runs the manager program with a `call` ending with that port, and returns when the manager ends the connection.
-So a method of `CapManager` returns once the manager has applied the message of the method: `.run` and `.compile` return once the mains or the compilation end; `.run`, `.compile`, `.check` and `.fix` return the text the manager sent on the port after the line `Applied`; the other methods return `Void`.
-A kind is a method of its own (`.kindIdle`, `.kindCode`, `.kindDataRead`, `.kindDataEdit`): a message of a running main can not hold a kind that is not one of the four.
-`Mount` is `.mount(name, type, data)`, and `Unmount` is `.unmount(name, type)`.
+Each method of `CapManager` sends one message: the method listens on a port, runs the manager program with a `call` ending with that port, and returns when the manager ends the connection.
+`.run`, `.compile`, `.check` and `.fix` return the text the manager sent on the port after the line `Applied`; the other methods return `Void`.
+`Kind` is `.kindIdle(name)`, `.kindCode(name)`, `.kindDataRead(name)` or `.kindDataEdit(name)`, `Mount` is `.mount(name, type, data)`, `Unmount` is `.unmount(name, type)`, and `Attenuate` is `.attenuate(name, main, attenuators)`.
 A path is the list of the bytes naming the path, the bytes of the `Base16:` form of the path. A method whose arguments do not make a `call` (a path that is not absolute or is the root of a drive, a name that is not a `projectName`, a main, a type or an attenuator that is not a `typeName`, `.selectMains` with two equal mains) is a deterministic error of the running main: no message is sent.
-A refused message makes the method a deterministic error holding the text after the line `Refused`.
+An ill formed message makes the method a deterministic error containing the text after the line `Refused`.
 `.quit`, `.reset`, and `.terminate` naming the project of the running main never return: the running main ends.
 
 ### Conflict icon
 
-The conflict icon is the Fearless icon with a purple `?` on top of the Fearless icon, stored as a PNG in the standard library at `base/icons/conflict.png`. The manager reads the conflict icon and the Fearless icon, `base.IconsFearless`, from the folder of `base` (see The data in CoordinatorDesign) and materialises both icons like any other icon, the PNG and, on Windows, the `.ico`, in the `icons` folder of the manager folder.
-
-The conflict icon is the autoloaded type `base.IconsConflict`. `base` autoloads the assets of `base` as if the files of `base` were under a `_base` folder: `.path` is `fear:/_base/icons/conflict.png` and `.diskPath` is `icons/conflict.png`, relative to the folder of `base`, which a running main receives as `fearlessBase.dir`.
-
-## Eclipse
-
-The Eclipse plugin and content assist are in EclipseDesign.
-
-## Error management
-An error of the Coordinator is in Coordinator (`Report`, `Violation`); an error of the manager is in Controllers, in the same (`Report`, `Violation`) classification.
+The conflict icon is `base.IconsConflict`, the image `icons/conflict.png` of the folder of `base` (see The data in CoordinatorDesign): the Fearless icon with a purple `?` on top. The manager copies the conflict icon and the Fearless icon, `base.IconsFearless`, into the `icons` folder of the manager folder: the PNG and, on Windows, the `.ico` made from the PNG.
 
 ## Future design
 
 What the design will cover later; nothing in this section is current behaviour.
-- The message files are replaced by a channel that does not depend on the file system reporting new files, for example a local socket of the 'single' manager.
-- The Output keeps only the last part of what a running main or a compilation prints, so a program printing without end does not fill the memory.
-- The GUI becomes a separate program, as for many Linux daemons: the manager has no window, and the GUI commands the 'single' manager through the manager program with a `call`, as every other program does. The GUI could be a Fearless program with some extra permissions.
-- A later double click on a file for a main already running adds that file to the input files of the running main.
-- A double click for a main already running signals the running main to wake up, for example bringing the window of the running main to the front.
+- The messages are replaced by a channel that does not depend on the file system reporting new files, for example a local socket of the 'single' manager.
+- The Output keeps only the last part of what a running main or a compilation prints.
+- The GUI becomes a separate program: the manager has no window, and the GUI commands the 'single' manager through the manager program with a `call`. The GUI could be a Fearless program with some extra permissions.
+- A double click on a file for a main already running adds that file to the input files of the running main, and signals the running main to wake up, for example bringing the window of the running main to the front.
 - A 'captured extension' that no main claims gets an icon of its own, showing that the manager holds the extension, instead of the conflict icon.
+- TODO: an error written in the Output of a project may need to offer an action that fixes the cause of that error, as the manager asks the user to let the manager hold an extension.
 - Removing or changing a data project mounted on a DataRead type of a code project shows a confirmation dialog in the GUI, naming the code projects that get a broken mount.
-- A data project folder can be deleted when the folder is left empty, and so can a zip, since a zip is a folder for a main. Deleting something and writing it again "the same" can then give another structure on disk: what was a zip can come back as a plain folder. How to handle this is to be discussed.
-- A main learns the extensions the main claims, for example through a `System` method. A main with `OpenWith[I]` gets an extension such as `ffile042`, chosen by the manager and varying between machines and compile orders; to save a document the user can later double click, the program must name the document `<something>.ffile042`.
+- A main learns the extensions the main claims, for example through a `System` method.
 
 ## Implementation notes
 
@@ -887,24 +1011,27 @@ What a rewrite needs that neither this design nor the other repositories say.
 
 An implementation decides alone every detail the design leaves open below the concepts of the design: wire formats, encodings, intervals, the library calls, the content of the files the design names (information for Eclipse can be added to `manager.info`). An implementation never adds what the user or another program can observe and the design does not describe: a file in the manager folder or in a project, a verb, a GUI element, a message, a fallback. Those go into the design first.
 
-- The stand-in for the tray: under Wayland a program can not place the windows of the program, but AWT on Linux is an X11 client (through XWayland under Wayland), so the manager places the window itself.
-  The stand-in is an AWT window of type popup. On X11 the window manager does not manage a popup window: no taskbar lists a popup window, and a popup window stays where the manager places the popup window.
-- A double click on a button presses the button twice, and the second press comes before the request of the first press changes the window, so the second press sends the same request again.
-- A main or a compilation ending alone: the JVM of each main and of each compilation is a process of its own. A process that crashes ends alone. The out of memory killer of the Linux kernel ends one process at a time, chosen by memory use, and Windows ends no group of processes either. systemd-oomd ends a whole cgroup when the memory pressure stays high; a cgroup is a group of processes the Linux kernel accounts together, and a child process starts in the cgroup of the parent process. So on Linux with systemd as init, `Fs.processBuilder` starts each child with `systemd-run --user --scope`, in a transient scope: a cgroup of its own.
-  systemd-oomd is on by default on Ubuntu with GNOME, Fedora (GNOME and COSMIC) and Omarchy. systemd-oomd is off on Arch, and missing on Debian, Kubuntu, Lubuntu, Xubuntu and openSUSE Tumbleweed. Void has no systemd.
-- A main or a compilation ending with the manager: the JVM of each main and of each compilation reads its standard input, a pipe the manager holds open, and halts when that standard input ends. So a manager that ends, however the manager ends, ends every main and every compilation the manager started.
-- Removing a manager folder at once: holding the lock of `instance.lock` of the manager folder, rename the manager folder to a new name in the same folder, then delete the renamed folder. When the rename fails (on Windows a folder holding a file that a process has open may not be renamed), delete every file of the manager folder that can be deleted. A test removes a manager folder whose `instance.lock` is held open, on every desk: the test shows whether the rename works on Windows.
-- The 'single' manager: the process holding the lock (`FileChannel.tryLock`) of the file `instance.lock` in the manager folder. The operating system releases the lock when the process ends, however the process ends, so a manager that was killed leaves no stale lock.
-
-- Tray on Linux: `java.awt.SystemTray` needs an XEmbed tray, which GNOME and most Wayland desktops do not have; what those desktops show is a StatusNotifierItem on the session bus, registered with `org.kde.StatusNotifierWatcher`, the menu of the item served as `com.canonical.dbusmenu`. A desktop with no owner of the watcher name may still have an XEmbed tray (MATE, i3): there the manager uses `java.awt.SystemTray`, as on Windows. A desktop with neither has no tray. The JDK has no D-Bus client, so the manager speaks the D-Bus wire protocol itself on the `unix:path=` socket of `DBUS_SESSION_BUS_ADDRESS`.
-- Clicks on the tray icon on Linux: each desktop decides what a click on a StatusNotifierItem does.
-  Some desktops show the menu served as `com.canonical.dbusmenu` themselves.
-  Other desktops report the click to the item: `Activate` (usually a left click), `SecondaryActivate` (usually a middle click) or `ContextMenu` (usually a right click), each with the point of the click.
-  The manager answers each of these three by opening the menu of the tray icon at that point, with the same entries.
-  So the click opening the menu may differ from one desktop to another (left or right, single or double), and the menu may look different for different clicks on the same desktop; every one of those clicks opens the menu.
-- The bytes of a `Base16:` path: on Windows the UTF-16 code units of the name, little endian (a name may hold an unpaired surrogate); elsewhere the bytes `sun.jnu.encoding` gives, the bytes the JVM turns names into.
-- Port of a message: a TCP port on the loopback address. The manager connects, sends the status line, then the reason of a refusal or the Output of the mains or of the compilation, as UTF-8 text, then closes the connection. Eclipse and a running main listen on a port the system picks.
-- Each case of a main that can not have a Shortcut (a name with no matching file name, a reserved name, two mains giving the same file name and extension) has an error of its own; the error above is the error of a name with no matching file name.
-- Registering a folder whose marker has the right name and is empty writes a newline into the marker, so the marker holds what a created marker holds: GNOME never hands an empty file to the manager (see Opening a file).
-- A claim whose icon file can not be read shows, in the manager window, the icon generated from `project::pkg.Main`, as the icon of a project is generated from the project name.
-- Name inference skips a name `n` while the project folder holds a file other than the marker named `n.fearless`, ignoring case: on a file system ignoring case that file would be the marker.
+- The 'tray icon window' is an AWT window of type popup.
+  A Wayland client can not place its windows; AWT on Linux is an X11 client, through XWayland under Wayland.
+  On X11 no taskbar lists a popup window, and a popup window stays where the manager places the popup window.
+- A main or a compilation ending alone: on Linux with systemd as init (`/run/systemd/system` is a folder), `Fs.processBuilder` starts each child with `systemd-run --user --scope`, in a cgroup of its own.
+  A cgroup is a group of processes the Linux kernel accounts together; systemd-oomd ends a whole cgroup, and a child process starts in the cgroup of the parent process.
+- A main or a compilation ending with the manager: the manager starts the JVM of each main and of each compilation with a 'parent lifeline' (see Processes in AttenuationDesign) on a pipe the manager holds open.
+- `replaced` removing a manager folder: holding the lock of `instance.lock` of the manager folder, `replaced` renames the manager folder to a new name next to the manager folder, then deletes the renamed folder.
+  When the rename fails, `replaced` deletes every file of the manager folder that can be deleted.
+  On Windows a folder containing a file that a process has open may not be renamed.
+- A 'single candidate' or the 'single' manager: the process holding the lock (`FileChannel.tryLock`) of the file `instance.lock` in the manager folder. The operating system releases the lock when the process ends, however the process ends.
+- Tray on Linux: `java.awt.SystemTray` needs an XEmbed tray; GNOME and most Wayland desks have none.
+  When the session bus has an owner of the name `org.kde.StatusNotifierWatcher`, the tray icon is a StatusNotifierItem registered with that watcher, with the menu served as `com.canonical.dbusmenu`.
+  The manager speaks the D-Bus wire protocol itself, on the `unix:path=` socket of `DBUS_SESSION_BUS_ADDRESS`.
+  Otherwise, when `java.awt.SystemTray` is supported, the manager uses `java.awt.SystemTray`, as on Windows.
+  A desk with neither has no tray.
+- Clicks on the tray icon on Linux: some desks show the menu served as `com.canonical.dbusmenu` themselves.
+  The other desks call `Activate`, `SecondaryActivate` or `ContextMenu` of the item, with the point of the click; the manager answers each of the three by opening the menu of the tray icon at that point.
+- Some file systems, for example some network drives, do not report new files.
+- A desk, such as GNOME, may refuse to bring the manager window to the front, and tell the user in its own way, for example with a notification that Fearless Manager is ready.
+- The bytes of a `Base16:` path: on Windows the UTF-16 code units of the name, little endian (a name may contain an unpaired surrogate); elsewhere the bytes of the name as the file system stores them.
+- Port of a message: a TCP port on the loopback address; the manager sends UTF-8 text. Eclipse and a running main listen on a port the desk picks.
+- GNOME types every empty file as `application/x-zerosize`, whatever the name of the file, and never hands an empty file to the manager.
+- Renaming the first marker moves the marker to a file `<random UUID>.tmp` of the project folder, then to `<name>.fearless`.
+- The last premise of `ok(i, n)` in name inference: on a file system ignoring case, that other file and the file `n.fearless` are one file.
