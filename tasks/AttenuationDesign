@@ -13,6 +13,7 @@ A main is `Main: CaptureFree { .main(sys: mut System): Void }`; the runtime give
 Observable Determinism: a method with no mut parameters, receiver included, returns structurally equivalent results for structurally equivalent inputs; non termination and deterministic errors are results.
 A non deterministic error is caught only by a `CapTry`, and a `CapTry` comes only from a `System`.
 A type implementing `CaptureFree` captures nothing. A type implementing `CaptureFree` with no abstract methods and zero generic parameters has one instance, and its type name denotes that instance: the type is 'summonable'. A top level type captures nothing by construction; a type declared inside a method captures nothing only when it implements `CaptureFree`.
+A type implementing `Main`, `InfoMain` or `SystemAttenuator` has zero generic parameters.
 `Info` is the one value with a text form that parses back: `Info.str` is JSON text, `Infos.fromStr` reads it.
 
 ### Terms
@@ -170,20 +171,16 @@ CapProcess: ... {
   mut .start(main: Main, attenuators: List[SystemAttenuator]): mut CapRunningMain[Void];
   }
 CapRunningMain[R]: ToIso[CapRunningMain[R]], WidenTo[CapRunningMain[R]]{
-  mut .await: R;
-  mut .awaitUpTo(time: Duration): Opt[R];
+  mut .end: mut Later[R];
   mut .terminate: Void;
   }
 ```
 `.start` starts the process and returns at once.
-`.await` returns when the process ends: the result of the main, or its Info as a deterministic or non deterministic error, as `.run`.
-`.awaitUpTo` is `.await` when the process ends within `time`, giving the result in the `Opt`, and gives the empty `Opt` otherwise.
-`.terminate` ends the process and every process it started. When the process ended by itself, `.terminate` throws what `.await` would throw.
+`.end` gives the 'later' (see Waiting in IqlDesign) of the end of the process: the result of the main, or its Info as a deterministic or non deterministic error, as `.run`.
+`.terminate` ends the process and every process it started.
 A `CapRunningMain` that the program can no longer reach ends its process, and every process that process started, once the garbage collector of this process collects the `CapRunningMain`.
-A `CapRunningMain` is 'running' or 'surely terminated': `.start` gives a running one; `.await`, `.terminate` and an `.awaitUpTo` that gives a result or throws make it surely terminated.
-A call other than `.iso` and `.close` on a surely terminated `CapRunningMain` is a deterministic error.
 A process that can not start is a non deterministic error of `.start`.
-`.run` is `.start` then `.await`.
+`.run` is `.start` then `.end.await`.
 
 TODO: capture: `.start` takes a callback called with each chunk the process produces and the out of the parent; the default callback writes the chunk on that out. A chunk is bytes, as `CapOutput` writes bytes: whether the callback receives them as bytes or as text with a recovery, as the reads of `CapInputCursorNode` do, is to be decided.
 
@@ -197,11 +194,3 @@ CapProcess: ... {
   }
 ```
 `sys.process.run(Compute, arg, as)` behaves as `Compute.main(An#(...A1#(sys)), arg)` in a process of its own, as `.run` of a `Main` does, and gives the `Info` the main returns.
-
-### Related work and the paper
-
-Object capabilities: an object capability is an object that can do a privileged thing, and the reference to it is the permission (Miller, Robust Composition, 2006; Miller, Yee, Shapiro, Capability Myths Demolished, 2003). Attenuation, the caretaker (a forwarder with a gate that revokes it) and the membrane (a forwarder wrapping everything that passes through it) are patterns of that literature, in E and in JavaScript (Miller; Van Cutsem and Miller on membranes); `CaptureFree` plays the role of the `DeepFrozen` auditor of E, the guarantee that a value is closed.
-Capability safety of languages, and reasoning about what code can do from the capabilities it holds: Maffeis, Mitchell and Taly (Object capabilities and isolation of untrusted web applications, 2010) formalize capability safety for JavaScript subsets; Drossopoulou, Noble and Miller (The need for capability policies, 2013; Swapsies on the Internet, 2015) and Drossopoulou, Noble, Mackay and Eisenbach (holistic specifications) specify what an object capability guarantees against untrusted code; Devriese, Birkedal and Piessens (Reasoning about object capabilities with logical relations and effect parametricity, 2016) prove authority bounds from types; Melicher, Shi, Potanin and Aldrich (A capability-based module system for authority control, 2017) make modules of Wyvern receive their authority as capabilities. Gordon et al. (Uniqueness and reference immutability for safe parallelism, 2012) is the reference capability side that Fearless builds on: `iso`, `mut`, `read`, `imm` are reference capabilities, and `System` is an object capability; the attenuation design is where the two meet, since reconstruction rests on `CaptureFree` and Observable Determinism, which are typing facts.
-Erlang spawns by module, function and arguments rather than by closure for the same reason reconstruction works here: a name travels, a closure does not. Fearless adds that the function named is pure by typing, so the spawned process is known to reach the same authority its parent describes.
-What is new: in the object capability literature authority crosses a boundary by transferring a reference; here nothing is transferred, the new process reconstructs its authority from names, and the reconstruction is correct because the type system makes the construction a deterministic computation. Observable Determinism turns a description (a list of type names) into a faithful account of an object graph (the attenuated `System`): reconstruction is as good as transfer, and cheaper, since a name is portable and an object is not.
-The claim to make: attenuation composed by reconstruction gives capability attenuation that is at the same time dynamic (chosen each time a main starts, by the user or by the calling main) and statically known (the names are the whole policy), across operating system processes, with no serialization of capabilities.
