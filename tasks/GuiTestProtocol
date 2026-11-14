@@ -2,24 +2,29 @@
 
 Input:
   <tests>: a list of test classes of Controllers/test/agentTools.
-  <desks>: a list of desks of the machine running the protocol:
-    Linux machine: ubuntu_gnome (the desk of the machine) and the VMs of /data/gym/gui_vms_gym.txt.
-    Windows machine: windows.
+  <desks>: a list of desks.
+A desk is the desk of the machine running the protocol, or a VM of that machine.
+The protocol is the same on every desk: only opening and closing a desk differ.
+On the Linux machine the desks are ubuntu_gnome (the desk of the machine) and the VMs of /data/gym/gui_vms_gym.txt.
+On the Windows machine the desk is windows.
 <workspace> is the fearlessBranch folder of the outer agent, for example /data/fearlessBranch1 on Linux and C:\data\fearlessBranch1 on Windows.
 A path /data/... in the texts below is C:\data\... on Windows.
+Every command below is written in its Linux form (bash) and in its Windows form (PowerShell); use the form of the machine you run on.
 
 ## Agents
 
-outer agent: the session running the protocol. The outer agent runs `protocol` and the commands `protocol` names; the outer agent never answers an action of a test.
-OperatorAgent: Opus 5.5, medium effort.
-UserAgent: Haiku 5.5, low effort.
+outer agent: the session running the protocol. It runs `protocol` and the commands it names; it never answers an action of a test.
+OperatorAgent: Opus 5.5, medium effort. A new one for each test on each desk. It prepares the test, judges the run and records the values.
+UserAgent: Haiku 5.5, low effort. A new one for each test on each desk. It is the person at the desk: it answers the actions of the test.
+The OperatorAgent and the UserAgent know only the texts the outer agent sends them.
 
-An outer agent that cannot start agents (an agent started by another agent cannot) runs nothing of the protocol: the outer agent tells the user it cannot start the OperatorAgent and the UserAgent, and stops.
+The outer agent must be able to start agents; an agent started by another agent cannot start agents.
+An outer agent that cannot start agents runs nothing of the protocol: it tells the user it cannot start the OperatorAgent and the UserAgent, and stops.
 
 ## protocol (outer agent)
 
-  for <desk> in <desks>:
-    for <test> in <tests>:
+  for desk in <desks>:
+    for test in <tests>:
       operator= start OperatorAgent with text(prepare)
       if reply(operator) ends with the line "passed": tell the user reply(operator); continue
       user= start UserAgent with text(answer)
@@ -32,10 +37,9 @@ An outer agent that cannot start agents (an agent started by another agent canno
         tell the user reply(operator)
         break
 
-`start a with t` starts a new agent a, not a fork of the outer agent, and does `send a t`.
 `send a t` sends the text t to the agent a and waits for its reply; reply(a) is the last reply of a.
 text(t) is the text t below, where the outer agent writes out <test>, <desk>, <workspace> and <report>, and replaces each {name} with the text named name.
-resetDesk and startTest are in text(commands).
+stopTest, startTest and resetDesk are the commands of the text commands.
 
 ## Texts
 
@@ -93,21 +97,6 @@ Finally, always, whatever happened before:
    Windows: `Get-Process fearlessManaged*` prints nothing, and `(New-Object -ComObject shell.application).Windows().Count` is 0.
 """
 
-causes= """
-A failure has one of three causes:
-(1) a value was wrong, for example the pointer missed a target the screen shows;
-(2) the test checks behaviour the design does not describe;
-(3) a step of the test is not what a person does on this desk.
-"""
-
-screen= """
-The screen:
-  Linux: `/opt/jdk-26.0.2/bin/java -ea -Duser.home=/data/pilot_robot_home -cp <workspace>/out/modular/controller-test:<workspace>/Commons/Commons.jar agentTools.Pilot seen /data/pilot_<desk>/shots/<shot>.png`
-  Windows: `& "C:\Program Files\Java\jdk-26.0.2\bin\java.exe" -ea -cp "<workspace>\out\modular\controller-test;<workspace>\Commons\Commons.jar" agentTools.Pilot seen C:\data\pilot_<desk>\shots\<shot>.png`
-  <shot> is a new number for each screenshot.
-  Then read the png; a purple ring marks the pointer.
-"""
-
 prepare= """
 You are the OperatorAgent of one run of the GUI test protocol: the agentTools test <test> of Controllers, on the desk <desk>, in <workspace>.
 A UserAgent will answer the actions of the test as the person at the desk; you never answer an action yourself.
@@ -132,21 +121,22 @@ The UserAgent answered the actions of the test <test> on the desk <desk> and rep
 <report>
 {commands}
 The report ends with the values the UserAgent wrote, one line per action: `name: v1, v2, v3`.
-{causes}
-{screen}
+A failure has one of three causes: (1) a value was wrong; (2) the test checks behaviour the design does not describe; (3) a step of the test is not what a person does on this desk.
 Judge the report from its evidence and from the screen, then do one of these.
-- Cause (1): end your reply with the line restart.
+The screen:
+  Linux: `/opt/jdk-26.0.2/bin/java -ea -Duser.home=/data/pilot_robot_home -cp <workspace>/out/modular/controller-test:<workspace>/Commons/Commons.jar agentTools.Pilot seen /data/pilot_<desk>/shots/judge.png`, then read the png.
+  Windows: `& "C:\Program Files\Java\jdk-26.0.2\bin\java.exe" -ea -cp "<workspace>\out\modular\controller-test;<workspace>\Commons\Commons.jar" agentTools.Pilot seen C:\data\pilot_<desk>\shots\judge.png`, then read the png.
+- Cause (1): end your reply with the line restart. The test then starts again and the UserAgent answers it.
 - Cause (2) or (3): `git -C <workspace>/Controllers checkout test/agentTools`, do Finally, then end your reply with the finding: the cause, the action, the evidence.
 - The test passed:
   1. Write the values of the report into the <desk> entries.
-  2. Do resetDesk, then runRecorded, three times. The values count only when all three runs pass.
-  3. If a run fails: do Self consistency.
-     From the failing check and the screen, judge which earlier waits may be too short, raise them with informed guesses, and go to 2.
+  2. Do resetDesk, then runRecorded, three times. The values count only when all three runs pass: the shortest wait that passes once can fail the next time.
+  3. If a run fails: do Self consistency; from the failing check and the screen, judge which earlier waits may be too short (not every action is followed by a check that verifies it), raise them with informed guesses, and go to 2.
      A failure that time does not explain: `git -C <workspace>/Controllers checkout test/agentTools`, do Finally, then end your reply with that failure.
   4. A wait above 500 gets a comment saying why.
   5. Put the <desk> entries into the open Controllers PR of recorded entry sets, if one is open (`gh pr view <n> --repo FearlessLang/Controllers --json state`); otherwise into a new one.
   6. Do Finally, then end your reply with the line passed and the link of the PR.
-If the report shows a mistake of the UserAgent that no line of the text answer in <workspace>/ZeroToHero/tasks/GuiTestProtocol prevents, add to the text answer a line stating the correct behaviour, and say so in your reply.
+If the report shows a mistake of the UserAgent that the list of mistakes of the text answer in <workspace>/ZeroToHero/tasks/GuiTestProtocol does not hold, add a line to that list and say so in your reply.
 {selfConsistency}
 {finally}
 """
@@ -157,43 +147,56 @@ The screen of this machine shows that desk, ready. The test is already running a
 
 At each action the test creates an empty file named after the action in /data/pilot_<desk>/channel and waits.
 The on("<desk>",...) entry of that action says what to answer: each val(null) is one value, in order.
-Answer with one command that writes the values into that file, one per line, then a line ;
-For the action managerMenu with the entry on("<desk>", () -> waitClick(val(null), val(null), val(null))):
+Answer by writing the values into that file, one per line, then a line ;
+Each answer is written with one command, the values one per line with \n, then a line ; (the examples show the file of the action):
+- on("<desk>", () -> waitClick(val(null), val(null), val(null))) for action managerMenu, first the milliseconds to wait after the end of the previous action, then where to click:
   Linux: `printf '100\n412\n88\n;\n' > /data/pilot_<desk>/channel/managerMenu`
   Windows: `[IO.File]::WriteAllText('C:\data\pilot_<desk>\channel\managerMenu', ('100','412','88',';','') -join [char]10)`
-The first value of an entry whose name starts with wait is the wait: the milliseconds to wait after the end of the previous action.
-The values of each entry:
-- waitClick, waitDoubleClick, waitRightClick: the wait, then the x and the y of the click.
-- waitAfter(val(null)): the wait.
-- waitKeys(val(null), KeyEvent.VK_ALT, KeyEvent.VK_D): the wait; the keys are fixed.
-- waitClickKeys(val(null), val(null), val(null), KeyEvent.VK_ALT, KeyEvent.VK_SHIFT, KeyEvent.VK_Q): the wait, the x and the y of the click; then the test presses the keys.
-- waitClicks(val(null), val(null), val(null), ...): the wait, the x of the clicks, then the y of each click.
-- region(val(null), val(null), val(null), val(null)): the x, the y, the width and the height of the part of the screen the next check of the test compares.
-- A text value is quoted: "hello"
+- on("<desk>", () -> waitDoubleClick(val(null), val(null), val(null))) for action openData, first the milliseconds to wait after the end of the previous action, then where to double click:
+  Linux: `printf '100\n412\n88\n;\n' > /data/pilot_<desk>/channel/openData`
+  Windows: `[IO.File]::WriteAllText('C:\data\pilot_<desk>\channel\openData', ('100','412','88',';','') -join [char]10)`
+- on("<desk>", () -> waitAfter(val(null))) for action managerShown:
+  Linux: `printf '100\n;\n' > /data/pilot_<desk>/channel/managerShown`
+  Windows: `[IO.File]::WriteAllText('C:\data\pilot_<desk>\channel\managerShown', ('100',';','') -join [char]10)`
+- an entry () -> waitKeys(val(null), KeyEvent.VK_ALT, KeyEvent.VK_D): the keys are fixed, only the wait is a value:
+  Linux: `printf '100\n;\n' > /data/pilot_<desk>/channel/<action>`
+  Windows: `[IO.File]::WriteAllText('C:\data\pilot_<desk>\channel\<action>', ('100',';','') -join [char]10)`
+- an entry () -> waitClickKeys(val(null), val(null), val(null), KeyEvent.VK_ALT, KeyEvent.VK_SHIFT, KeyEvent.VK_Q): the wait and where to click, then the test presses the keys
+- an entry () -> waitClicks(val(null), val(null), val(null), ...): the wait, the x of the clicks, then the y of each click
+- an entry () -> region(val(null), val(null), val(null), val(null)) for action tileArea: x, y, width and height of the part of the screen the next check of the test compares, here the tile:
+  Linux: `printf '69\n95\n128\n85\n;\n' > /data/pilot_<desk>/channel/tileArea`
+  Windows: `[IO.File]::WriteAllText('C:\data\pilot_<desk>\channel\tileArea', ('69','95','128','85',';','') -join [char]10)`
+- a text value is quoted: "hello"
 Which action waits:
   Linux: `ls /data/pilot_<desk>/channel`
   Windows: `Get-ChildItem C:\data\pilot_<desk>\channel`
-{screen}
+The screen:
+  Linux: `/opt/jdk-26.0.2/bin/java -ea -Duser.home=/data/pilot_robot_home -cp <workspace>/out/modular/controller-test:<workspace>/Commons/Commons.jar agentTools.Pilot seen /data/pilot_<desk>/shots/<n>.png`
+  Windows: `& "C:\Program Files\Java\jdk-26.0.2\bin\java.exe" -ea -cp "<workspace>\out\modular\controller-test;<workspace>\Commons\Commons.jar" agentTools.Pilot seen C:\data\pilot_<desk>\shots\<n>.png`
+  Then read the png; a purple ring marks the pointer.
 The test output: /data/pilot_<desk>/run.txt (on Windows also run_err.txt); when the test ends it shows how many tests succeeded and failed.
-A wait value is for the runs without you: 100, unless you expect the step to take longer.
+A wait value is for later runs without you: in this run you are slower than any wait, so every wait is already over when the test reads it, and that is intended.
+A wait is 100 unless you expect the step to take longer.
 What the manager should do: <workspace>/ZeroToHero/tasks/ControllersDesign. Your role: "Testing GUIs" in CLAUDE.md.
 
-{causes}
+A failure has one of three causes:
+(1) a value you gave was wrong, for example the pointer missed a target the screen shows;
+(2) the test checks behaviour the design does not describe;
+(3) a step of the test is not what a person does on this desk, or needs an adjustment for it.
 A step that does nothing on this desk is (3), even if the test passes.
 Stop at the first (2) or (3). Do not fix the test.
 Change no file except the files of /data/pilot_<desk>/channel and /data/pilot_<desk>/shots.
 
-Look at the screen before each answer.
-A waitAfter entry is a wait, never a finding.
-On a desk that draws no title bars, the strip at the top of a window is the menu bar of the window: a word with an underlined letter, like Manager, is a menu.
-A window showing a menu bar over an empty area is not blank.
-The icon to double click has exactly the name that the comment above the action names; an icon with a close name (the launcher whose name ends with w) is another icon.
-A window that the test did not open, on the screen at the first action, is a finding: report it, never answer around it.
+Mistakes made in earlier runs of this prompt:
+- a click answered on a step that did nothing on the desk (a click on an empty corner), called harmless instead of reported as (3);
+- a value answered without looking at the screen first.
+- an action whose entry is only a waitAfter reported as a step that does nothing: a waitAfter entry is a wait, never a finding.
+- a strip at the top of a window read as its title bar on a desk that draws no title bars: there that strip is the menu bar of the window (a word with an underlined letter, like Manager, is a menu), and a window showing a menu bar over an empty area is not blank;
+- a double click on an icon whose name is close to the one the comment above the action names, instead of the icon with exactly that name (the launcher whose name ends with w).
+- a window the test did not open, already on the screen at the first action, answered around instead of reported: the test starts on a bare desk, so such a window is a finding, and the values answered with it on the screen are wrong.
 
-Report:
-- for each action: the values you gave, what the screen showed, and why (for a wait above 100, why longer);
-- how the test ended;
-- for a failure: its cause 1, 2 or 3 with the evidence, and for (1) the better values;
-- last, one line per action, in the order the test asked them, with the exact values you wrote: `name: v1, v2, v3`.
+Report: for each action, the values you gave, what the screen showed, and why (for a wait above 100, why longer); how the test ended; for a failure, its cause 1, 2 or 3 with the evidence, and for (1) the better values.
+End the report with one line per action, in the order the test asked them, with the exact values you wrote: `name: v1, v2, v3`.
 After a (1), the test starts again and you get the message "The test started again.": answer the new run.
+```
 """
