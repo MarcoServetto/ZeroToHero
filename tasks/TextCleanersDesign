@@ -2,8 +2,8 @@ Text cleaners
 =============
 
 A 'cleaner' turns bytes into text, one byte at a time.
-Every text that comes from outside the program goes through cleaners: the text of a file or of a download, and the text added to a TextField or a TextArea.
-A 'cleaner maker' makes a fresh cleaner from a starting text, the text that the cleaner sees before its first byte.
+A 'cleaner maker' makes a fresh cleaner from a 'starting text'.
+Each change of the text of a TextField, UTextField, TextArea or UTextArea goes through the cleaner maker of the widget.
 
     UStrCleaner:{ mut .nextByte(b: Byte): UStr; mut .end: UStr; }
     StrCleaner:{ mut .nextByte(b: Byte): Str; mut .end: Str; }
@@ -24,61 +24,58 @@ A 'cleaner maker' makes a fresh cleaner from a starting text, the text that the 
       .latin1OrElse(fixer: imm F[mut UStrFixer]): imm F[UStr, mut UStrCleaner];
       .utf8Then(cleaner: imm F[mut UStrScalarCleaner]): imm F[UStr, mut UStrCleaner];
       }
-    StrCleaners:{ the methods of UStrCleaners, with Str for UStr }
+    StrCleaners:{
+      .softText: imm F[Str, mut StrCleaner];
+      .softLine: imm F[Str, mut StrCleaner];
+      the methods of UStrCleaners but .text and .line, with Str for UStr
+      }
 
-A cleaner maker is imm, so each cleaner it makes starts with no state but its starting text.
-A cleaner maker of UStrCleaners or StrCleaners that takes an imm F calls it once for each cleaner it makes, so each cleaner has its own fixer or scalar cleaner.
+A cleaner maker returned by a method of UStrCleaners or StrCleaners with a parameter calls that parameter once for each cleaner it makes: the result is the 'fixer' or the 'scalar cleaner' of that cleaner.
 
-A 'run' of a cleaner maker on an input:
-  the cleaner maker makes a cleaner with the empty starting text;
-  the run calls .nextByte of the current cleaner with each byte of the input, in order;
-  when a result holds a newline, the result up to its first newline goes to the result of the run, the current cleaner is over, and the cleaner maker makes the next cleaner with the rest of that result as starting text;
-  at the end of the input the run calls .end of the current cleaner, and cuts its result in the same way: each cleaner made from a rest at the end of the input gets only .end;
-  at the end of the input, what the .end of a cleaner that received no byte leaves after its first newline must be shorter than the starting text of that cleaner, else it is a deterministic error; so every run ends;
-  a cleaner with the empty starting text that receives no byte gets no .end.
-The result of the run is the parts of the results that went to it, concatenated.
+A 'run' of a cleaner maker m on an input (.size counts scalar values):
+
+    run(m, input):
+      out:= ""; start:= ""; c:= m#(start); fed:= false
+      for b in input: fed:= true; cut(c.nextByte(b))
+      if fed && !cut(c.end) { return out }
+      while start != "":
+        was:= start
+        if !cut(c.end) { return out }
+        if start.size >= was.size { throw a deterministic error }
+      return out
+    cut(r):
+      if r holds no newline { out:= out + r; return false }
+      out:= out + (r up to and including its first newline)
+      start:= r after its first newline; c:= m#(start); fed:= false
+      return true
 
 The encoding cleaners:
 A 'bad unit' is a part of the input that the encoding rejects; its BadTextReason tells why.
-.utf8OrElse(fixer) decodes UTF-8; each bad unit gives the result of the fixer of the cleaner.
+.utf8OrElse decodes UTF-8; each bad unit gives the result of the fixer of the cleaner.
 .utf16LeOrElse, .utf16BeOrElse, .utf32LeOrElse, .utf32BeOrElse, .asciiOrElse and .latin1OrElse do the same with their encodings.
-.utf8 decodes UTF-8; a bad unit is a deterministic error holding the BadTextReason, the byte offset and the bytes of the bad unit.
-An encoding cleaner returns its starting text as it is, in front of the first character or bad unit it decodes, or at its .end.
-The cleaners of the library return text only when they hold no byte of an unfinished sequence, so a cleaner that ends at a newline drops no byte.
+.utf8 decodes UTF-8; each bad unit throws a deterministic error holding the BadTextReason, the byte offset and the bytes of the bad unit.
+An encoding cleaner returns its starting text as it is, in front of the first scalar value or bad unit it decodes, or at its .end.
+A cleaner of the library returns the empty text while it holds a byte of an unfinished sequence.
 
-The normalizing cleaners:
-UStrCleaners.text decodes UTF-8, and:
-  a bad unit becomes U+FFFD;
-  each U+FEFF is dropped;
-  carriage return newline, carriage return, U+000B, U+000C, U+0085, U+2028 and U+2029 become newline;
-  the result is in NFC.
-UStrCleaners.line does what UStrCleaners.text does, then each newline becomes a space.
-StrCleaners.softText does what UStrCleaners.text does, with ? instead of U+FFFD for a bad unit, and then:
-  tab becomes space;
-  each scalar value is decomposed (NFKD), so an accented letter becomes its letter;
-  what is still not in Str is dropped.
-StrCleaners.softLine does what StrCleaners.softText does, then each newline becomes a space.
-A normalizing cleaner normalizes its starting text followed by the text it decodes.
-No cleaner depends on the locale.
+The normalizing cleaners do their steps in order:
 
-.utf8Then(cleaner) makes cleaners that decode UTF-8; a bad unit gives U+FFFD.
-Each of them gets a fresh scalar cleaner from cleaner, calls its .nextScalar with each scalar value of the starting text and then with each scalar value it decodes, and calls its .end at the end.
-Each of them returns the results of the scalar cleaner, concatenated.
+    'break' = carriage return newline, carriage return, newline, U+000B, U+000C, U+0085, U+2028, U+2029
+    UStrCleaners.text:    decode UTF-8; bad unit -> U+FFFD; drop U+FEFF; break -> newline; NFC
+    UStrCleaners.line:    UStrCleaners.text; newline -> space
+    StrCleaners.softText: decode UTF-8; bad unit -> ?; drop U+FEFF; break -> newline; tab -> space; NFKD; drop what is not in Str
+    StrCleaners.softLine: StrCleaners.softText; newline -> space
+
+A normalizing cleaner does its steps on its starting text followed by the text it decodes.
+No cleaner of the library depends on the locale.
+
+.utf8Then makes cleaners that decode UTF-8.
+Each of them calls .nextScalar of its scalar cleaner with each scalar value of the starting text, then with each scalar value it decodes, with U+FFFD for a bad unit, and calls .end of its scalar cleaner at its own .end.
+Each of them returns the results of its scalar cleaner, concatenated.
 
 Reading:
-A read of text takes a cleaner maker: the result of the read is the run of the cleaner maker on the bytes of the file.
-A download of text takes a cleaner maker the same way: the result is the run of the cleaner maker on the bytes of the response body.
-
-    CapInputCursorNode:{ ...
-      mut .readStr(cleaner: imm F[Str, mut StrCleaner]): Str;
-      mut .readUStr(cleaner: imm F[UStr, mut UStrCleaner]): UStr;
-      mut .readBytes: List[Byte];
-      ...
-      }
-
-TxtFile has .readStr(cap, cleaner), .readUStr(cap, cleaner), .consumeStr(requestId, cleaner) and .consumeUStr(requestId, cleaner); CapAssetRead has .readStr and .readUStr with a cleaner maker in the same way.
-There is no read method for each encoding: n.readUStr(UStrCleaners.utf8OrElse fixer) reads UTF-8 with fixer.
+.readStr and .readUStr of CapInputCursorNode and of CapAssetRead, and .readStr, .readUStr, .consumeStr and .consumeUStr of TxtFile return the result of the run of their cleaner maker on the bytes of the file.
+.downloadStr and .downloadUStr of CapDownload return the result of the run of their cleaner maker on the bytes of the response body.
 
 Implementation notes:
-The default cleaners are Java classes, so a run of a default cleaner costs what decoding costs.
-A read and a widget call the cleaner for each byte and append each result, with a fast path for the results of size 0 and 1: Byte gives them cached (.size1Str, .size1UStr).
+The cleaners of the library are Java classes.
+A cleaner of the library and a run return a cached text for a result of size 0, or of size 1 with a scalar value of at most 255; for size 1, the text of Byte.size1Str or Byte.size1UStr.
