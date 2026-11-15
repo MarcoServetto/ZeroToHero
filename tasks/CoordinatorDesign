@@ -6,7 +6,7 @@ The Coordinator writes no file outside `.fearless_out`.
 Other programs read files of `.fearless_out`:
 - the manager (see ControllersDesign), through the methods of `Coordinator` below, and the files that `Coordinator.iconFiles` gives;
 - the Reconciliator (see ReconciliatorDesign), the desk on Windows and a running main, the files that `Coordinator.iconFiles` gives;
-- the JVM that `Coordinator.run` starts, the `<pkg>.jar` files;
+- the main that `Coordinator.run` starts, the `<pkg>.jar` files;
 - the program that opens `.html` files, the file that `Coordinator.docs` gives;
 - Eclipse, the files that EclipseDesign lists.
 
@@ -82,7 +82,7 @@ Compiled: { .jar: Content; .html: Content; .txt: Content }
 Api: { .types: Types; .inputsSnapshot: Content; .manifest: ChosenManifest }
 TakeFreeExtension: MF[List[FileExtension],Opt[FileExtension]]{}               // answered by the manager, see Autoselected extensions in ControllersDesign
 State: { .invalid(problem: Error) | .outOfDate | .compiled(manifest: ChosenManifest, packages: List[Name]) }
-Launch: { .attenuators: List[Name]; .mounts: Map[Name,FsPath]; .locks: Map[Name,FsPath]; .optInputFile: Opt[FsPath]; .deskId: Str }   // what the manager gives a main: .attenuators: Manager in AttenuationDesign; .mounts and .locks: Data projects of a running main in DataReadDataEditDesign; .optInputFile: Input files in ControllersDesign; .deskId: Desk ids and icons in ControllersDesign
+Launch: { .attenuators: List[Name]; .mounts: Map[Name,FsPath]; .optInputFile: Opt[FsPath]; .deskId: Str }   // what the manager gives a main: .attenuators: Manager in AttenuationDesign; .mounts: Data projects of a running main in DataReadDataEditDesign; .optInputFile: Input files in ControllersDesign; .deskId: Desk ids and icons in ControllersDesign
 Project: {
   ...
   mut ._optApi(sys: mut System, package: Package): Opt[Api] ->
@@ -195,11 +195,11 @@ Coordinator: {
     .do{delete the empty folder .fearless_out}
     .return{Void};
   mut .run(sys: mut System, folder: FsPath, main: Name, launch: Launch): Process ->
-    starts the main named main of the project in folder, with launch, in a JVM of its own,
+    starts the main named main of the project in folder, with launch,
     on the <pkg>.jar files of .fearless_out and the base.jar of the base cache;
   ._outFolder(folder: FsPath, packageName: Name): FsPath -> the base cache for the package base, else the folder .fearless_out of folder;
   .docs(folder: FsPath, packageName: Name): FsPath -> the file packageName+".html" of this._outFolder(folder, packageName);
-  mut .drawing(sys: mut System): Str -> the drawing line of this machine (see Implementation notes in ImprovedGuiAPI.txt), found by a JVM of its own on the base.jar of the base cache;
+  mut .drawing(sys: mut System): Str -> the drawing line of this machine (see Implementation notes in ImprovedGuiAPI.txt), found on the base.jar of the base cache;
   .iconFiles(folder: FsPath, icon: Icon): List[FsPath] ->
     the file .fearless_out/icons/<path> of folder, where <path> is icon.image (an image of base is under _base),
     and, on Windows, the file of the same path with the extension ico;
@@ -208,22 +208,19 @@ Coordinator: {
 ```
 `projectName` is the name of the project (see Registering a folder in ControllersDesign).
 `.hashCode` is the `hashCode` of a Java `String`.
-`._writeIcons`: the checks of each icon of the `.preloaded` of a main, and the error of a failed check, are those of `Project.writeIcon` in `Coordinator/src/coordinator/Project.java`, for example:
-`The icon "hello.IconsBar" in "base.Shortcut[hello.IconsBar,\"fapp123\"]" of main "hello.Bar" is 300x200 pixels (from "_hello/icons/bar.png"): an icon must be a square PNG image with a side from 64 to 1024 pixels.`
+`._writeIcons`: the checks of each icon of the `.preloaded` of a main, and the error of a failed check, are those of `Project.writeIcon` in `Coordinator/src/coordinator/Project.java`.
 During `.compile`, the Coordinator raises `Error.filesUpdated(projectName)` when a file of the project, after the read of that file, is no longer there or has a modification time after the modification time of `.fearless_out/_compile_start.txt`.
-The error `Error.filesUpdated(projectName)` is
-`Some files inside the project "hello" were updated while the project was compiling.`
-The error `Error.noFreeExtension(main.name, claim)` is, for a `Shortcut`,
-`No free extension is left for "base.Shortcut[hello.IconsBar]" of main "hello.Bar": all the 1000 extensions "fapp000" to "fapp999" are used by the projects of this manager.`
-and, for an `OpenWith`,
-`No free extension is left for "base.OpenWith[hello.IconsFoo]" of main "hello.Foo": all the 1000 extensions "ffile000" to "ffile999" are used by the projects of this manager. A system extension can be claimed instead, for example "base.OpenWith[hello.IconsFoo,\"foo\"]".`
-The extension of that example is the part of the name of the main after the last `.`, in lowercase, with only `a-z` and `0-9` kept, cut to 16 characters; when that extension is empty, `fearless`, or `fapp` or `ffile` followed by three digits, the example uses `ext`.
+`Error.filesUpdated(projectName)` names the project, and says that files of the project changed while the project was compiling.
+`Error.noFreeExtension(main.name, claim)` names the claim and the main, and says that the 1000 extensions `fapp000` to `fapp999` of a `Shortcut`, or `ffile000` to `ffile999` of an `OpenWith`, are used by the projects of this manager.
+For an `OpenWith`, the error suggests claiming a system extension: the part of the name of the main after the last `.`, in lowercase, with only `a-z` and `0-9` kept, cut to 16 characters, or `ext` when that is empty, `fearless`, or `fapp` or `ffile` followed by three digits.
 
-A file of `.fearless_out` that an operation of the Coordinator reads and that does not contain what the Coordinator writes there (a `<pkg>.json` that does not contain an `Api`, a `<pkg>.jar` the backend can not read) is `Error.cacheCorrupted`:
-`Fearless crashed: either this project's compilation cache was corrupted, or this is a Fearless bug.`
-That text goes on with an empty line, a line `Details:` and the stack trace of the failure.
+A file of `.fearless_out` that an operation of the Coordinator reads and that does not contain what the Coordinator writes there (a `<pkg>.json` that does not contain an `Api`, a `<pkg>.jar` the backend can not read) is `Error.cacheCorrupted`: the error says that the compilation cache of the project is corrupted or that Fearless has a bug, and holds the stack trace of the failure.
 A crash of the code of the Coordinator (a bug, not an `Error`) during `.check`, `.compile`, `.finish` or `.cachedMains` is `Error.cacheCorrupted`.
-A `<pkg>.jar` that the JVM of `.run` can not read is a crash of the main, not `Error.cacheCorrupted`.
-`base` autoloads the assets of `base` as if the files of `base` were under a `_base` folder: the `.path` of `base.IconsConflict` is `fear:/_base/icons/conflict.png` and the `.diskPath` is `icons/conflict.png`, relative to the folder of `base`, which a running main receives as the JVM property `fearlessBase.dir`.
+A `<pkg>.jar` that the main of `.run` can not read is a crash of the main, not `Error.cacheCorrupted`.
+`base` autoloads the assets of `base` as if the files of `base` were under a `_base` folder: the `.path` of `base.IconsConflict` is `fear:/_base/icons/conflict.png` and the `.diskPath` is `icons/conflict.png`, relative to the folder of `base`.
 
 The Coordinator keeps no hash or signature of a file: `._upToDate` compares times and the `.inputsSnapshot`.
+
+## Implementation notes
+
+- `Coordinator.run` and `Coordinator.drawing` each start a JVM of their own; a running main receives the folder of `base` as the JVM property `fearlessBase.dir`.
