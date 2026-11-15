@@ -8,7 +8,7 @@ Next to the manager, and independent from the manager, Controllers also contains
 
 The manager is an island: the manager behaves the same on every desk.
 When a part of the desk (a tray, a dialog, a desktop shell) would make the manager behave differently than this design, the manager does not use that part that way.
-When the desk does not offer what the manager needs (a display to the manager process that becomes the 'single' manager, a file system feature the manager relies on, at most one identity of the Fearless family on the desk (see Refusals in ReconciliatorDesign), or each Fearless extension (see File associations)), or the manager folder exists and does not contain what the manager wrote there, the manager ends with a 'fatal error' saying so.
+When the desk does not offer what the manager needs (a display to the manager process that becomes the 'single' manager, a file system feature the manager relies on, at most one identity of the Fearless family on the desk (see Asking the user in ReconciliatorDesign), or each Fearless extension (see File associations)), or the manager folder exists and does not contain what the manager wrote there, the manager ends with a 'fatal error' saying so.
 
 A 'fatal error' ends the manager, in this order:
 -A dialog shows the error and lists the 'mains chains' and the compilations that are running. Nothing below happens until the dialog has been closed.
@@ -32,7 +32,7 @@ A manager folder that can not be created is a 'fatal error' naming the manager f
 A 'manager process' is an OS process running the manager program.
 A manager process is 'fresh' when it starts.
 A 'fresh' manager process becomes a 'single candidate' when it takes the lock of the `instance.lock` of its manager folder (see The 'single' manager in Implementation notes).
-A 'single candidate' becomes the 'single' manager when its first `.reconcile` (see Reconciling) ends with no refusal.
+A 'single candidate' becomes the 'single' manager when its first `.reconcile` (see Reconciling) gives up no Fearless extension.
 A manager process never goes back to an earlier state.
 Only the 'single' manager handles the messages, except `Quit` (see `replaced` in File associations).
 
@@ -97,7 +97,7 @@ The 'single' manager runs until `Quit`, `Reset`, a 'fatal error', or the deletio
 
 A 'request' is what one of the verbs below asks the manager to do, whether the request comes from a message or from a GUI operation.
 The 'single' manager applies the requests one at a time, in the order they arrive, each one completely before the next, except a `Quit` message (see `replaced` in File associations).
-Applying a `Run` or a `Compile` is starting the 'mains chain' or the compilation; applying a `Terminate` ends once the 'mains chain' has ended.
+Applying a `Run` or a `Compile` is starting the 'mains chain' or the compilation; applying a `Terminate` ends once the 'mains chain' or the compilation has ended.
 
 A 'message' is the file `messages/<time>-<id>.msg` in the manager folder: `<time>` is the 20 digit count of milliseconds since 1970 when the message was written, and `<id>` is a random UUID. The 'single' manager applies the messages in the order of their names, and deletes each message after reading it.
 Only the manager program writes messages: the manager program writes `messages/<time>-<id>.tmp`, then renames `messages/<time>-<id>.tmp` to `messages/<time>-<id>.msg`, so the 'single' manager never reads a partial message. The 'single' manager deletes every `.tmp` file older than 60 seconds.
@@ -121,9 +121,9 @@ A verb is one of the following, written in upper camel case. Verbs about the who
 - `OpenWithOrShortcut <path> <name> <main>`: open the file with the main `<main>` of the project `<name>`, one of the mains claiming the extension of the file. Picking a main in the conflict dialog is the GUI operation of `OpenWithOrShortcut <path> <name> <main>`.
 Verbs about one project, taking the name of a registered project:
 - `Run <name>`: select the project and run the selected mains of the project as a 'mains chain', in the order of the selected mains;
-- `Compile <name>`: select the project and compile the project if the project is 'out of date'; otherwise the Output says `The project "hello" was already up to date and compiled.`;
+- `Compile <name>`: select the project and compile the project if the project is 'out of date'; otherwise the Output says that the project was already up to date;
 - `Check <name>`: select the project and report in the Output of the project the 'problem' of the project, or that the project is 'out of date', or that the project is neither 'invalid' nor 'out of date';
-- `Terminate <name>`: select the project and end the 'mains chain' of the project, if any;
+- `Terminate <name>`: select the project and end the 'mains chain' or the compilation of the project, if any;
 - `DeleteCache <name>`: select the project and delete the compilation cache of the project;
 - `Kind <name> <kind>`: set the kind of the project to `<kind>`;
 - `Forget <name>`: forget the project;
@@ -175,7 +175,7 @@ An argument starting with `FearlessCommand` is a 'bad argument' when the argumen
 
 Ill formed messages:
 - a port where no program of this machine accepts the connection;
-- every message the manager reads from the start of a `Quit` or a `Reset` until the manager ends, with the error `Refused request "Forget": the manager is quitting.` (naming the verb of the message);
+- every message the manager reads from the start of a `Quit` or a `Reset` until the manager ends, with an error naming the verb of the message and saying that the manager is quitting;
 - a `projectName` that is not the name of a registered project; the error lists the registered projects, except for the `<name>` of `OpenWithOrShortcut <path> <name> <main>`, whose error lists the mains claiming the extension of the file (see the `OpenWithOrShortcut <path> <name> <main>` entry below);
 - a `Register` whose folder (the path, or the folder containing the file of the path) is not 'registered already' and, added at the end of `projects.info`, is a project folder the manager can not reach (see `reach` in Registered projects);
 - a `ConnectEclipse` whose path leads to no 'Eclipse folder' (see EclipseDesign), and an `EditMetadata` whose path names no file;
@@ -187,8 +187,7 @@ Ill formed messages:
 - `Run` of a project with a broken mount, or with a DataRead type with no mount (see DataReadDataEditDesign; the error lists each broken mount, naming what makes that mount broken, and each DataRead type with no mount);
 - `Run` and `Compile` of an 'invalid' project (the error is the 'problem' of the project);
 - `Run` of a project that is 'out of date', naming that state; `Run` of a project with no selected main, or with a selected main that is not a main of the project (the error lists the mains of the project);
-- `Run`, `Compile`, `Check`, `DeleteCache` or `Fix` of a 'busy' project (see Run, Compile and Check);
-- `Terminate` while a compilation of the project is running;
+- a request about a 'busy' project (see Run, Compile and Check), other than `Show` and `Terminate`; an `EditMetadata` is about each project the edit removes, changes an entry of, or deletes the compilation cache of, and about each project with a mount that the edit makes name another project folder;
 - an `OpenWithOrShortcut` that runs a main of a project where a `Run` of only that main is ill formed (the error is the error of that `Run`).
 ```
 A Project a has the folder /data/a.
@@ -284,11 +283,13 @@ The manager does a 'name lookup' at start; before applying a request, the manage
 A project folder the manager can not reach keeps the name the manager knew, and gets no name at start (see the 'unreachable dialog' in Project states).
 
 ```
-A Project hello is a code project with the selected main greet.Hello and the attenuator base.NoManagerQuit on greet.Hello, and (greet.Diary->diary) in hello.mounts.
-B The user makes project hello an idle project.
-C The user makes project hello a code project.
-D The user compiles project hello.
-E Project hello has the selected main greet.Hello, with the attenuator base.NoManagerQuit, and (greet.Diary->diary) in hello.mounts.
+A (greet.Hello) in hello.mains.
+B (base.NoManagerQuit) in hello.greet.Hello.attenuators.
+C (greet.Diary->diary) in hello.mounts.
+D The user makes project hello an idle project.
+E The user makes project hello a code project.
+F The user compiles project hello.
+G (greet.Hello) in hello.mains, (base.NoManagerQuit) in hello.greet.Hello.attenuators and (greet.Diary->diary) in hello.mounts, as before.
 
 A (greet.Diary->diary) in hello.mounts.
 B Project diary is a dataEdit project with the folder real_diary.
@@ -309,9 +310,7 @@ A project of the edit is a project of `projects.info` when the texts of the two 
 An edit is refused, and nothing changes, when:
 - the text, as `projects.info`, would be a 'fatal error' (above): the error is the error of that 'fatal error';
 - the edit adds a project whose project folder the manager can not reach;
-- the edit removes a project, or changes the kind of a project, while that project is 'busy' (see Run, Compile and Check);
-- the edit changes the mounts of a project, or gives the name of a data project mounted on a DataRead type of that project to another project folder (through the 'name lookup' after the edit), while a 'mains chain' of that project runs;
-- the edit removes from `reserve` an extension that a main of a project claims, while that project is 'busy'.
+- the edit is about a 'busy' project (see Requests and messages).
 An accepted edit applies at once: projects the edit removes are forgotten, projects the edit adds are registered as they are, the compilation cache of each added project, of each project whose kind changes and of each project whose mains claim an extension the edit removes from `reserve` is deleted (`Coordinator.deleteCache`), and every project gets an 'autoCheck'.
 
 ## Registering a folder
@@ -348,7 +347,7 @@ Each project is in the first of these states that holds, shown as a badge on the
 A project of kind code, dataRead or dataEdit is 'invalid' when a cause of the state `<kind>: invalid content` holds, also in the state `<kind>: busy`. The 'problem' of an 'invalid' project is the error naming one of the causes above that hold.
 An 'autoCheck' of a project reads the project folder and finds the state of the project and the mains of the project.
 An 'autoCheck' that finds the project 'invalid' while no compilation of the project runs writes the 'problem' into `.fearless_out/_error.txt` with `Coordinator.writeError`, for every kind of project.
-An 'autoCheck' that can not reach the project folder ends the 'mains chain' or the compilation of the project, if running, and every 'mains chain' of a project with a mount of that project, and shows the 'unreachable dialog' of the project: the error `The folder "/home/user/hello" of a registered project is unreachable.`, with the buttons Locate and Forget.
+An 'autoCheck' that can not reach the project folder also ends the compilation of the project, if running, and shows the 'unreachable dialog' of the project: an error naming the project folder, with the buttons Locate and Forget.
 Closing the 'unreachable dialog' is a `Forget` of the project.
 Locate opens a folder picker, then sends an `EditMetadata` giving the picked folder as the `path` of the project; a refused `EditMetadata` shows its error, then the 'unreachable dialog' again.
 ```
@@ -452,8 +451,7 @@ Logs            a code project
 
 Header, on one line: the project name, and the following buttons:
 - The main button, the first of these that holds:
-  - Terminate, while a 'mains chain' of the project runs;
-  - greyed out, while a compilation of the project is running;
+  - Terminate, while a 'mains chain' or a compilation of the project runs;
   - Check, for a project that is not code, and for an 'invalid' code project;
   - Compile, for an 'out of date' code project;
   - Run, for a code project with one main: a `SelectMains` naming that main, then `Run` of the project; Run V (V an arrow down), for a code project with several mains; Run greyed out, for a code project with no main.
@@ -482,7 +480,7 @@ A top level node with a failed test case, and a failed test case, start expanded
 
 Attenuators: one block for each main of the project and for each main that `attenuators` names, sorted by name: the attenuators applied to that main in order, each with Remove, Up and Down buttons, then a drop down of the attenuators of the project, with an Add button. Every change is an `Attenuate` of that main.
 ```
-A Project hello has the attenuator greet.NoGui on main greet.Hello.
+A (greet.NoGui) in hello.greet.Hello.attenuators.
 B The user renames the type greet.NoGui to greet.NoWindow in the code of project hello.
 C The user compiles project hello.
 D The Attenuators area shows greet.NoGui on greet.Hello, marked as not in the project.
@@ -510,19 +508,19 @@ Everything the mains of a 'mains chain' or a compilation print goes to the Outpu
 - A main that ends with an error, a crash included, ends the 'mains chain'.
 
 ### Files changing while a 'mains chain' runs
-An 'autoCheck' of a project with a running 'mains chain' that finds the project 'invalid' or 'out of date' ends that 'mains chain', and writes in the Output of the project the error `Some files inside the project "hello" were updated while main "greet.Hello" was running.`
+An 'autoCheck' that finds a project 'invalid', 'out of date' or unreachable ends the 'mains chain' of that project and every 'mains chain' of a project with a mount of that project; the Output of the project of each such 'mains chain' holds an error naming the project that changed and the main that was running.
 ```
 A (greet.Diary->diary) in hello.mounts.
 B The 'mains chain' of hello is running, at the main greet.Hello.
 C The user renames the folder y2026 of diary to Y2026 with the file explorer.
 D An 'autoCheck' of diary finds diary 'invalid'.
 E The 'mains chain' of hello ends.
-F The Output of hello ends with `The data project "diary" became invalid while main "greet.Hello" was running.` <HELP ME WITH WORDING>
+F The Output of hello holds an error naming diary and greet.Hello.
 ```
 
 ## File associations
 
-### Invariants and transitions
+### The extensions of the manager
 
 ```
 M                  the manager; id(M) its identity; folder(M) its manager folder
@@ -535,7 +533,15 @@ captured(M)        the 'captured extensions' of M: fearless union reserve(M)
 single(D)          the manager processes of D that are the 'single' manager
 ```
 
-After every `.reconcile` of M that ends with no refusal, once T3 and the EditMetadata calling that `.reconcile`, if any, apply, while no other program changes D, R1 to R4 (see The data in ReconciliatorDesign) hold with i = id(M) and E = captured(M), and:
+A `.reconcile` of M (see Reconciling) gives G, the extensions the user gives up (see ReconciliatorDesign); then:
+```
+T  G intersects fearless  =>  a 'fatal error' naming the Fearless extensions of G
+   otherwise              =>  for each p in cached(M) with claims(p) intersecting G: the 'mains chain' and the compilation of p end,
+                              and the compilation cache of p is deleted (Coordinator.deleteCache);
+                              reserve(M) := (reserve(M) union claims(cached(M))) \ (fearless union G)
+```
+Only T and an `EditMetadata` change reserve(M).
+After a `.reconcile` of M and T, while no other program changes D, R1 to R4 (see The data in ReconciliatorDesign) hold with i = id(M) and E = captured(M), and:
 ```
 I1  forall p in cached(M). claims(p) subset of captured(M)
 ```
@@ -543,28 +549,6 @@ At every moment:
 ```
 I2  |single(D)| <= 1
 I3  M running && !exists(folder(M)) && M did not delete folder(M)  =>  M is applying Quit, and M changes nothing on D
-```
-
-The transitions:
-```
-T1  a .reconcile of M refuses:
-      M calls .ask with the refusal, which gives taken and givenUp (see Refusals in ReconciliatorDesign);
-      givenUp = {}  =>  .reconcile again, with taken
-      .reconcile keeps refusing  =>  after a number of .ask that each manager implementation chooses, a 'fatal error' naming the refusal
-
-T2  e in givenUp:
-      e in fearless  =>  .reconcile again, or a 'fatal error' naming e
-      the EditMetadata of this .reconcile adds e to reserve(M)
-                    =>  that EditMetadata is refused, and changes nothing
-      otherwise     =>  for each p in cached(M) with e in claims(p): end the 'mains chain' and the compilation of p,
-                        and delete the compilation cache of p (Coordinator.deleteCache);
-                        reserve(M) := reserve(M) \ {e};
-                        .reconcile again
-
-T3  a .reconcile of M ends with no refusal:
-      forall p in cached(M). reserve(M) := reserve(M) union (claims(p) \ fearless)
-
-T4  only T2, T3 and an EditMetadata change reserve(M)
 ```
 
 The `replaced` of each `.reconcile` deletes the manager folder of the program of the command that `replaced` receives, when that command is inside the program folder of a manager (see Program and manager folder) and that manager folder is not the manager folder of the program calling `.reconcile`.
@@ -586,239 +570,184 @@ The user observes the icon of a window in every place where the desk shows the w
 A No program holds a Fearless extension.
 B The user starts the manager, with no registered project and an empty 'reserve'.
 C The manager calls .reconcile.
-D The manager holds the Fearless extensions.
-E The user observes that the icon of a.fearless is the Fearless icon, and that the icon of a.fapp123 is the conflict icon.
+D The 'single' manager is running.
+E The user observes that the icon of a.fearless is the Fearless icon.
+F The user observes that the icon of a.fapp123 is the conflict icon.
 
-A No program holds a Fearless extension, except Foo, which holds .fapp123.
-B The user starts the manager, with no registered project and an empty 'reserve'.
+A Foo holds .fapp123.
+B The user starts the manager.
 C The manager calls .reconcile.
-D .reconcile refuses.
-E The manager calls .ask.
-F A dialog asks the user to let the manager hold .fapp123.
-G The user rejects.
-H Either the manager asks again or the manager fails with a fatal error.
+D The Reconciliator asks the user to let the manager hold .fapp123.
+E The user gives up .fapp123.
+F The manager ends with a 'fatal error' naming .fapp123.
 
-A The manager is running and holds the Fearless extensions.
+A The 'single' manager is running.
 B No program holds .md.
 C The manager compiles project hello.
-D Main greet.Hello claims .md.
+D hello.greet.Hello claims .md.
 E The manager calls .reconcile.
-F The manager holds the Fearless extensions and .md.
+F The manager holds .md.
 G .md is in the 'reserve'.
 
-A The manager is running and holds the Fearless extensions.
+A The 'single' manager is running.
 B Foo holds .md.
 C The manager compiles project hello.
-D Main greet.Hello claims .md.
+D hello.greet.Hello claims .md.
 E The manager calls .reconcile.
-F .reconcile refuses.
-G The manager calls .ask.
-H A dialog names .md and Foo, and asks the user to let the manager hold .md.
-I The user accepts.
-J The manager calls .reconcile, taking .md.
-K The manager holds the Fearless extensions and .md.
-L .md is in the 'reserve'.
-M The user observes that Foo and the manager are in the list of the programs that can open a.md.
-N The manager is named Fearless Manager, with the icon of the launcher of the manager.
+F The Reconciliator asks the user to let the manager hold .md, naming Foo.
+G The user accepts.
+H The manager holds .md.
+I .md is in the 'reserve'.
+J The user observes that Foo and the manager are in the list of the programs that can open a.md.
 
-A The manager is running and holds the Fearless extensions.
+A The 'single' manager is running.
 B Foo holds .md.
 C The manager compiles project hello.
-D Main greet.Hello claims .md.
+D hello.greet.Hello claims .md.
 E The manager calls .reconcile.
-F .reconcile refuses.
-G The manager calls .ask.
-H A dialog asks the user to let the manager hold .md.
-I The user rejects.
-J The manager deletes the compilation cache of project hello: project hello is 'out of date'.
-K The manager calls .reconcile.
-L The manager holds the Fearless extensions.
-M .md is not in the 'reserve'.
-N Foo holds .md.
+F The Reconciliator asks the user to let the manager hold .md.
+G The user gives up .md.
+H The compilation cache of project hello is deleted: project hello is 'out of date'.
+I .md is not in the 'reserve'.
+J Foo holds .md.
 
-A The manager is running and holds the Fearless extensions.
+A The 'single' manager is running.
 B Foo holds .md.
 C The user adds .md to the 'reserve'.
 D The manager calls .reconcile.
-E .reconcile refuses.
-F The manager calls .ask.
-G A dialog asks the user to let the manager hold .md.
-H The user accepts.
-I The manager calls .reconcile, taking .md.
-J The manager holds the Fearless extensions and .md.
-K The user observes that the icon of a.md is the conflict icon.
+E The Reconciliator asks the user to let the manager hold .md.
+F The user gives up .md.
+G .md is not in the 'reserve'.
 
-A The manager is running and holds the Fearless extensions.
+A The 'single' manager is running.
 B Foo holds .md.
 C The user adds .md to the 'reserve'.
 D The manager calls .reconcile.
-E .reconcile refuses.
-F The manager calls .ask.
-G A dialog asks the user to let the manager hold .md.
-H The user rejects.
-I The manager refuses the edit: .md is not in the 'reserve'.
-J The manager holds the Fearless extensions.
+E The Reconciliator asks the user to let the manager hold .md.
+F The user accepts.
+G The manager holds .md.
+H The user observes that the icon of a.md is the conflict icon.
 
-A The manager is running and holds the Fearless extensions.
-B Foo holds .pdf, and the desk lets no other program change the program holding .pdf.
-C The manager compiles project hello.
-D Main greet.Hello claims .pdf.
-E The manager calls .reconcile.
-F .reconcile refuses.
-G The manager calls .ask.
-H A dialog asks the user to let the manager hold .pdf.
-I The user accepts.
-J The manager calls .reconcile, taking .pdf.
-K .reconcile refuses.
-L The manager calls .ask.
-M A dialog tells the user that the desk lets no other program hold .pdf.
-N The user gives up .pdf.
-O The manager deletes the compilation cache of project hello: project hello is 'out of date'.
-P The manager calls .reconcile.
-Q The manager holds the Fearless extensions.
-R .pdf is not in the 'reserve'.
-
-A The manager is running and holds the Fearless extensions.
-B Foo holds .pdf, and the desk lets no other program change the program holding .pdf.
-C The user adds .pdf to the 'reserve'.
-D The manager calls .reconcile.
-E .reconcile refuses.
-F The manager calls .ask.
-G A dialog asks the user to let the manager hold .pdf.
+A The 'single' manager is running.
+B Foo holds .pdf.
+C The desk lets no other program change the program holding .pdf.
+D The manager compiles project hello.
+E hello.greet.Hello claims .pdf.
+F The manager calls .reconcile.
+G The Reconciliator asks the user to let the manager hold .pdf.
 H The user accepts.
-I The manager calls .reconcile, taking .pdf.
-J .reconcile refuses.
-K The manager calls .ask.
-L A dialog tells the user that the desk lets no other program hold .pdf.
-M The user gives up .pdf.
-N The manager refuses the edit: .pdf is not in the 'reserve'.
-O The manager holds the Fearless extensions.
+I The Reconciliator tells the user that the desk lets no other program hold .pdf.
+J The user gives up .pdf.
+K The compilation cache of project hello is deleted: project hello is 'out of date'.
+L .pdf is not in the 'reserve'.
 
-A The manager is running and holds the Fearless extensions.
+A The 'single' manager is running.
 B Foo holds .md and .txt.
 C The manager compiles project hello.
-D Main greet.Hello claims .md and .txt.
+D hello.greet.Hello claims .md and .txt.
 E The manager calls .reconcile.
-F .reconcile refuses.
-G The manager calls .ask.
-H A dialog asks the user to let the manager hold .md and .txt.
-I The user accepts .md and rejects .txt.
-J The manager deletes the compilation cache of project hello: project hello is 'out of date'.
-K The manager calls .reconcile.
-L The manager holds the Fearless extensions.
-M Neither .md nor .txt is in the 'reserve'.
+F The Reconciliator asks the user to let the manager hold .md and .txt.
+G The user accepts .md and gives up .txt.
+H The compilation cache of project hello is deleted: project hello is 'out of date'.
+I The manager calls .reconcile, with neither .md nor .txt.
+J Neither .md nor .txt is in the 'reserve'.
 
-A The manager is running and holds the Fearless extensions.
+A The 'single' manager is running.
 B The desk does not let the programs the user runs change the folder of the icons of the extensions.
 C The manager compiles project hello.
-D Main greet.Hello claims .foo.
+D hello.greet.Hello claims .foo.
 E The manager calls .reconcile.
-F .reconcile refuses.
-G The manager calls .ask.
-H A dialog tells the user that Fearless can not change the folder of the icons, and how to give Fearless that permission.
-I The user gives the permission in the desk.
-J The user closes the dialog.
-K The manager calls .reconcile.
-L The manager holds the Fearless extensions and .foo.
+F The Reconciliator tells the user that Fearless can not change the folder of the icons, and how to give Fearless that permission.
+G The user gives the permission in the desk.
+H The user closes the dialog.
+I The manager holds .foo.
 ```
 
 ### Preferences of the desk
 
 ```
-A The manager is running and holds the Fearless extensions.
+A The 'single' manager is running.
 B The user sets a preference of the desk so that Foo holds .fapp123.
 C The manager compiles project world.
 D The manager calls .reconcile.
-E .reconcile refuses.
-F The manager calls .ask.
-G A dialog asks the user to let the manager hold .fapp123.
-H The user accepts.
-I The manager calls .reconcile, taking .fapp123.
-J The manager holds the Fearless extensions.
+E The Reconciliator asks the user to let the manager hold .fapp123.
+F The user accepts.
+G The manager holds .fapp123.
 
-A The manager is running and holds the Fearless extensions.
+A The 'single' manager is running.
 B The user sets a preference of the desk so that Foo holds .fearless.
 C The manager compiles project world.
 D The manager calls .reconcile.
-E .reconcile refuses.
-F The manager calls .ask.
-G A dialog asks the user to let the manager hold .fearless.
-H The user rejects.
-I Either the manager asks again or the manager fails with a fatal error.
+E The Reconciliator asks the user to let the manager hold .fearless.
+F The user gives up .fearless.
+G The manager ends with a 'fatal error' naming .fearless.
 
-A The manager is running and holds the Fearless extensions and .md.
-B Main greet.Hello of the compiled project hello claims .md.
-C greet.Hello is running.
+A The 'single' manager is running and holds .md.
+B hello.greet.Hello claims .md.
+C The 'mains chain' of hello is running.
 D The user sets a preference of the desk so that Foo holds .md.
 E The user forgets the code project world.
 F The manager calls .reconcile.
-G .reconcile refuses.
-H The manager calls .ask.
-I A dialog asks the user to let the manager hold .md.
-J The user rejects.
-K The manager ends greet.Hello.
-L The manager deletes the compilation cache of project hello: project hello is 'out of date'.
-M The manager calls .reconcile.
-N The manager holds the Fearless extensions.
-O .md is not in the 'reserve'.
-P Foo holds .md.
+G The Reconciliator asks the user to let the manager hold .md.
+H The user gives up .md.
+I The 'mains chain' of hello ends.
+J The compilation cache of project hello is deleted: project hello is 'out of date'.
+K .md is not in the 'reserve'.
+L Foo holds .md.
 
 A The manager is not running and holds the Fearless extensions and .md.
 B The user sets a preference of the desk so that Foo holds .md.
 C The user starts the manager.
 D The manager calls .reconcile.
-E .reconcile refuses.
-F The manager calls .ask.
-G A dialog asks the user to let the manager hold .md.
-H The user accepts.
-I The manager calls .reconcile, taking .md.
-J The manager holds the Fearless extensions and .md.
+E The Reconciliator asks the user to let the manager hold .md.
+F The user accepts.
+G The manager holds .md.
 
-A The manager is running and holds the Fearless extensions.
+A The 'single' manager is running.
 B Foo holds .txt.
 C The user sets a preference of the desk so that the manager holds .txt.
 D The manager compiles project hello.
 E The manager calls .reconcile.
-F The manager holds the Fearless extensions and .txt.
+F The manager holds .txt.
 G .txt is not in the 'reserve'.
 H The user double clicks a.txt.
 I The manager shows the conflict dialog with no entry.
 
-A The manager is running and holds the Fearless extensions and .md, through a preference the user set in the desk.
+A The 'single' manager is running and holds .md, through a preference the user set in the desk.
 B The manager compiles project hello.
 C The manager calls .reconcile.
 D .reconcile replaces the preference of the user for .md with the setup of the manager.
-E Unlike when Foo holds .md, .reconcile asks nothing: the user already chose the manager for .md.
-F The manager holds the Fearless extensions and .md.
+E Unlike when Foo holds .md, the Reconciliator asks nothing: the user already chose the manager for .md.
+F The manager holds .md.
 ```
 
 ### Releasing extensions
 
 ```
-A The manager is running and holds the Fearless extensions and .md.
+A The 'single' manager is running and holds .md.
 B The user quits the manager.
 C The manager is not running and holds the Fearless extensions and .md.
 
-A The manager is running and holds the Fearless extensions and .md.
-B Only main greet.Hello claims .md.
+A The 'single' manager is running and holds .md.
+B Only hello.greet.Hello claims .md.
 C No 'mains chain' and no compilation of project hello runs.
 D The user removes .md from the 'reserve'.
 E The manager calls .reconcile.
-F The manager deletes the compilation cache of project hello.
-G The manager holds the Fearless extensions.
+F The compilation cache of project hello is deleted.
+G The manager does not hold .md.
 
-A The manager is running and holds the Fearless extensions and .md.
-B Main greet.Hello claims .md.
-C greet.Hello is running.
+A The 'single' manager is running and holds .md.
+B hello.greet.Hello claims .md.
+C The 'mains chain' of hello is running.
 D The user removes .md from the 'reserve'.
-E The manager refuses the edit: greet.Hello claims .md and greet.Hello is running.
-F The manager holds the Fearless extensions and .md.
+E The manager refuses the edit: project hello is 'busy'.
+F The manager holds .md.
 ```
 
 ### Other programs of the Fearless family
 
 ```
-A Manager M1 is running and holds the Fearless extensions and .md.
+A Manager M1 is the 'single' manager, and holds .md.
 B .md is in the 'reserve' of manager M2.
 C The user starts manager M2, of another version.
 D M2 calls .reconcile.
@@ -829,8 +758,8 @@ H The manager folder of M1 is deleted.
 I M1 holds no extension.
 J M2 holds the Fearless extensions and .md.
 
-A Manager M1 is running and holds the Fearless extensions.
-B Main greet.Hello of M1 is running, and takes 6 seconds to end.
+A Manager M1 is the 'single' manager.
+B The main greet.Hello of M1 is running, and takes 6 seconds to end.
 C The user starts manager M2, of another version.
 D M2 calls .reconcile.
 E M2 sends Quit to M1.
@@ -840,7 +769,7 @@ H M1 quits.
 I The manager folder of M1 is deleted.
 J M2 holds the Fearless extensions.
 
-A Manager M1 is running and holds the Fearless extensions.
+A Manager M1 is the 'single' manager.
 B M1 applies an EditMetadata waiting for the lock of the Fearless family.
 C The user starts manager M2, of another version.
 D The .reconcile of M2 holds the lock of the Fearless family.
@@ -868,14 +797,13 @@ G The manager started by L holds no extension.
 H The manager started by Lw holds the Fearless extensions and .md.
 
 A The program folder of a manager has the launchers L and Lw.
-B The manager is running, started by L.
-C The manager holds the Fearless extensions and .md.
-D The user starts the manager with Lw.
-E The running manager shows the manager window.
-F Unlike when the manager is not running, no .reconcile runs: the new manager process can not take the lock of `instance.lock`, and ends after writing its message.
-G The manager started by L holds the Fearless extensions and .md.
+B The manager started by L is the 'single' manager, and holds .md.
+C The user starts the manager with Lw.
+D The 'single' manager shows the manager window.
+E Unlike when the manager is not running, no .reconcile runs: the new manager process can not take the lock of `instance.lock`, and ends after writing its message.
+F The manager started by L holds the Fearless extensions and .md.
 
-A Manager M is running and holds the Fearless extensions and .md.
+A Manager M is the 'single' manager, and holds .md.
 B The user starts the portable Fearless P.
 C P calls .reconcile.
 D P sends Quit to M.
@@ -888,77 +816,65 @@ I P holds one extension: .fearless.
 A Foo holds .fearless.
 B The user starts the portable Fearless P.
 C P calls .reconcile.
-D .reconcile refuses.
-E P calls .ask.
-F A dialog asks the user to let P hold .fearless.
-G The user accepts.
-H P calls .reconcile, taking .fearless.
-I P holds one extension: .fearless.
+D The Reconciliator asks the user to let P hold .fearless.
+E The user accepts.
+F P holds one extension: .fearless.
 
 A Foo holds .fearless.
 B The user starts the portable Fearless P.
 C P calls .reconcile.
-D .reconcile refuses.
-E P calls .ask.
-F A dialog asks the user to let P hold .fearless.
-G The user rejects.
-H Either P asks again or P ends with an error naming .fearless and Foo.
-  Different implementations of the portable Fearless can choose how many times to ask again.
+D The Reconciliator asks the user to let P hold .fearless.
+E The user gives up .fearless.
+F P ends with an error naming .fearless and Foo.
 
 A P1 and P2 are programs of the Fearless family, each with a setup on the desk.
 B The user starts manager M.
 C M calls .reconcile.
-D .reconcile refuses.
-E M calls .ask.
-F A dialog names P1 and P2, and asks the user to remove all of them but one.
-G The user removes neither, and closes the dialog.
-H Either M asks again or M fails with a fatal error naming P1 and P2.
-I After the fatal error, no program of the Fearless family holds any extension.
+D The Reconciliator names P1 and P2, and asks the user to remove all of them but one.
+E The user removes neither.
+F The user closes the dialog.
+G M ends with a 'fatal error'.
+H After the 'fatal error', no program of the Fearless family holds any extension.
 ```
 
 ### Icons
 
 ```
-A The manager is running and holds the Fearless extensions and .foo.
+A The 'single' manager is running and holds .foo.
 B No main claims .foo.
 C The manager compiles project hello.
-D Main greet.Hello claims .foo with the icon IconsBear.
+D hello.greet.Hello claims .foo with the icon IconsBear.
 E The manager calls .reconcile.
 F The user observes that the icon of a.foo is a bear.
 
-A The manager is running and holds the Fearless extensions and .foo.
-B Main greet.Hello claims .foo with the icon IconsBear.
-C The user replaces the file src/_greet/icons/bear.png of project hello with a picture of a cat, and compiles project hello.
-D The manager calls .reconcile.
-E The user observes that the icon of a.foo is a cat.
-
-A The manager is running and holds the Fearless extensions and .foo.
-B Main greet.Hello claims .foo with the icon IconsBear.
-C The manager compiles project world.
-D Main earth.World claims .foo with the icon IconsCat.
+A The 'single' manager is running and holds .foo.
+B hello.greet.Hello claims .foo with the icon IconsBear.
+C The user replaces the file src/_greet/icons/bear.png of project hello with a picture of a cat.
+D The user compiles project hello.
 E The manager calls .reconcile.
-F The user observes that the icon of a.foo is the conflict icon.
+F The user observes that the icon of a.foo is a cat.
 
-A The manager is running and holds the Fearless extensions and .foo.
-B Main greet.Hello claims .foo with the icon IconsBear.
+A The 'single' manager is running and holds .foo.
+B hello.greet.Hello claims .foo with the icon IconsBear.
 C The manager compiles project world.
-D Main earth.World claims .foo with the icon IconsBear.
+D world.earth.World claims .foo with the icon IconsBear.
 E The manager calls .reconcile.
-F The user observes that the icon of a.foo is the conflict icon.
+F The user observes that the icon of a.foo is the conflict icon, also with one icon for both claims.
 
-A The manager is running and holds the Fearless extensions and .foo.
-B Only main greet.Hello claims .foo, with the icon IconsBear.
+A The 'single' manager is running and holds .foo.
+B Only hello.greet.Hello claims .foo, with the icon IconsBear.
 C The user forgets project hello.
 D The manager calls .reconcile.
 E The user observes that the icon of a.foo is the conflict icon.
 
-A The manager is running.
-B The selected main greet.Hello of project hello implements PreLoadIcon[IconsBear].
-C The manager compiles project hello.
-D The manager calls .reconcile.
-E The user runs project hello.
-F greet.Hello opens a window with the icon IconsBear.
-G The user observes that the icon of that window is a bear.
+A The 'single' manager is running.
+B (greet.Hello) in hello.mains.
+C hello.greet.Hello implements PreLoadIcon[IconsBear].
+D The manager compiles project hello.
+E The manager calls .reconcile.
+F The user runs project hello.
+G greet.Hello opens a window with the icon IconsBear.
+H The user observes that the icon of that window is a bear.
 ```
 
 ## OpenWith and Shortcut
@@ -997,7 +913,7 @@ The exact rules and errors are those of `inject.Methods.checkClaims` of Frontend
 
 ### What the manager does after `Coordinator.compile`
 
-Everything below runs in the manager after `Coordinator.compile` ends. When `Coordinator.compile` failed, only step 2 runs. A step that fails makes the compilation fail: the manager calls `Coordinator.writeError` with the error of that step (a refused `.reconcile` does not make the compilation fail, see File associations), and of the steps after that step only step 2 runs.
+Everything below runs in the manager after `Coordinator.compile` ends. When `Coordinator.compile` failed, only step 2 runs. A step that fails makes the compilation fail: the manager calls `Coordinator.writeError` with the error of that step (an extension given up in `.reconcile` does not make the compilation fail, see File associations), and of the steps after that step only step 2 runs.
 
 1. Check that every `Shortcut` claim of `Coordinator.cachedMains` of the project gives a valid shortcut file name (see Shortcut files).
 2. Build the in memory map (see The in memory map).
@@ -1028,8 +944,7 @@ A main with a `Shortcut` fails the compilation when:
 - `<name>` is a 'reserved name' (`Con`, see Names in FolderShapesDesign);
 - another main of the project with a `Shortcut` gives the same `<name>` and extension (`a.Bar` and `b.Bar`);
 - `<name>` is the name of a top level file without extension of the project (`readme` for `hello.Readme`).
-Each case has an error of its own; the error of the first case is
-`Main "hello.Foo'" can not have a Shortcut: its name has no matching file name. A main with a Shortcut has a name that can be mapped to a file name like "FooBar" can be mapped to "foo_bar".`
+Each case has an error of its own, naming the main and the case.
 
 The shortcut file is one of the `.files` of the project (see The data in CoordinatorDesign). The manager never deletes a shortcut file, also one whose `Shortcut` claim is gone: deleting it would change the `.files` of the project, and make the project 'out of date'.
 
@@ -1041,10 +956,9 @@ The manager calls `.reconcile` of the Reconciliator (see The data in Reconciliat
 The arguments:
 ```
 identity     the identity of the manager
-name         Fearless Manager
+name         the name of the manager (see Implementation notes)
 command      the launcher of the manager
 extensions   each e in captured(M), and in claims(p) for each p in cached(M), with icon(e)
-taken        empty; T1 gives the taken of the .reconcile after an .ask
 windows      for each icon i of the .preloaded of each main m of Coordinator.cachedMains(p),
              for each registered code project p whose Coordinator.compile is not running:
              .windowClass <desk id of m>-<i.name>, .name the simple name of m, .target p,
@@ -1109,6 +1023,7 @@ What a rewrite needs that neither this design nor the other repositories say.
 
 An implementation decides alone every detail the design leaves open below the concepts of the design: wire formats, encodings, intervals, the library calls, the content of the files the design names (information for Eclipse can be added to `manager.info`). An implementation never adds what the user or another program can observe and the design does not describe: a file in the manager folder or in a project, a verb, a GUI element, a message, a fallback. Those go into the design first.
 
+- The name of the manager, the `name` of `.reconcile`, is `Fearless Manager`.
 - The 'tray icon window' is an AWT window of type popup.
   A Wayland client can not place its windows; AWT on Linux is an X11 client, through XWayland under Wayland.
   On X11 no taskbar lists a popup window, and a popup window stays where the manager places the popup window.

@@ -11,27 +11,23 @@ Two different versions, of the manager or of the portable Fearless, never share 
 ```
 ExtensionIcon: { .extension: FileExtension; .icon: FsPath }    // the .ico on Windows, the PNG on Linux and macOS
 WindowIcon: { .windowClass: Str; .name: Str; .target: FsPath; .png: FsPath }  // Linux only
-Refusal: { }    // what .ask needs; the caller does not look inside
-Answer: { .taken: List[FileExtension]; .givenUp: List[FileExtension] }
 Reconciliator: {
-  mut .reconcile(sys: mut System, identity: Str, name: Str, command: FsPath, extensions: List[ExtensionIcon], taken: List[FileExtension], windows: List[WindowIcon], programIcon: FsPath, replaced: mut MF[FsPath, Void]): Opt[Refusal];
-  mut .ask(sys: mut System, refusal: Refusal): Answer;
+  mut .reconcile(sys: mut System, identity: Str, name: Str, command: FsPath, extensions: List[ExtensionIcon], windows: List[WindowIcon], programIcon: FsPath, replaced: mut MF[FsPath, Void]): List[FileExtension];   // the extensions the user gives up
   mut .eradicateAll(sys: mut System): Void;      // deletes the setup of every identity of the Fearless family, with no check
   }
 ```
-Each extension of `taken` is an extension of `extensions`.
 `.reconcile` gives no description of its own to the type of an extension: the desk shows its own text for each extension.
 `programIcon` is the icon of `command` itself: the PNG on Linux and macOS. Windows ignores `programIcon` and uses the icon inside `command`.
 `name` is the name the desk shows for `command`: the portable Fearless passes `Fearless Portable`.
 The 'setup' of an identity is every registry key and file `.reconcile` writes for that identity.
-On Windows every `.reconcile` that passes its checks, and every `.eradicateAll`, deletes each ProgId `<j>.<ext without dot>` of `HKEY_CURRENT_USER\Software\Classes`, with `<j>` in the Fearless family, that no setup on the desk names, with no call of `replaced`.
+On Windows every `.reconcile`, and every `.eradicateAll`, deletes each ProgId `<j>.<ext without dot>` of `HKEY_CURRENT_USER\Software\Classes`, with `<j>` in the Fearless family, that no setup on the desk names, with no call of `replaced`.
 An identity 'releases' an extension when the setup of the identity stops naming the extension.
 A `.reconcile` changes no setup when:
 - the arguments are the arguments of the previous `.reconcile` of `identity`;
 - each file the arguments name contains the bytes that file contained at the previous `.reconcile`;
 - the desk gives each extension the types the desk gave that extension at the previous `.reconcile` (the types of the system MIME database on Linux, the 'declared type' on macOS).
 A `.reconcile` given no extension, on a desk where `.reconcile` finds nothing of the Fearless family to delete, changes nothing and refreshes nothing.
-Every other `.reconcile` that passes its checks ends with one refresh of the desk, also when no setup changed.
+Every other `.reconcile` ends with one refresh of the desk, also when no setup changed.
 Every `.reconcile` and every `.eradicateAll` holds, from start to end, the lock of the file `fearlessAssociations.lock` in the folder where the desk keeps the data of the programs the user runs (`%LOCALAPPDATA%` on Windows, `$XDG_DATA_HOME` on Linux, `~/Library/Application Support` on macOS).
 ```
 D, D'              the desk (see Desks in FolderShapesDesign) before and after a .reconcile
@@ -39,13 +35,14 @@ family(D)          the identities of the Fearless family on D (see The setup on 
 setup(D, i)        the extensions the setup of the identity i names on D
 command(D, i)      the command of the setup of the identity i on D
 holder(D, e)       the identity of the program D opens a file x<e> with, on a double click; that program 'holds' e
-i, c, E            the argument identity, the argument command, the extensions of the argument extensions
+i, c               the argument identity, the argument command
+E                  the extensions of the argument extensions that the user does not give up
 ```
-After a `.reconcile` that refuses:
+After a `.reconcile` that gives up every extension of the argument extensions, at least one:
 ```
 R0  D' = D
 ```
-After a `.reconcile` that ends with no refusal, while no other program changes D:
+After every other `.reconcile`, while no other program changes D:
 ```
 R1  setup(D', i) = E  &&  (E != {}  =>  command(D', i) = c)
 R2  E != {}  =>  family(D') = {i}
@@ -56,26 +53,20 @@ R4  forall j in family(D). command(D, j) != c  =>  replaced(command(D, j)) runs 
 
 ### Taking an extension
 
-`.reconcile` 'takes' each extension of `taken`, each extension of `extensions` that another program of the Fearless family holds, and each extension of `extensions` that the identity holds through a preference the user set in the desk (on Windows, through the key `UserChoice` or `UserChoiceLatest`), asking nothing:
+`.reconcile` 'takes' each extension the user lets the identity hold (see Asking the user), and, asking nothing, each extension of `extensions` that another program of the Fearless family holds, and each extension of `extensions` that the identity holds through a preference the user set in the desk (on Windows, through the key `UserChoice` or `UserChoiceLatest`):
 - On Windows `.reconcile` deletes the keys `UserChoice` and `UserChoiceLatest` of each of those extensions. A key `UserChoice` or `UserChoiceLatest` that `.reconcile` deletes does not come back when the identity releases the extension.
 - On Linux `.reconcile` removes, from every `*mimeapps.list` file the desk reads, each line, in any section, whose key is the type of the identity for one of those extensions (see Extensions on Linux).
 - On macOS `.reconcile` writes into the preferences of LaunchServices a choice making the 'helper bundle' of the identity the program of the type of each of those extensions (see Extensions on macOS), in place of every other choice for that type, then restarts `lsd`, the service of macOS that opens files. macOS asks the user nothing.
 
-### Refusals
+### Asking the user
 
-The checks of `.reconcile` refuse in four cases:
-- |family(D)| > 1;
-- a program outside the Fearless family holds an extension of `extensions` that is not in `taken`;
-- `.reconcile` can not take an extension it has to take;
-- `.reconcile` can not write or delete a file, a folder or a setting of the desk that `.reconcile` has to change.
-
-`.ask` shows the refusal to the user in dialogs of the Reconciliator, and returns when the user closes the last dialog.
-The dialogs say what goes wrong and what the user can do: for each case above, in order,
-- remove all the programs of family(D) but one;
-- let the identity hold each such extension, or give it up;
-- change the desk so that the identity can take each such extension, or give it up;
-- give the identity the permission to change each such file, folder or setting.
-`.ask` gives the extensions the user lets the identity hold as `.taken`, and the extensions the user gives up as `.givenUp`.
+While one of these cases holds, `.reconcile` asks the user in a dialog of the Reconciliator, then checks again:
+- |family(D)| > 1: the dialog names the programs of family(D), and asks the user to remove all of them but one;
+- a program outside the Fearless family holds an extension of `extensions` that the user has not let the identity hold: the dialog names that program, and asks the user to let the identity hold the extension, or to give it up;
+- `.reconcile` can not take an extension: the dialog asks the user to change the desk so that the identity can take the extension, or to give it up;
+- `.reconcile` can not write or delete a file, a folder or a setting of the desk that `.reconcile` has to change: the dialog says how to give the identity the permission.
+The user closing a dialog without doing what it asks gives up the extensions the dialog is about: every extension of `extensions` for the first case and for the last case.
+`.reconcile` gives the extensions the user gave up.
 
 ### The setup on each desk
 
