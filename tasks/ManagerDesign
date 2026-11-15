@@ -1,21 +1,7 @@
-# Manager design
-
 ```
-Controllers:
-  the manager         this document
-  the manager GUI     ManagerGuiDesign
-  the Eclipse plugin  EclipseDesign
-  agentTools          a library driving the real pointer and keyboard, for GUI tests of any program
-  benchmarks          speed measures of Fearless programs against the runtime
+FatalError ::= NoDisplay | NoLockFile | NoManagerFolderCreation | CorruptedManagerFolder | GivenUpFearlessExtension
 ```
-
-The manager ends with a 'fatal error' naming the first of these that holds:
-- the desk offers no display to the manager process that becomes the 'single' manager;
-- the desk offers no lock on a file of the manager folder;
-- the desk refuses the creation of the manager folder;
-- the manager folder exists and does not contain what the manager wrote there.
-
-A 'fatal error' e ends the manager, each step after the end of the step before:
+`fatalError e` ends the manager, each step after the end of the step before:
 1. a dialog shows e and the running 'mains chains' and compilations, until the user closes the dialog;
 2. every running 'mains chain' and compilation ends;
 3. the manager deletes the manager folder;
@@ -25,18 +11,27 @@ The algorithms of this design specify the behaviour, not the implementation: an 
 
 ## Program and manager folder
 
-The program folder of a manager is `fearlessManaged<version>`, for example `fearlessManaged0_001`.
-On macOS the program folder is the application `fearlessManaged<version>.app`.
-The 'launcher' of the manager is the executable file of the program folder that started the manager program; the program folder contains two launchers, with the identities `<i>` and `<i>w` in the Fearless family (see The data in ReconciliatorDesign).
-The manager folder of a manager is `fearless<version>`, next to the program folder, on every desk. The manager folder contains everything the manager remembers; deleting the manager folder makes the manager start from nothing.
+```
+fearlessManaged<version>     the program folder, fearlessManaged<version>.app on macOS (fearlessManaged0_001)
+  fearlessManaged<version>   a 'launcher'
+  fearlessManaged<version>w  a 'launcher'
+fearless<version>            the manager folder
+```
+The 'launcher' of a manager process is the 'launcher' that started the manager process.
+```
+A No manager process is running.
+B The user deletes the manager folder.
+C The user starts the manager program.
+D The manager has no registered project, and an empty 'reserve'.
+```
 
 ## Starting the 'single' manager
 A 'manager process' is an OS process running the manager program.
-A manager process started with the one argument `FearlessCommandServe` is 'fresh' when it starts; every other manager process is a 'client'.
-A 'fresh' manager process becomes a 'single candidate' when it takes the lock of the `instance.lock` of its manager folder (see The 'single' manager in Implementation notes), and ends when it can not take that lock.
+A manager process is 'fresh' when it starts.
+A 'fresh' manager process started with the one argument `FearlessCommandServe` becomes a 'single candidate' when it takes the lock of the `instance.lock` of its manager folder, and ends when it can not take that lock.
 A 'single candidate' becomes the 'single' manager when its first `.reconcile` (see Reconciling) gives up no Fearless extension.
 A manager process never goes back to an earlier state.
-Only the 'single' manager handles the messages. A 'single candidate' accepts the connections of the clients, and answers once it is the 'single' manager.
+Only the 'single' manager handles the messages. A 'single candidate' accepts the connections of the 'fresh' manager processes, and answers once it is the 'single' manager.
 
 The manager program takes:
 - zero arguments: the message is `Show`;
@@ -51,43 +46,57 @@ For example:
 "FearlessCommandRegister Base16:2F646174612F68656C6C6F"
 ```
 (the last one registers `/data/hello` on Linux).
-A client sends each of its messages, one after the other, on a connection of its own to the 'single' manager of its manager folder, and prints on its standard output what the 'single' manager sends on that connection (see Requests and messages).
-When no 'single candidate' and no 'single' manager accepts the connection, the client starts a 'fresh' manager process, then connects again until a 'single candidate' or the 'single' manager accepts the connection.
-When that 'fresh' manager process has ended and still no manager process accepts the connection, the client ends, with the error on its standard error.
-A client started with a `call` ends when the connections of its messages end.
-A client started by the desk, with zero arguments, with a path or with `FearlessCommandOpened`, ends once the 'single' manager has sent `Applied` or `Refused` for each of its messages, and shows the error of a `Refused` in a dialog: no program reads its standard output.
+A 'fresh' manager process sends each of its messages, one after the other, on a connection of its own to the 'single' manager of its manager folder, and prints on its standard output what the 'single' manager sends on that connection.
+When no 'single candidate' and no 'single' manager accepts the connection, the 'fresh' manager process starts the manager program with the one argument `FearlessCommandServe`, then connects again until a 'single candidate' or the 'single' manager accepts the connection.
+When that manager process has ended and still no manager process accepts the connection, the 'fresh' manager process ends, with the error on its standard error.
+A 'fresh' manager process started with a `call` ends when the connections of its messages end.
+A 'fresh' manager process started by the desk, with zero arguments, with a path or with `FearlessCommandOpened`, ends once the 'single' manager has sent `Applied` or `Refused` for each of its messages, and shows the error of a `Refused` in a dialog: no program reads its standard output.
 macOS passes an opened file to a manager process as an 'event', not as an argument.
 The script of the 'helper bundle' of the manager (see Extensions on macOS in ReconciliatorDesign) starts the manager with the one argument `FearlessCommandOpened`.
 On macOS the one argument `FearlessCommandOpened` sends no message; on every other desk `FearlessCommandOpened` is a bad argument.
 The messages of an event are the messages of one argument not starting with `FearlessCommand`, for each path of the event.
 On macOS the 'single' manager applies the messages of every event it receives.
-On macOS a client started with zero arguments or with `FearlessCommandOpened` waits up to 2 seconds for one event after sending its messages, then sends the messages of that event.
+On macOS a 'fresh' manager process started with zero arguments or with `FearlessCommandOpened` waits up to 2 seconds for one event after sending its messages, then sends the messages of that event.
 A manager process started with two or more arguments, or with a bad argument, sends no message, prints on its standard error the error naming the first bad argument, or saying that the manager program takes at most one argument, and shows that error in a dialog.
 ```
 A No manager process is running.
-B The user starts the manager program.
-C The client starts the 'fresh' manager process M.
-D M encounters a 'fatal error'.
+B projects.info contains {"projects": [], "reserve": [], "extra": []}.
+C The user starts the manager program.
+D The new manager process starts the manager process M with FearlessCommandServe.
 E M becomes a 'single candidate'.
-F M ends with the 'fatal error'.
-G The client ends.
+F M ends with fatalError CorruptedManagerFolder, pointing at "extra" in projects.info.
+G The new manager process ends.
+
+A No manager process is running.
+B The manager folder is on a file system that offers no lock on a file.
+C The user starts the manager program.
+D The new manager process starts the manager process M with FearlessCommandServe.
+E M ends with fatalError NoLockFile.
+F The new manager process ends, with that error on its standard error.
+
+A No manager process is running, and the manager folder does not exist.
+B The folder containing the program folder can not be written.
+C The user starts the manager program.
+D The new manager process starts the manager process M with FearlessCommandServe.
+E M ends with fatalError NoManagerFolderCreation.
+F The new manager process ends, with that error on its standard error.
 
 A No manager process is running.
 B A script, in a session with no display, runs the manager program with FearlessCommandRun hello.
-C The client starts the 'fresh' manager process M.
+C The new manager process starts the manager process M with FearlessCommandServe.
 D M becomes a 'single candidate'.
-E M ends with a 'fatal error': no display.
-F The client ends, with that error on its standard error.
+E M ends with fatalError NoDisplay.
+F The new manager process ends, with that error on its standard error.
 
 A The 'single' manager is running.
 B A script, in a session with no display, runs the manager program with FearlessCommandRun hello.
-C The client sends the message Run hello.
+C The new manager process sends the message Run hello.
 D The 'single' manager runs project hello.
-E The client prints Applied, then the Output of the 'mains chain' of hello.
-F The client ends when the 'mains chain' of hello ends.
+E The new manager process prints Applied, then the Output of the 'mains chain' of hello.
+F The new manager process ends when the 'mains chain' of hello ends.
 ```
 
-The 'single' manager runs until `Quit`, `Reset` or a 'fatal error'.
+The 'single' manager runs until `Quit`, `Reset` or a fatalError.
 When another program deletes the manager folder of the 'single' manager, the 'single' manager applies `Quit`.
 
 ## Requests and messages
@@ -96,17 +105,17 @@ A 'request' is what one of the verbs below asks the manager to do, whether the r
 The 'single' manager applies the requests one at a time, in the order they arrive, each one completely before the next.
 Applying a `Run` or a `Compile` is starting the 'mains chain' or the compilation; applying a `Terminate` ends once every 'mains chain' and every compilation that the `Terminate` ends has ended.
 
-A 'message' is what a client sends to the 'single' manager on a connection of its own (see Starting the 'single' manager).
+A 'message' is what a 'fresh' manager process sends to the 'single' manager on a connection of its own.
 Every other program commanding the manager (the Eclipse plugin, a script, a test) runs the manager program with a `call` as its argument.
 Every verb is the verb of an operation of the manager GUI (see ManagerGuiDesign), of the tray or of a dialog of the manager.
 The error of an ill formed message goes on the connection of the message (below).
 
 A message contains a verb, then the arguments of the verb, one per line.
 A verb is one of the following, written in upper camel case. Verbs about the whole manager:
-- `Show`: show the manager window, starting the manager GUI when no manager GUI runs (see The manager GUI); with the name of a registered project as its argument, also select that project in the manager GUI;
+- `Show`: show the manager window, starting the manager GUI when no manager GUI runs; with the name of a registered project as its argument, also select that project in the manager GUI;
 - `Register <path>`: register the folder, or the folder a file is in; a folder 'registered already' changes nothing;
 - `Quit`: end the manager and every 'mains chain' and compilation the manager runs;
-- `Reset`: steps 2 to 4 of a 'fatal error';
+- `Reset`: steps 2 to 4 of fatalError;
 - `ConnectEclipse <path>`: connect the Eclipse found from the path;
 - `EditMetadata <path>`: replace `projects.info` with the content of the file at the path;
 - `OpenWithOrShortcut <path>`: open the file (see Opening a file). Double clicking the file on the desktop is the operation of `OpenWithOrShortcut <path>`.
@@ -130,7 +139,7 @@ What the 'single' manager sends on the connection of a message starts with a lin
 After `Refused`, the manager sends the error, and ends the connection.
 After `Applied`, the manager sends on the connection what the request writes in the Output, from the start of the request and then as the request writes it, with the marks of the Output (see Run, Compile and Check).
 The connection then ends when the 'mains chain' or the compilation of the request ends; when the request starts no 'mains chain' and no compilation, the connection ends once the text the request writes in the Output is sent.
-A request goes on when its client ends the connection first.
+A request goes on when the 'fresh' manager process of its message ends the connection first.
 `Quit` and `Reset` may end the manager before the manager sends `Applied`.
 
 ```
@@ -285,12 +294,11 @@ H The user runs project hello.
 I greet.Hello reads and writes the files of test_diary.
 ```
 
-A `projects.info` that is not a valid Info file, or does not contain what is above other than the conditions on project folders, is a 'fatal error' pointing at the offending text in the style of the errors of the Frontend.
 
 The whole `projects.info` can be edited by hand from the manager GUI (see ManagerGuiDesign), or via an `EditMetadata` naming a file (outside of the manager folder) with the intended new content.
 A project of the edit is a project of `projects.info` when the texts of the two `path`s are equal.
 An edit is refused, and nothing changes, when:
-- the text, as `projects.info`, would be a 'fatal error' (above): the error is the error of that 'fatal error';
+- the text, as `projects.info`, would be fatalError CorruptedManagerFolder: the error is the error of that fatalError;
 - the edit adds a project whose project folder the manager can not reach;
 - the edit removes, or changes an entry of, a 'busy' project (see Run, Compile and Check), or makes a mount of a 'busy' project name another project folder.
 An accepted edit applies at once: projects the edit removes are forgotten, projects the edit adds are registered as they are, the compilation cache of each added project and of each project whose kind changes is deleted (`Coordinator.deleteCache`), and every project gets an 'autoCheck'.
@@ -352,12 +360,33 @@ An entry of that menu is chosen by a click: a press and a release of a button on
 
 ## The manager GUI
 
-The manager GUI (see ManagerGuiDesign) is a program of its own, and a client of the 'single' manager, as Eclipse is.
-The 'single' manager starts the manager GUI for a `Show` when no manager GUI runs; the manager GUI ends when the manager window is closed, and when the 'single' manager ends.
-The 'single' manager writes on the standard input of the manager GUI, the 'parent lifeline' of the manager GUI (see Processes in AttenuationDesign):
-- first, each 'mains chain' and each compilation that is running, with its project and its start;
-- then, for each request, from a client, from the tray or from a dialog of the manager: the verb of the request with its arguments, then what the 'single' manager sends, or would send, on the connection of a message of that request.
-The manager GUI asks the 'single' manager only with messages.
+```
+A No manager GUI is running.
+B The 'mains chain' of world is running world.earth.World.
+C The manager receives Show hello.
+D The manager starts the manager GUI with ManagerGui.start.
+E The manager tells the manager GUI world.earth.World started.
+F The manager tells the manager GUI Show hello Applied.
+
+A The manager GUI is running.
+B Eclipse sends Run hello.
+C The manager tells the manager GUI Run hello Applied.
+D The 'mains chain' of hello starts hello.greet.Hello.
+E The manager tells the manager GUI hello.greet.Hello started.
+F hello.greet.Hello runs Debug#"Foo".
+G The manager receives "Foo" from hello.greet.Hello.
+H The manager tells the manager GUI hello.greet.Hello.out+="Foo".
+I hello.greet.Hello ends.
+J The manager tells the manager GUI hello.greet.Hello ended.
+
+A The manager GUI is running.
+B Eclipse sends Compile hello.
+C The manager tells the manager GUI Compile hello Applied.
+D The manager tells the manager GUI hello.compilation started.
+E The compilation of hello prints "In file: fear:/lib/a.fear".
+F The manager tells the manager GUI hello.compilation.out+="In file: fear:/lib/a.fear".
+G The manager tells the manager GUI hello.compilation ended.
+```
 
 ## Run, Compile and Check
 
@@ -365,7 +394,7 @@ A 'mains chain' of a project runs the selected mains of one `Run`, one after the
 A 'compilation' of a project runs from the start of `Coordinator.compile` to the end of the last step of What the manager does after `Coordinator.compile`.
 A project is 'busy' while a 'mains chain' or a compilation of the project runs, or a 'mains chain' of a project with a mount of the project runs.
 Everything the mains of a 'mains chain' or a compilation print goes to the Output, and the Output marks where each main and the compilation start and end, and how each of them ended.
-The manager keeps no Output: what a request writes in the Output goes on the connection of the request, and to the manager GUI (see The manager GUI).
+The manager keeps no Output: what a request writes in the Output goes on the connection of the request, and to the manager GUI.
 A main that ends with an error, a crash included, ends the 'mains chain'.
 
 ### Files changing while a 'mains chain' runs
@@ -397,7 +426,7 @@ single(D)          the manager processes of D that are the 'single' manager
 
 A `.reconcile` of M (see Reconciling) gives G, the extensions the user gives up in the dialogs of the Reconciliator (see ReconciliatorDesign); an `EditMetadata` gives G, the extensions the edit removes from `reserve`; then:
 ```
-T  G intersects fearless  =>  a 'fatal error' naming the Fearless extensions of G
+T  G intersects fearless  =>  fatalError GivenUpFearlessExtension, naming the Fearless extensions of G
    otherwise              =>  for each p in cached(M) with claims(p) intersecting G: the 'mains chain' and the compilation of p end,
                               and the compilation cache of p is deleted (Coordinator.deleteCache);
                               reserve(M) := (reserve(M) union claims(cached(M))) \ (fearless union G)
@@ -414,10 +443,10 @@ I2  |single(D)| <= 1
 
 The `replaced` of each `.reconcile` deletes the manager folder of the program of the command that `replaced` receives, when that command is inside the program folder of a manager (see Program and manager folder) and that manager folder is not the manager folder of the program calling `.reconcile`.
 `replaced` deletes that manager folder only while holding the lock of the `instance.lock` of that folder (see The 'single' manager in Implementation notes).
-`replaced` sends a `Quit` message to the manager folder as a client does, starting no manager process, and waits for the lock:
+`replaced` sends a `Quit` message to the manager folder as a 'fresh' manager process does, starting no manager process, and waits for the lock:
 - On the connection of the message, the manager process sends, every 2 seconds until the manager process ends, a 'progress line': at most 80 characters saying what the manager process is doing and how much of it is done, with no time in it (`Ending the mains: 2 of 5 ended.`).
 - When 10 seconds pass with no 'progress line', or with no 'progress line' different from the 'progress line' before it, `replaced` ends the manager process holding that lock.
-The way a client reaches the 'single' manager, the `Quit` message and the 'progress lines' are the same for every version of the manager.
+The way a 'fresh' manager process reaches the 'single' manager, the `Quit` message and the 'progress lines' are the same for every version of the manager.
 
 The 'portable Fearless' is the program of Coordinator that compiles and runs the project folder given as its argument.
 In the stories below, Foo is a program outside the Fearless family.
@@ -439,7 +468,7 @@ B The user starts the manager.
 C The manager calls .reconcile.
 D The Reconciliator asks the user to let the manager hold .fapp123.
 E The user gives up .fapp123.
-F The manager ends with a 'fatal error' naming .fapp123.
+F The manager ends with fatalError GivenUpFearlessExtension, naming .fapp123.
 
 A The 'single' manager is running.
 B No program holds .md.
@@ -540,7 +569,7 @@ C The manager compiles project world.
 D The manager calls .reconcile.
 E The Reconciliator asks the user to let the manager hold .fearless.
 F The user gives up .fearless.
-G The manager ends with a 'fatal error' naming .fearless.
+G The manager ends with fatalError GivenUpFearlessExtension, naming .fearless.
 
 A The 'single' manager is running and holds .md.
 B hello.greet.Hello claims .md.
@@ -654,7 +683,7 @@ A The program folder of a manager has the launchers L and Lw.
 B The manager started by L is the 'single' manager, and holds .md.
 C The user starts the manager with Lw.
 D The manager GUI shows the manager window.
-E Unlike when the manager is not running, no .reconcile runs: the client started with Lw sends Show to the 'single' manager, and starts no 'fresh' manager process.
+E Unlike when the manager is not running, no .reconcile runs: the 'fresh' manager process started with Lw sends Show to the 'single' manager, and starts no other manager process.
 F The manager started by L holds the Fearless extensions and .md.
 
 A Manager M is the 'single' manager, and holds .md.
@@ -837,8 +866,8 @@ Every read of an input file reads the file again, and a file that can not be rea
 ### Messages from a running main
 
 A running main sends messages to the manager through `System.manager` of the standard library, the capability `CapManager`.
-Each method of `CapManager` sends one message: the method runs the manager program with a `call`, and returns when that client ends.
-`.run`, `.openWithOrShortcut`, `.compile`, `.check` and `.fix` return the text the client printed after the line `Applied`; the other methods return `Void`.
+Each method of `CapManager` sends one message: the method runs the manager program with a `call`, and returns when that 'fresh' manager process ends.
+`.run`, `.openWithOrShortcut`, `.compile`, `.check` and `.fix` return the text that 'fresh' manager process printed after the line `Applied`; the other methods return `Void`.
 `Kind` is `.kindIdle(name)`, `.kindCode(name)`, `.kindDataRead(name)` or `.kindDataEdit(name)`, `Mount` is `.mount(name, type, data)`, `Unmount` is `.unmount(name, type)`, and `Attenuate` is `.attenuate(name, main, attenuators)`.
 A path is the list of the bytes naming the path, the bytes of the `Base16:` form of the path. A method whose arguments do not make a `call` (a path that is not absolute or is the root of a drive, a name that is not a `projectName`, a main, a type or an attenuator that is not a `typeName`, `.selectMains` with two equal mains) is a deterministic error of the running main: no message is sent.
 An ill formed message makes the method a deterministic error containing the text after the line `Refused`.
@@ -874,7 +903,7 @@ An implementation decides alone every detail the design leaves open below the co
   When the rename fails, `replaced` deletes every file of the manager folder that can be deleted.
   On Windows a folder containing a file that a process has open may not be renamed.
 - A 'single candidate' or the 'single' manager: the process holding the lock (`FileChannel.tryLock`) of the file `instance.lock` in the manager folder. The operating system releases the lock when the process ends, however the process ends.
-  That process writes the identifier of its OS process, and the port of its connections, at the start of `instance.lock`, and locks only bytes of `instance.lock` after the identifier and the port: a client connects to that port, and `replaced` ends the process with that identifier. On Windows a process can not read the bytes that another process has locked.
+  That process writes the identifier of its OS process, and the port of its connections, at the start of `instance.lock`, and locks only bytes of `instance.lock` after the identifier and the port: a 'fresh' manager process connects to that port, and `replaced` ends the process with that identifier. On Windows a process can not read the bytes that another process has locked.
 - Tray on Linux: `java.awt.SystemTray` needs an XEmbed tray; GNOME and most Wayland desks have none.
   When the session bus has an owner of the name `org.kde.StatusNotifierWatcher`, the tray icon is a StatusNotifierItem registered with that watcher, with the menu served as `com.canonical.dbusmenu`.
   The manager speaks the D-Bus wire protocol itself, on the `unix:path=` socket of `DBUS_SESSION_BUS_ADDRESS`.
@@ -884,7 +913,7 @@ An implementation decides alone every detail the design leaves open below the co
   The other desks call `Activate`, `SecondaryActivate` or `ContextMenu` of the item, with the point of the click; the manager answers each of the three by opening the menu of the tray icon at that point.
 - The bytes of a `Base16:` path: on Windows the UTF-16 code units of the name, little endian (a name may contain an unpaired surrogate); elsewhere the bytes of the name as the file system stores them.
 - The connection of a message: TCP on the loopback address, on the port that the desk picks for the 'single candidate'; a message and what the manager sends are UTF-8 text.
-- A client is the Java manager program, so every message starts a JVM, and a message takes at least the time a JVM takes to start: that time is accepted, not a bug.
+- The manager program is a Java program, so every message starts a JVM, and a message takes at least the time a JVM takes to start: that time is accepted, not a bug.
 - GNOME types every empty file as `application/x-zerosize`, whatever the name of the file, and never hands an empty file to the manager.
 - Renaming the first marker moves the marker to a file `<random UUID>.tmp` of the project folder, then to `<name>.fearless`.
 - The last premise of `ok(i, n)` in name inference: on a file system ignoring case, that other file and the file `n.fearless` are one file.
