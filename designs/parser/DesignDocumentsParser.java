@@ -35,21 +35,22 @@ int commentStart(String s){
   return stringOrCommentRegex.matcher(s).results().filter(r -> r.group().equals("//")).mapToInt(MatchResult::start).findFirst().orElse(-1);
 }
 List<Line> lines(Path p, List<String> raw){
-  var res= new ArrayList<Line>();
+  var joined= new ArrayList<Line>();
   Line open= null;
-  int openLine= 0;
   for (int i= 0; i < raw.size(); i++){
-    var s= raw.get(i);
-    int c= commentStart(s);
-    var cut= c >= 0 ? s.substring(0, c) : s;
-    if (c >= 0 && cut.matches(" *")){ continue; }
-    var l= open == null ? new Line(i + 1, cut) : new Line(open.number(), open.text() + cut);
-    open= c < 0 && s.endsWith("\\") ? new Line(l.number(), l.text().substring(0, l.text().length() - 1)) : null;
-    if (open == null && cut.matches(".*\\\\ *")){ error(p, i + 1, "the last backslash of \"%s\" is followed by %s, not by the new line: a backslash escapes the new line only when the new line directly follows the backslash.".formatted(cut, c >= 0 ? "an end of line comment" : "spaces")); }
-    if (open == null){ res.add(l); }
-    openLine= i + 1;
+    var l= open == null ? new Line(i + 1, raw.get(i)) : new Line(open.number(), open.text() + raw.get(i));
+    open= raw.get(i).endsWith("\\") ? new Line(l.number(), l.text().substring(0, l.text().length() - 1)) : null;
+    if (open == null){ joined.add(l); }
   }
-  if (open != null){ error(p, openLine, "this line ends with a backslash, but no line follows to continue it."); res.add(open); }
+  if (open != null){ error(p, raw.size(), "this line ends with a backslash, but no line follows to continue it."); joined.add(open); }
+  var res= new ArrayList<Line>();
+  for (var l: joined){
+    int c= commentStart(l.text());
+    var cut= c >= 0 ? l.text().substring(0, c) : l.text();
+    if (c >= 0 && cut.matches(" *")){ continue; }
+    if (cut.matches(".*\\\\ *")){ error(p, l.number(), "the last backslash of \"%s\" is followed by %s, not by the new line: a backslash escapes the new line only when the new line directly follows the backslash.".formatted(cut, c >= 0 ? "an end of line comment" : "spaces")); }
+    res.add(new Line(l.number(), cut));
+  }
   return res;
 }
 List<List<Line>> sections(Path p, List<Line> lines){
