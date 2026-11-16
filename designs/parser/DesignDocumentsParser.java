@@ -8,7 +8,10 @@ final Map<String, String> defined= new HashMap<>();
 boolean failed= false;
 
 void main(String[] args) throws IOException{
-  for (var a: args){ check(Path.of(a)); }
+  if (args.length != 1 || !Files.isDirectory(Path.of(args[0]))){ System.err.println("usage: java DesignDocumentsParser.java folder; the files directly in folder are the documents of one DesignScope."); System.exit(1); }
+  try (var files= Files.list(Path.of(args[0]))){
+    for (var f: files.filter(Files::isRegularFile).sorted().toList()){ check(f); }
+  }
   if (failed){ System.exit(1); }
 }
 void error(Path p, int line, String message){
