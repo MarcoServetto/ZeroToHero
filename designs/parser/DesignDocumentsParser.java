@@ -37,17 +37,19 @@ int commentStart(String s){
 List<Line> lines(Path p, List<String> raw){
   var res= new ArrayList<Line>();
   Line open= null;
+  int openLine= 0;
   for (int i= 0; i < raw.size(); i++){
     var s= raw.get(i);
     int c= commentStart(s);
-    if (c >= 0 && s.substring(0, c).matches(" *")){ continue; }
-    if (c >= 0){ s= s.substring(0, c); }
-    var l= open == null ? new Line(i + 1, s) : new Line(open.number(), open.text() + s);
-    open= null;
-    if (l.text().endsWith("\\")){ open= new Line(l.number(), l.text().substring(0, l.text().length() - 1)); continue; }
-    res.add(l);
+    var cut= c >= 0 ? s.substring(0, c) : s;
+    if (c >= 0 && cut.matches(" *")){ continue; }
+    var l= open == null ? new Line(i + 1, cut) : new Line(open.number(), open.text() + cut);
+    open= c < 0 && s.endsWith("\\") ? new Line(l.number(), l.text().substring(0, l.text().length() - 1)) : null;
+    if (open == null && cut.matches(".*\\\\ *")){ error(p, i + 1, "the last backslash of \"%s\" is followed by %s, not by the new line: a backslash escapes the new line only when the new line directly follows the backslash.".formatted(cut, c >= 0 ? "an end of line comment" : "spaces")); }
+    if (open == null){ res.add(l); }
+    openLine= i + 1;
   }
-  if (open != null){ error(p, open.number(), "this line ends with a backslash, but no line follows to continue it."); }
+  if (open != null){ error(p, openLine, "this line ends with a backslash, but no line follows to continue it."); res.add(open); }
   return res;
 }
 List<List<Line>> sections(Path p, List<Line> lines){
@@ -66,14 +68,14 @@ List<List<Line>> sections(Path p, List<Line> lines){
 void section(Path p, List<List<Line>> sections, int i){
   var head= sections.get(i).getFirst();
   var rest= sections.get(i).subList(1, sections.get(i).size());
-  switch (head.text()){
+  switch (head.text().replaceFirst(" *$", "")){
     case "Text:", "Invariant:" -> {}
     case "Implementation notes:" -> { if (i + 1 < sections.size()){ error(p, head.number(), "the \"Implementation notes:\" section is not the last section of its document."); } }
     case "Grammar:" -> rest.forEach(l -> grammarLine(p, l));
     case "Well formedness:" -> wellFormedness(p, head, rest, i == 0 ? List.of() : sections.get(i - 1));
     case "Story:" -> storyLines(p, rest);
     case String s when s.matches("Define .*:") -> storyLines(p, rest);
-    default -> error(p, head.number(), "\"%s\" is not a category line: the first line of a section is \"Text:\", \"Grammar:\", \"Well formedness:\", \"Story:\", \"Define \" followed by any text and \":\", \"Invariant:\" or \"Implementation notes:\".".formatted(head.text()));
+    default -> error(p, head.number(), "\"%s\" is not a category line: the first line of a section is \"Text:\", \"Grammar:\", \"Well formedness:\", \"Story:\", \"Define \" followed by any text and \":\", \"Invariant:\" or \"Implementation notes:\", followed by any number of spaces.".formatted(head.text()));
   }
 }
 void grammarLine(Path p, Line l){
@@ -83,7 +85,7 @@ void grammarLine(Path p, Line l){
   if (first != null){ error(p, l.number(), "the Nonterminal %s is defined again: %s defines it first.".formatted(m.group(1), first)); }
 }
 void wellFormedness(Path p, Line head, List<Line> rest, List<Line> before){
-  boolean afterGrammar= !before.isEmpty() && before.getFirst().text().equals("Grammar:");
+  boolean afterGrammar= !before.isEmpty() && before.getFirst().text().matches("Grammar: *");
   if (!afterGrammar){ error(p, head.number(), "this Well formedness section does not come directly after a Grammar section."); }
   var heads= before.stream().map(l -> grammarLineRegex.matcher(l.text())).filter(Matcher::matches).map(m -> m.group(1)).toList();
   for (var l: rest){
