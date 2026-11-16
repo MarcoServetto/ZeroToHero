@@ -1,7 +1,7 @@
 Text:
-fearlessManager is a program that attempts to become the 'single' manager.
+fearlessManager is a program. When it starts it attempts to become the 'single' manager.
 The 'single' manager applies the messages that fearlessMessage sends, one at a time.
-The 'manager path' is the path of the ManagerFolder (see the Implementation notes).
+The 'manager path' is the OS path of the ManagerFolder on the actual file system.
 projects.info is a file containing an Info serialized as defined in the fearless standard library.
 We expect that only the manager can edit this file.
 The Info of projects.info is a ProjectsInfo.
@@ -9,11 +9,12 @@ The Info of projects.info is a ProjectsInfo.
 Grammar:
 ManagerFolder ::= LockFile, "projects.info", "icons", "locks"
 //icons and locks are folders.
-LockFile ::= "no_manager.lock" | "candidate_manager.lock" | "single_manager_at_", Port, ".lock" //the digits are a port of the loopback address
-Port ::= [1-9][0-9]*
+LockFile ::= "no_manager.lock" | "candidate_manager.lock" | "single_manager_at_", Port, ".lock"
+//the syntax of LockFile defines a file name.
+Port ::= [1-9][0-9]*//the digits are a port of the loopback address
 ProjectsInfo ::= Infos.map("projects", Projects, "reserve", Extensions)
-Projects ::= Infos.list(Project1 .. Projectn)
-Extensions ::= Infos.list(Extension1 .. Extensionn) //1..n can be empty
+Projects ::= Infos.list(Project1 .. Projectn) //using .list/.map loosely: assuming any arity is allowed
+Extensions ::= Infos.list(Extension1 .. Extensionn) //1..n can be empty, Infos.list() == Info
 TypeNames ::= Infos.list(TypeName1 .. TypeNamen)
 Project ::= Infos.map("path", TaggedText, "kind", Kind, "mains", TypeNames, "mounts", Mount, "attenuators", Attenuator)
 Mount ::= Infos.map(TypeName1, ProjectName1 .. TypeNamen, ProjectNamen)
@@ -21,116 +22,138 @@ Attenuator ::= Infos.map(TypeName1, TypeNames1 .. TypeNamen, TypeNamesn)
 Kind ::= "idle" | "code" | "dataRead" | "dataEdit"
 Extension ::= OSExtension
 ProjectName ::= ValidSegment
-TaggedText ::= double quote, [Str:|UStr:|Base16:], [0-9A-Za-z_.....]
-ProgressLine ::= at most 80 characters saying what fearlessManager is doing and how much of it is done, with no time in it, as "Ending the mains: 2 of 5 ended."
+TaggedText ::= 
+  "\"" Base16 "\""                      \
+  | "\"Str:"  [0-9A-Za-z_.....] "\""     \  //complete the .... with fearless Str - \n
+  | "\"UStr:" [0-9A-Za-z_.....], "\""
+ProgressLine ::= implementation dependent progress information cap to 80 chars.
 
 Well formedness:
 in Port: the digits form a number smaller than 65536.
-in Extension: not in 'fearless' or 'ffile000'-'ffile999' or 'fapp000'-'fapp999'.
+in Extension: not in "fearless" or "ffile000"-"ffile999" or "fapp000"-"fapp999".
 in Projects: no two Project with equal TaggedText.
 in Extensions: all Extension are disjoint.
 in Project: all TypeName in TypeNames are disjoint.
-in TaggedText: second component is 'Str:' if the third component is the result of p.escape where p is a Fearless Str encoding a valid OS FS path.
-in TaggedText: second component is 'UStr:' if the third component is the result of p.escape where p is a Fearless UStr encoding a valid OS FS path.
-in TaggedText: second component is 'Base16:' if the third component is [0-9A-F]* and is a valid OS FS path when decoded.
+in TaggedText: starts with "\"Str:" if the third component is the result of\
+  p.escape where p is a Fearless Str encoding a valid OS FS path.
+in TaggedText: starts with "\"UStr:" if the third component is the result of\
+  p.escape where p is a Fearless UStr encoding a valid OS FS path.
+
+Text:
+//add Examples of valid Str and UStr for non trivial cases, where \n and other special symbols are involved.
+
 
 Invariant:
 At every moment, at most one fearlessManager is the 'single' manager.
 
-Define fearlessManager:
-A No folder is at the 'manager path'.
-B fearlessManager creates the ManagerFolder: no_manager.lock, projects.info holding Infos.map("projects", Infos.list(), "reserve", Infos.list()), and the empty folders icons and locks.
+Story:
+A fearlessManager starts.
+B No folder is at the 'manager path'.
+C fearlessManager creates the ManagerFolder with files: \
+  empty no_manager.lock,\
+  projects.info holding Infos.map("projects", Infos.list(), "reserve", Infos.list()),\
+  and the empty folders icons and locks.
+D fearlessManager takes the lock of no_manager.lock.
+E fearlessManager.serve()
+
+Story:
+A fearlessManager starts.
+B No folder is at the 'manager path'.
+C Another process creates a folder at the 'manager path' before fearlessManager\
+  creates the ManagerFolder.
+D fearlessManager ends.
+
+Story:
+A fearlessManager starts.
+B The folder at the 'manager path' holds one LockFile called no_manager.lock,\
+  and no process holds the lock of no_manager.lock.
 C fearlessManager takes the lock of no_manager.lock.
 D fearlessManager.serve()
 
-Define fearlessManager:
-A No folder is at the 'manager path'.
-B Another process creates a folder at the 'manager path' before fearlessManager creates the ManagerFolder.
-C fearlessManager ends.
+Story:
+A fearlessManager starts.
+B The folder at the 'manager path' holds one LockFile called candidate_manager.lock\
+  or single_manager_at_X.lock, and no process holds the lock of that LockFile.
+C fearlessManager takes the lock of that LockFile.
+D fearlessManager renames that LockFile to no_manager.lock.
+E fearlessManager.serve()
 
-Define fearlessManager:
-A The folder at the 'manager path' holds one LockFile, no_manager.lock, and no process holds the lock of no_manager.lock.
-B fearlessManager takes the lock of no_manager.lock.
-C fearlessManager.serve()
-
-Define fearlessManager:
-A The folder at the 'manager path' holds one LockFile, candidate_manager.lock or single_manager_at_X.lock, and no process holds the lock of that LockFile.
-B fearlessManager takes the lock of that LockFile.
-C fearlessManager renames that LockFile to no_manager.lock.
-D fearlessManager.serve()
-
-Define fearlessManager:
+Story:
 A Another process holds the lock of the LockFile of the folder at the 'manager path'.
 B fearlessManager ends.
 
-Define fearlessManager:
+Story:
 A The folder at the 'manager path' holds no LockFile, or more than one LockFile.
-B fearlessManager.fatalError(an error naming the 'manager path', and saying that the folder there is not a ManagerFolder)
+B fearlessManager.fatalError('manager path', "the folder is not a ManagerFolder")
 
 Define fearlessManager.serve():
-A fearlessManager holds the lock of no_manager.lock, and the folder at the 'manager path' is a ManagerFolder.
+A fearlessManager holds the lock of no_manager.lock, and the folder at the\
+  'manager path' is a ManagerFolder.
 B fearlessManager renames no_manager.lock to candidate_manager.lock.
 C fearlessManager copies base.IconsConflict and base.IconsFearless into icons.
-D For each Project p of projects.info with the Kind code: Coordinator.dropUnfinished(p).
+D For each Project of projects.info with the Kind code: Coordinator.dropUnfinished(Project."path").//is this correct?
 E fearlessManager.buildMap()
-F fearlessManager listens for connections on the loopback address, on a port X that the OS picks.
+F fearlessManager listens for connections on the loopback address,\
+  on a port X that the OS picks.
 G fearlessManager renames candidate_manager.lock to single_manager_at_X.lock.
 H fearlessManager is the 'single' manager.
 I fearlessManager shows its tray icon.
-J For each message m, one at a time, in the order the messages arrive: fearlessManager.receive(m).
+J For each Message arriving on port X, one at a time, in the order the messages arrive: fearlessManager.receive(Message).//confirm Message is in a grammar somewhere.
 
 Define fearlessManager.serve():
-A fearlessManager holds the lock of no_manager.lock, and the folder at the 'manager path' is not a ManagerFolder.
-B fearlessManager.fatalError(an error naming the 'manager path', and saying that the folder there is not a ManagerFolder)
+A fearlessManager holds the lock of no_manager.lock, and the folder at the\
+  'manager path' is not a ManagerFolder.
+B fearlessManager.fatalError('manager path', "the folder is not a ManagerFolder")
 
-Define fearlessManager.receive(m):
-A fearlessManager.nameInference()
-B fearlessManager.autoCheck(p), when m is about the registered project p.
-C fearlessManager.apply(m)
+Define fearlessManager.receive(Message):
+A fearlessManager.nameInference()//why this step?
+B Message is about Project, Project is registered in projects.info
+C fearlessManager.autoCheck(Project)//or Project.Path?
+D fearlessManager.apply(Message)
 
-Define fearlessManager.accept(m):
-A fearlessManager sends Applied on the connection of m.
-B When the manager GUI is running, fearlessManager tells the manager GUI that m is Applied.
-C fearlessManager sends on the connection of m what m writes in the Output, until m ends writing.
-D fearlessManager ends the connection of m.
+Define fearlessManager.accept(Message):
+A fearlessManager sends "Applied" -> Message.connection
+B fearlessManager sends "Applied"+Message."what part of it?" -> managerGUI?.connection
+C fearlessManager.apply(Message) -> Message.connection //output of running Message is sent
+D fearlessManager ends Message.connection
+//above managerGUI?.connection is an 'trash all' connection if managerGUI? == empty
 
-Define fearlessManager.refuse(m, e):
-A fearlessManager sends Refused and e on the connection of m.
-B When the manager GUI is running, fearlessManager tells the manager GUI that m is Refused.
-C fearlessManager ends the connection of m.
-
-Define fearlessManager.apply(Show):
-A No manager GUI is running.
-B ManagerGui.start
-C fearlessManager.accept(Show)
+Define fearlessManager.refuse(Message, RefusedError):
+A fearlessManager sends "Refused"+RefusedError -> Message.connection
+B fearlessManager sends "Refused"+RefusedError+Message."what part of it?" -> managerGUI?.connection
+C fearlessManager ends Message.connection
 
 Define fearlessManager.apply(Show):
-A The manager GUI is running.
+A managerGUI? = ManagerGui.startIfEmpty(managerGUI?) //else identity
 B fearlessManager.accept(Show)
 
 Define fearlessManager.apply(Quit):
-A fearlessManager sends Applied on the connection of Quit.
-B fearlessManager sends a ProgressLine on the connection of Quit every 2 seconds, until fearlessManager ends.
-C Every message m that arrives until fearlessManager ends: fearlessManager.refuse(m, an error naming the verb of m and the end of the 'single' manager).
-D For each p in busyProjects: fearlessManager.terminate(p).
-E fearlessManager renames its LockFile to no_manager.lock.
-F fearlessManager ends.
+A fearlessManager sends "Applied" -> Quit.connection
+B fearlessManager renames single_manager_at_X.lock to no_manager.lock
+C fearlessManager stops listening to X.
+D For each p in busyProjects: fearlessManager.terminate(p).//async calls
+E fearlessManager sends an up to date ProgressLine -> Quit.connection\
+  every 2 seconds, until fearlessManager ends.
+F all projects are fully terminated
+G fearlessManager ends.
 
 Define fearlessManager.apply(Reset):
-A fearlessManager sends Applied on the connection of Reset.
+A fearlessManager sends "Applied" -> Reset.connection
 B fearlessManager.reset()
 
-Define fearlessManager.fatalError(e):
-A fearlessManager shows a dialog with e and the names of the busyProjects.
+Define fearlessManager.fatalError(FatalError):
+A fearlessManager shows FatalError.dialog(busyProjects.names).
 B The user closes the dialog.
 C fearlessManager.reset()
 
 Define fearlessManager.reset():
-A Every message m that arrives until fearlessManager ends: fearlessManager.refuse(m, an error naming the verb of m and the end of the 'single' manager).
-B For each p in busyProjects: fearlessManager.terminate(p).
-C Reconciliator.eradicateAll
-D fearlessManager deletes the folder at the 'manager path'.
-E fearlessManager ends.
+A fearlessManager renames single_manager_at_X.lock to no_manager.lock
+C fearlessManager stops listening to X.
+D For each p in busyProjects: fearlessManager.terminate(p).//async calls
+E all projects are fully terminated
+F Reconciliator.eradicateAll
+G fearlessManager deletes the folder at the 'manager path'.
+H fearlessManager ends.
 
 Implementation notes:
 The 'manager path' is the folder fearless<version> next to the program folder, the folder holding fearlessManager, fearlessMessage and fearlessOnClick.
