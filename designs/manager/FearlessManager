@@ -6,6 +6,7 @@ projects.info is a file containing an Info serialized as defined in the fearless
 We expect that only the manager can edit this file.
 The Info of projects.info is a ProjectsInfo.
 fearlessManager.names is a map from ProjectName to Project, held in memory only.
+fearlessManager.states is a map from Project to State, held in memory only.
 
 Grammar:
 ManagerFolder ::= LockFile, "projects.info", "icons", "locks"
@@ -29,6 +30,7 @@ TaggedText ::= \
   | "UStr:", EscapedChar1 .. EscapedCharn
 EscapedChar ::= [0-9A-Za-z +\-*/=<>,.;:()\[\]{}`'"!?@#$%^&_|~\\]
 ProgressLine ::= implementation dependent progress information cap to 80 chars.
+State ::= "unreachable" | "invalid ", Error | "outOfDate" | "compiled" | "idle" | "dataRead" | "dataEdit"
 
 Well formedness:
 in Port: the digits form a number smaller than 65536.
@@ -140,9 +142,76 @@ A Message is about N, fearlessManager.names maps N to no Project.
 B fearlessManager.refuse(Message, "no registered project is named N")
 
 Define fearlessManager.autoCheck(Project):
+A The folder at Project."path" can not be reached.
+B fearlessManager.states maps Project to "unreachable".
+C fearlessManager.terminate(Project)
+
+Define fearlessManager.autoCheck(Project):
+A The folder at Project."path" can be reached.
+B A Compile of Project runs, or a main with a dataEdit mount of Project runs.
+
+Define fearlessManager.autoCheck(Project):
+A The folder at Project."path" can be reached.
+B No Compile of Project runs, and no main with a dataEdit mount of Project runs.
+C fearlessManager.checkName(Project)
+
+Define fearlessManager.checkName(Project):
+A fearlessManager.names maps N to Project.
+B The folder at Project."path" holds N.fearless and no other file with extension fearless.
+C fearlessManager.checkContent(Project)
+
+Define fearlessManager.checkName(Project):
 A fearlessManager.names maps N to Project.
 B The folder at Project."path" does not hold N.fearless, or holds another file with extension fearless.
 C fearlessManager.readNames()
+D fearlessManager.checkName(Project)
+
+Define fearlessManager.checkName(Project):
+A fearlessManager.names maps no ProjectName to Project.
+B fearlessManager.readNames()
+C fearlessManager.names maps a ProjectName to Project.
+D fearlessManager.checkName(Project)
+
+Define fearlessManager.checkName(Project):
+A fearlessManager.names maps no ProjectName to Project.
+B fearlessManager.readNames()
+C fearlessManager.names maps no ProjectName to Project.
+D fearlessManager.invalid(Project, Error), for Error naming the folder at Project."path",\
+  the files with extension fearless of that folder, and the folder of any other Project holding the same file.
+
+Define fearlessManager.checkContent(Project):
+A Project."kind" is code, and Coordinator.check(Project."path") gives Invalid(Error).
+B fearlessManager.invalid(Project, Error)
+
+Define fearlessManager.checkContent(Project):
+A Project."kind" is code, and Coordinator.check(Project."path") gives OutOfDate.
+B fearlessManager.states maps Project to "outOfDate".
+C fearlessManager.terminate(Project)
+
+Define fearlessManager.checkContent(Project):
+A Project."kind" is code, and Coordinator.check(Project."path") gives Compiled.
+B fearlessManager.states maps Project to "compiled".
+
+Define fearlessManager.checkContent(Project):
+A Project."kind" is dataRead or dataEdit, and FolderShapes.check(Project."path") gives Error.
+B fearlessManager.invalid(Project, Error)
+
+Define fearlessManager.checkContent(Project):
+A Project."kind" is idle, or Project."kind" is dataRead or dataEdit and FolderShapes.check(Project."path") gives no Error.
+B fearlessManager.states maps Project to Project."kind".
+
+Define fearlessManager.invalid(Project, Error):
+A fearlessManager.states maps Project to "invalid ", Error.
+B fearlessManager.terminate(Project)
+C Coordinator.writeError(Project."path", Error)
+
+Story:
+A A Compile of Project ends, or a main with a dataEdit mount of Project ends.
+B fearlessManager.autoCheck(Project)
+
+Story:
+A managerGUI? is not empty.
+B Every 3 seconds: fearlessManager.autoCheck(Project), for the next Project of projects.info, in turn.
 
 Define fearlessManager.accept(Message):
 A fearlessManager sends "Applied" -> Message.connection
