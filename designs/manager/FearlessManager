@@ -7,6 +7,8 @@ We expect that only the manager can edit this file.
 The Info of projects.info is a ProjectsInfo.
 fearlessManager.names is a map from ProjectName to TaggedText, held in memory only.
 fearlessManager.states is a map from TaggedText to State, held in memory only.
+The 'method' of a Message is the method of fearlessManager named by the first word of the Message, with a lower case first letter.
+The arguments of the 'method' of a Message are the other words of the Message, with fearlessManager.projectOf(ProjectName) for each ProjectName, and fearlessManager.projectOf(Base16) for the Base16 of Forget and Fix.
 
 Grammar:
 ManagerFolder ::= LockFile, "projects.info", "icons", "locks"
@@ -137,33 +139,39 @@ Define projectNames(Message):
 A Message runs a main of Project.
 B the ProjectNames of Message, then the ProjectNames of Project."mounts"
 
-Define fearlessManager.receive(Message):
-A projectNames(Message) is ProjectName1 .. ProjectNamen.
-B For each i: (ProjectNamei->Projecti."path") in fearlessManager.names,\
-  and the folder at Projecti."path" holds ProjectNamei.fearless and no other *.fearless.
-C For each i: fearlessManager.autoCheck(Projecti)
-D fearlessManager.apply(Message)
+Define fearlessManager.projectOf(ProjectName):
+A (ProjectName->Project."path") in fearlessManager.names.
+B The folder at Project."path" holds ProjectName.fearless and no other *.fearless.
+C return Project
 
-Define fearlessManager.receive(Message):
-A projectNames(Message) is ProjectName1 .. ProjectNamen.
-B For each i: (ProjectNamei->Projecti."path") in fearlessManager.names.
-C For some i: the folder at Projecti."path" does not hold ProjectNamei.fearless, or holds another *.fearless.
-D fearlessManager.readNames()
-E fearlessManager.receive(Message)
-
-Define fearlessManager.receive(Message):
-A projectNames(Message) is ProjectName1 .. ProjectNamen.
-B For some i: (ProjectNamei->_) not in fearlessManager.names.
+Define fearlessManager.projectOf(ProjectName):
+A (ProjectName->Project."path") in fearlessManager.names.
+B The folder at Project."path" does not hold ProjectName.fearless, or holds another *.fearless.
 C fearlessManager.readNames()
-D For each i: (ProjectNamei->_) in fearlessManager.names.
-E fearlessManager.receive(Message)
+D return fearlessManager.projectOf(ProjectName)
+
+Define fearlessManager.projectOf(ProjectName):
+A (ProjectName->_) not in fearlessManager.names.
+B fearlessManager.readNames()
+C (ProjectName->_) in fearlessManager.names.
+D return fearlessManager.projectOf(ProjectName)
+
+Define fearlessManager.projectOf(Base16):
+A Base16 and Project."path" encode the same path, for a Project of projects.info.
+B return Project
 
 Define fearlessManager.receive(Message):
-A projectNames(Message) is ProjectName1 .. ProjectNamen.
-B For some i: (ProjectNamei->_) not in fearlessManager.names.
-C fearlessManager.readNames()
-D For some i: (ProjectNamei->_) not in fearlessManager.names.
-E fearlessManager.refuse(Message, "no registered project is named "+ProjectNamei)
+A fearlessManager.projectOf(ProjectName) is undefined, for a ProjectName of projectNames(Message).
+B fearlessManager.refuse(Message, "no registered project is named "+ProjectName)
+
+Define fearlessManager.receive(Message):
+A Message is Forget Base16 or Fix Base16, and fearlessManager.projectOf(Base16) is undefined.
+B fearlessManager.refuse(Message, "no registered project is at "+the path of Base16)
+
+Define fearlessManager.receive(Message):
+A No other Define of fearlessManager.receive(Message) holds.
+B For each ProjectName of projectNames(Message): fearlessManager.autoCheck(fearlessManager.projectOf(ProjectName))
+C fearlessManager.accept(Message)
 
 Define fearlessManager.autoCheck(Project):
 A The folder at Project."path" can not be reached.
@@ -244,60 +252,69 @@ Define fearlessManager.accept(Message):
 A fearlessManager sends "Applied" -> Message.connection
 B fearlessManager sends "Applied"+Message."what part of it?" -> managerGUI?.connection
 //above managerGUI?.connection is an 'trash all' connection if managerGUI? == empty
+C the 'method' of Message -> Message.connection
+D fearlessManager ends Message.connection
 
 Define fearlessManager.refuse(Message, RefusedError):
 A fearlessManager sends "Refused"+RefusedError -> Message.connection
 B fearlessManager sends "Refused"+RefusedError+Message."what part of it?" -> managerGUI?.connection
 C fearlessManager ends Message.connection
 
-Define fearlessManager.apply(Show):
+Define fearlessManager.show():
 A managerGUI? = ManagerGui.startIfEmpty(managerGUI?) //else identity
-B fearlessManager.accept(Show)
-C fearlessManager ends Show.connection
 
-Define fearlessManager.apply(Quit):
-A fearlessManager sends "Applied" -> Quit.connection
-B fearlessManager renames single_manager_at_X.lock to no_manager.lock
-C fearlessManager stops listening to X.
-D For each p in busyProjects: fearlessManager.terminate(p).//async calls
-E fearlessManager sends an up to date ProgressLine -> Quit.connection\
+Define fearlessManager.quit():
+A fearlessManager renames single_manager_at_X.lock to no_manager.lock
+B fearlessManager stops listening to X.
+C For each p in busyProjects: fearlessManager.terminate(p).//async calls
+D fearlessManager sends an up to date ProgressLine -> Quit.connection\
   every 2 seconds, until fearlessManager ends.
-F all projects are fully terminated
-G fearlessManager ends.
+E all projects are fully terminated
+F fearlessManager ends.
 
-Define fearlessManager.apply(Reset):
-A fearlessManager sends "Applied" -> Reset.connection
-B fearlessManager.reset()
+Define fearlessManager.forget(Project):
+A fearlessManager.terminate(Project)
+B fearlessManager.save(the Info of projects.info without Project)
 
-Define fearlessManager.apply(Forget Base16):
-A Base16 and Project."path" encode the same path, for a Project of projects.info.
-B fearlessManager.accept(Forget Base16)
-C fearlessManager.terminate(Project)
-D fearlessManager.save(ProjectsInfo), for ProjectsInfo the Info of projects.info without Project.
-E fearlessManager ends (Forget Base16).connection
+Define fearlessManager.fix(Project):
+A fearlessManager.terminate(Project)
+B FolderShapes.fix(Project."path")
+C fearlessManager.forgeProjectName(Project."path") gives ProjectName.
+D fearlessManager.autoCheck(Project)
 
-Define fearlessManager.apply(Fix Base16):
-A Base16 and Project."path" encode the same path, for a Project of projects.info.
-B fearlessManager.accept(Fix Base16)
-C fearlessManager.terminate(Project)
-D FolderShapes.fix(Project."path") -> (Fix Base16).connection
-E fearlessManager.discoverName(Project."path")
-F fearlessManager.autoCheck(Project)
-G fearlessManager ends (Fix Base16).connection
+Define fearlessManager.fix(Project):
+A fearlessManager.terminate(Project)
+B FolderShapes.fix(Project."path")
+C fearlessManager.forgeProjectName(Project."path") gives Error.
+D fearlessManager writes Error in the Output of Project.
+E fearlessManager.autoCheck(Project)
 
-Define fearlessManager.apply(Message):
-A Message is Forget Base16 or Fix Base16.
-B Base16 and Project."path" encode different paths, for every Project of projects.info.
-C fearlessManager.refuse(Message, "no registered project is at "+the path of Base16)
+Define fearlessManager.forgeProjectName(TaggedText):
+A The folder at TaggedText holds ProjectName.fearless and no other *.fearless.
+B (ProjectName->_) not in fearlessManager.names, or (ProjectName->TaggedText) in fearlessManager.names.
+C fearlessManager.names+= (ProjectName->TaggedText)
+D return ProjectName
 
-Define fearlessManager.discoverName(TaggedText):
-A ProjectName is the first text below that is a ProjectName,\
-  and such that the folder of no other Project of projects.info holds ProjectName.fearless:\
-  the stems of the *.fearless of the folder at TaggedText, in alphabetical order,\
-  then the first 64 characters of FolderShapes.fixedSegment(the name of the folder at TaggedText), followed by "", "2", "3", ...
-B fearlessManager deletes the *.fearless of the folder at TaggedText, other than ProjectName.fearless.
-C fearlessManager writes ProjectName.fearless, holding one new line, in the folder at TaggedText,\
-  if that folder holds no ProjectName.fearless.
+Define fearlessManager.forgeProjectName(TaggedText):
+A The folder at TaggedText holds no *.fearless.
+B ProjectName is the last segment of the path of TaggedText.
+C (ProjectName->_) not in fearlessManager.names, or (ProjectName->TaggedText) in fearlessManager.names.
+D fearlessManager writes ProjectName.fearless, holding one new line, in the folder at TaggedText.
+E fearlessManager.names+= (ProjectName->TaggedText)
+F return ProjectName
+
+Define fearlessManager.forgeProjectName(TaggedText):
+A The folder at TaggedText holds no *.fearless.
+B ProjectName1 is the last segment of the path of TaggedText.
+C (ProjectName1->_) in fearlessManager.names, and (ProjectName1->TaggedText) not in fearlessManager.names.
+D ProjectName2 is the first of ProjectName1+"2", ProjectName1+"3", ... with (ProjectName2->_) not in fearlessManager.names.
+E fearlessManager writes ProjectName2.fearless, holding one new line, in the folder at TaggedText.
+F fearlessManager.names+= (ProjectName2->TaggedText)
+G return ProjectName2
+
+Define fearlessManager.forgeProjectName(TaggedText):
+A No other Define of fearlessManager.forgeProjectName(TaggedText) holds.
+B return the Error "the folder "+the path of TaggedText+" needs exactly one file name.fearless, where name has only a to z, 0 to 9 and _, does not start with a digit, and is the name of no other project"
 
 Define fearlessManager.fatalError(FatalError):
 A fearlessManager shows FatalError.dialog(busyProjects.names).
