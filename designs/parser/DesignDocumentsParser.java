@@ -76,7 +76,8 @@ void section(Path p, List<List<Line>> sections, int i){
     case "Well formedness:" -> wellFormedness(p, head, rest, i == 0 ? List.of() : sections.get(i - 1));
     case "Story:" -> storyLines(p, rest);
     case String s when s.matches("Define .*:") -> storyLines(p, rest);
-    default -> error(p, head.number(), "\"%s\" is not a category line: the first line of a section is \"Text:\", \"Grammar:\", \"Well formedness:\", \"Story:\", \"Define \" followed by any text and \":\", \"Invariant:\" or \"Implementation notes:\", followed by any number of spaces.".formatted(head.text()));
+    case String s when s.startsWith("Notation: ") -> notations(p, sections.get(i));
+    default -> error(p, head.number(), "\"%s\" is not a category line: the first line of a section is \"Text:\", \"Grammar:\", \"Well formedness:\", \"Story:\", \"Define \" followed by any text and \":\", \"Invariant:\" or \"Implementation notes:\", followed by any number of spaces, or \"Notation: \" followed by any text.".formatted(head.text()));
   }
 }
 void grammarLine(Path p, Line l){
@@ -93,6 +94,15 @@ void wellFormedness(Path p, Line head, List<Line> rest, List<Line> before){
     var m= wellFormednessLineRegex.matcher(l.text());
     if (!m.matches()){ error(p, l.number(), "\"%s\" is not a well formedness line: a well formedness line is \"in\", one or more spaces, a Nonterminal (an uppercase letter, then letters and digits), \":\", then any text.".formatted(l.text())); continue; }
     if (afterGrammar && !heads.contains(m.group(1))){ error(p, l.number(), "\"%s\" constrains %s, but the Grammar section directly before does not define %s.".formatted(l.text(), m.group(1), m.group(1))); }
+  }
+}
+void notations(Path p, List<Line> lines){
+  for (int i= 0; i < lines.size(); i++){
+    var l= lines.get(i);
+    if (!l.text().startsWith("Notation: ")){ error(p, l.number(), "\"%s\" is not a notation line: a Notation section holds lines \"Notation: \" followed by any text; a notation line ending with \" where:\" is followed by one or more lines \"- \" followed by any text.".formatted(l.text())); continue; }
+    if (!l.text().endsWith(" where:")){ continue; }
+    if (i + 1 == lines.size() || !lines.get(i + 1).text().startsWith("- ")){ error(p, l.number(), "\"%s\" ends with \" where:\", but no line \"- \" followed by any text comes after it.".formatted(l.text())); }
+    while (i + 1 < lines.size() && lines.get(i + 1).text().startsWith("- ")){ i++; }
   }
 }
 void storyLines(Path p, List<Line> lines){
