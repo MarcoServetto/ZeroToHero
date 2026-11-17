@@ -5,8 +5,8 @@ The 'manager path' is the OS path of the ManagerFolder on the actual file system
 projects.info is a file containing an Info serialized as defined in the fearless standard library.
 We expect that only the manager can edit this file.
 The Info of projects.info is a ProjectsInfo.
-fearlessManager.names is a map from ProjectName to Project, held in memory only.
-fearlessManager.states is a map from Project to State, held in memory only.
+fearlessManager.names is a map from ProjectName to TaggedText, held in memory only.
+fearlessManager.states is a map from TaggedText to State, held in memory only.
 
 Grammar:
 ManagerFolder ::= LockFile, "projects.info", "icons", "locks"
@@ -121,29 +121,29 @@ A fearlessManager holds the lock of no_manager.lock, and the folder at the\
 B fearlessManager.fatalError('manager path', "the folder is not a ManagerFolder")
 
 Define fearlessManager.readNames():
-A fearlessManager.names= the map holding ProjectName N -> Project for each Project of projects.info where:\
-  the folder at Project."path" holds N.fearless and no other file with extension fearless,\
+A fearlessManager.names= the map holding ProjectName N -> Project."path" for each Project of projects.info where:\
+  the folder at Project."path" holds N.fearless and no other *.fearless,\
   and the folder of no other Project holds N.fearless.
 
 Define fearlessManager.receive(Message):
-A Message is about N, fearlessManager.names maps N to Project.
-B The folder at Project."path" holds N.fearless and no other file with extension fearless.
+A Message is about N, (N->Project."path") in fearlessManager.names.
+B The folder at Project."path" holds N.fearless and no other *.fearless.
 C fearlessManager.autoCheck(Project)//or Project.Path?
 D fearlessManager.apply(Message)
 
 Define fearlessManager.receive(Message):
-A Message is about N, fearlessManager.names maps N to Project.
-B The folder at Project."path" does not hold N.fearless, or holds another file with extension fearless.
+A Message is about N, (N->Project."path") in fearlessManager.names.
+B The folder at Project."path" does not hold N.fearless, or holds another *.fearless.
 C fearlessManager.readNames()
 D fearlessManager.receive(Message)
 
 Define fearlessManager.receive(Message):
-A Message is about N, fearlessManager.names maps N to no Project.
+A Message is about N, (N->_) not in fearlessManager.names.
 B fearlessManager.refuse(Message, "no registered project is named N")
 
 Define fearlessManager.autoCheck(Project):
 A The folder at Project."path" can not be reached.
-B fearlessManager.states maps Project to "unreachable".
+B fearlessManager.states+= (Project."path"->"unreachable")
 C fearlessManager.terminate(Project)
 
 Define fearlessManager.autoCheck(Project):
@@ -156,28 +156,27 @@ B No Compile of Project runs, and no main with a dataEdit mount of Project runs.
 C fearlessManager.checkName(Project)
 
 Define fearlessManager.checkName(Project):
-A fearlessManager.names maps N to Project.
-B The folder at Project."path" holds N.fearless and no other file with extension fearless.
+A (N->Project."path") in fearlessManager.names.
+B The folder at Project."path" holds N.fearless and no other *.fearless.
 C fearlessManager.checkContent(Project)
 
 Define fearlessManager.checkName(Project):
-A fearlessManager.names maps N to Project.
-B The folder at Project."path" does not hold N.fearless, or holds another file with extension fearless.
+A (N->Project."path") in fearlessManager.names.
+B The folder at Project."path" does not hold N.fearless, or holds another *.fearless.
 C fearlessManager.readNames()
 D fearlessManager.checkName(Project)
 
 Define fearlessManager.checkName(Project):
-A fearlessManager.names maps no ProjectName to Project.
+A (_->Project."path") not in fearlessManager.names.
 B fearlessManager.readNames()
-C fearlessManager.names maps a ProjectName to Project.
+C (_->Project."path") in fearlessManager.names.
 D fearlessManager.checkName(Project)
 
 Define fearlessManager.checkName(Project):
-A fearlessManager.names maps no ProjectName to Project.
+A (_->Project."path") not in fearlessManager.names.
 B fearlessManager.readNames()
-C fearlessManager.names maps no ProjectName to Project.
-D fearlessManager.invalid(Project, Error), for Error naming the folder at Project."path",\
-  the files with extension fearless of that folder, and the folder of any other Project holding the same file.
+C (_->Project."path") not in fearlessManager.names.
+D fearlessManager.invalid(Project, Error), for Error listing the *.fearless in Project."path" and the other folders holding them.
 
 Define fearlessManager.checkContent(Project):
 A Project."kind" is code, and Coordinator.check(Project."path") gives Invalid(Error).
@@ -185,28 +184,32 @@ B fearlessManager.invalid(Project, Error)
 
 Define fearlessManager.checkContent(Project):
 A Project."kind" is code, and Coordinator.check(Project."path") gives OutOfDate.
-B fearlessManager.states maps Project to "outOfDate".
+B fearlessManager.states+= (Project."path"->"outOfDate")
 C fearlessManager.terminate(Project)
 
 Define fearlessManager.checkContent(Project):
 A Project."kind" is code, and Coordinator.check(Project."path") gives Compiled.
-B fearlessManager.states maps Project to "compiled".
+B fearlessManager.states+= (Project."path"->"compiled")
 
 Define fearlessManager.checkContent(Project):
 A Project."kind" is dataRead or dataEdit, and FolderShapes.check(Project."path") gives Error.
 B fearlessManager.invalid(Project, Error)
 
 Define fearlessManager.checkContent(Project):
-A Project."kind" is idle, or Project."kind" is dataRead or dataEdit and FolderShapes.check(Project."path") gives no Error.
-B fearlessManager.states maps Project to Project."kind".
+A Project."kind" is dataRead or dataEdit, and FolderShapes.check(Project."path") gives no Error.
+B fearlessManager.states+= (Project."path"->Project."kind")
+
+Define fearlessManager.checkContent(Project):
+A Project."kind" is idle.
+B fearlessManager.states+= (Project."path"->"idle")
 
 Define fearlessManager.invalid(Project, Error):
-A fearlessManager.states maps Project to "invalid ", Error.
+A fearlessManager.states+= (Project."path"->"invalid "+Error)
 B fearlessManager.terminate(Project)
 C Coordinator.writeError(Project."path", Error)
 
 Story:
-A A Compile of Project ends, or a main with a dataEdit mount of Project ends.
+A A Compile of Project ends.
 B fearlessManager.autoCheck(Project)
 
 Story:
