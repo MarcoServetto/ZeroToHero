@@ -1,0 +1,74 @@
+Text:
+fearlessManager is a program. The 'single' manager receives the messages that fearlessMessage sends, one at a time.
+projects.info is a file containing an Info serialized as defined in the fearless standard library; only fearlessManager writes projects.info.
+The Info of projects.info is a ProjectsInfo.
+fearlessManager answers "Applied\n" when fearlessManager$receive(Message) ends with no error, and "Refused\n", Error when fearlessManager$receive(Message) ends with the error Error.
+noProjectAt(Base16) gives a NoProjectAt, and notProjectsInfo(Base16) gives a NotProjectsInfo; these methods have no Define, and their parameters are all that the text of the error depends on.
+
+Grammar:
+ProjectsInfo ::= Infos.map("projects", Projects, "reserve", Extensions)
+Projects ::= Infos.list(Project1 .. Projectn)
+Extensions ::= Infos.list(Extension1 .. Extensionn)
+TypeNames ::= Infos.list(TypeName1 .. TypeNamen)
+Project ::= Infos.map("path", TaggedText, "kind", Kind, "mains", TypeNames, "mounts", Mount, "attenuators", Attenuator)
+Mount ::= Infos.map(TypeName1, ProjectName1 .. TypeNamen, ProjectNamen)
+Attenuator ::= Infos.map(TypeName1, TypeNames1 .. TypeNamen, TypeNamesn)
+Kind ::= "idle" | "code" | "dataRead" | "dataEdit"
+Extension ::= OSExtension
+ProjectName ::= [a-z_][a-z0-9_]*
+TaggedText ::= \
+  Base16                                 \
+  | "Str:", EscapedChar1 .. EscapedCharn \
+  | "UStr:", EscapedChar1 .. EscapedCharn
+EscapedChar ::= [0-9A-Za-z +\-*/=<>,.;:()\[\]{}`'"!?@#$%^&_|~\\]
+
+Well formedness:
+in Extension: not in "fearless" or "ffile000"-"ffile999" or "fapp000"-"fapp999".
+in Projects: no two Project with equal TaggedText.
+in Extensions: all Extension are disjoint.
+in Project: all TypeName in TypeNames are disjoint.
+in ProjectName: ProjectName, ".fearless" is a ValidSegment.
+in TaggedText: starts with "Str:" only if the EscapedChars are the result of\
+  p.escape where p is a Fearless Str encoding a valid OS FS path.
+in TaggedText: starts with "UStr:" only if the EscapedChars are the result of\
+  p.escape where p is a Fearless UStr encoding a valid OS FS path, and p.isStr is False.
+in TaggedText: is a Base16 only if no Fearless UStr encodes the path it decodes to.
+
+Story:
+A event fearlessManager receives Message from fearlessMessage.
+B action fearlessManager$receive(Message)
+
+Define fearlessManager$receive(EditMetadata Base16):
+A if the file at Base16 does not hold a ProjectsInfo error notProjectsInfo(Base16)
+B action fearlessManager$write(the ProjectsInfo of the file at Base16)
+
+Define fearlessManager$receive(Message):
+A fact No other Define of fearlessManager$receive(Message) holds.
+B if fearlessManager.edit(Message) is undefined error noProjectAt(Message.Base16)
+C action fearlessManager$write(fearlessManager.edit(Message))
+
+Define fearlessManager$write(ProjectsInfo):
+A action fearlessManager replaces projects.info with ProjectsInfo.
+B action fearlessManager tells the manager GUI, if the manager GUI runs, to read projects.info again.
+
+Notation: Base16.taggedText = TaggedText where:
+- Base16 and TaggedText encode the same path.
+
+Notation: fearlessManager.projectOf(Base16) = Project where:
+- Base16 and Project."path" encode the same path, for a Project of projects.info.
+
+Notation: fearlessManager.edit(Register Base16) = the Info of projects.info where:
+- fearlessManager.projectOf(Base16) is defined.
+Notation: fearlessManager.edit(Register Base16) = the Info of projects.info with Project at the end of "projects" where:
+- fearlessManager.projectOf(Base16) is undefined.
+- Project = Infos.map("path", Base16.taggedText, "kind", "idle", "mains", Infos.list(), "mounts", Infos.map(), "attenuators", Infos.map())
+Notation: fearlessManager.edit(Forget Base16) = the Info of projects.info without fearlessManager.projectOf(Base16)
+Notation: fearlessManager.edit(Message) = the Info of projects.info with Project' in place of Project where:
+- Project = fearlessManager.projectOf(Message.Base16).
+- Project' = Project.edit(Message).
+
+Notation: Project.edit(Kind Base16 Kind) = Project with ("kind"->Kind)
+Notation: Project.edit(Mount Base16 TypeName ProjectName) = Project with ("mounts"->Project."mounts" with (TypeName->ProjectName))
+Notation: Project.edit(Unmount Base16 TypeName) = Project with ("mounts"->Project."mounts" without (TypeName->_))
+Notation: Project.edit(Attenuate Base16 TypeName TypeName1 .. TypeNamen) = Project with ("attenuators"->Project."attenuators" with (TypeName->Infos.list(TypeName1 .. TypeNamen)))
+Notation: Project.edit(SelectMains Base16 TypeName1 .. TypeNamen) = Project with ("mains"->Infos.list(TypeName1 .. TypeNamen))
