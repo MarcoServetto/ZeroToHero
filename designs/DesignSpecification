@@ -19,6 +19,7 @@ Section ::= TextSection               \
           | WellFormednessSection     \
           | StorySection              \
           | DefineSection             \
+          | NotationSection           \
           | InvariantSection          \
           | ImplementationNotesSection //we can use \ to escape the new line
 TextSection ::= "Text:", " "*, "\n", TextLines
@@ -31,12 +32,16 @@ WellFormednessSection ::= "Well formedness:", " "*, "\n", WellFormednessLines
 WellFormednessLines   ::= WellFormednessLine1 .. WellFormednessLinen
 StorySection ::= "Story:", " "*, "\n", StoryLines
 DefineSection ::= "Define ", AnyText, ":", " "*, "\n", StoryLines
+NotationSection ::= Notation0 .. Notationn
+Notation ::= "Notation: ", Line | "Notation: ", AnyText, " where:", "\n", WhereLine0 .. WhereLinen
+WhereLine ::= "- ", Line
 InvariantSection ::= "Invariant:", " "*, "\n", Line1 .. Linen
 ImplementationNotesSection ::= "Implementation notes:", " "*, "\n", Line1 .. Linen
 WellFormednessLine ::= "in", " "+, Nonterminal, ":", Line
 StoryLines ::= StoryLine1 .. StoryLinen
-StoryLine ::= Label, " ", Line
+StoryLine ::= Label, " ", Keyword, " ", Line
 Label ::= [A-Z]
+Keyword ::= "event" | "action" | "after" | "fact"
 Nonterminal ::= [A-Z][A-Za-z0-9]*
 
 Well formedness:
@@ -46,22 +51,18 @@ in Document: if Sectioni is a WellFormednessSection, Section(i-1) is a GrammarSe
    and nonTerminalsOf(Section(i-1)).containsAll(wellFormedHeadsOf(Sectioni))
 //Note how we can use .containsAll and any other 'reasonable but made up' notation
 in StoryLines: the Label of StoryLinei is the i-th letter from A to Z.
+in Notation: the first line of Notation ends with " where:" only when Notation has a WhereLine.
 
-Define nonTerminalsOf(Section1 "\n" .. "\n" Sectionn):
-A nonTerminalsOf(Section1),..,nonTerminalsOf(Sectionn)
+Notation: nonTerminalsOf(Section1 "\n" .. "\n" Sectionn) = nonTerminalsOf(Section1),..,nonTerminalsOf(Sectionn)
 
-Define nonTerminalsOf("Grammar:", " "*, "\n", GrammarLine1 .. GrammarLinen):
-A nonTerminalOf(GrammarLine1),..,nonTerminalOf(GrammarLinen)
+Notation: nonTerminalsOf("Grammar:", " "*, "\n", GrammarLine1 .. GrammarLinen) = nonTerminalOf(GrammarLine1),..,nonTerminalOf(GrammarLinen)
 
-Define nonTerminalsOf(Section):
-A Section not of form GrammarSection
-B empty list
+Notation: nonTerminalsOf(Section) = empty list where:
+- Section not of form GrammarSection
 
-Define wellFormedHeadsOf("Well formedness:", " "*, "\n", WellFormednessLine1 .. WellFormednessLinen):
-A wellFormedHeadOf(WellFormednessLine1),..,wellFormedHeadOf(WellFormednessLinen)
+Notation: wellFormedHeadsOf("Well formedness:", " "*, "\n", WellFormednessLine1 .. WellFormednessLinen) = wellFormedHeadOf(WellFormednessLine1),..,wellFormedHeadOf(WellFormednessLinen)
 
-Define wellFormedHeadOf("in", " "+, Nonterminal, ":", Line):
-A Nonterminal
+Notation: wellFormedHeadOf("in", " "+, Nonterminal, ":", Line) = Nonterminal
 //This is kind of verbose; notation WellFormednessLine.Nonterminal can be used here.
 //In general A.B extracts the leftmost non terminal in the grammar tree of A that is of form B
 
@@ -94,51 +95,61 @@ A "\\" that is the last character of a line joins that line with the next line, 
 Outside comments, a "\\" followed by any number of spaces and an end of line comment, or by one or more spaces and "\n", is an error.
 
 Story:
-A The agent writes new design documents Document1..Documentn.
-B The agent calls DesignDocumentsParser.check(Document1..Documentn).
-C The check fails.
-D The agent fixes the design document syntax, producing Document'1..Document'n.
-E The agent amends the open PR with Document'1..Document'n.
+A action The agent writes new design documents Document1..Documentn.
+B action The agent calls DesignDocumentsParser$check(Document1..Documentn).
+C after The check fails.
+D action The agent fixes the design document syntax, producing Document'1..Document'n.
+E action The agent amends the open PR with Document'1..Document'n.
 
 Text:
-A StoryLine is a condition, an action or an observed fact.
+A StoryLine has a Keyword after its Label.
+With fact, the StoryLine states a condition.
+With event, the StoryLine states something happening outside of the program, such as a message arriving.
+With action, the StoryLine states a step that the program or the user takes, such as a call of a method.
+With after, the StoryLine states a condition caused by the actions before.
+For example, "fact m(X)" states that the call m(X) has started, and the StoryLines after it show what m(X) does; "action m(X)" makes the call m(X).
 The StoryLines of a section happen, or hold, in the order of their Labels.
 A condition holds from its StoryLine until a later StoryLine states a contradicting condition, or states that the condition does not hold any more.
 Each DefineSection is one way a call of the method it defines can go.
+Define is a section to be used when there are steps in time, and side effects.
+Notation is a section to be used where there are no steps in time.
+A method doing something that later facts can observe, that is a method with side effects, has "$" before its name: DesignDocumentsParser$check.
+A method doing only math rewriting on data in memory, with no disk access, has "." before its name: .containsAll.
 A DefineSection 'holds' for a call when every condition of that DefineSection holds for that call.
-A call is 'undefined' when no DefineSection of its method holds for that call.
+A Notation 'holds' for a call when every WhereLine of that Notation holds for that call.
+A call is 'undefined' when no DefineSection and no Notation of its method holds for that call.
 The condition "No other Define of m(X) holds" holds when no other DefineSection of m holds for m(X).
-The StoryLine "return X" ends the call, with the result X.
-In a StoryLine, a Nonterminal stands for one value of that Nonterminal, not for the set of its values.
+The action "return X" ends the call, with the result X.
+In a StoryLine or a Notation, a Nonterminal stands for one value of that Nonterminal, not for the set of its values.
 For example, "the folder holds ProjectName.fearless" is about one ProjectName, and needs no other name for that value.
-Every occurrence of a Nonterminal in one section stands for the same value; numbered Nonterminals, as in TypeName1 .. TypeNamen, stand for several values.
+Every occurrence of a Nonterminal in one Notation, or in one section that is not a NotationSection, stands for the same value; numbered Nonterminals, as in TypeName1 .. TypeNamen, stand for several values.
 That is:  TypeName TypeName1 TypeName' TypeName'1 TypeName''2 are five different TypeName
 The content of the specification is instantiated on the non terminals and is supposed to be read over them in the same way a metarule is instantiated by replacing the metavariables with the concrete values.
 Consider 
   BinNum::= 0 | 1 | 0 BinNum | 1 BinNum
 and the line in a Story/Definition
-  A BinNum 01001110 is even.
+  A fact BinNum 01001110 is even.
 This is wrong: BinNum is a metavariable, thus it is instantiated in the line, so the concrete line would read, for example, as the following nonsense:
-  A 011101 01001110 is even.
+  A fact 011101 01001110 is even.
 The set of all stories/defines is supposed to be understood not as a full set of behaviour, but as a set of tests that a reasonable implementation would be able to use to infer the full behaviour.
 For example if we have a story saying
-  A The bread costs 40
-  B The butter costs 20
-  C We pay 60
+  A fact The bread costs 40
+  B fact The butter costs 20
+  C action We pay 60
 We expect that the implementation can infer that we aim to sum the costs for an arbitrary amount of items. No need to give infinite stories.
-  A The name "Foo" is taken
-  B The name "Foo2" is free
-  C We adopt "Foo2"
+  A fact The name "Foo" is taken
+  B fact The name "Foo2" is free
+  C action We adopt "Foo2"
 Here, the implementation can infer that if "Foo2" is also taken, we may try "Foo3"
 An action that changes a value uses "=", "+=" or "-=": m= {} empties the map m, m+= (Key->Value) makes m map Key to Value, and m-= (Key->Value) removes (Key->Value) from m.
 A condition on a map uses "in" or "not in": (Key->Value) in m, and (Key->Value) not in m; "_" stands for any value.
 
 Text:
 A good design document starts with a few Text lines, followed by a GrammarSection and a WellFormednessSection.
-In a good design, wisdom is used to decide if a call in a StoryLine, such as DesignDocumentsParser.check(Document1..Documentn), needs a DefineSection or not. Eventually we need to delegate to intuitive names or elements implemented in other software not covered by a design document.
+In a good design, wisdom is used to decide if a call in a StoryLine, such as DesignDocumentsParser$check(Document1..Documentn), needs a DefineSection or not. Eventually we need to delegate to intuitive names or elements implemented in other software not covered by a design document.
 
 Implementation notes:
-To call DesignDocumentsParser.check(Document1..Documentn)
+To call DesignDocumentsParser$check(Document1..Documentn)
 Use the Java script designs/parser/DesignDocumentsParser.java of ZeroToHero, with Java 25 or later.
 The script takes one folder: Document1..Documentn are the files directly in that folder.
 Example command line, from the folder of ZeroToHero:

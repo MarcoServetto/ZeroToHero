@@ -4,6 +4,7 @@ final Pattern newLineRegex= Pattern.compile("[\\x0B\\f\\r\\x85\\u2028\\u2029]");
 final Pattern stringOrCommentRegex= Pattern.compile("\"(?:\\\\.|[^\"\\\\])*\"|//");
 final Pattern grammarLineRegex= Pattern.compile("([A-Z][A-Za-z0-9]*) *::=.*");
 final Pattern wellFormednessLineRegex= Pattern.compile("in +([A-Z][A-Za-z0-9]*):.*");
+final Pattern keywordRegex= Pattern.compile(". (event|action|after|fact) .*");
 final Map<String, String> defined= new HashMap<>();
 boolean failed= false;
 
@@ -76,7 +77,8 @@ void section(Path p, List<List<Line>> sections, int i){
     case "Well formedness:" -> wellFormedness(p, head, rest, i == 0 ? List.of() : sections.get(i - 1));
     case "Story:" -> storyLines(p, rest);
     case String s when s.matches("Define .*:") -> storyLines(p, rest);
-    default -> error(p, head.number(), "\"%s\" is not a category line: the first line of a section is \"Text:\", \"Grammar:\", \"Well formedness:\", \"Story:\", \"Define \" followed by any text and \":\", \"Invariant:\" or \"Implementation notes:\", followed by any number of spaces.".formatted(head.text()));
+    case String s when s.startsWith("Notation: ") -> notations(p, sections.get(i));
+    default -> error(p, head.number(), "\"%s\" is not a category line: the first line of a section is \"Text:\", \"Grammar:\", \"Well formedness:\", \"Story:\", \"Define \" followed by any text and \":\", \"Invariant:\" or \"Implementation notes:\", followed by any number of spaces, or \"Notation: \" followed by any text.".formatted(head.text()));
   }
 }
 void grammarLine(Path p, Line l){
@@ -95,11 +97,21 @@ void wellFormedness(Path p, Line head, List<Line> rest, List<Line> before){
     if (afterGrammar && !heads.contains(m.group(1))){ error(p, l.number(), "\"%s\" constrains %s, but the Grammar section directly before does not define %s.".formatted(l.text(), m.group(1), m.group(1))); }
   }
 }
+void notations(Path p, List<Line> lines){
+  for (int i= 0; i < lines.size(); i++){
+    var l= lines.get(i);
+    if (!l.text().startsWith("Notation: ")){ error(p, l.number(), "\"%s\" is not a notation line: a Notation section holds lines \"Notation: \" followed by any text; a notation line ending with \" where:\" is followed by one or more lines \"- \" followed by any text.".formatted(l.text())); continue; }
+    if (!l.text().endsWith(" where:")){ continue; }
+    if (i + 1 == lines.size() || !lines.get(i + 1).text().startsWith("- ")){ error(p, l.number(), "\"%s\" ends with \" where:\", but no line \"- \" followed by any text comes after it.".formatted(l.text())); }
+    while (i + 1 < lines.size() && lines.get(i + 1).text().startsWith("- ")){ i++; }
+  }
+}
 void storyLines(Path p, List<Line> lines){
   for (int i= 0; i < lines.size(); i++){
     var l= lines.get(i);
     if (i == 26){ error(p, l.number(), "this is story line 27 of its section: the labels go only from A to Z."); return; }
     var label= (char)('A' + i) + " ";
     if (!l.text().startsWith(label)){ error(p, l.number(), "\"%s\" is story line %d of its section, so it starts with \"%s\": the labels of a section are A, B, C, ... in order, each followed by a space.".formatted(l.text(), i + 1, label)); return; }
+    if (!keywordRegex.matcher(l.text()).matches()){ error(p, l.number(), "\"%s\" has no keyword after its label: after the label and a space, a story line has \"event\", \"action\", \"after\" or \"fact\", then a space and any text.".formatted(l.text())); }
   }
 }
