@@ -4,7 +4,8 @@ final Pattern newLineRegex= Pattern.compile("[\\x0B\\f\\r\\x85\\u2028\\u2029]");
 final Pattern stringOrCommentRegex= Pattern.compile("\"(?:\\\\.|[^\"\\\\])*\"|//");
 final Pattern grammarLineRegex= Pattern.compile("([A-Z][A-Za-z0-9]*) *::=.*");
 final Pattern wellFormednessLineRegex= Pattern.compile("in +([A-Z][A-Za-z0-9]*):.*");
-final Pattern keywordRegex= Pattern.compile(". (event|action|after|fact) .*");
+final Pattern keywordRegex= Pattern.compile(". (event|action|after|fact|if) .*");
+final Pattern ifRegex= Pattern.compile(". if .+ (return|error) .+");
 final Map<String, String> defined= new HashMap<>();
 boolean failed= false;
 
@@ -112,6 +113,7 @@ void storyLines(Path p, List<Line> lines){
     if (i == 26){ error(p, l.number(), "this is story line 27 of its section: the labels go only from A to Z."); return; }
     var label= (char)('A' + i) + " ";
     if (!l.text().startsWith(label)){ error(p, l.number(), "\"%s\" is story line %d of its section, so it starts with \"%s\": the labels of a section are A, B, C, ... in order, each followed by a space.".formatted(l.text(), i + 1, label)); return; }
-    if (!keywordRegex.matcher(l.text()).matches()){ error(p, l.number(), "\"%s\" has no keyword after its label: after the label and a space, a story line has \"event\", \"action\", \"after\" or \"fact\", then a space and any text.".formatted(l.text())); }
+    if (!keywordRegex.matcher(l.text()).matches()){ error(p, l.number(), "\"%s\" has no keyword after its label: after the label and a space, a story line has \"event\", \"action\", \"after\", \"fact\" or \"if\", then a space and any text.".formatted(l.text())); continue; }
+    if (l.text().startsWith(label + "if ") && !ifRegex.matcher(l.text()).matches()){ error(p, l.number(), "\"%s\" has the keyword \"if\", so after \"if\" it has a condition, then \" return \" or \" error \", then any text.".formatted(l.text())); }
   }
 }
