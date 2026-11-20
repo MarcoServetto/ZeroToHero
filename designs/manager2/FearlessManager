@@ -3,16 +3,16 @@ fearlessManager is a program. The 'single' manager receives the messages that fe
 projects.info is a file containing an Info serialized as defined in the fearless standard library; only fearlessManager writes projects.info.
 The Info of projects.info is a ProjectsInfo.
 fearlessManager answers "Applied\n" when fearlessManager$receive(fearlessManager$updateNamesOf(Message)) ends with no error, and "Refused\n", Error when fearlessManager$receive(fearlessManager$updateNamesOf(Message)) ends with error.
-Errors are produced by notations invalidEdit(ProjectsInfo,Message), notProjectsInfo(Base16) and noProjectNamed(ProjectName), left undefined in the design.
+Errors are produced by notations invalidEdit(ProjectsInfo,Message), notProjectsInfo(Base16), notNamed(ProjectName,Base16) and noProjectNamed(ProjectName), left undefined in the design.
 Info[..] makes a new Info with a little difference; for example ProjectsInfo[+=Project] makes a new Info where the list contains also that Project.
-Message[ProjectName=Base16] makes a new Message where the Target ProjectName is replaced by Base16.
+Message[ProjectName=ProjectName Base16] makes a new Message where the Target ProjectName is replaced by the Target ProjectName Base16.
 fearlessManager.names is a Names held in memory; fearlessManager.names starts as {}.
 
 Grammar:
 ProjectsInfo ::= Infos.list(Project1 .. Projectn)
 TypeNames ::= Infos.list(TypeName1 .. TypeNamen)
 Project ::= Infos.map("path", TaggedText, "kind", Kind, "mains", TypeNames, "mounts", Mount, "attenuators", Attenuator)
-Mount ::= Infos.map(TypeName1, TaggedText1 .. TypeNamen, TaggedTextn)
+Mount ::= Infos.map(TypeName1, ProjectName1 .. TypeNamen, ProjectNamen)
 Attenuator ::= Infos.map(TypeName1, TypeNames1 .. TypeNamen, TypeNamesn)
 Kind ::= "idle" | "code" | "dataRead" | "dataEdit"
 ProjectName ::= [a-z_][a-z0-9_]*
@@ -39,10 +39,10 @@ Notation: Base16.taggedText = TaggedText where:
 Notation: ProjectName.resolve(Names) = Base16 where:
 - (ProjectName->Base16.taggedText) in Names
 
-Notation: Message.resolve(Names) = Message where:
+Notation: Message.enrich(Names) = Message where:
 - no Target of Message is a ProjectName
 
-Notation: Message.resolve(Names) = Message[ProjectName=ProjectName.resolve(Names)].resolve(Names) where:
+Notation: Message.enrich(Names) = Message[ProjectName=ProjectName ProjectName.resolve(Names)].enrich(Names) where:
 - ProjectName is a Target of Message
 
 Notation: ProjectsInfo.projectOf(Base16) = Project where:
@@ -55,18 +55,18 @@ Notation: ProjectsInfo.edit("Register" Base16) = ProjectsInfo where:
 Notation: ProjectsInfo.edit("Register" Base16) = ProjectsInfo[+=Infos.map("path", Base16.taggedText, "kind", "idle", "mains", Infos.list(), "mounts", Infos.map(), "attenuators", Infos.map())] where:
 - ProjectsInfo.projectOf(Base16) is undefined.
 
-Notation: ProjectsInfo.edit("Forget" Base16) = ProjectsInfo[-=ProjectsInfo.projectOf(Base16)]
+Notation: ProjectsInfo.edit("Forget" ProjectName Base16) = ProjectsInfo[-=ProjectsInfo.projectOf(Base16)]
 
 Notation: ProjectsInfo.edit(Message) = ProjectsInfo[Project=Project.edit(Message)] where:
 - Project = ProjectsInfo.projectOf(Message.Base16)
 
-Notation: Project.edit("Kind" Base16 Kind) = Project["kind"=Kind]
+Notation: Project.edit("Kind" Target Kind) = Project["kind"=Kind]
 
-Notation: Project.edit("Mount" Base16 TypeName Base16') = Project["mounts".TypeName=Base16'.taggedText]
+Notation: Project.edit("Mount" Target TypeName ProjectName' Base16') = Project["mounts".TypeName=ProjectName']
 
-Notation: Project.edit("Unmount" Base16 TypeName) = Project["mounts"/=TypeName]
+Notation: Project.edit("Unmount" Target TypeName) = Project["mounts"/=TypeName]
 
-Notation: Project.edit("Attenuate" Base16 TypeName TypeName1 .. TypeNamen) = Project["attenuators"+=(TypeName->Infos.list(TypeName1 .. TypeNamen))]
+Notation: Project.edit("Attenuate" Target TypeName TypeName1 .. TypeNamen) = Project["attenuators"+=(TypeName->Infos.list(TypeName1 .. TypeNamen))]
 
 Define fearlessManager$write(ProjectsInfo):
 A action fearlessManager replaces projects.info with ProjectsInfo
@@ -81,10 +81,11 @@ A fact ProjectsInfo = Infos.list(Project1 .. Projectn)
 B action fearlessManager.names= (fearlessManager$readName(Project1."path")->Project1."path") .. (fearlessManager$readName(Projectn."path")->Projectn."path")
 
 Define fearlessManager$updateNamesOf(Message):
-A if each ProjectName Target of Message is the name of the folder at ProjectName.resolve(fearlessManager.names), return Message.resolve(fearlessManager.names)
-B action fearlessManager$readNames()
-C if ProjectName is a Target of Message and (ProjectName->_) not in fearlessManager.names, error noProjectNamed(ProjectName)
-D action return Message.resolve(fearlessManager.names)
+A if ProjectName Base16 is a Target of Message and ProjectName is not the name of the folder at Base16, error notNamed(ProjectName,Base16)
+B if each ProjectName Target of Message is the name of the folder at ProjectName.resolve(fearlessManager.names), return Message.enrich(fearlessManager.names)
+C action fearlessManager$readNames()
+D if ProjectName is a Target of Message and (ProjectName->_) not in fearlessManager.names, error noProjectNamed(ProjectName)
+E action return Message.enrich(fearlessManager.names)
 
 Define fearlessManager$receive(EditMetadata Base16):
 A if the file at Base16 does not hold a ProjectsInfo, error notProjectsInfo(Base16)
