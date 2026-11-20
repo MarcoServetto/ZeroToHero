@@ -1,12 +1,15 @@
 Text:
 fearlessManager is a program. The 'single' manager receives the messages that fearlessMessage sends, one at a time.
-projects.info is a file containing an Info serialized as defined in the fearless standard library; only fearlessManager writes projects.info.
+The 'single' manager is the fearlessManager that holds the lock of single_manager_at_Port.lock, in the folder at the 'manager path'.
+The 'manager path' is the path of a folder, the same for fearlessManager and for fearlessMessage.
+projects.info is a file in the folder at the 'manager path', containing an Info serialized as defined in the fearless standard library; only fearlessManager writes projects.info.
 The Info of projects.info is a ProjectsInfo.
-fearlessManager answers "Applied\n" when fearlessManager$receive(Message) ends with no error, and "Refused\n", Error when fearlessManager$receive(Message) ends with error.
-Errors are produced by notations noProjectAt(Base16), invalidEdit(ProjectInfo,Message) and notProjectsInfo(Base16), left undefined in the design.
-Info[..] makes a new Info with a little difference; for example ProjectsInfo["projects"+=Project] makes a new Info where the list projects contains also that Project. 
+fearlessManager answers "Applied\n" when fearlessManager$receive(Message) ends with no error, and "Refused\n" Error when fearlessManager$receive(Message) ends with error.
+Errors are produced by notations notProjectsInfo(Base16) and lockFilesError(LockFile1 .. LockFilen), left undefined in the design.
 
 Grammar:
+LockFile ::= "no_manager.lock" | "single_manager_at_" Port ".lock"
+Port ::= [1-9][0-9]*
 ProjectsInfo ::= Infos.map("projects", Projects, "reserve", Extensions)
 Projects ::= Infos.list(Project1 .. Projectn)
 Extensions ::= Infos.list(Extension1 .. Extensionn)
@@ -24,6 +27,7 @@ TaggedText ::= \
 EscapedChar ::= [0-9A-Za-z +\-*/=<>,.;:()\[\]{}`'"!?@#$%^&_|~\\]
 
 Well formedness:
+in Port: the digits form a number smaller than 65536
 in Extension: not in {"fearless", "ffile000"-"ffile999", "fapp000"-"fapp999"}
 in Extensions: all Extension are disjoint
 in Projects: no two Project with equal TaggedText
@@ -35,40 +39,70 @@ in TaggedText: starts with "UStr:" only if the EscapedChars are the result of\
   p.escape where p is a Fearless UStr encoding a valid OS FS path, and p.isStr is False
 in TaggedText: is a Base16 only if no Fearless UStr encodes the path it decodes to
 
-Notation: Base16.taggedText = TaggedText where:
-- Base16 and TaggedText encode the same path
+Invariant:
+At every moment, at most one fearlessManager is the 'single' manager.
 
-Notation: ProjectsInfo.projectOf(Base16) = Project where:
-- Project in ProjectsInfo."projects"
-- Base16 and Project."path" encode the same path
+Story:
+A event fearlessManager starts
+B action fearlessManager$start()
 
-Notation: ProjectsInfo.edit("Register" Base16) = ProjectsInfo where:
-- ProjectsInfo.projectOf(Base16) is defined.
+Define fearlessManager$start():
+A fact No folder is at the 'manager path'
+B action fearlessManager tries to create a folder at the 'manager path', holding the empty file no_manager.lock, and projects.info holding Infos.map("projects", Infos.list(), "reserve", Infos.list())
+C action fearlessManager$start()
 
-Notation: ProjectsInfo.edit("Forget" Base16) = ProjectsInfo["projects"-=ProjectsInfo.projectOf(Base16)]
+Define fearlessManager$start():
+A fact The LockFiles in the folder at the 'manager path' are LockFile1 .. LockFilen, and n is not 1
+B action fearlessManager$fatalError(lockFilesError(LockFile1 .. LockFilen))
 
-Notation: ProjectsInfo.edit("Kind" Base16 Kind) = ProjectsInfo["projects"[ select "path"=Base16]."kind"=Kind]
+Define fearlessManager$start():
+A fact The folder at the 'manager path' holds one LockFile, and a process holds the lock of LockFile
+B action fearlessManager ends
 
-Notation: Project.edit("Mount" Base16 TypeName ProjectName) = Project["mounts".TypeName=ProjectName]
+Define fearlessManager$start():
+A fact The folder at the 'manager path' holds one LockFile, and no process holds the lock of LockFile
+B action fearlessManager takes the lock of LockFile
+C fact projects.info does not hold a ProjectsInfo, and Base16 encodes the path of projects.info
+D action fearlessManager$fatalError(notProjectsInfo(Base16))
 
-Notation: Project.edit("Unmount" Base16 TypeName) = Project["mounts"/=TypeName]
+Define fearlessManager$start():
+A fact The folder at the 'manager path' holds one LockFile, and no process holds the lock of LockFile
+B action fearlessManager takes the lock of LockFile
+C fact projects.info holds a ProjectsInfo
+D action fearlessManager listens for connections on the loopback address, on a port Port that the OS picks
+E action fearlessManager renames LockFile to single_manager_at_Port.lock
 
-Define fearlessManager$write(ProjectsInfo):
-A action fearlessManager replaces projects.info with ProjectsInfo
-B action fearlessManager tells the manager GUI, if the manager GUI runs, to read projects.info again
+Define fearlessManager$fatalError(Error):
+A action fearlessManager shows a dialog with Error
+B action The user closes the dialog
+C action fearlessManager deletes the folder at the 'manager path'
+D action fearlessManager ends
+
+Story:
+A event A connection to the 'single' manager arrives
+B action fearlessManager sends a Greeting on the connection
+C event fearlessManager reads Message "\n" from the connection
+D action fearlessManager$receive(Message)
+E action fearlessManager answers on the connection
+F action fearlessManager ends the connection
+
+Story:
+A event A connection to the 'single' manager arrives
+B action fearlessManager sends a Greeting on the connection
+C event The connection ends, or fearlessManager reads from the connection a line that is not of form Message "\n"
+D action fearlessManager ends the connection
 
 Define fearlessManager$receive(EditMetadata Base16):
 A if the file at Base16 does not hold a ProjectsInfo, error notProjectsInfo(Base16)
 B action fearlessManager$write(the ProjectsInfo of the file at Base16)
 
-Define fearlessManager$receive(Message):
-A fact Message starts with {....}//complete here
-B if ProjectsInfo.edit(Message) undefined, error invalidEdit(ProjectInfo,Message)
-C action fearlessManager$write(ProjectsInfo.edit(Message))
-
-Story:
-A event fearlessManager receives Message from fearlessMessage.
-B action fearlessManager$receive(Message)
+Define fearlessManager$write(ProjectsInfo):
+A action fearlessManager replaces projects.info with ProjectsInfo
+B action fearlessManager tells the manager GUI, if the manager GUI runs, to read projects.info again
 
 Implementation notes:
+The 'manager path' is the folder fearless<version> next to the program folder, the folder holding fearlessManager and fearlessMessage.
+fearlessManager creates the folder at the 'manager path' by filling a new folder next to the 'manager path', then renaming that new folder to the 'manager path': the rename fails when a folder is at the 'manager path' already.
+The lock of a LockFile is the lock of FileChannel.tryLock: one call of FileChannel.tryLock finds that no process holds the lock and takes the lock; the OS releases the lock when the process ends, however the process ends, and the lock follows the file when the file is renamed.
+fearlessManager sends the Greeting as soon as a connection arrives, also while fearlessManager$receive runs for another Message.
 notProjectsInfo(Base16) could be triggered because the file does not exists, or because it exists and is not a valid info, or it is a valid info that is not a valid ProjectInfo, including all the well formedness. The error should investigate and report detail error informations, in the style of Frontend compile errors.

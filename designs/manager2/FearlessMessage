@@ -1,25 +1,55 @@
 Text:
 fearlessMessage is a program that sends one Message to the 'single' manager, and prints the Answer of the 'single' manager on its standard output.
-A Message about a folder holds the path of that folder.
 
 Grammar:
-Message ::= "EditMetadata " Base16                                     \
-          | "Register " Base16                                         \
-          | "Forget " ProjectName                                      \
-          | "Kind " ProjectName " " Kind                               \
-          | "Mount " ProjectName0 " " TypeName " " ProjectName1        \
-          | "Unmount " ProjectName " " TypeName                        \
-          | "Attenuate " ProjectName " " TypeName1 " ".." " TypeNamen  \
-          | "SelectMains " ProjectName " " TypeName1 " ".." " TypeNamen
+Message ::= "EditMetadata " Base16
 Base16 ::= "Base16:" ([0-9A-F][0-9A-F])+
+Greeting ::= Base16 "\n"
 Answer ::= "Applied\n" | "Refused\n" Error
 Error ::= ...
 
 Well formedness:
-in Message: all TypeName of a SelectMains are disjoint
 in Base16: second component is a valid OS FS path when decoded
+in Greeting: the Base16 encodes the 'manager path'
 
 Story:
 A event fearlessMessage is called with syntax   fearlessMessage "Message"
-B action fearlessMessage sends Message to the 'single' manager and opens a port to read...//this should be much longer
-C after fearlessMessage prints the Answer of the 'single' manager//No! else it would only be printing when the port is closed?
+B action fearlessMessage$send(Message)
+
+Story:
+A event fearlessMessage is called with arguments that are not one Message
+B action fearlessMessage prints details to standard error
+C action fearlessMessage ends with exit code 1
+
+Define fearlessMessage$send(Message):
+A fact A process holds the lock of single_manager_at_Port.lock, in the folder at the 'manager path'
+B action fearlessMessage tries to open a connection to Port on the loopback address
+C fact Within 5 seconds, fearlessMessage reads a Greeting from the connection
+D action fearlessMessage sends Message "\n" on the connection
+E action fearlessMessage prints the text that fearlessMessage reads from the connection, as soon as fearlessMessage reads that text, until the connection ends
+F action fearlessMessage ends
+
+Define fearlessMessage$send(Message):
+A fact A process holds the lock of single_manager_at_Port.lock, in the folder at the 'manager path'
+B action fearlessMessage tries to open a connection to Port on the loopback address
+C fact The connection does not open, or within 5 seconds fearlessMessage does not read a Greeting from the connection
+D action fearlessMessage ends the connection, if the connection is open
+E action fearlessMessage$send(Message)
+
+Define fearlessMessage$send(Message):
+A fact A process holds the lock of no_manager.lock, in the folder at the 'manager path'
+B action fearlessMessage waits until A does not hold
+C action fearlessMessage$send(Message)
+
+Define fearlessMessage$send(Message):
+A fact No process holds the lock of a LockFile in the folder at the 'manager path'
+B action fearlessMessage runs fearlessManager
+C action fearlessMessage waits until A does not hold, or until fearlessManager ends
+D action fearlessMessage$send(Message)
+
+Implementation notes:
+A connection is TCP on the loopback address.
+On a connection the text is UTF-8; fearlessMessage prints the text with the encoding of its standard output.
+fearlessMessage finds whether a process holds the lock of a LockFile by trying to take that lock with FileChannel.tryLock; when fearlessMessage takes the lock, fearlessMessage releases the lock at once.
+fearlessManager runs in a process of its own, independent of fearlessMessage: fearlessManager does not keep the standard output and the standard error of fearlessMessage.
+The bytes of a Base16 path: on Windows the UTF-16 code units of the name, little endian (a name may contain an unpaired surrogate); elsewhere the bytes of the name as the file system stores them.
