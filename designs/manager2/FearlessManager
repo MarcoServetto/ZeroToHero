@@ -1,0 +1,74 @@
+Text:
+fearlessManager is a program. The 'single' manager receives the messages that fearlessMessage sends, one at a time.
+projects.info is a file containing an Info serialized as defined in the fearless standard library; only fearlessManager writes projects.info.
+The Info of projects.info is a ProjectsInfo.
+fearlessManager answers "Applied\n" when fearlessManager$receive(Message) ends with no error, and "Refused\n", Error when fearlessManager$receive(Message) ends with error.
+Errors are produced by notations noProjectAt(Base16), invalidEdit(ProjectInfo,Message) and notProjectsInfo(Base16), left undefined in the design.
+Info[..] makes a new Info with a little difference; for example ProjectsInfo["projects"+=Project] makes a new Info where the list projects contains also that Project. 
+
+Grammar:
+ProjectsInfo ::= Infos.map("projects", Projects, "reserve", Extensions)
+Projects ::= Infos.list(Project1 .. Projectn)
+Extensions ::= Infos.list(Extension1 .. Extensionn)
+TypeNames ::= Infos.list(TypeName1 .. TypeNamen)
+Project ::= Infos.map("path", TaggedText, "kind", Kind, "mains", TypeNames, "mounts", Mount, "attenuators", Attenuator)
+Mount ::= Infos.map(TypeName1, ProjectName1 .. TypeNamen, ProjectNamen)
+Attenuator ::= Infos.map(TypeName1, TypeNames1 .. TypeNamen, TypeNamesn)
+Kind ::= "idle" | "code" | "dataRead" | "dataEdit"
+Extension ::= OSExtension
+ProjectName ::= [a-z_][a-z0-9_]*
+TaggedText ::= \
+  Base16                                 \
+  | "Str:" EscapedChar1 .. EscapedCharn \
+  | "UStr:" EscapedChar1 .. EscapedCharn
+EscapedChar ::= [0-9A-Za-z +\-*/=<>,.;:()\[\]{}`'"!?@#$%^&_|~\\]
+
+Well formedness:
+in Extension: not in {"fearless", "ffile000"-"ffile999", "fapp000"-"fapp999"}
+in Extensions: all Extension are disjoint
+in Projects: no two Project with equal TaggedText
+in Project: all TypeName in TypeNames are disjoint
+in ProjectName: ProjectName ".fearless" is a ValidSegment
+in TaggedText: starts with "Str:" only if the EscapedChars are the result of\
+  p.escape where p is a Fearless Str encoding a valid OS FS path
+in TaggedText: starts with "UStr:" only if the EscapedChars are the result of\
+  p.escape where p is a Fearless UStr encoding a valid OS FS path, and p.isStr is False
+in TaggedText: is a Base16 only if no Fearless UStr encodes the path it decodes to
+
+Notation: Base16.taggedText = TaggedText where:
+- Base16 and TaggedText encode the same path
+
+Notation: ProjectsInfo.projectOf(Base16) = Project where:
+- Project in ProjectsInfo."projects"
+- Base16 and Project."path" encode the same path
+
+Notation: ProjectsInfo.edit("Register" Base16) = ProjectsInfo where:
+- ProjectsInfo.projectOf(Base16) is defined.
+
+Notation: ProjectsInfo.edit("Forget" Base16) = ProjectsInfo["projects"-=ProjectsInfo.projectOf(Base16)]
+
+Notation: ProjectsInfo.edit("Kind" Base16 Kind) = ProjectsInfo["projects"[ select "path"=Base16]."kind"=Kind]
+
+Notation: Project.edit("Mount" Base16 TypeName ProjectName) = Project["mounts".TypeName=ProjectName]
+
+Notation: Project.edit("Unmount" Base16 TypeName) = Project["mounts"/=TypeName]
+
+Define fearlessManager$write(ProjectsInfo):
+A action fearlessManager replaces projects.info with ProjectsInfo
+B action fearlessManager tells the manager GUI, if the manager GUI runs, to read projects.info again
+
+Define fearlessManager$receive(EditMetadata Base16):
+A if the file at Base16 does not hold a ProjectsInfo, error notProjectsInfo(Base16)
+B action fearlessManager$write(the ProjectsInfo of the file at Base16)
+
+Define fearlessManager$receive(Message):
+A fact Message starts with {....}//complete here
+B if ProjectsInfo.edit(Message) undefined, error invalidEdit(ProjectInfo,Message)
+C action fearlessManager$write(ProjectsInfo.edit(Message))
+
+Story:
+A event fearlessManager receives Message from fearlessMessage.
+B action fearlessManager$receive(Message)
+
+Implementation notes:
+notProjectsInfo(Base16) could be triggered because the file does not exists, or because it exists and is not a valid info, or it is a valid info that is not a valid ProjectInfo, including all the well formedness. The error should investigate and report detail error informations, in the style of Frontend compile errors.
