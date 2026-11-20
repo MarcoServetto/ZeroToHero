@@ -2,7 +2,7 @@ Text:
 fearlessManager is a program. The 'single' manager receives the messages that fearlessMessage sends, one at a time.
 projects.info is a file containing an Info serialized as defined in the fearless standard library; only fearlessManager writes projects.info.
 The Info of projects.info is a ProjectsInfo.
-Errors are produced by notations invalidEdit(ProjectsInfo,Message), notProjectsInfo(Base16), notNamed(ProjectName,Base16) and noProjectNamed(ProjectName), left undefined in the design.
+Errors are produced by notations invalidEdit(ProjectsInfo,Message), notProjectsInfo(Base16), notNamed(Message) and noProjectNamed(Message), left undefined in the design.
 Info[..] makes a new Info with a little difference; for example ProjectsInfo[+=Project] makes a new Info where the list contains also that Project.
 Message[Target=Target'] makes a new Message where Target is replaced by Target'.
 fearlessManager.names is a Names held in memory; fearlessManager.names starts as {}.
@@ -79,6 +79,27 @@ Define fearlessManager$readNames():
 A fact ProjectsInfo = Infos.list(Project1 .. Projectn)
 B action fearlessManager.names= (fearlessManager$readName(Project1."path")->Project1."path") .. (fearlessManager$readName(Projectn."path")->Projectn."path")
 
+Define fearlessManager$checked("Name(" ProjectName ")"):
+A action return "Name(" ProjectName ")"
+
+Define fearlessManager$checked("Full(" ProjectName " " Base16 ")"):
+A fact the folder at Base16 has the name ProjectName
+B action return "Full(" ProjectName " " Base16 ")"
+
+Define fearlessManager$checkedAll(Message):
+A fact Message.Targets = Target1 .. Targetn
+B action return Message[Target1=fearlessManager$checked(Target1)] .. [Targetn=fearlessManager$checked(Targetn)]
+
+Define fearlessManager$fromNames(Message):
+A action return fearlessManager$checkedAll(Message.enrich(fearlessManager.names))
+
+Define fearlessManager$updateNamesOf(Message):
+A if fearlessManager$checkedAll(Message) is undefined, error notNamed(Message)
+B try fearlessManager$fromNames(Message)
+C action fearlessManager$readNames()
+D try fearlessManager$fromNames(Message)
+E action error noProjectNamed(Message)
+
 Define fearlessManager$receive(EditMetadata Base16):
 A if the file at Base16 holds ProjectsInfo serialized, return fearlessManager$write(ProjectsInfo)
 B action error notProjectsInfo(Base16)
@@ -102,3 +123,4 @@ D action fearlessManager answers "Refused\n" Error
 
 Implementation notes:
 notProjectsInfo(Base16) could be triggered because the file does not exists, or because it exists and is not a valid info, or it is a valid info that is not a valid ProjectsInfo, including all the well formedness. The error should investigate and report detail error informations, in the style of Frontend compile errors.
+In the same way, notNamed(Message) investigates and reports each Target "Full(" ProjectName " " Base16 ")" of Message where the folder at Base16 does not have the name ProjectName, and noProjectNamed(Message) reports each Target "Name(" ProjectName ")" of Message where no folder of projects.info has the name ProjectName.
