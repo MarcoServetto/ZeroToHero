@@ -2,9 +2,11 @@ Text:
 fearlessManager is a program. The 'single' manager receives the messages that fearlessMessage sends, one at a time.
 projects.info is a file containing an Info serialized as defined in the fearless standard library; only fearlessManager writes projects.info.
 The Info of projects.info is a ProjectsInfo.
-fearlessManager answers "Applied\n" when fearlessManager$receive(Message) ends with no error, and "Refused\n", Error when fearlessManager$receive(Message) ends with error.
-Errors are produced by notations invalidEdit(ProjectsInfo,Message) and notProjectsInfo(Base16), left undefined in the design.
-Info[..] makes a new Info with a little difference; for example ProjectsInfo[+=Project] makes a new Info where the list contains also that Project. 
+fearlessManager answers "Applied\n" when fearlessManager$receive(fearlessManager$updateNamesOf(Message)) ends with no error, and "Refused\n", Error when fearlessManager$receive(fearlessManager$updateNamesOf(Message)) ends with error.
+Errors are produced by notations invalidEdit(ProjectsInfo,Message), notProjectsInfo(Base16), notNamed(ProjectName,Base16) and noProjectNamed(ProjectName), left undefined in the design.
+Info[..] makes a new Info with a little difference; for example ProjectsInfo[+=Project] makes a new Info where the list contains also that Project.
+Message[ProjectName=ProjectName Base16] makes a new Message where the Target ProjectName is replaced by the Target ProjectName Base16.
+fearlessManager.names is a Names held in memory; fearlessManager.names starts as {}.
 
 Grammar:
 ProjectsInfo ::= Infos.list(Project1 .. Projectn)
@@ -19,6 +21,7 @@ TaggedText ::= \
   | "Str:" EscapedChar1 .. EscapedCharn \
   | "UStr:" EscapedChar1 .. EscapedCharn
 EscapedChar ::= [0-9A-Za-z +\-*/=<>,.;:()\[\]{}`'"!?@#$%^&_|~\\]
+Names ::= (ProjectName1->TaggedText1) .. (ProjectNamen->TaggedTextn)
 
 Well formedness:
 in ProjectsInfo: no two Project with equal TaggedText
@@ -33,6 +36,15 @@ in TaggedText: is a Base16 only if no Fearless UStr encodes the path it decodes 
 Notation: Base16.taggedText = TaggedText where:
 - Base16 and TaggedText encode the same path
 
+Notation: ProjectName.resolve(Names) = Base16 where:
+- (ProjectName->Base16.taggedText) in Names
+
+Notation: Message.enrich(Names) = Message where:
+- no Target of Message is a ProjectName
+
+Notation: Message.enrich(Names) = Message[ProjectName=ProjectName ProjectName.resolve(Names)].enrich(Names) where:
+- ProjectName is a Target of Message
+
 Notation: ProjectsInfo.projectOf(Base16) = Project where:
 - Project in ProjectsInfo
 - Base16 and Project."path" encode the same path
@@ -43,35 +55,43 @@ Notation: ProjectsInfo.edit("Register" Base16) = ProjectsInfo where:
 Notation: ProjectsInfo.edit("Register" Base16) = ProjectsInfo[+=Infos.map("path", Base16.taggedText, "kind", "idle", "mains", Infos.list(), "mounts", Infos.map(), "attenuators", Infos.map())] where:
 - ProjectsInfo.projectOf(Base16) is undefined.
 
-Notation: ProjectsInfo.edit("Forget" Base16) = ProjectsInfo[-=ProjectsInfo.projectOf(Base16)]
+Notation: ProjectsInfo.edit("Forget" ProjectName Base16) = ProjectsInfo[-=ProjectsInfo.projectOf(Base16)]
 
 Notation: ProjectsInfo.edit(Message) = ProjectsInfo[Project=Project.edit(Message)] where:
 - Project = ProjectsInfo.projectOf(Message.Base16)
 
-Notation: Project.edit("Kind" Base16 Kind) = Project["kind"=Kind]
+Notation: Project.edit("Kind" Target Kind) = Project["kind"=Kind]
 
-Notation: Project.edit("Mount" Base16 TypeName ProjectName) = Project["mounts".TypeName=ProjectName]
+Notation: Project.edit("Mount" Target TypeName ProjectName' Base16') = Project["mounts".TypeName=ProjectName']
 
-Notation: Project.edit("Unmount" Base16 TypeName) = Project["mounts"/=TypeName]
+Notation: Project.edit("Unmount" Target TypeName) = Project["mounts"/=TypeName]
 
-Notation: Project.edit("Attenuate" Base16 TypeName TypeName1 .. TypeNamen) = Project["attenuators"+=(TypeName->Infos.list(TypeName1 .. TypeNamen))]
+Notation: Project.edit("Attenuate" Target TypeName TypeName1 .. TypeNamen) = Project["attenuators"+=(TypeName->Infos.list(TypeName1 .. TypeNamen))]
 
 Define fearlessManager$write(ProjectsInfo):
 A action fearlessManager replaces projects.info with ProjectsInfo
 B action fearlessManager tells the manager GUI, if the manager GUI runs, to read projects.info again
+
+Define fearlessManager$readName(TaggedText):
+A fact the folder at TaggedText has the name ProjectName
+B action return ProjectName
+
+Define fearlessManager$readNames():
+A fact ProjectsInfo = Infos.list(Project1 .. Projectn)
+B action fearlessManager.names= (fearlessManager$readName(Project1."path")->Project1."path") .. (fearlessManager$readName(Projectn."path")->Projectn."path")
 
 Define fearlessManager$receive(EditMetadata Base16):
 A if the file at Base16 does not hold a ProjectsInfo, error notProjectsInfo(Base16)
 B action fearlessManager$write(the ProjectsInfo of the file at Base16)
 
 Define fearlessManager$receive(Message):
-A fact Message starts with {....}//complete here
+A fact No other Define of fearlessManager$receive(Message) holds.
 B if ProjectsInfo.edit(Message) undefined, error invalidEdit(ProjectsInfo,Message)
 C action fearlessManager$write(ProjectsInfo.edit(Message))
 
 Story:
 A event fearlessManager receives Message from fearlessMessage.
-B action fearlessManager$receive(Message)
+B action fearlessManager$receive(fearlessManager$updateNamesOf(Message))
 
 Implementation notes:
 notProjectsInfo(Base16) could be triggered because the file does not exists, or because it exists and is not a valid info, or it is a valid info that is not a valid ProjectsInfo, including all the well formedness. The error should investigate and report detail error informations, in the style of Frontend compile errors.
