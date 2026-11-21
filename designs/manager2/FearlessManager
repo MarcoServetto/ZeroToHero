@@ -138,15 +138,39 @@ D action error invalidEdit(ProjectsInfo,Message)
 Invariant:
 At every moment, at most one fearlessManager is the 'single' manager of one ManagerFolder.
 
+Define fearlessManager$serve():
+A fact fearlessManager holds the lock of no_manager.lock.
+B action fearlessManager renames no_manager.lock to candidate_manager.lock
+C action fearlessManager listens for connections on the loopback address, on the port Port that the OS picks
+//later: copy the icons, Coordinator$dropUnfinished, buildMap, show the tray icon
+D action fearlessManager renames candidate_manager.lock to "single_manager_at_" Port ".lock"
+E after fearlessManager is the 'single' manager.
+
 Story:
 A event fearlessManager starts.
 B fact The folder at the 'manager path' is a ManagerFolder with the LockFile no_manager.lock, and no process holds the lock of no_manager.lock.
 C action fearlessManager takes the lock of no_manager.lock
-D action fearlessManager renames no_manager.lock to candidate_manager.lock
-E action fearlessManager listens for connections on the loopback address, on the port Port that the OS picks
-//later: copy the icons, Coordinator$dropUnfinished, buildMap, show the tray icon
-F action fearlessManager renames candidate_manager.lock to "single_manager_at_" Port ".lock"
-G after fearlessManager is the 'single' manager.
+D action fearlessManager$serve()
+
+Story:
+A event fearlessManager starts.
+B fact The folder at the 'manager path' is a ManagerFolder with LockFile, LockFile is not no_manager.lock, and no process holds the lock of LockFile.
+C action fearlessManager takes the lock of LockFile
+D action fearlessManager renames LockFile to no_manager.lock
+E action fearlessManager$serve()
+
+Story:
+A event fearlessManager starts.
+B fact No folder is at the 'manager path'.
+C action fearlessManager creates the ManagerFolder at the 'manager path', with the LockFile no_manager.lock, projects.info holding Infos.list() serialized, and the empty folders icons and locks
+D action fearlessManager takes the lock of no_manager.lock
+E action fearlessManager$serve()
+
+Story:
+A event fearlessManager starts.
+B fact No folder is at the 'manager path'.
+C event Another process creates a folder at the 'manager path' before fearlessManager creates the ManagerFolder.
+D action fearlessManager ends.
 
 Story:
 A event fearlessManager starts.
@@ -180,5 +204,6 @@ corruptedProjectsInfo(Message) investigates and reports why projects.info holds 
 The 'manager path' is chosen by the implementation, and can differ between operating systems: each version of fearlessManager has its own ManagerFolder, and a copy of an installation is an independent installation with its own ManagerFolder.
 The lock of a LockFile is the lock of FileChannel.tryLock: the OS releases the lock when the process ends, however the process ends, and the lock follows the file when the file is renamed.
 fearlessManager finds that another process holds the lock by trying to take the lock: there is no separate check before taking the lock.
+fearlessManager creates the ManagerFolder by filling a new folder next to the 'manager path', then renaming that new folder to the 'manager path': the rename fails when a folder is at the 'manager path' already.
 Only a fearlessManager renames a LockFile: a process that holds the lock of no_manager.lock can be any program, while a process that holds the lock of candidate_manager.lock is a fearlessManager that is starting.
 The Port is in the name of the LockFile, not in the content: on Windows a process can not read a file that another process holds the lock of.
