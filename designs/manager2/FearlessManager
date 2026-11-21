@@ -8,7 +8,7 @@ fearlessManager, run with no parameters, and fearlessMessage, run with one Messa
 The folder locks holds the files that show which mounted data a running project uses.
 projects.info is a file containing an Info serialized as defined in the fearless standard library; only fearlessManager writes projects.info.
 Infos.msg(""), Infos.list() and Infos.map() are one Info, the empty Info.
-The errors invalidEdit(ProjectsInfo,Message), notProjectsInfo(Base16), notNamed(Message), noProjectNamed(Message) and corruptedProjectsInfo(Message) are left unspecified in the design.
+The errors invalidEdit(ProjectsInfo,Message), notProjectsInfo(Base16), notNamed(Message), noProjectNamed(Message), nameTaken(Message) and corruptedProjectsInfo(Message) are left unspecified in the design.
 Info[..] makes a new Info with a little difference; for example ProjectsInfo[+=Project] makes a new Info where the list contains also that Project.
 Info."key" is the Info that the key "key" maps to in the Infos.map Info; for example Project."path" is the Infos.msg holding the TaggedText of Project.
 Message[Target=Target'] makes a new Message where Target is replaced by Target'.
@@ -94,8 +94,7 @@ Notation: Project.edit("SelectMains " Target " " TypeName1 " ".." " TypeNamen) =
 
 Define fearlessManager$write(ProjectsInfo):
 A action fearlessManager replaces projects.info with ProjectsInfo
-B action fearlessManager.names= {}
-C action fearlessManager tells the manager GUI, if the manager GUI runs, to read projects.info again
+B action fearlessManager tells the manager GUI, if the manager GUI runs, to read projects.info again
 
 Define fearlessManager$readName(Infos.msg(TaggedText)):
 A if the folder at TaggedText has the name ProjectName, return (TaggedText->ProjectName)
@@ -127,8 +126,22 @@ D try fearlessManager$fromNames(Message)
 E action error noProjectNamed(Message)
 
 Define fearlessManager$receive("EditMetadata " Base16):
-A if the file at Base16 holds ProjectsInfo serialized, return fearlessManager$write(ProjectsInfo)
-B action error notProjectsInfo(Base16)
+A action fearlessManager.names= {}
+B if the file at Base16 holds ProjectsInfo serialized, return fearlessManager$write(ProjectsInfo)
+C action error notProjectsInfo(Base16)
+
+Define fearlessManager$receive("Register " Base16):
+A fact the file projects.info holds ProjectsInfo serialized
+B action fearlessManager$readNames()
+C if the folder at Base16 has the name ProjectName, and (TaggedText->ProjectName) in fearlessManager.names, and TaggedText is not Base16.taggedText, error nameTaken("Register " Base16)
+D action fearlessManager.names+= fearlessManager$readName(Infos.msg(Base16.taggedText))
+E action return fearlessManager$write(ProjectsInfo.edit("Register " Base16))
+
+Define fearlessManager$receive("Forget " Target):
+A fact the file projects.info holds ProjectsInfo serialized
+B if ProjectsInfo.edit("Forget " Target) is undefined, error invalidEdit(ProjectsInfo,"Forget " Target)
+C action fearlessManager.names-= (Target.Base16.taggedText->_)
+D action return fearlessManager$write(ProjectsInfo.edit("Forget " Target))
 
 Define fearlessManager$receive("Quit"):
 A action fearlessManager renames the LockFile to no_manager.lock
