@@ -8,11 +8,14 @@ fearlessManager, run with no parameters, and fearlessMessage, run with one Messa
 The folder locks holds the files that show which mounted data a running project uses.
 projects.info is a file containing an Info serialized as defined in the fearless standard library; only fearlessManager writes projects.info.
 Infos.msg(""), Infos.list() and Infos.map() are one Info, the empty Info.
-The errors invalidEdit(ProjectsInfo,Message), notProjectsInfo(Base16), notNamed(Message), noProjectNamed(Message) and corruptedProjectsInfo(Message) are left unspecified in the design.
+The errors invalidEdit(ProjectsInfo,Message), notProjectsInfo(Base16), notNamed(Message), noProjectNamed(Message), corruptedProjectsInfo(Message) and queueFull(Message) are left unspecified in the design.
 Info[..] makes a new Info with a little difference; for example ProjectsInfo[+=Project] makes a new Info where the list contains also that Project.
 Info."key" is the Info that the key "key" maps to in the Infos.map Info; for example Project."path" is the Infos.msg holding the TaggedText of Project.
 Message[Target=Target'] makes a new Message where Target is replaced by Target'.
 fearlessManager.names is a Names held in memory; fearlessManager.names starts as {}.
+fearlessManager.queue is a Queue held in memory; fearlessManager.queue starts empty.
+The 'queue limit' is the maximum number of Messages of a Queue.
+Each Message of fearlessManager.queue keeps the connection that the Message arrived on, and fearlessManager answers a Message on that connection.
 
 Grammar:
 ProjectsInfo ::= Infos.list(Project1 .. Projectn)
@@ -39,8 +42,10 @@ ReservedName ::= "con" | "prn" | "aux" | "nul" | "com" [1-9] | "lpt" [1-9]
 Info ::= Infos.msg(Str) | Infos.list(Info1 .. Infon) | Infos.map(Str1, Info1 .. Strn, Infon)
 LockFile ::= "no_manager.lock" | "candidate_manager.lock" | "single_manager_at_" Port ".lock"
 Port ::= [1-9][0-9]*
+Queue ::= Message1 "\n" .. Messagen "\n"
 
 Well formedness:
+in Queue: n is at most the 'queue limit'
 in ProjectsInfo: Project1."path" .. Projectn."path" are disjoint
 in Project: Project."mains" is Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen)) with TypeName1 .. TypeNamen disjoint
 in ProjectName: ProjectName ".fearless" is of form ValidSegment
@@ -189,22 +194,35 @@ C action fearlessManager ends.
 
 Story:
 A event fearlessManager receives Message from fearlessMessage.
-B fact Message is "Quit" or of form "EditMetadata " Base16, or the file projects.info holds serialized content of form ProjectsInfo.
-C action fearlessManager$receive(fearlessManager$updateNamesOf(Message)) ends with done.
-D action fearlessManager answers "Applied\n"
-E action When Message is "Quit", fearlessManager ends.
+B fact fearlessManager.queue Message "\n" is of form Queue.
+C action fearlessManager.queue= fearlessManager.queue Message "\n"
 
 Story:
 A event fearlessManager receives Message from fearlessMessage.
-B fact Message is "Quit" or of form "EditMetadata " Base16, or the file projects.info holds serialized content of form ProjectsInfo.
-C action fearlessManager$receive(fearlessManager$updateNamesOf(Message)) ends with Error.
-D action fearlessManager answers "Refused\n" Error
+B fact fearlessManager.queue Message "\n" is not of form Queue.
+C action fearlessManager answers "Refused\n" queueFull(Message)
 
 Story:
-A event fearlessManager receives Message from fearlessMessage.
-B fact Message is not "Quit" and not of form "EditMetadata " Base16.
-C fact the file projects.info does not hold serialized content of form ProjectsInfo.
-D action fearlessManager answers "Refused\n" corruptedProjectsInfo(Message)
+A fact fearlessManager.queue = Message "\n" Queue
+B action fearlessManager.queue= Queue
+C fact Message is "Quit" or of form "EditMetadata " Base16, or the file projects.info holds serialized content of form ProjectsInfo.
+D action fearlessManager$receive(fearlessManager$updateNamesOf(Message)) ends with done.
+E action fearlessManager answers "Applied\n"
+F action When Message is "Quit", fearlessManager ends.
+
+Story:
+A fact fearlessManager.queue = Message "\n" Queue
+B action fearlessManager.queue= Queue
+C fact Message is "Quit" or of form "EditMetadata " Base16, or the file projects.info holds serialized content of form ProjectsInfo.
+D action fearlessManager$receive(fearlessManager$updateNamesOf(Message)) ends with Error.
+E action fearlessManager answers "Refused\n" Error
+
+Story:
+A fact fearlessManager.queue = Message "\n" Queue
+B action fearlessManager.queue= Queue
+C fact Message is not "Quit" and not of form "EditMetadata " Base16.
+D fact the file projects.info does not hold serialized content of form ProjectsInfo.
+E action fearlessManager answers "Refused\n" corruptedProjectsInfo(Message)
 
 Implementation notes:
 notProjectsInfo(Base16) could be triggered because the file at Base16 does not exist, or because the file at Base16 exists and is not a valid info, or the file at Base16 is a valid info that is not a valid ProjectsInfo, including all the well formedness. The error should investigate and report detailed error information, in the style of Frontend compile errors.
