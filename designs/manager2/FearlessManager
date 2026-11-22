@@ -8,7 +8,7 @@ fearlessManager, run with no parameters, and fearlessMessage, run with one Messa
 The folder locks holds the files that show which mounted data a running project uses.
 projects.info is a file containing an Info serialized as defined in the fearless standard library; only fearlessManager writes projects.info.
 Infos.msg(""), Infos.list() and Infos.map() are one Info, the empty Info.
-The errors messageErrorNameNotAssociatedWithBase16(ProjectName,Base16), messageErrorNameNotAssociatedWithAnyRegisteredProject(Message), messageErrorBase16NotAssociatedWithAnyRegisteredProject(Base16), messageErrorNoInfoInFileAtBase16(Base16), messageErrorNewMetadataIsNotValid(Info) and internalErrorCanNotAddMessageToFullQueue(Message) are left unspecified in the design.
+The errors messageErrorNameNotAssociatedWithBase16(ProjectName,Base16), messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName), messageErrorBase16NotAssociatedWithAnyRegisteredProject(Base16), messageErrorNoInfoInFileAtBase16(Base16), messageErrorNewMetadataIsNotValid(Info) and internalErrorCanNotAddMessageToFullQueue(Message) are left unspecified in the design.
 Info[..] makes a new Info with a little difference; for example ProjectsInfo[+=Project] makes a new Info where the list contains also that Project.
 Info."key" is the Info that the key "key" maps to in the Infos.map Info; for example Project."path" is the Infos.msg holding the TaggedText of Project.
 Message[Target=Target'] makes a new Message where Target is replaced by Target'.
@@ -66,12 +66,6 @@ Notation: ProjectName.resolve(Names) = Base16 where:
 - Names = Names1 (Base16.taggedText->ProjectName) Names2
 - no pair of Names1 Names2 maps a key to ProjectName
 
-Notation: Message.enrich(Names) = Message where:
-- Message.Targets contains no element of form "Name(" ProjectName ")"
-
-Notation: Message.enrich(Names) = Message["Name(" ProjectName ")"="Full(" ProjectName " " ProjectName.resolve(Names) ")"].enrich(Names) where:
-- Message.Targets contains "Name(" ProjectName ")"
-
 Notation: ProjectsInfo.get(Base16) = Project where:
 - Project in ProjectsInfo
 - Project."path" = Infos.msg(Base16.taggedText)
@@ -88,16 +82,11 @@ Define fearlessManager$refreshCachedNames():
 A fact fearlessManager.projectsInfo = Infos.list(Project1 .. Projectn)
 B action fearlessManager.names= fearlessManager$readName(Project1."path") .. fearlessManager$readName(Projectn."path")
 
-Define fearlessManager$checked("Name(" ProjectName ")"):
-A action return "Name(" ProjectName ")"
-
-Define fearlessManager$checked("Full(" ProjectName " " Base16 ")"):
-A fact the folder at Base16 has the name ProjectName
-B action return "Full(" ProjectName " " Base16 ")"
-
-Define fearlessManager$checkedAll(Message):
-A fact Message.Targets = Target1 .. Targetn
-B action return Message[Target1=fearlessManager$checked(Target1)] .. [Targetn=fearlessManager$checked(Targetn)]
+Define fearlessManager$base16OfRegisteredProjectNamed(ProjectName):
+A if ProjectName.resolve(fearlessManager.names) = Base16 and the folder at Base16 has the name ProjectName, return Base16
+B action fearlessManager$refreshCachedNames()
+C try return ProjectName.resolve(fearlessManager.names)
+D action error messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName)
 
 Define fearlessManager$checkNameAssociatedWithBase16(ProjectName,Base16):
 A if the folder at Base16 does not have the name ProjectName, error messageErrorNameNotAssociatedWithBase16(ProjectName,Base16)
@@ -111,12 +100,9 @@ A if the file at Base16 holds Info serialized, return "EditMetadata " Info
 B action error messageErrorNoInfoInFileAtBase16(Base16)
 
 Define fearlessManager$delegate(Message):
-A fact Message.Targets contains an element of form "Name(" ProjectName ")".
-B if Message.Targets contains "Full(" ProjectName " " Base16 ")" and the folder at Base16 does not have the name ProjectName, error messageErrorNameNotAssociatedWithBase16(ProjectName,Base16)
-C try return fearlessManager$checkedAll(Message.enrich(fearlessManager.names))
-D action fearlessManager$refreshCachedNames()
-E try return fearlessManager$checkedAll(Message.enrich(fearlessManager.names))
-F action error messageErrorNameNotAssociatedWithAnyRegisteredProject(Message)
+A fact Message.Targets contains "Name(" ProjectName ")".
+B action fearlessManager$base16OfRegisteredProjectNamed(ProjectName) = Base16
+C action return Message["Name(" ProjectName ")"="Full(" ProjectName " " Base16 ")"]
 
 Define fearlessManager$delegate("Register " Base16):
 A if fearlessManager.projectsInfo.get(Base16) is defined, return "EditMetadata " fearlessManager.projectsInfo
@@ -253,7 +239,7 @@ E action fearlessManager answers "Refused\n" Error
 
 Implementation notes:
 messageErrorNoInfoInFileAtBase16(Base16) could be triggered because the file at Base16 does not exist, or because the file at Base16 exists and is not a valid info. messageErrorNewMetadataIsNotValid(Info) is triggered because Info is a valid info that is not a valid ProjectsInfo, including all the well formedness. The errors should investigate and report detailed error information, in the style of Frontend compile errors.
-In the same way, messageErrorNameNotAssociatedWithAnyRegisteredProject(Message) investigates and reports each Target "Name(" ProjectName ")" of Message where no folder, or more than one folder, at a path of fearlessManager.projectsInfo has the name ProjectName.
+messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName) is triggered because no folder, or more than one folder, at a path of fearlessManager.projectsInfo has the name ProjectName.
 Each Message of fearlessManager.queue keeps the connection that the Message arrived on; a Message that fearlessManager$delegate returns keeps the connection of the Message it comes from; fearlessManager answers a Message on that connection.
 The 'manager path' is chosen by the implementation, and can differ between operating systems: each version of fearlessManager has its own ManagerFolder, and a copy of an installation is an independent installation with its own ManagerFolder.
 The lock of a LockFile is the lock of FileChannel.tryLock: the OS releases the lock when the process ends, however the process ends, and the lock follows the file when the file is renamed.
