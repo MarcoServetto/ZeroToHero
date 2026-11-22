@@ -8,10 +8,11 @@ fearlessManager, run with no parameters, and fearlessMessage, run with one Messa
 The folder locks holds the files that show which mounted data a running project uses.
 projects.info is a file containing an Info serialized as defined in the fearless standard library; only fearlessManager writes projects.info.
 Infos.msg(""), Infos.list() and Infos.map() are one Info, the empty Info.
-The errors invalidEdit(ProjectsInfo,Message), notProjectsInfo(Message), notNamed(Message), noProjectNamed(Message), corruptedProjectsInfo() and queueFull(Message) are left unspecified in the design.
+The errors messageErrorNameNotAssociatedWithBase16(ProjectName,Base16), messageErrorNameNotAssociatedWithAnyRegisteredProject(Message), messageErrorBase16NotAssociatedWithAnyRegisteredProject(Base16), messageErrorNoInfoInFileAtBase16(Base16), messageErrorNewMetadataIsNotValid(Info) and internalErrorCanNotAddMessageToFullQueue(Message) are left unspecified in the design.
 Info[..] makes a new Info with a little difference; for example ProjectsInfo[+=Project] makes a new Info where the list contains also that Project.
 Info."key" is the Info that the key "key" maps to in the Infos.map Info; for example Project."path" is the Infos.msg holding the TaggedText of Project.
 Message[Target=Target'] makes a new Message where Target is replaced by Target'.
+fearlessManager.projectsInfo is a ProjectsInfo held in memory.
 fearlessManager.names is a Names held in memory; fearlessManager.names starts as {}.
 fearlessManager.queue is a Queue held in memory; fearlessManager.queue starts empty.
 The 'queue limit' is the maximum number of Messages of a Queue.
@@ -71,41 +72,29 @@ Notation: Message.enrich(Names) = Message where:
 Notation: Message.enrich(Names) = Message["Name(" ProjectName ")"="Full(" ProjectName " " ProjectName.resolve(Names) ")"].enrich(Names) where:
 - Message.Targets contains "Name(" ProjectName ")"
 
-Notation: ProjectsInfo.projectOf(Base16) = Project where:
+Notation: ProjectsInfo.get(Base16) = Project where:
 - Project in ProjectsInfo
 - Project."path" = Infos.msg(Base16.taggedText)
 
-Notation: ProjectsInfo.edit("Register " Base16) = ProjectsInfo where:
-- ProjectsInfo.projectOf(Base16) is defined.
-
-Notation: ProjectsInfo.edit("Register " Base16) = ProjectsInfo[+=Infos.map("path", Infos.msg(Base16.taggedText), "kind", Infos.msg("idle"), "mains", Infos.list(), "mounts", Infos.map(), "attenuators", Infos.map())] where:
-- ProjectsInfo.projectOf(Base16) is undefined.
-
-Notation: ProjectsInfo.edit("Forget Full(" ProjectName " " Base16 ")") = ProjectsInfo[-=ProjectsInfo.projectOf(Base16)]
-
-Notation: ProjectsInfo.edit(Message) = ProjectsInfo[Project=Project.edit(Message)] where:
-- Project = ProjectsInfo.projectOf(Message.Base16)
-
-Notation: Project.edit("Kind " Target " " Kind) = Project["kind"=Infos.msg(Kind)]
-
-Notation: Project.edit("Mount " Target " " TypeName " Full(" ProjectName " " Base16 ")") = Project["mounts".TypeName=Infos.msg(ProjectName)]
-
-Notation: Project.edit("Unmount " Target " " TypeName) = Project["mounts"/=TypeName]
-
-Notation: Project.edit("Attenuate " Target " " TypeName " " TypeName1 " ".." " TypeNamen) = Project["attenuators"+=(TypeName->Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen)))]
-
-Notation: Project.edit("SelectMains " Target " " TypeName1 " ".." " TypeNamen) = Project["mains"=Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen))]
-
 Define fearlessManager$write(ProjectsInfo):
-A action fearlessManager replaces projects.info with ProjectsInfo
-B action fearlessManager tells the manager GUI, if the manager GUI runs, to read projects.info again
+A action fearlessManager.projectsInfo= ProjectsInfo
+B action fearlessManager replaces projects.info with ProjectsInfo
+C action fearlessManager tells the manager GUI, if the manager GUI runs, to read projects.info again
+
+Define fearlessManager$loadProjectsInfo():
+A fact the file projects.info holds ProjectsInfo serialized
+B action fearlessManager.projectsInfo= ProjectsInfo
+
+Define fearlessManager$loadProjectsInfo():
+A fact the file projects.info does not hold serialized content of form ProjectsInfo.
+B action fearlessManager$write(Infos.list())
 
 Define fearlessManager$readName(Infos.msg(TaggedText)):
 A if the folder at TaggedText has the name ProjectName, return (TaggedText->ProjectName)
 B action return {}
 
-Define fearlessManager$readNames():
-A fact the file projects.info holds Infos.list(Project1 .. Projectn) serialized
+Define fearlessManager$refreshCachedNames():
+A fact fearlessManager.projectsInfo = Infos.list(Project1 .. Projectn)
 B action fearlessManager.names= fearlessManager$readName(Project1."path") .. fearlessManager$readName(Projectn."path")
 
 Define fearlessManager$checked("Name(" ProjectName ")"):
@@ -119,41 +108,62 @@ Define fearlessManager$checkedAll(Message):
 A fact Message.Targets = Target1 .. Targetn
 B action return Message[Target1=fearlessManager$checked(Target1)] .. [Targetn=fearlessManager$checked(Targetn)]
 
-Define fearlessManager$fromNames(Message):
-A action return fearlessManager$checkedAll(Message.enrich(fearlessManager.names))
+Define fearlessManager$checkNameAssociatedWithBase16(ProjectName,Base16):
+A if the folder at Base16 does not have the name ProjectName, error messageErrorNameNotAssociatedWithBase16(ProjectName,Base16)
+
+Define fearlessManager$registeredProject(Base16):
+A try return fearlessManager.projectsInfo.get(Base16)
+B action error messageErrorBase16NotAssociatedWithAnyRegisteredProject(Base16)
 
 Define fearlessManager$delegate("EditMetadata " Base16):
 A if the file at Base16 holds Info serialized, return "EditMetadata " Info
-B action error notProjectsInfo("EditMetadata " Base16)
+B action error messageErrorNoInfoInFileAtBase16(Base16)
 
 Define fearlessManager$delegate(Message):
 A fact Message.Targets contains an element of form "Name(" ProjectName ")".
-B action fearlessManager$checkTargets(Message)
-C try return fearlessManager$fromNames(Message)
-D action fearlessManager$readNames()
-E try return fearlessManager$fromNames(Message)
-F action error noProjectNamed(Message)
+B if Message.Targets contains "Full(" ProjectName " " Base16 ")" and the folder at Base16 does not have the name ProjectName, error messageErrorNameNotAssociatedWithBase16(ProjectName,Base16)
+C try return fearlessManager$checkedAll(Message.enrich(fearlessManager.names))
+D action fearlessManager$refreshCachedNames()
+E try return fearlessManager$checkedAll(Message.enrich(fearlessManager.names))
+F action error messageErrorNameNotAssociatedWithAnyRegisteredProject(Message)
 
-Define fearlessManager$delegate(Message):
-A fact No other Define of fearlessManager$delegate(Message) holds.
-B action fearlessManager$checkTargets(Message)
-C action fearlessManager$projectsInfo() = ProjectsInfo
-D action fearlessManager$edited(ProjectsInfo,Message) = ProjectsInfo'
-E action return "EditMetadata " ProjectsInfo'
+Define fearlessManager$delegate("Register " Base16):
+A if fearlessManager.projectsInfo.get(Base16) is defined, return "EditMetadata " fearlessManager.projectsInfo
+B action return "EditMetadata " fearlessManager.projectsInfo[+=Infos.map("path", Infos.msg(Base16.taggedText), "kind", Infos.msg("idle"), "mains", Infos.list(), "mounts", Infos.map(), "attenuators", Infos.map())]
 
-Define fearlessManager$checkTargets(Message):
-A if fearlessManager$checkedAll(Message) is undefined, error notNamed(Message)
+Define fearlessManager$delegate("Forget Full(" ProjectName " " Base16 ")"):
+A action fearlessManager$checkNameAssociatedWithBase16(ProjectName,Base16)
+B action fearlessManager$registeredProject(Base16) = Project
+C action return "EditMetadata " fearlessManager.projectsInfo[-=Project]
 
-Define fearlessManager$projectsInfo():
-A if the file projects.info holds ProjectsInfo serialized, return ProjectsInfo
-B action error corruptedProjectsInfo()
+Define fearlessManager$delegate("Kind Full(" ProjectName " " Base16 ") " Kind):
+A action fearlessManager$checkNameAssociatedWithBase16(ProjectName,Base16)
+B action fearlessManager$registeredProject(Base16) = Project
+C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project["kind"=Infos.msg(Kind)]]
 
-Define fearlessManager$edited(ProjectsInfo,Message):
-A try return ProjectsInfo.edit(Message)
-B action error invalidEdit(ProjectsInfo,Message)
+Define fearlessManager$delegate("Mount Full(" ProjectName " " Base16 ") " TypeName " Full(" ProjectName' " " Base16' ")"):
+A action fearlessManager$checkNameAssociatedWithBase16(ProjectName,Base16)
+B action fearlessManager$checkNameAssociatedWithBase16(ProjectName',Base16')
+C action fearlessManager$registeredProject(Base16) = Project
+D action return "EditMetadata " fearlessManager.projectsInfo[Project=Project["mounts".TypeName=Infos.msg(ProjectName')]]
+
+Define fearlessManager$delegate("Unmount Full(" ProjectName " " Base16 ") " TypeName):
+A action fearlessManager$checkNameAssociatedWithBase16(ProjectName,Base16)
+B action fearlessManager$registeredProject(Base16) = Project
+C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project["mounts"/=TypeName]]
+
+Define fearlessManager$delegate("Attenuate Full(" ProjectName " " Base16 ") " TypeName " " TypeName1 " ".." " TypeNamen):
+A action fearlessManager$checkNameAssociatedWithBase16(ProjectName,Base16)
+B action fearlessManager$registeredProject(Base16) = Project
+C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project["attenuators"+=(TypeName->Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen)))]]
+
+Define fearlessManager$delegate("SelectMains Full(" ProjectName " " Base16 ") " TypeName1 " ".." " TypeNamen):
+A action fearlessManager$checkNameAssociatedWithBase16(ProjectName,Base16)
+B action fearlessManager$registeredProject(Base16) = Project
+C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project["mains"=Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen))]]
 
 Define fearlessManager$manage("EditMetadata " Info):
-A if Info is not of form ProjectsInfo, error notProjectsInfo("EditMetadata " Info)
+A if Info is not of form ProjectsInfo, error messageErrorNewMetadataIsNotValid(Info)
 B action fearlessManager$write(Info)
 
 Define fearlessManager$manage("Quit"):
@@ -167,10 +177,11 @@ At every moment, at most one fearlessManager is the 'single' manager of one Mana
 Define fearlessManager$serve():
 A fact fearlessManager holds the lock of no_manager.lock.
 B action fearlessManager renames no_manager.lock to candidate_manager.lock
-C action fearlessManager listens for connections on the loopback address, on the port Port that the OS picks
+C action fearlessManager$loadProjectsInfo()
+D action fearlessManager listens for connections on the loopback address, on the port Port that the OS picks
 //later: copy the icons, Coordinator$dropUnfinished, buildMap, show the tray icon
-D action fearlessManager renames candidate_manager.lock to "single_manager_at_" Port ".lock"
-E after fearlessManager is the 'single' manager.
+E action fearlessManager renames candidate_manager.lock to "single_manager_at_" Port ".lock"
+F after fearlessManager is the 'single' manager.
 
 Story:
 A event fearlessManager starts.
@@ -216,7 +227,7 @@ C action fearlessManager.queue= fearlessManager.queue "\t" Message "\n"
 Story:
 A event fearlessManager receives Message from fearlessMessage.
 B fact fearlessManager.queue "\t" Message "\n" is not of form Queue.
-C action fearlessManager answers "Refused\n" queueFull(Message)
+C action fearlessManager answers "Refused\n" internalErrorCanNotAddMessageToFullQueue(Message)
 
 Story:
 A fact fearlessManager.queue = "\t" Message "\n" Queue
@@ -248,9 +259,8 @@ D action fearlessManager$manage(Message) ends with Error.
 E action fearlessManager answers "Refused\n" Error
 
 Implementation notes:
-notProjectsInfo("EditMetadata " Base16) could be triggered because the file at Base16 does not exist, or because the file at Base16 exists and is not a valid info, or the file at Base16 is a valid info that is not a valid ProjectsInfo, including all the well formedness. The error should investigate and report detailed error information, in the style of Frontend compile errors.
-In the same way, notNamed(Message) investigates and reports each Target "Full(" ProjectName " " Base16 ")" of Message where the folder at Base16 does not have the name ProjectName, and noProjectNamed(Message) reports each Target "Name(" ProjectName ")" of Message where no folder, or more than one folder, at a path of projects.info has the name ProjectName.
-corruptedProjectsInfo() investigates and reports why projects.info holds no ProjectsInfo, as notProjectsInfo("EditMetadata " Base16) does, and says that an EditMetadata with a valid copy writes projects.info again.
+messageErrorNoInfoInFileAtBase16(Base16) could be triggered because the file at Base16 does not exist, or because the file at Base16 exists and is not a valid info. messageErrorNewMetadataIsNotValid(Info) is triggered because Info is a valid info that is not a valid ProjectsInfo, including all the well formedness. The errors should investigate and report detailed error information, in the style of Frontend compile errors.
+In the same way, messageErrorNameNotAssociatedWithAnyRegisteredProject(Message) investigates and reports each Target "Name(" ProjectName ")" of Message where no folder, or more than one folder, at a path of fearlessManager.projectsInfo has the name ProjectName.
 Each Message of fearlessManager.queue keeps the connection that the Message arrived on; a Message that fearlessManager$delegate returns keeps the connection of the Message it comes from; fearlessManager answers a Message on that connection.
 The 'manager path' is chosen by the implementation, and can differ between operating systems: each version of fearlessManager has its own ManagerFolder, and a copy of an installation is an independent installation with its own ManagerFolder.
 The lock of a LockFile is the lock of FileChannel.tryLock: the OS releases the lock when the process ends, however the process ends, and the lock follows the file when the file is renamed.
