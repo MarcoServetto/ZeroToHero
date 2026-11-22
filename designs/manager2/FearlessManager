@@ -82,85 +82,16 @@ Define fearlessManager$refreshCachedNames():
 A fact fearlessManager.projectsInfo = Infos.list(Project1 .. Projectn)
 B action fearlessManager.names= fearlessManager$readName(Project1."path") .. fearlessManager$readName(Projectn."path")
 
-Define fearlessManager$base16OfRegisteredProjectNamed(ProjectName):
-A if ProjectName.resolve(fearlessManager.names) = Base16 and the folder at Base16 has the name ProjectName, return Base16
-B action fearlessManager$refreshCachedNames()
-C try return ProjectName.resolve(fearlessManager.names)
-D action error messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName)
-
-Define fearlessManager$checkNameAssociatedWithBase16(ProjectName,Base16):
-A if the folder at Base16 does not have the name ProjectName, error messageErrorNameNotAssociatedWithBase16(ProjectName,Base16)
-
-Define fearlessManager$registeredProject(Base16):
-A try return fearlessManager.projectsInfo.get(Base16)
-B action error messageErrorBase16NotAssociatedWithAnyRegisteredProject(Base16)
-
-Define fearlessManager$delegate("EditMetadata " Base16):
-A if the file at Base16 holds Info serialized, return "EditMetadata " Info
-B action error messageErrorNoInfoInFileAtBase16(Base16)
-
-Define fearlessManager$delegate(Message):
-A fact Message.Targets contains "Name(" ProjectName ")".
-B action fearlessManager$base16OfRegisteredProjectNamed(ProjectName) = Base16
-C action return Message["Name(" ProjectName ")"="Full(" ProjectName " " Base16 ")"]
-
-Define fearlessManager$delegate("Register " Base16):
-A if fearlessManager.projectsInfo.get(Base16) is defined, return "EditMetadata " fearlessManager.projectsInfo
-B action return "EditMetadata " fearlessManager.projectsInfo[+=Infos.map("path", Infos.msg(Base16.taggedText), "kind", Infos.msg("idle"), "mains", Infos.list(), "mounts", Infos.map(), "attenuators", Infos.map())]
-
-Define fearlessManager$delegate("Forget Full(" ProjectName " " Base16 ")"):
-A action fearlessManager$checkNameAssociatedWithBase16(ProjectName,Base16)
-B action fearlessManager$registeredProject(Base16) = Project
-C action return "EditMetadata " fearlessManager.projectsInfo[-=Project]
-
-Define fearlessManager$delegate("Kind Full(" ProjectName " " Base16 ") " Kind):
-A action fearlessManager$checkNameAssociatedWithBase16(ProjectName,Base16)
-B action fearlessManager$registeredProject(Base16) = Project
-C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project["kind"=Infos.msg(Kind)]]
-
-Define fearlessManager$delegate("Mount Full(" ProjectName " " Base16 ") " TypeName " Full(" ProjectName' " " Base16' ")"):
-A action fearlessManager$checkNameAssociatedWithBase16(ProjectName,Base16)
-B action fearlessManager$checkNameAssociatedWithBase16(ProjectName',Base16')
-C action fearlessManager$registeredProject(Base16) = Project
-D action return "EditMetadata " fearlessManager.projectsInfo[Project=Project["mounts".TypeName=Infos.msg(ProjectName')]]
-
-Define fearlessManager$delegate("Unmount Full(" ProjectName " " Base16 ") " TypeName):
-A action fearlessManager$checkNameAssociatedWithBase16(ProjectName,Base16)
-B action fearlessManager$registeredProject(Base16) = Project
-C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project["mounts"/=TypeName]]
-
-Define fearlessManager$delegate("Attenuate Full(" ProjectName " " Base16 ") " TypeName " " TypeName1 " ".." " TypeNamen):
-A action fearlessManager$checkNameAssociatedWithBase16(ProjectName,Base16)
-B action fearlessManager$registeredProject(Base16) = Project
-C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project["attenuators"+=(TypeName->Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen)))]]
-
-Define fearlessManager$delegate("SelectMains Full(" ProjectName " " Base16 ") " TypeName1 " ".." " TypeNamen):
-A action fearlessManager$checkNameAssociatedWithBase16(ProjectName,Base16)
-B action fearlessManager$registeredProject(Base16) = Project
-C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project["mains"=Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen))]]
-
-Define fearlessManager$manage("EditMetadata " Info):
-A if Info is not of form ProjectsInfo, error messageErrorNewMetadataIsNotValid(Info)
-B action fearlessManager.projectsInfo= Info
-C action fearlessManager$writeProjectsInfo()
-
-Define fearlessManager$manage("Quit"):
-A action fearlessManager renames the LockFile to no_manager.lock
-B action fearlessManager stops listening for connections
-//later: terminate the running projects, sending progress lines to fearlessMessage
-
 Invariant:
 At every moment, at most one fearlessManager is the 'single' manager of one ManagerFolder.
 
 Define fearlessManager$serve():
 A fact fearlessManager holds the lock of no_manager.lock.
 B action fearlessManager renames no_manager.lock to candidate_manager.lock
-C action When the file projects.info holds ProjectsInfo serialized, fearlessManager.projectsInfo= ProjectsInfo
-D action fearlessManager$writeProjectsInfo()
-E action fearlessManager listens for connections on the loopback address, on the port Port that the OS picks
+C action fearlessManager listens for connections on the loopback address, on the port Port that the OS picks
 //later: copy the icons, Coordinator$dropUnfinished, buildMap, show the tray icon
-F action fearlessManager renames candidate_manager.lock to "single_manager_at_" Port ".lock"
-G after fearlessManager is the 'single' manager.
+D action fearlessManager renames candidate_manager.lock to "single_manager_at_" Port ".lock"
+E after fearlessManager is the 'single' manager.
 
 Story:
 A event fearlessManager starts.
@@ -198,49 +129,7 @@ A event fearlessManager starts.
 B fact In the folder at the 'manager path', another process holds the lock of a file with a name of form LockFile that is not no_manager.lock.
 C action fearlessManager ends.
 
-Story:
-A event fearlessManager receives Message from fearlessMessage.
-B fact fearlessManager.queue "\t" Message "\n" is of form Queue.
-C action fearlessManager.queue= fearlessManager.queue "\t" Message "\n"
-
-Story:
-A event fearlessManager receives Message from fearlessMessage.
-B fact fearlessManager.queue "\t" Message "\n" is not of form Queue.
-C action fearlessManager answers "Refused\n" internalErrorCanNotAddMessageToFullQueue(Message)
-
-Story:
-A fact fearlessManager.queue = "\t" Message "\n" Queue
-B action fearlessManager.queue= Queue
-C fact Message is not "Quit" and not of form "EditMetadata " Info.
-D action fearlessManager$delegate(Message) = Message'
-E action fearlessManager.queue= "\t" Message' "\n" Queue
-
-Story:
-A fact fearlessManager.queue = "\t" Message "\n" Queue
-B action fearlessManager.queue= Queue
-C fact Message is not "Quit" and not of form "EditMetadata " Info.
-D action fearlessManager$delegate(Message) ends with Error.
-E action fearlessManager answers "Refused\n" Error
-
-Story:
-A fact fearlessManager.queue = "\t" Message "\n" Queue
-B action fearlessManager.queue= Queue
-C fact Message is "Quit" or of form "EditMetadata " Info.
-D action fearlessManager$manage(Message) ends with done.
-E action fearlessManager answers "Applied\n"
-F action When Message is "Quit", fearlessManager ends.
-
-Story:
-A fact fearlessManager.queue = "\t" Message "\n" Queue
-B action fearlessManager.queue= Queue
-C fact Message is "Quit" or of form "EditMetadata " Info.
-D action fearlessManager$manage(Message) ends with Error.
-E action fearlessManager answers "Refused\n" Error
-
 Implementation notes:
-messageErrorNoInfoInFileAtBase16(Base16) could be triggered because the file at Base16 does not exist, or because the file at Base16 exists and is not a valid info. messageErrorNewMetadataIsNotValid(Info) is triggered because Info is a valid info that is not a valid ProjectsInfo, including all the well formedness. The errors should investigate and report detailed error information, in the style of Frontend compile errors.
-messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName) is triggered because no folder, or more than one folder, at a path of fearlessManager.projectsInfo has the name ProjectName.
-Each Message of fearlessManager.queue keeps the connection that the Message arrived on; a Message that fearlessManager$delegate returns keeps the connection of the Message it comes from; fearlessManager answers a Message on that connection.
 The 'manager path' is chosen by the implementation, and can differ between operating systems: each version of fearlessManager has its own ManagerFolder, and a copy of an installation is an independent installation with its own ManagerFolder.
 The lock of a LockFile is the lock of FileChannel.tryLock: the OS releases the lock when the process ends, however the process ends, and the lock follows the file when the file is renamed.
 fearlessManager finds that another process holds the lock by trying to take the lock: there is no separate check before taking the lock.
