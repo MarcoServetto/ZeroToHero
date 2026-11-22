@@ -8,14 +8,14 @@ fearlessManager, run with no parameters, and fearlessMessage, run with one Messa
 The folder locks holds the files that show which mounted data a running project uses.
 projects.info is a file containing an Info serialized as defined in the fearless standard library; only fearlessManager writes projects.info.
 Infos.msg(""), Infos.list() and Infos.map() are one Info, the empty Info.
-The errors messageErrorNameNotAssociatedWithBase16(ProjectName,Base16), messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName), messageErrorBase16NotAssociatedWithAnyRegisteredProject(Base16), messageErrorNoInfoInFileAtBase16(Base16), messageErrorNewMetadataIsNotValid(Info), messageErrorNoFearlessProjectAtPath(TaggedText), messageErrorNameAssociatedWithTwoRegisteredProjects(ProjectName), internalErrorCanNotAddMessageToFullQueue(Message) and internalErrorManagerIsQuitting() are left unspecified in the design.
+The errors messageErrorNameNotAssociatedWithBase16(ProjectName,Base16), messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName), messageErrorBase16NotAssociatedWithAnyRegisteredProject(Base16), messageErrorNoInfoInFileAtBase16(Base16), messageErrorNewMetadataIsNotValid(Info), messageErrorNoFearlessProjectAtPath(TaggedText), internalErrorCanNotAddMessageToFullQueue(Message) and internalErrorManagerIsQuitting() are left unspecified in the design.
 Info[..] makes a new Info with a little difference; for example ProjectsInfo[+=Project] makes a new Info where the list contains also that Project.
 Info."key" is the Info that the key "key" maps to in the Infos.map Info; for example Project."path" is the Infos.msg holding the TaggedText of Project.
 Message[Target=Target'] makes a new Message where Target is replaced by Target'.
 fearlessManager.projectsInfo is a ProjectsInfo held in memory; fearlessManager.projectsInfo starts as Infos.list().
 dom(Names) is the set of the keys of Names.
 fearlessManager.names is a Names held in memory; fearlessManager.names starts as {}.
-fearlessManager.names holds a pair only for the paths of fearlessManager.projectsInfo whose folder had a name when fearlessManager last read that folder.
+fearlessManager.names holds a pair only for the paths of fearlessManager.projectsInfo whose folder had a name that no other of those folders had, when fearlessManager last read those folders.
 fearlessManager.queue is a Queue held in memory; fearlessManager.queue starts empty.
 The 'queue limit' is the maximum number of Messages of a Queue.
 
@@ -68,6 +68,9 @@ Notation: ProjectName.resolve(Names) = Base16 where:
 - Names = Names1 (Base16.taggedText->ProjectName) Names2
 - no pair of Names1 Names2 maps a key to ProjectName
 
+Notation: Names.withoutRepeatedNames = Names' where:
+- Names' holds, in the same order, each pair of Names whose ProjectName is in no other pair of Names
+
 Notation: ProjectsInfo.get(Base16) = Project where:
 - Project in ProjectsInfo
 - Project."path" = Infos.msg(Base16.taggedText)
@@ -76,21 +79,19 @@ Define fearlessManager$readFSOptTaggedTextInProjectName(Infos.msg(TaggedText)):
 A if the folder at TaggedText has the name ProjectName, return (TaggedText->ProjectName)
 B action return {}
 
-Define fearlessManager$refreshCachedNames():
-A fact fearlessManager.projectsInfo = Infos.list(Project1 .. Projectn)
-B action fearlessManager.names= fearlessManager$readFSOptTaggedTextInProjectName(Project1."path") .. fearlessManager$readFSOptTaggedTextInProjectName(Projectn."path")
+Define fearlessManager$rereadCachedNames(Infos.list(Project1 .. Projectn)):
+A action fearlessManager$readFSOptTaggedTextInProjectName(Project1."path") .. fearlessManager$readFSOptTaggedTextInProjectName(Projectn."path") = Names
+B action return Names.withoutRepeatedNames
 
 Define fearlessManager$consistent(Project,Names,ProjectsInfo):
 A if Project."path".TaggedText not in dom(Names), error messageErrorNoFearlessProjectAtPath(Project."path".TaggedText)
-B fact Names = Names1 (Project."path".TaggedText->ProjectName) Names2
-C if a pair of Names1 Names2 maps a key to ProjectName, error messageErrorNameAssociatedWithTwoRegisteredProjects(ProjectName)
 
 Define fearlessManager$directlyHandleMessage("EditMetadata " Info):
 A if Info is not of form ProjectsInfo, error messageErrorNewMetadataIsNotValid(Info)
 B fact Info = Infos.list(Project1 .. Projectn)
 C fact fearlessManager.projectsInfo = Infos.list(Project'1 .. Project'k)
 D fact {Project1."path" .. Projectn."path"} != {Project'1."path" .. Project'k."path"}
-E action fearlessManager$readFSOptTaggedTextInProjectName(Project1."path") .. fearlessManager$readFSOptTaggedTextInProjectName(Projectn."path") = Names
+E action fearlessManager$rereadCachedNames(Info) = Names
 F action fearlessManager$consistent(Project1,Names,Info) .. fearlessManager$consistent(Projectn,Names,Info)
 G action fearlessManager.names= Names
 H action fearlessManager.projectsInfo= Info
