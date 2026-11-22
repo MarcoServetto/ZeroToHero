@@ -16,7 +16,7 @@ Message[Target=Target'] makes a new Message where Target is replaced by Target'.
 fearlessManager.projectsInfo is a ProjectsInfo held in memory; fearlessManager.projectsInfo starts as Infos.list().
 dom(Names) is the set of the keys of Names.
 fearlessManager.names is a Names held in memory; fearlessManager.names starts as {}.
-fearlessManager.names holds a pair only for the paths of fearlessManager.projectsInfo whose folder had a name that no other of those folders had, when fearlessManager last read those folders.
+dom(fearlessManager.names) holds only the paths of fearlessManager.projectsInfo whose folder had a name that no other of those folders had, when fearlessManager last read those folders.
 fearlessManager.queue is a Queue held in memory; fearlessManager.queue starts empty.
 The 'queue limit' is the maximum number of Messages of a Queue.
 
@@ -69,10 +69,10 @@ Notation: Base16.taggedText = TaggedText where:
 
 Notation: ProjectName.resolve(Names) = Base16 where:
 - Names = Names1 (Base16.taggedText->ProjectName) Names2
-- no pair of Names1 Names2 maps a key to ProjectName
+- (_->ProjectName) not in Names1 Names2
 
 Notation: Names.withoutRepeatedNames = Names' where:
-- Names' holds, in the same order, each pair of Names whose ProjectName is in no other pair of Names
+- (TaggedText->ProjectName) in Names' iff Names = Names1 (TaggedText->ProjectName) Names2 and (_->ProjectName) not in Names1 Names2
 
 Notation: ProjectsInfo.get(Base16) = Project where:
 - Project in ProjectsInfo
@@ -85,6 +85,12 @@ B action return {}
 Define fearlessManager$rereadCachedNames(Infos.list(Project1 .. Projectn)):
 A action fearlessManager$readFSOptTaggedTextInProjectName(Project1."path") .. fearlessManager$readFSOptTaggedTextInProjectName(Projectn."path") = Names
 B action return Names.withoutRepeatedNames
+
+Define fearlessManager$rereadCachedNamesOf(Infos.list(Project'1 .. Project'k), Project1 .. Projectn):
+A action fearlessManager$readFSOptTaggedTextInProjectName(Project1."path") .. fearlessManager$readFSOptTaggedTextInProjectName(Projectn."path") = Names
+B fact (TaggedText->ProjectName) in Names' iff (TaggedText->ProjectName) in fearlessManager.names and TaggedText not in {Project1."path".TaggedText .. Projectn."path".TaggedText}.
+C if dom(Names' Names) = {Project'1."path".TaggedText .. Project'k."path".TaggedText} and (Names' Names).withoutRepeatedNames = Names' Names, return Names' Names
+D action return fearlessManager$rereadCachedNames(Infos.list(Project'1 .. Project'k))
 
 Define fearlessManager$consistent(Project,Names,ProjectsInfo):
 A if Project."path".TaggedText not in dom(Names), error messageErrorNoFearlessProjectAtPath(Project."path".TaggedText)
@@ -111,10 +117,12 @@ B fact Info = Infos.list(Project1 .. Projectn)
 C fact fearlessManager.projectsInfo = Infos.list(Project'1 .. Project'k)
 D fact {Project1."path" .. Projectn."path"} = {Project'1."path" .. Project'k."path"}
 E fact Project''1 .. Project''m are the Projects of Project1 .. Projectn that are not in fearlessManager.projectsInfo.
-F action fearlessManager$consistent(Project''1,fearlessManager.names,Info) .. fearlessManager$consistent(Project''m,fearlessManager.names,Info)
-G action fearlessManager.projectsInfo= Info
-H action fearlessManager replaces projects.info with Info serialized
-I action fearlessManager tells the manager GUI, if the manager GUI runs, to read projects.info again
+F action fearlessManager$rereadCachedNamesOf(Info, Project''1 .. Project''m) = Names
+G action fearlessManager$consistent(Project''1,Names,Info) .. fearlessManager$consistent(Project''m,Names,Info)
+H action fearlessManager.names= Names
+I action fearlessManager.projectsInfo= Info
+J action fearlessManager replaces projects.info with Info serialized
+K action fearlessManager tells the manager GUI, if the manager GUI runs, to read projects.info again
 //later: refuse an Info that changes a Project that is running
 
 Define fearlessManager$directlyHandleMessage("Quit"):
