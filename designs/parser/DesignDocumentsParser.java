@@ -3,10 +3,14 @@ record Line(int number, String text){}
 final Pattern newLineRegex= Pattern.compile("[\\x0B\\f\\r\\x85\\u2028\\u2029]");
 final Pattern stringOrCommentRegex= Pattern.compile("\"(?:\\\\.|[^\"\\\\])*\"|//");
 final Pattern grammarLineRegex= Pattern.compile("([A-Z][A-Za-z0-9]*) *::=.*");
+final Pattern atomRegex= Pattern.compile("#[A-Za-z][A-Za-z0-9]*");
+final Pattern atomsLineRegex= Pattern.compile(atomRegex + "(?:, " + atomRegex + ")* in ([A-Z][A-Za-z0-9]*)");
 final Pattern wellFormednessLineRegex= Pattern.compile("in +([A-Z][A-Za-z0-9]*):.*");
 final Pattern keywordRegex= Pattern.compile(". (event|action|after|fact|if|try) .*");
 final Pattern ifRegex= Pattern.compile(". if .+ (return|error) .+");
 final Map<String, String> defined= new HashMap<>();
+final Map<String, String> withAtoms= new HashMap<>();
+final Map<String, String> atoms= new HashMap<>();
 boolean failed= false;
 
 void main(String[] args) throws IOException{
@@ -83,10 +87,21 @@ void section(Path p, List<List<Line>> sections, int i){
   }
 }
 void grammarLine(Path p, Line l){
+  var a= atomsLineRegex.matcher(l.text());
+  if (a.matches()){ atomsLine(p, l, a.group(1)); return; }
   var m= grammarLineRegex.matcher(l.text());
-  if (!m.matches()){ error(p, l.number(), "\"%s\" is not a grammar line: a grammar line is a Nonterminal (an uppercase letter, then letters and digits), any number of spaces, \"::=\", then any text.".formatted(l.text())); return; }
+  if (!m.matches()){ error(p, l.number(), "\"%s\" is not a grammar line: a grammar line is a Nonterminal (an uppercase letter, then letters and digits), any number of spaces, \"::=\", then any text; or atoms (\"#\", a letter, then letters and digits) separated by \", \", then \" in \" and a Nonterminal.".formatted(l.text())); return; }
   var first= defined.putIfAbsent(m.group(1), p + ":" + l.number());
   if (first != null){ error(p, l.number(), "the Nonterminal %s is defined again: %s defines it first.".formatted(m.group(1), first)); }
+  if (withAtoms.containsKey(m.group(1))){ error(p, l.number(), "the Nonterminal %s is defined with \"::=\", but %s gives atoms to it: only a Nonterminal with no \"::=\" has atoms.".formatted(m.group(1), withAtoms.get(m.group(1)))); }
+}
+void atomsLine(Path p, Line l, String nonterminal){
+  withAtoms.putIfAbsent(nonterminal, p + ":" + l.number());
+  if (defined.containsKey(nonterminal)){ error(p, l.number(), "\"%s\" gives atoms to %s, but %s defines it with \"::=\": only a Nonterminal with no \"::=\" has atoms.".formatted(l.text(), nonterminal, defined.get(nonterminal))); }
+  for (var atom: atomRegex.matcher(l.text()).results().map(MatchResult::group).toList()){
+    var first= atoms.putIfAbsent(atom, p + ":" + l.number());
+    if (first != null){ error(p, l.number(), "the atom %s is named again: %s names it first.".formatted(atom, first)); }
+  }
 }
 void wellFormedness(Path p, Line head, List<Line> rest, List<Line> before){
   boolean afterGrammar= !before.isEmpty() && before.getFirst().text().matches("Grammar: *");
