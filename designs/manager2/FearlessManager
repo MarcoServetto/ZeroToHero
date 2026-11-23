@@ -11,10 +11,11 @@ projects.info is a file containing an Info serialized as defined in the fearless
 TaggedText.str and Str.taggedText have no Notation: TaggedText.str is a bijection from the values of TaggedText to some values of Str, and Str.taggedText is the inverse of TaggedText.str.
 TypeName.str and Str.typeName have no Notation: TypeName.str is a bijection from the values of TypeName to some values of Str, and Str.typeName is the inverse of TypeName.str.
 ProjectName.str and Str.projectName have no Notation: ProjectName.str is a bijection from the values of ProjectName to some values of Str, and Str.projectName is the inverse of ProjectName.str.
+A TaggedText, a TypeName or a ProjectName that is the argument of Infos.msg(..), or a key of an Infos.map, stands for its .str: Infos.msg(TaggedText) is Infos.msg(TaggedText.str).
 Infos.msg(#empty), Infos.list() and Infos.map() are one Info, the empty Info.
 The errors messageErrorNameNotAssociatedWithBase16(ProjectName,Base16), messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName), messageErrorBase16NotAssociatedWithAnyRegisteredProject(Base16), messageErrorNoInfoInFileAtBase16(Base16), messageErrorPathOfBase16CanNotBeRegistered(Base16), messageErrorNewMetadataIsNotValid(Info), messageErrorNoFearlessProjectAtPath(TaggedText), messageErrorProjectFolderSameOrInsideOtherProjectFolder(TaggedText), internalErrorCanNotAddMessageToFullQueue(Message) and internalErrorManagerIsQuitting() are left unspecified in the design.
 Info[..] makes a new Info with a little difference; for example ProjectsInfo[+=Project] makes a new Info where the list contains also that Project.
-Info.Str is the Info that the key Str maps to in the Infos.map Info; for example Project.#path is Infos.msg(TaggedText.str), where TaggedText is the path of Project.
+Info.Str is the Info that the key Str maps to in the Infos.map Info; for example Project.#path is Infos.msg(TaggedText), where TaggedText is the path of Project.
 Message[Target=Target'] makes a new Message where Target is replaced by Target'.
 fearlessManager.projectsInfo is a ProjectsInfo held in memory; fearlessManager.projectsInfo starts as Infos.list().
 dom(Names) is the set of the keys of Names.
@@ -25,10 +26,10 @@ The 'queue limit' is the maximum number of Messages of a Queue.
 
 Grammar:
 ProjectsInfo ::= Infos.list(Project1 .. Projectn)
-TypeNames ::= Infos.list(Infos.msg(TypeName1.str) .. Infos.msg(TypeNamen.str))
-Project ::= Infos.map(#path, Infos.msg(TaggedText.str), #kind, Infos.msg(Kind), #mains, TypeNames, #mounts, Mount, #attenuators, Attenuator)
-Mount ::= Infos.map(TypeName1.str, Infos.msg(ProjectName1.str) .. TypeNamen.str, Infos.msg(ProjectNamen.str))
-Attenuator ::= Infos.map(TypeName1.str, TypeNames1 .. TypeNamen.str, TypeNamesn)
+TypeNames ::= Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen))
+Project ::= Infos.map(#path, Infos.msg(TaggedText), #kind, Infos.msg(Kind), #mains, TypeNames, #mounts, Mount, #attenuators, Attenuator)
+Mount ::= Infos.map(TypeName1, Infos.msg(ProjectName1) .. TypeNamen, Infos.msg(ProjectNamen))
+Attenuator ::= Infos.map(TypeName1, TypeNames1 .. TypeNamen, TypeNamesn)
 Kind ::= #idle | #code | #dataRead | #dataEdit
 ProjectName ::= [a-z_][a-z0-9_]*
 TaggedText ::= \
@@ -54,7 +55,7 @@ Queue ::= "\t" Message1 "\n" .. "\t" Messagen "\n"
 Well formedness:
 in Queue: n is at most the 'queue limit'
 in ProjectsInfo: Project1.#path .. Projectn.#path are disjoint
-in Project: Project.#mains is Infos.list(Infos.msg(TypeName1.str) .. Infos.msg(TypeNamen.str)) with TypeName1 .. TypeNamen disjoint
+in Project: Project.#mains is Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen)) with TypeName1 .. TypeNamen disjoint
 in ProjectName: ProjectName ".fearless" is of form ValidSegment
 in TaggedText: if TaggedText is "Str:" EscapedChar1 .. EscapedCharn, then EscapedChar1 .. EscapedCharn is the result of\
   p.escape where p is a Fearless Str encoding a valid OS FS path
@@ -80,12 +81,12 @@ Notation: Names.withoutRepeatedNames = Names' where:
 
 Notation: ProjectsInfo.get(Base16) = Project where:
 - Project in ProjectsInfo
-- Project.#path = Infos.msg(Base16.taggedText.str)
+- Project.#path = Infos.msg(Base16.taggedText)
 
 Notation: TaggedText in ProjectsInfo.paths where:
-- _Project[#path=Infos.msg(TaggedText.str)] in ProjectsInfo
+- _Project[#path=Infos.msg(TaggedText)] in ProjectsInfo
 
-Define fearlessManager$readFSOptTaggedTextInProjectName(Infos.msg(TaggedText.str)):
+Define fearlessManager$readFSOptTaggedTextInProjectName(Infos.msg(TaggedText)):
 A if the folder at TaggedText has the name ProjectName, return (TaggedText->ProjectName)
 B action return {}
 
@@ -138,7 +139,7 @@ E action error messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName
 Define fearlessManager$delegate("Register " Base16):
 A if Base16.taggedText is undefined, error messageErrorPathOfBase16CanNotBeRegistered(Base16)
 B if fearlessManager.projectsInfo.get(Base16) is defined, return "EditMetadata " fearlessManager.projectsInfo
-C action return "EditMetadata " fearlessManager.projectsInfo[+=Infos.map(#path, Infos.msg(Base16.taggedText.str), #kind, Infos.msg(#idle), #mains, Infos.list(), #mounts, Infos.map(), #attenuators, Infos.map())]
+C action return "EditMetadata " fearlessManager.projectsInfo[+=Infos.map(#path, Infos.msg(Base16.taggedText), #kind, Infos.msg(#idle), #mains, Infos.list(), #mounts, Infos.map(), #attenuators, Infos.map())]
 
 Define fearlessManager$delegate("Forget " Base16):
 A if fearlessManager.projectsInfo.get(Base16) = Project, return "EditMetadata " fearlessManager.projectsInfo[-=Project]
@@ -157,22 +158,22 @@ Define fearlessManager$delegate("Mount Full(" ProjectName " " Base16 ") " TypeNa
 A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
 B action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName' " " Base16' ")")
 C fact fearlessManager.projectsInfo.get(Base16) = Project
-D action return "EditMetadata " fearlessManager.projectsInfo[Project=Project[#mounts+=(TypeName.str->Infos.msg(ProjectName'.str))]]
+D action return "EditMetadata " fearlessManager.projectsInfo[Project=Project[#mounts+=(TypeName->Infos.msg(ProjectName'))]]
 
 Define fearlessManager$delegate("Unmount Full(" ProjectName " " Base16 ") " TypeName):
 A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
 B fact fearlessManager.projectsInfo.get(Base16) = Project
-C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project[#mounts/=TypeName.str]]
+C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project[#mounts/=TypeName]]
 
 Define fearlessManager$delegate("Attenuate Full(" ProjectName " " Base16 ") " TypeName " " TypeName1 " ".." " TypeNamen):
 A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
 B fact fearlessManager.projectsInfo.get(Base16) = Project
-C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project[#attenuators+=(TypeName.str->Infos.list(Infos.msg(TypeName1.str) .. Infos.msg(TypeNamen.str)))]]
+C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project[#attenuators+=(TypeName->Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen)))]]
 
 Define fearlessManager$delegate("SelectMains Full(" ProjectName " " Base16 ") " TypeName1 " ".." " TypeNamen):
 A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
 B fact fearlessManager.projectsInfo.get(Base16) = Project
-C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project[#mains=Infos.list(Infos.msg(TypeName1.str) .. Infos.msg(TypeNamen.str))]]
+C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project[#mains=Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen))]]
 
 Define fearlessManager$directlyHandleMessage("Quit"):
 A action fearlessManager renames the LockFile to no_manager.lock
