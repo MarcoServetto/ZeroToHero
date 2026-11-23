@@ -14,7 +14,7 @@ ProjectName.str and Str.projectName have no Notation: ProjectName.str is a bijec
 Kind.str and Str.kind have no Notation: Kind.str is a bijection from the values of Kind to some values of Str, and Str.kind is the inverse of Kind.str.
 A TaggedText, a TypeName, a ProjectName or a Kind that is the argument of Infos.msg(..), or a key of an Infos.map, stands for its .str: Infos.msg(TaggedText) is Infos.msg(TaggedText.str).
 Infos.msg(#empty), Infos.list() and Infos.map() are one Info, the empty Info.
-The errors messageErrorNameNotAssociatedWithBase16(ProjectName,Base16), messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName), messageErrorBase16NotAssociatedWithAnyRegisteredProject(Base16), messageErrorNoInfoInFileAtBase16(Base16), messageErrorPathOfBase16CanNotBeRegistered(Base16), messageErrorNewMetadataIsNotValid(Info), messageErrorNoFearlessProjectAtPath(TaggedText), messageErrorProjectFolderSameOrInsideOtherProjectFolder(TaggedText), messageErrorProjectIsNotOfKindCode(ProjectName,Base16), messageErrorProjectIsBusy(ProjectName,Base16), internalErrorCanNotAddMessageToFullQueue(Message) and internalErrorManagerIsQuitting() are left unspecified in the design.
+The errors messageErrorNameNotAssociatedWithBase16(ProjectName,Base16), messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName), messageErrorBase16NotAssociatedWithAnyRegisteredProject(Base16), messageErrorNoInfoInFileAtBase16(Base16), messageErrorPathOfBase16CanNotBeRegistered(Base16), messageErrorNewMetadataIsNotValid(Info), messageErrorNoFearlessProjectAtPath(TaggedText), messageErrorProjectFolderSameOrInsideOtherProjectFolder(TaggedText), messageErrorProjectIsNotOfKindCode(ProjectName,Base16), messageErrorProjectIsBusy(ProjectName,Base16), messageErrorProjectIsNotBusy(ProjectName,Base16), messageErrorProjectIsTerminated(ProjectName,Base16), internalErrorCanNotAddMessageToFullQueue(Message) and internalErrorManagerIsQuitting() are left unspecified in the design.
 Info[..] makes a new Info with a little difference; for example ProjectsInfo[+=Project] makes a new Info where the list contains also that Project.
 Info.Str is the Info that the key Str maps to in the Infos.map Info; for example Project.#path is Infos.msg(TaggedText), where TaggedText is the path of Project.
 Message[Target=Target'] makes a new Message where Target is replaced by Target'.
@@ -56,6 +56,7 @@ Port ::= [1-9][0-9]*
 Queue ::= "\t" Message1 "\n" .. "\t" Messagen "\n"
 LongLivedMessage ::= "Run Full(" ProjectName " " Base16 ")" | "Compile Full(" ProjectName " " Base16 ")"//Some Messages are also LongLivedMessage
 LongLivedMap ::= (Base161->LongLivedMessage1) .. (Base16n->LongLivedMessagen)
+DirectMessage ::= "Quit" | "EditMetadata " Info | "Terminate Full(" ProjectName " " Base16 ")"
 
 Well formedness:
 in Queue: n is at most the 'queue limit'
@@ -213,6 +214,13 @@ C action fearlessManager$checkProjectIsRegistered(ProjectName1) .. fearlessManag
 //later: more checks on the mounted Projects
 D action fearlessManager.longLivedMessages+= (Base16->"Run Full(" ProjectName " " Base16 ")")
 
+Define fearlessManager$directlyHandleMessage("Terminate Full(" ProjectName " " Base16 ")"):
+A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
+B if Base16 not in dom(fearlessManager.longLivedMessages), error messageErrorProjectIsNotBusy(ProjectName,Base16)
+C fact fearlessManager.longLivedMessages = LongLivedMap (Base16->LongLivedMessage) LongLivedMap'
+D action fearlessManager answers "Refused\n" messageErrorProjectIsTerminated(ProjectName,Base16) to LongLivedMessage
+E action fearlessManager.longLivedMessages= LongLivedMap LongLivedMap'
+
 Define fearlessManager$directlyHandleMessage("Quit"):
 A action fearlessManager renames the LockFile to no_manager.lock
 B action fearlessManager stops listening for connections
@@ -298,21 +306,21 @@ C action fearlessManager answers "Refused\n" internalErrorCanNotAddMessageToFull
 Story:
 A fact fearlessManager.queue = "\t" Message "\n" Queue
 B action fearlessManager.queue= Queue
-C fact Message is not "Quit", not of form "EditMetadata " Info, and not of form LongLivedMessage.
+C fact Message is not of form DirectMessage, and not of form LongLivedMessage.
 D action fearlessManager$delegate(Message) = Message'
 E action fearlessManager.queue= "\t" Message' "\n" Queue
 
 Story:
 A fact fearlessManager.queue = "\t" Message "\n" Queue
 B action fearlessManager.queue= Queue
-C fact Message is not "Quit", not of form "EditMetadata " Info, and not of form LongLivedMessage.
+C fact Message is not of form DirectMessage, and not of form LongLivedMessage.
 D action fearlessManager$delegate(Message) ends with Error.
 E action fearlessManager answers "Refused\n" Error
 
 Story:
 A fact fearlessManager.queue = "\t" Message "\n" Queue
 B action fearlessManager.queue= Queue
-C fact Message is "Quit" or of form "EditMetadata " Info.
+C fact Message is of form DirectMessage.
 D action fearlessManager$directlyHandleMessage(Message) ends with done.
 E action fearlessManager answers "Applied\n"
 F action When Message is "Quit", fearlessManager ends.
@@ -320,7 +328,7 @@ F action When Message is "Quit", fearlessManager ends.
 Story:
 A fact fearlessManager.queue = "\t" Message "\n" Queue
 B action fearlessManager.queue= Queue
-C fact Message is "Quit" or of form "EditMetadata " Info.
+C fact Message is of form DirectMessage.
 D action fearlessManager$directlyHandleMessage(Message) ends with Error.
 E action fearlessManager answers "Refused\n" Error
 
@@ -338,7 +346,7 @@ D action fearlessManager answers "Refused\n" Error
 Implementation notes:
 A Str is a Fearless string literal: #empty is "", #path is "path", #kind is "kind", #mains is "mains", #mounts is "mounts" and #attenuators is "attenuators".
 TaggedText.str, TypeName.str, ProjectName.str and Kind.str are the Fearless string literals holding the text of TaggedText, of TypeName, of ProjectName and of Kind.
-Each Message of fearlessManager.queue keeps the connection that the Message arrived on; a Message that fearlessManager$delegate returns keeps the connection of the Message it comes from; fearlessManager answers a Message on that connection.
+Each Message of fearlessManager.queue and of fearlessManager.longLivedMessages keeps the connection that the Message arrived on; a Message that fearlessManager$delegate returns keeps the connection of the Message it comes from; fearlessManager answers a Message on that connection.
 The 'manager path' is chosen by the implementation, and can differ between operating systems: each version of fearlessManager has its own ManagerFolder, and a copy of an installation is an independent installation with its own ManagerFolder.
 The lock of a LockFile is the lock of FileChannel.tryLock: the OS releases the lock when the process ends, however the process ends, and the lock follows the file when the file is renamed.
 fearlessManager finds that another process holds the lock by trying to take the lock: there is no separate check before taking the lock.
