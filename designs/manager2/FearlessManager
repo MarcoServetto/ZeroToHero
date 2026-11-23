@@ -14,7 +14,7 @@ ProjectName.str and Str.projectName have no Notation: ProjectName.str is a bijec
 Kind.str and Str.kind have no Notation: Kind.str is a bijection from the values of Kind to some values of Str, and Str.kind is the inverse of Kind.str.
 A TaggedText, a TypeName, a ProjectName or a Kind that is the argument of Infos.msg(..), or a key of an Infos.map, stands for its .str: Infos.msg(TaggedText) is Infos.msg(TaggedText.str).
 Infos.msg(#empty), Infos.list() and Infos.map() are one Info, the empty Info.
-The errors messageErrorNameNotAssociatedWithBase16(ProjectName,Base16), messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName), messageErrorBase16NotAssociatedWithAnyRegisteredProject(Base16), messageErrorNoInfoInFileAtBase16(Base16), messageErrorPathOfBase16CanNotBeRegistered(Base16), messageErrorNewMetadataIsNotValid(Info), messageErrorNoFearlessProjectAtPath(TaggedText), messageErrorProjectFolderSameOrInsideOtherProjectFolder(TaggedText), internalErrorCanNotAddMessageToFullQueue(Message) and internalErrorManagerIsQuitting() are left unspecified in the design.
+The errors messageErrorNameNotAssociatedWithBase16(ProjectName,Base16), messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName), messageErrorBase16NotAssociatedWithAnyRegisteredProject(Base16), messageErrorNoInfoInFileAtBase16(Base16), messageErrorPathOfBase16CanNotBeRegistered(Base16), messageErrorNewMetadataIsNotValid(Info), messageErrorNoFearlessProjectAtPath(TaggedText), messageErrorProjectFolderSameOrInsideOtherProjectFolder(TaggedText), messageErrorProjectIsNotOfKindCode(ProjectName,Base16), messageErrorProjectIsBusy(ProjectName,Base16), internalErrorCanNotAddMessageToFullQueue(Message) and internalErrorManagerIsQuitting() are left unspecified in the design.
 Info[..] makes a new Info with a little difference; for example ProjectsInfo[+=Project] makes a new Info where the list contains also that Project.
 Info.Str is the Info that the key Str maps to in the Infos.map Info; for example Project.#path is Infos.msg(TaggedText), where TaggedText is the path of Project.
 Message[Target=Target'] makes a new Message where Target is replaced by Target'.
@@ -24,6 +24,8 @@ fearlessManager.names is a Names held in memory; fearlessManager.names starts as
 dom(fearlessManager.names) holds only the paths of fearlessManager.projectsInfo whose folder had a name that no other of those folders had, when fearlessManager last read those folders.
 fearlessManager.queue is a Queue held in memory; fearlessManager.queue starts empty.
 The 'queue limit' is the maximum number of Messages of a Queue.
+dom(LongLivedMap) is the set of the keys of LongLivedMap.
+fearlessManager.longLivedMessages is a LongLivedMap held in memory; fearlessManager.longLivedMessages starts as {}.
 
 Grammar:
 ProjectsInfo ::= Infos.list(Project1 .. Projectn)
@@ -52,10 +54,12 @@ Info ::= Infos.msg(Str) | Infos.list(Info1 .. Infon) | Infos.map(Str1, Info1 .. 
 LockFile ::= "no_manager.lock" | "candidate_manager.lock" | "single_manager_at_" Port ".lock"
 Port ::= [1-9][0-9]*
 Queue ::= "\t" Message1 "\n" .. "\t" Messagen "\n"
+LongLivedMessage ::= "Run Full(" ProjectName " " Base16 ")" | "Compile Full(" ProjectName " " Base16 ")"//Some Messages are also LongLivedMessage
+LongLivedMap ::= (Base161->LongLivedMessage1) .. (Base16n->LongLivedMessagen)
 
 Well formedness:
 in Queue: n is at most the 'queue limit'
-in ProjectsInfo: Project1.#path .. Projectn.#path are disjoint
+in LongLivedMap: Base161 .. Base16n are disjointin ProjectsInfo: Project1.#path .. Projectn.#path are disjoint
 in Project: Project.#mains is Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen)) with TypeName1 .. TypeNamen disjoint
 in ProjectName: ProjectName ".fearless" is of form ValidSegment
 in TaggedText: if TaggedText is "Str:" EscapedChar1 .. EscapedCharn, then EscapedChar1 .. EscapedCharn is the result of\
@@ -140,7 +144,7 @@ E action error messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName
 Define fearlessManager$delegate("Register " Base16):
 A if Base16.taggedText is undefined, error messageErrorPathOfBase16CanNotBeRegistered(Base16)
 B if fearlessManager.projectsInfo.get(Base16) is defined, return "EditMetadata " fearlessManager.projectsInfo
-C action return "EditMetadata " fearlessManager.projectsInfo[+=Infos.map(#path, Infos.msg(Base16.taggedText), #kind, Infos.msg("idle"), #mains, Infos.list(), #mounts, Infos.map(), #attenuators, Infos.map())]
+C action return "EditMetadata " fearlessManager.projectsInfo[+=Infos.map(#path, Infos.msg(Base16.taggedText), #kind, Infos.msg("idle"), #mains, Infos.list(), #mounts, Infos.map(), #attenuators, Infos.map())]//"idle" is a Kind, so Infos.msg("idle") is Infos.msg("idle".str)
 
 Define fearlessManager$delegate("Forget " Base16):
 A if fearlessManager.projectsInfo.get(Base16) = Project, return "EditMetadata " fearlessManager.projectsInfo[-=Project]
@@ -176,6 +180,15 @@ A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16
 B fact fearlessManager.projectsInfo.get(Base16) = Project
 C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project[#mains=Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen))]]
 
+Define fearlessManager$dispatch(LongLivedMessage):
+A fact LongLivedMessage.Targets contains "Full(" ProjectName " " Base16 ")".
+B action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
+C fact fearlessManager.projectsInfo.get(Base16) = Project
+D if Project.#kind is not Infos.msg("code"), error messageErrorProjectIsNotOfKindCode(ProjectName,Base16)
+E if Base16 in dom(fearlessManager.longLivedMessages), error messageErrorProjectIsBusy(ProjectName,Base16)
+//later: extra checks when LongLivedMessage is a Run
+F action fearlessManager.longLivedMessages= fearlessManager.longLivedMessages (Base16->LongLivedMessage)
+
 Define fearlessManager$directlyHandleMessage("Quit"):
 A action fearlessManager renames the LockFile to no_manager.lock
 B action fearlessManager stops listening for connections
@@ -186,6 +199,7 @@ E action fearlessManager.queue= ""
 
 Invariant:
 At every moment, at most one fearlessManager is the 'single' manager of one ManagerFolder.
+At every moment, for each Base16 in dom(fearlessManager.longLivedMessages), fearlessManager.projectsInfo.get(Base16).#kind = Infos.msg("code").
 
 Define fearlessManager$loadProjectsInfo():
 A fact The file projects.info holds Info serialized.
@@ -258,14 +272,14 @@ C action fearlessManager answers "Refused\n" internalErrorCanNotAddMessageToFull
 Story:
 A fact fearlessManager.queue = "\t" Message "\n" Queue
 B action fearlessManager.queue= Queue
-C fact Message is not "Quit" and not of form "EditMetadata " Info.
+C fact Message is not "Quit", not of form "EditMetadata " Info, and not of form LongLivedMessage.
 D action fearlessManager$delegate(Message) = Message'
 E action fearlessManager.queue= "\t" Message' "\n" Queue
 
 Story:
 A fact fearlessManager.queue = "\t" Message "\n" Queue
 B action fearlessManager.queue= Queue
-C fact Message is not "Quit" and not of form "EditMetadata " Info.
+C fact Message is not "Quit", not of form "EditMetadata " Info, and not of form LongLivedMessage.
 D action fearlessManager$delegate(Message) ends with Error.
 E action fearlessManager answers "Refused\n" Error
 
@@ -283,6 +297,17 @@ B action fearlessManager.queue= Queue
 C fact Message is "Quit" or of form "EditMetadata " Info.
 D action fearlessManager$directlyHandleMessage(Message) ends with Error.
 E action fearlessManager answers "Refused\n" Error
+
+Story:
+A fact fearlessManager.queue = "\t" LongLivedMessage "\n" Queue
+B action fearlessManager.queue= Queue
+C action fearlessManager$dispatch(LongLivedMessage) ends with done.
+
+Story:
+A fact fearlessManager.queue = "\t" LongLivedMessage "\n" Queue
+B action fearlessManager.queue= Queue
+C action fearlessManager$dispatch(LongLivedMessage) ends with Error.
+D action fearlessManager answers "Refused\n" Error
 
 Implementation notes:
 A Str is a Fearless string literal: #empty is "", #path is "path", #kind is "kind", #mains is "mains", #mounts is "mounts" and #attenuators is "attenuators".
