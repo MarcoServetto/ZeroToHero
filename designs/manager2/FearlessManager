@@ -14,7 +14,7 @@ ProjectName.str and Str.projectName have no Notation: ProjectName.str is a bijec
 Kind.str and Str.kind have no Notation: Kind.str is a bijection from the values of Kind to some values of Str, and Str.kind is the inverse of Kind.str.
 A TaggedText, a TypeName, a ProjectName or a Kind that is the argument of Infos.msg(..), or a key of an Infos.map, stands for its .str: Infos.msg(TaggedText) is Infos.msg(TaggedText.str).
 Infos.msg(#empty), Infos.list() and Infos.map() are one Info, the empty Info.
-The errors messageErrorNameNotAssociatedWithBase16(ProjectName,Base16), messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName), messageErrorBase16NotAssociatedWithAnyRegisteredProject(Base16), messageErrorNoInfoInFileAtBase16(Base16), messageErrorPathOfBase16CanNotBeRegistered(Base16), messageErrorNewMetadataIsNotValid(Info), messageErrorNoFearlessProjectAtPath(TaggedText), messageErrorProjectFolderSameOrInsideOtherProjectFolder(TaggedText), messageErrorProjectIsNotOfKindCode(ProjectName,Base16), messageErrorProjectIsBusy(ProjectName,Base16), messageErrorProjectIsNotBusy(Base16), internalErrorCanNotAddMessageToFullQueue(Message) and internalErrorManagerIsQuitting() are left unspecified in the design.
+The errors messageErrorNameNotAssociatedWithBase16(ProjectName,Base16), messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName), messageErrorBase16NotAssociatedWithAnyRegisteredProject(Base16), messageErrorNoInfoInFileAtBase16(Base16), messageErrorPathOfBase16CanNotBeRegistered(Base16), messageErrorNewMetadataIsNotValid(Info), messageErrorNoFearlessProjectAtPath(TaggedText), messageErrorProjectFolderSameOrInsideOtherProjectFolder(TaggedText), messageErrorProjectIsNotOfKindCode(ProjectName,Base16), messageErrorProjectIsBusy(ProjectName,Base16), messageErrorProjectIsNotBusy(Base16), messageErrorProjectIsOutOfDate(ProjectName,Base16), internalErrorCanNotAddMessageToFullQueue(Message) and internalErrorManagerIsQuitting() are left unspecified in the design.
 FolderShapes$checkWellShaped(Base16) has no Define: FolderShapes$checkWellShaped(Base16) ends with done when the folder at Base16 is 'well shaped' as tasks/FolderShapesDesign defines, and otherwise ends with the Error that a compilation of the folder at Base16 gives.
 Info[..] makes a new Info with a little difference; for example ProjectsInfo[+=Project] makes a new Info where the list contains also that Project.
 Info.Str is the Info that the key Str maps to in the Infos.map Info; for example Project.#path is Infos.msg(TaggedText), where TaggedText is the path of Project.
@@ -27,6 +27,9 @@ fearlessManager.queue is a Queue held in memory; fearlessManager.queue starts em
 The 'queue limit' is the maximum number of Messages of a Queue.
 dom(LongLivedMap) is the set of the keys of LongLivedMap.
 fearlessManager.longLivedMessages is a LongLivedMap held in memory; fearlessManager.longLivedMessages starts as {}.
+Coordinator$check(Base16) and Coordinator$compile(Base16) have no Define: tasks/CoordinatorDesign defines .check and .compile; Coordinator$check(Base16) = State, and Coordinator$compile(Base16) ends with done or ends with Error.
+The 'child' of LongLivedMessage is a process that fearlessManager starts; the 'child' ends when the 'child' 'completes' with Answer, when fearlessManager stops the 'child', or when fearlessManager ends.
+The 'child' of "Compile Full(" ProjectName " " Base16 ")" 'completes' with "Applied\n" when Coordinator$compile(Base16) ends with done, and with "Refused\n" Error when Coordinator$compile(Base16) ends with Error.
 At the end of each Story, fearlessManager closes each connection that no Message of fearlessManager.queue and no Message of fearlessManager.longLivedMessages keeps.
 
 Grammar:
@@ -58,6 +61,7 @@ Port ::= [1-9][0-9]*
 Queue ::= "\t" Message1 "\n" .. "\t" Messagen "\n"
 LongLivedMessage ::= "Run Full(" ProjectName " " Base16 ")" | "Compile Full(" ProjectName " " Base16 ")"//Some Messages are also LongLivedMessage
 LongLivedMap ::= (Base161->LongLivedMessage1) .. (Base16n->LongLivedMessagen)
+State ::= "Invalid(" Error ")" | "OutOfDate" | "Compiled"
 DirectMessage ::= "EditMetadata " Info | "Terminate " Base16 | "Check Full(" ProjectName " " Base16 ")"
 
 Well formedness:
@@ -216,10 +220,12 @@ B action fearlessManager.longLivedMessages+= (Base16->"Compile Full(" ProjectNam
 
 Define fearlessManager$dispatch("Run Full(" ProjectName " " Base16 ")"):
 A action fearlessManager$checkProjectIsCodeAndNotBusy(ProjectName,Base16)
-B fact fearlessManager.projectsInfo.get(Base16).#mounts = Infos.map(TypeName1, Infos.msg(ProjectName1) .. TypeNamen, Infos.msg(ProjectNamen))
-C action fearlessManager$checkProjectIsRegistered(ProjectName1) .. fearlessManager$checkProjectIsRegistered(ProjectNamen)
+B if Coordinator$check(Base16) = "Invalid(" Error ")", error Error
+C if Coordinator$check(Base16) = "OutOfDate", error messageErrorProjectIsOutOfDate(ProjectName,Base16)
+D fact fearlessManager.projectsInfo.get(Base16).#mounts = Infos.map(TypeName1, Infos.msg(ProjectName1) .. TypeNamen, Infos.msg(ProjectNamen))
+E action fearlessManager$checkProjectIsRegistered(ProjectName1) .. fearlessManager$checkProjectIsRegistered(ProjectNamen)
 //later: more checks on the mounted Projects
-D action fearlessManager.longLivedMessages+= (Base16->"Run Full(" ProjectName " " Base16 ")")
+F action fearlessManager.longLivedMessages+= (Base16->"Run Full(" ProjectName " " Base16 ")")
 
 Define fearlessManager$delegate("Terminate Full(" ProjectName " " Base16 ")"):
 A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
@@ -228,8 +234,9 @@ B action return "Terminate " Base16
 Define fearlessManager$directlyHandleMessage("Terminate " Base16):
 A if Base16 not in dom(fearlessManager.longLivedMessages), error messageErrorProjectIsNotBusy(Base16)
 B fact fearlessManager.longLivedMessages = LongLivedMap (Base16->LongLivedMessage) LongLivedMap'
-C action fearlessManager answers "Terminated\n" to LongLivedMessage
-D action fearlessManager.longLivedMessages= LongLivedMap LongLivedMap'
+C action fearlessManager stops the 'child' of LongLivedMessage, and waits until the 'child' of LongLivedMessage has ended
+D action fearlessManager answers "Terminated\n" to LongLivedMessage
+E action fearlessManager.longLivedMessages= LongLivedMap LongLivedMap'
 
 Define fearlessManager$directlyHandleMessage("Check Full(" ProjectName " " Base16 ")"):
 A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
@@ -362,12 +369,19 @@ Story:
 A fact fearlessManager.queue = "\t" LongLivedMessage "\n" Queue
 B action fearlessManager.queue= Queue
 C action fearlessManager$dispatch(LongLivedMessage) ends with done.
+D action fearlessManager starts the 'child' of LongLivedMessage
 
 Story:
 A fact fearlessManager.queue = "\t" LongLivedMessage "\n" Queue
 B action fearlessManager.queue= Queue
 C action fearlessManager$dispatch(LongLivedMessage) ends with Error.
 D action fearlessManager answers "Refused\n" Error
+
+Story:
+A event The 'child' of LongLivedMessage completes with Answer.
+B fact fearlessManager.longLivedMessages = LongLivedMap (_->LongLivedMessage) LongLivedMap'
+C action fearlessManager answers Answer to LongLivedMessage
+D action fearlessManager.longLivedMessages= LongLivedMap LongLivedMap'
 
 Implementation notes:
 A Str is a Fearless string literal: #empty is "", #path is "path", #kind is "kind", #mains is "mains", #mounts is "mounts" and #attenuators is "attenuators".
