@@ -10,10 +10,23 @@ fearlessProject$fearless_out+= "x" creates the empty file x directly inside the 
 A modification time is a Time; 0 is before the modification time of every file.
 fearlessProject$packages is the list of the PackageNames of the packages of the Fearless project at Base16 other than "base", from the lowest rank.
 fearlessProject$lower(PackageName) is the set of "base" and of each PackageName' of fearlessProject$packages where the rank of PackageName' is lower than the rank of PackageName; the code of the package PackageName can use only the packages of fearlessProject$lower(PackageName).
-//later: what a package is, and the rank of a package
+fearlessProject$files(PackageName) is the map from each path of fearlessProject$fearlessPaths in the package PackageName to the content of the file at that path; fearlessProject$files(PackageName) holds every file of the package, also the files that are not Fearless code.
+The modification time of a file inside a zip file is the modification time of that zip file.
+fearlessProject$directives(PackageName) is the map directives for the package PackageName, from the rank files of every package of the Fearless project at Base16.
+//later: what a package is, the rank of a package, and the map directives
+fearlessProject$out(PackageName) is the Outs where the Content at "x" is the content of the file PackageName ".x" directly inside the folder .fearless_out of Base16, and is undefined when one of those four files is absent; fearlessProject$out("base") is the Outs of the files of "base" in the installation of Fearless.
+fearlessProject$out(PackageName)= Outs writes those four files.
+fearlessProject$lowerOuts(PackageName) is the map (PackageName'->fearlessProject$out(PackageName')) for each PackageName' of fearlessProject$lower(PackageName).
+frontend.compile(PackageName,fearlessProject$files(PackageName),fearlessProject$directives(PackageName),fearlessProject$lowerOuts(PackageName)) has no Notation: the Fearless compiler defines it, and the result is a CompileResult.
+fearlessProject$snapshot(PackageName) is dom(fearlessProject$files(PackageName)), fearlessProject$directives(PackageName), and (PackageName'->Time') for each PackageName' of fearlessProject$lower(PackageName), where Time' is the modification time of the file "jar" of fearlessProject$out(PackageName').
+fearlessProject$savedSnapshot(PackageName) is the last value that fearlessProject$savedSnapshot(PackageName)= saved inside the folder .fearless_out of Base16; fearlessProject$savedSnapshot(PackageName) is undefined when no value is saved.
+Compiling a package of fearlessProject$lower(PackageName) changes fearlessProject$snapshot(PackageName), so the package PackageName is compiled again, also when the "json" of that lower package did not change: the Java compiler can copy constants from the "jar" of a lower package into the "jar" of the package PackageName.
 
 Grammar:
 Time ::= [0-9]+
+Content ::= any sequence of bytes
+Outs ::= ("json"->Content1) ("jar"->Content2) ("html"->Content3) ("txt"->Content4)
+CompileResult ::= Outs | "error(" AnyText ")"
 
 Define fearlessProject$checkIsUpToDate(Base16):
 A if "_unfinished.txt" in fearlessProject$fearless_out, error fearlessProjectErrorIsOutOfDate(Base16)
@@ -38,4 +51,14 @@ I if the modification time of a DeskPath in fearlessProject$visiblePaths is afte
 J action fearlessProject$fearless_out-= "_unfinished.txt"
 
 Define fearlessProject$compilePackage(PackageName,Time):
-//later: compile the package PackageName, unless that package is up to date since Time
+A if fearlessProject$out(PackageName) is undefined, return fearlessProject$forceCompilePackage(PackageName)
+B if the modification time of a file of fearlessProject$files(PackageName) is after Time, return fearlessProject$forceCompilePackage(PackageName)
+C if fearlessProject$savedSnapshot(PackageName) is undefined, return fearlessProject$forceCompilePackage(PackageName)
+D if fearlessProject$savedSnapshot(PackageName) != fearlessProject$snapshot(PackageName), return fearlessProject$forceCompilePackage(PackageName)
+
+Define fearlessProject$forceCompilePackage(PackageName):
+A fact frontend.compile(PackageName,fearlessProject$files(PackageName),fearlessProject$directives(PackageName),fearlessProject$lowerOuts(PackageName)) = CompileResult
+B if CompileResult = "error(" AnyText ")", error fearlessProjectErrorPackageDoesNotCompile(PackageName,AnyText)
+C fact CompileResult = Outs
+D action fearlessProject$out(PackageName)= Outs
+E action fearlessProject$savedSnapshot(PackageName)= fearlessProject$snapshot(PackageName)
