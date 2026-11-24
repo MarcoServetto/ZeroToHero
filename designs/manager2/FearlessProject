@@ -4,49 +4,60 @@ fearlessProject$allPaths is the set of the DeskPaths at Base16 or inside Base16.
 fearlessProject$visiblePaths is the set of the DeskPaths of fearlessProject$allPaths where no Segment after Base16 starts with ".".
 fearlessProject$fearlessPaths is the set of the paths that Fearless code sees inside Base16; fearlessProject$fearlessPaths includes the paths inside zip files.
 The 'name' of a Fearless project is ProjectName when ProjectName ".fearless" is the only file at top level in that Fearless project ending with ".fearless".
-fearlessProject$checkWellShaped(Base16) has no Define: fearlessProject$checkWellShaped(Base16) ends with done when the Fearless project at Base16 is 'well shaped' as tasks/FolderShapesDesign defines, and otherwise ends with the Error that a compilation of the Fearless project at Base16 gives.
+fearlessProject$checkWellShaped has no Define: fearlessProject$checkWellShaped ends with done when the Fearless project at Base16 is 'well shaped' as tasks/FolderShapesDesign defines, and otherwise ends with the Error that a compilation of the Fearless project at Base16 gives.
 fearlessProject$fearless_out is the set of the names of the files directly inside the folder .fearless_out of Base16.
 fearlessProject$fearless_out+= "x" creates the empty file x directly inside the folder .fearless_out of Base16, and fearlessProject$fearless_out-= "x" deletes that file.
-A modification time is a Time; 0 is before the modification time of every file.
+fearlessProject$out(PackageName)= Out writes the files PackageName ".json", PackageName ".html", PackageName ".txt" and PackageName ".tmp" directly inside the folder .fearless_out of Base16; the file PackageName ".tmp" holds the Content of "jar".
 fearlessProject$packages is the list of the PackageNames of the packages of the Fearless project at Base16 other than "base", from the lowest rank.
 //later: what a package is, and the rank of a package
 
 Grammar:
-Time ::= [0-9]+
 File ::= (FearlessPath->Content)
 Out ::= ("json"->Content1) ("jar"->Content2) ("html"->Content3) ("txt"->Content4)
 LowerOut ::= (PackageName->Out)
 CompileResult ::= Out | "error(" Str ")"
 
-Define fearlessProject$checkIsUpToDate(Base16):
-A if "_unfinished.txt" in fearlessProject$fearless_out, error fearlessProjectErrorIsOutOfDate(Base16)
-B if "_compile_start.txt" not in fearlessProject$fearless_out, error fearlessProjectErrorIsOutOfDate(Base16)
-C if the modification time of a DeskPath in fearlessProject$visiblePaths is after the modification time of "_compile_start.txt", error fearlessProjectErrorIsOutOfDate(Base16)
+Define fearlessProject$checkIsUpToDate:
+A if "_compile_start.txt" not in fearlessProject$fearless_out, error fearlessProjectErrorIsOutOfDate(Base16)
+B if the modification time of a DeskPath in fearlessProject$visiblePaths is after the modification time of "_compile_start.txt", error fearlessProjectErrorIsOutOfDate(Base16)
+C fact fearlessProject$packages = PackageName1 .. PackageNamen
+D if one of PackageName1 ".jar" .. PackageNamen ".jar" is not in fearlessProject$fearless_out, error fearlessProjectErrorIsOutOfDate(Base16)
 
-Define fearlessProject$previousStart(Base16):
-A if "_unfinished.txt" in fearlessProject$fearless_out, return 0
-B if "_compile_start.txt" not in fearlessProject$fearless_out, return 0
-C action return the modification time of "_compile_start.txt"
-
-Define fearlessProject$compile(Base16):
-A action fearlessProject$previousStart(Base16) = Time
-B action fearlessProject$fearless_out+= "_unfinished.txt"
-C action fearlessProject$fearless_out-= "_compile_start.txt"
-D action fearlessProject$fearless_out+= "_compile_start.txt"
-E action wait until the clock of the file system of Base16 is after the modification time of "_compile_start.txt"
-F action fearlessProject$checkWellShaped(Base16)
-G fact fearlessProject$packages = PackageName1 .. PackageNamen
-H action fearlessProject$compilePackage(PackageName1,Time) .. fearlessProject$compilePackage(PackageNamen,Time)
-I if the modification time of a DeskPath in fearlessProject$visiblePaths is after the modification time of "_compile_start.txt", error fearlessProjectErrorFilesChangedDuringCompile(Base16)
-J action fearlessProject$fearless_out-= "_unfinished.txt"
+Define fearlessProject$compile:
+A action fearlessProject$fearless_out-= "_compile_start.txt"
+B action fearlessProject$fearless_out+= "_compile_start.txt"
+C action wait until the clock of the file system of Base16 is after the modification time of "_compile_start.txt"
+D action fearlessProject$checkWellShaped
+E fact fearlessProject$packages = PackageName1 .. PackageNamen
+F action fearlessProject$compilePackage(PackageName1) .. fearlessProject$compilePackage(PackageNamen)
 
 Define fearlessProject$lower(PackageName):
 A fact fearlessProject$packages = PackageName1 .. PackageNamen
 B action return the list of "base" and of each PackageNamei where fearlessProject$rank(PackageNamei) < fearlessProject$rank(PackageName)
 
-Define fearlessProject$compilePackage(PackageName,Time):
-//later: do nothing when the package PackageName is up to date
-A fact frontend.compile(PackageName,fearlessProject$files(PackageName),fearlessProject$directives(PackageName),fearlessProject$lowerOuts(PackageName)) = CompileResult
-B if CompileResult = "error(" Str ")", error fearlessProjectErrorPackageDoesNotCompile(PackageName,Str)
-C fact CompileResult = Out
-D action fearlessProject$out(PackageName)= Out
+Define fearlessProject$higher(PackageName):
+A fact fearlessProject$packages = PackageName1 .. PackageNamen
+B action return the list of each PackageNamei where fearlessProject$rank(PackageNamei) > fearlessProject$rank(PackageName)
+
+Define fearlessProject$compilePackage(PackageName):
+A if PackageName ".jar" not in fearlessProject$fearless_out, return fearlessProject$forceCompilePackage(PackageName)
+B if the modification time of a DeskPath in fearlessProject$deskPaths(PackageName) is after the modification time of PackageName ".jar", return fearlessProject$forceCompilePackage(PackageName)
+C if fearlessProject$directives(PackageName) is not fearlessProject$savedDirectives(PackageName), return fearlessProject$forceCompilePackage(PackageName)
+
+Define fearlessProject$forceCompilePackage(PackageName):
+A action fearlessProject$higher(PackageName) = PackageNames
+B fact PackageName PackageNames = PackageName1 .. PackageNamen
+C action fearlessProject$fearless_out-= PackageName1 ".jar" .. fearlessProject$fearless_out-= PackageNamen ".jar"
+D fact frontend.compile(PackageName,fearlessProject$files(PackageName),fearlessProject$directives(PackageName),fearlessProject$lowerOuts(PackageName)) = CompileResult
+E if CompileResult = "error(" Str ")", error fearlessProjectErrorPackageDoesNotCompile(PackageName,Str)
+F fact CompileResult = Out
+G action fearlessProject$out(PackageName)= Out
+H action wait until the clock of the file system of Base16 is after the modification time of PackageName ".tmp"
+I if the modification time of a DeskPath in fearlessProject$visiblePaths is after the modification time of "_compile_start.txt", error fearlessProjectErrorFilesChangedDuringCompile(Base16)
+J action rename the file PackageName ".tmp" of the folder .fearless_out of Base16 to PackageName ".jar"
+
+Implementation notes:
+The rename of line J of fearlessProject$forceCompilePackage is atomic and keeps the modification time of the file.
+No program sets the modification time of a file of fearlessProject$fearless_out; the file system sets that modification time when the file is written.
+frontend.compile reads a DeskPath before PackageName ".tmp" is written. Lines H and I of fearlessProject$forceCompilePackage are the test for a DeskPath that changes between that read and that write.
+A compilation that is stopped leaves no PackageName ".jar" that line I did not test; no file records that a compilation was stopped.
