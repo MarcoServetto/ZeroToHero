@@ -82,7 +82,7 @@ void section(Path p, List<List<Line>> sections, int i){
     case "Well formedness:" -> wellFormedness(p, head, rest, i == 0 ? List.of() : sections.get(i - 1));
     case "Story:" -> storyLines(p, rest);
     case String s when s.matches("Define .*:") -> storyLines(p, rest);
-    case String s when s.startsWith("Notation: ") -> notations(p, sections.get(i));
+    case String s when s.startsWith("Notation: ") -> notation(p, head, rest);
     default -> error(p, head.number(), "\"%s\" is not a category line: the first line of a section is \"Text:\", \"Grammar:\", \"Well formedness:\", \"Story:\", \"Define \" followed by any text and \":\", \"Invariant:\" or \"Implementation notes:\", followed by any number of spaces, or \"Notation: \" followed by any text.".formatted(head.text()));
   }
 }
@@ -113,13 +113,12 @@ void wellFormedness(Path p, Line head, List<Line> rest, List<Line> before){
     if (afterGrammar && !heads.contains(m.group(1))){ error(p, l.number(), "\"%s\" constrains %s, but the Grammar section directly before does not define %s.".formatted(l.text(), m.group(1), m.group(1))); }
   }
 }
-void notations(Path p, List<Line> lines){
-  for (int i= 0; i < lines.size(); i++){
-    var l= lines.get(i);
-    if (!l.text().startsWith("Notation: ")){ error(p, l.number(), "\"%s\" is not a notation line: a Notation section holds lines \"Notation: \" followed by any text; a notation line ending with \" where:\" is followed by one or more lines \"- \" followed by any text.".formatted(l.text())); continue; }
-    if (!l.text().endsWith(" where:")){ continue; }
-    if (i + 1 == lines.size() || !lines.get(i + 1).text().startsWith("- ")){ error(p, l.number(), "\"%s\" ends with \" where:\", but no line \"- \" followed by any text comes after it.".formatted(l.text())); }
-    while (i + 1 < lines.size() && lines.get(i + 1).text().startsWith("- ")){ i++; }
+void notation(Path p, Line head, List<Line> rest){
+  boolean where= head.text().endsWith(" where:");
+  if (where && rest.isEmpty()){ error(p, head.number(), "\"%s\" ends with \" where:\", but no line \"- \" followed by any text comes after it.".formatted(head.text())); }
+  for (var l: rest){
+    if (where && l.text().startsWith("- ")){ continue; }
+    error(p, l.number(), "\"%s\" comes after the notation line \"%s\": a Notation section is one line \"Notation: \" followed by any text, then, only when that line ends with \" where:\", one or more lines \"- \" followed by any text; one empty line separates two Notation sections.".formatted(l.text(), head.text()));
   }
 }
 void storyLines(Path p, List<Line> lines){
