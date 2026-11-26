@@ -45,7 +45,8 @@ TaggedText ::= \
   | "Str:" EscapedChar1 .. EscapedCharn \
   | "UStr:" EscapedChar1 .. EscapedCharn
 EscapedChar ::= [0-9A-Za-z+\-*/=<>,.;:()\[\]{}`'!?@#$%^&_|~\\] | "\"" | " "
-Names ::= (TaggedText1->ProjectName1) .. (TaggedTextn->ProjectNamen)
+Names ::= Name1 .. Namen
+Name ::= (TaggedText->ProjectName)
 TypeName ::= PackageName "." TypeBaseName
 PackageName ::= [a-z][a-z0-9_]*
 TypeBaseName ::= [_]*[A-Z][A-Za-z0-9_]*[']*
@@ -65,6 +66,7 @@ DirectMessage ::= "EditMetadata " Info | "Terminate " Base16 | "Check Full(" Pro
 
 Well formedness:
 in LongLivedMap: Base161 .. Base16n are disjoint
+in Names: Name1.TaggedText .. Namen.TaggedText are disjoint, and Name1.ProjectName .. Namen.ProjectName are disjoint
 in ProjectsInfo: Project1.#path .. Projectn.#path are disjoint
 in Project: Project.#mains is Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen)) with TypeName1 .. TypeNamen disjoint
 in ProjectName: ProjectName ".fearless" is of form ValidSegment
@@ -89,9 +91,6 @@ Notation: Names.projectNameToBase16(ProjectName) = Base16 where:
 Notation: Names.projectNameToProject(ProjectsInfo,ProjectName) = Project where:
 - ProjectsInfo.get(Names.projectNameToBase16(ProjectName)) = Project
 
-Notation: Names.withoutRepeatedNames = Names' where:
-- (TaggedText->ProjectName) in Names' iff Names = Names1 (TaggedText->ProjectName) Names2 and (_->ProjectName) not in Names1 Names2
-
 Notation: Message.needsDelegation where:
 - Message is not "Quit"
 - Message is not of form DirectMessage
@@ -104,13 +103,11 @@ Notation: ProjectsInfo.get(Base16) = Project where:
 Notation: TaggedText in ProjectsInfo.paths where:
 - _Project[#path=Infos.msg(TaggedText)] in ProjectsInfo
 
-Define fearlessManager$readFSOptTaggedTextInProjectName(Infos.msg(TaggedText)):
-A if the Fearless project at TaggedText has the name ProjectName, return (TaggedText->ProjectName)
-B action return {}
-
-Define fearlessManager$rereadCachedNames(Infos.list(Project1 .. Projectn)):
-A action fearlessManager$readFSOptTaggedTextInProjectName(Project1.#path) .. fearlessManager$readFSOptTaggedTextInProjectName(Projectn.#path) = Names
-B action return Names.withoutRepeatedNames
+Define (TaggedText->ProjectName) in fearlessManager$rereadCachedNames(Infos.list(Project1 .. Projectn)):
+A action os$currentDesk() = Desk
+B fact Projecti.#path = Infos.msg(TaggedText)
+C fact On Desk, the Fearless project at TaggedText has the name ProjectName.
+D fact On Desk, no other Fearless project of Project1 .. Projectn has the name ProjectName.
 
 Define fearlessManager$consistent(TaggedText,Names,ProjectsInfo):
 A if TaggedText not in dom(Names), error messageErrorNoFearlessProjectAtPath(TaggedText)
@@ -126,9 +123,26 @@ Define fearlessManager$directlyHandleMessage("EditMetadata " ProjectsInfo):
 A fact ProjectsInfo.paths = fearlessManager.projectsInfo.paths
 B action return fearlessManager$directlyHandleMessage("EditMetadata " ProjectsInfo,fearlessManager.names)
 
+Define (TaggedText->ProjectName) in fearlessManager$namesAfterEdit(ProjectsInfo):
+A fact TaggedText in ProjectsInfo.paths
+B fact (TaggedText->ProjectName) in fearlessManager.names
+
+Define (TaggedText->ProjectName) in fearlessManager$namesAfterEdit(ProjectsInfo):
+A fact TaggedText in ProjectsInfo.paths
+B fact TaggedText not in fearlessManager.projectsInfo.paths
+C action os$currentDesk() = Desk
+D fact On Desk, the Fearless project at TaggedText has the name ProjectName.
+
 Define fearlessManager$directlyHandleMessage("EditMetadata " ProjectsInfo):
 A fact ProjectsInfo.paths != fearlessManager.projectsInfo.paths
-B action return fearlessManager$directlyHandleMessage("EditMetadata " ProjectsInfo,fearlessManager$rereadCachedNames(ProjectsInfo))
+B action fearlessManager$namesAfterEdit(ProjectsInfo) = Names
+C action return fearlessManager$directlyHandleMessage("EditMetadata " ProjectsInfo,Names)
+
+Define fearlessManager$directlyHandleMessage("EditMetadata " ProjectsInfo):
+A fact ProjectsInfo.paths != fearlessManager.projectsInfo.paths
+B fact fearlessManager$namesAfterEdit(ProjectsInfo) is undefined.
+C action fearlessManager.queue= "\tRefreshCache\n" fearlessManager.queue
+D action error messageErrorNewMetadataIsNotValid(ProjectsInfo)
 
 Define fearlessManager$checkBusyProjectNotChanged(ProjectName,Base16,ProjectsInfo):
 A if fearlessManager.projectsInfo.get(Base16) not in ProjectsInfo, error messageErrorProjectIsBusy(ProjectName,Base16)
