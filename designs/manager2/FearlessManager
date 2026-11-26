@@ -25,7 +25,11 @@ fearlessManager.queue is a Queue held in memory; fearlessManager.queue starts em
 The 'queue limit' is the maximum number of Messages of a Queue.
 dom(LongLivedMap) is the set of the keys of LongLivedMap.
 fearlessManager.longLivedMessages is a LongLivedMap held in memory; fearlessManager.longLivedMessages starts as {}.
-At the end of each Story, fearlessManager closes each connection that no Message of fearlessManager.queue and no Message of fearlessManager.longLivedMessages keeps.
+Each (Base16->LongLivedMessage) of fearlessManager.longLivedMessages has a 'child process': a process that fearlessManager started.
+Adding (Base16->LongLivedMessage) to fearlessManager.longLivedMessages starts that 'child process'; removing (Base16->LongLivedMessage) from fearlessManager.longLivedMessages terminates that 'child process', when that 'child process' still runs.
+The 'child process' of a Compile does fearlessProject$compile, and produces as output only the text of the Error that fearlessProject$compile ends with.
+//later: what the 'child process' of a Run does
+At the end of each Story, fearlessManager closes each connection that no Message of fearlessManager.queue, no Message of fearlessManager.longLivedMessages and no Story that has not ended keeps.
 
 Grammar:
 ProjectsInfo ::= Infos.list(Project1 .. Projectn)
@@ -230,8 +234,7 @@ B action return "Terminate " Base16
 Define fearlessManager$directlyHandleMessage("Terminate " Base16):
 A if Base16 not in dom(fearlessManager.longLivedMessages), error messageErrorProjectIsNotBusy(Base16)
 B fact fearlessManager.longLivedMessages = LongLivedMap (Base16->LongLivedMessage) LongLivedMap'
-C action fearlessManager answers "Terminated\n" to LongLivedMessage
-D action fearlessManager.longLivedMessages= LongLivedMap LongLivedMap'
+C action fearlessManager.longLivedMessages= LongLivedMap LongLivedMap'
 
 Define fearlessManager$directlyHandleMessage("Check Full(" ProjectName " " Base16 ")"):
 A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
@@ -365,12 +368,37 @@ Story:
 A fact fearlessManager.queue = "\t" LongLivedMessage "\n" Queue
 B action fearlessManager.queue= Queue
 C action fearlessManager$dispatch(LongLivedMessage) ends with done.
+D action fearlessManager answers "Applied\n"
 
 Story:
 A fact fearlessManager.queue = "\t" LongLivedMessage "\n" Queue
 B action fearlessManager.queue= Queue
 C action fearlessManager$dispatch(LongLivedMessage) ends with Error.
 D action fearlessManager answers "Refused\n" Error
+
+Story:
+A event The 'child process' of (Base16->LongLivedMessage) ends.
+B fact fearlessManager.longLivedMessages = LongLivedMap (Base16->LongLivedMessage) LongLivedMap'
+C action fearlessManager.longLivedMessages= LongLivedMap LongLivedMap'
+
+Story:
+A fact (Base16->"Compile Full(" ProjectName " " Base16 ")") is added to fearlessManager.longLivedMessages.
+B fact The 'child process' of that Compile produces output.
+C action fearlessManager answers "Refused\n" followed by that output to "Compile Full(" ProjectName " " Base16 ")", as that output is produced
+D fact Base16 not in dom(fearlessManager.longLivedMessages).
+E action fearlessManager answers "Terminated\n" to "Compile Full(" ProjectName " " Base16 ")"
+
+Story:
+A fact (Base16->"Compile Full(" ProjectName " " Base16 ")") is added to fearlessManager.longLivedMessages.
+B fact The 'child process' of that Compile produces no output.
+C fact Base16 not in dom(fearlessManager.longLivedMessages).
+D action fearlessManager answers "Terminated\n" to "Compile Full(" ProjectName " " Base16 ")"
+
+Story:
+A fact (Base16->"Run Full(" ProjectName " " Base16 ")") is added to fearlessManager.longLivedMessages.
+B action fearlessManager answers the output of the 'child process' of that Run to "Run Full(" ProjectName " " Base16 ")", as that output is produced
+C fact Base16 not in dom(fearlessManager.longLivedMessages).
+D action fearlessManager answers "Terminated\n" to "Run Full(" ProjectName " " Base16 ")"
 
 Implementation notes:
 A Str is a Fearless string literal: #empty is "", #path is "path", #kind is "kind", #mains is "mains", #mounts is "mounts" and #attenuators is "attenuators".
