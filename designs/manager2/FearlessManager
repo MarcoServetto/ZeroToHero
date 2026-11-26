@@ -62,7 +62,7 @@ Port ::= [1-9][0-9]*
 Queue ::= "\t" Message1 "\n" .. "\t" Messagen "\n"
 LongLivedMessage ::= "Run Full(" ProjectName " " Base16 ")" | "Compile Full(" ProjectName " " Base16 ")"//Some Messages are also LongLivedMessage
 LongLivedMap ::= (Base161->LongLivedMessage1) .. (Base16n->LongLivedMessagen)
-DirectMessage ::= "EditMetadata " Info | "Terminate " Base16 | "Check Full(" ProjectName " " Base16 ")" | "RefreshCache"
+DirectMessage ::= "EditMetadata " Info | "Terminate " Base16 | "RefreshCache"
 
 Well formedness:
 in LongLivedMap: Base161 .. Base16n are disjoint
@@ -243,11 +243,11 @@ A fact fearlessManager.names.projectNameToBase16(ProjectName) = Base16
 B action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
 C fact fearlessManager.projectsInfo.get(Base16).#kind = Infos.msg(Kind)
 D if Kind is not "data", error messageErrorMountedProjectIsNotOfKindData(ProjectName,Kind)
+E action fearlessProject$checkIsUpToDate
 
 Define fearlessManager$dispatch("Compile Full(" ProjectName " " Base16 ")"):
 A action fearlessManager$checkProjectIsNotBusy(ProjectName,Base16)
-B action fearlessProject$checkIsCode(fearlessManager.projectsInfo.get(Base16))
-C action fearlessManager.longLivedMessages+= (Base16->"Compile Full(" ProjectName " " Base16 ")")
+B action fearlessManager.longLivedMessages+= (Base16->"Compile Full(" ProjectName " " Base16 ")")
 
 Define fearlessManager$dispatch("Run Full(" ProjectName " " Base16 ")"):
 A action fearlessManager$checkProjectIsNotBusy(ProjectName,Base16)
@@ -255,7 +255,6 @@ B action fearlessProject$checkCanRun(fearlessManager.projectsInfo.get(Base16))
 C fact fearlessManager.projectsInfo.get(Base16).#mounts = Infos.map(TypeName1, Infos.msg(ProjectName1) .. TypeNamen, Infos.msg(ProjectNamen))
 D action fearlessManager$checkMountedProject(ProjectName1) .. fearlessManager$checkMountedProject(ProjectNamen)
 //later: more checks on the mounted Projects
-//later: The mounts need to be up to date too
 //later: a second kind of data, for a Fearless project that no program edits, comes back when fearlessManager needs to know that a Fearless project of kind "data" does not change and the types that the running Fearless projects mount that Fearless project on can not tell.
 E action fearlessManager.longLivedMessages+= (Base16->"Run Full(" ProjectName " " Base16 ")")
 
@@ -268,10 +267,6 @@ A if Base16 not in dom(fearlessManager.longLivedMessages), error messageErrorPro
 B fact fearlessManager.longLivedMessages = LongLivedMap (Base16->LongLivedMessage) LongLivedMap'
 C action fearlessManager.longLivedMessages= LongLivedMap LongLivedMap'
 
-Define fearlessManager$directlyHandleMessage("Check Full(" ProjectName " " Base16 ")"):
-A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
-B action fearlessProject$checkWellShaped
-
 Define fearlessManager$directlyHandleMessage("Quit"):
 A action fearlessManager renames the LockFile to no_manager.lock
 B action fearlessManager stops listening for connections
@@ -282,7 +277,7 @@ E action fearlessManager.queue= ""
 
 Invariant:
 At every moment, at most one fearlessManager is the 'single' manager of one ManagerFolder.
-At every moment, for each Base16 in dom(fearlessManager.longLivedMessages), fearlessManager.projectsInfo.get(Base16).#kind = Infos.msg("code").
+At every moment, for each (Base16->"Run Full(" _ " " Base16 ")") in fearlessManager.longLivedMessages, fearlessManager.projectsInfo.get(Base16).#kind = Infos.msg("code").
 At every moment, for each (Base16->"Run Full(" _ " " Base16 ")") in fearlessManager.longLivedMessages, and each ProjectName that fearlessManager.projectsInfo.get(Base16).#mounts maps a TypeName to, fearlessManager.names.projectNameToProject(fearlessManager.projectsInfo,ProjectName) is defined.
 //later: according to our last view of the file system, running check on them would confirm they are valid.
 
@@ -409,7 +404,7 @@ D action fearlessManager answers "Refused\n" Error
 
 Story:
 A fact (Base16->"Compile Full(" ProjectName " " Base16 ")") is added to fearlessManager.longLivedMessages.
-B fact The 'child process' of that Compile, fearlessProject$compile, produces output.
+B fact The 'child process' of that Compile, fearlessProject$compile(fearlessManager.projectsInfo.get(Base16)), produces output.
 C action fearlessManager answers "Refused\n" followed by that output to "Compile Full(" ProjectName " " Base16 ")", as that output is produced
 D fact Base16 not in dom(fearlessManager.longLivedMessages).
 E action fearlessProject$fearless_out+= ("last_compile_result.txt"->"Refused\n" followed by that output)
@@ -417,7 +412,7 @@ F action fearlessManager answers "Terminated\n" to "Compile Full(" ProjectName "
 
 Story:
 A fact (Base16->"Compile Full(" ProjectName " " Base16 ")") is added to fearlessManager.longLivedMessages.
-B fact The 'child process' of that Compile, fearlessProject$compile, produces no output.
+B fact The 'child process' of that Compile, fearlessProject$compile(fearlessManager.projectsInfo.get(Base16)), produces no output.
 C fact Base16 not in dom(fearlessManager.longLivedMessages).
 D action fearlessManager answers "Terminated\n" to "Compile Full(" ProjectName " " Base16 ")"
 
