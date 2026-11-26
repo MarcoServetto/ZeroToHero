@@ -146,6 +146,7 @@ D action fearlessManager$consistent(TaggedText1,Names,ProjectsInfo) .. fearlessM
 E action fearlessManager removes the folder .fearless_out of the Fearless project at TaggedText1 .. the folder .fearless_out of the Fearless project at TaggedTextn
 //later: at the start of fearlessManager, fearlessManager$loadProjectsInfo() reaches line E with every registered project, so each start of fearlessManager removes every folder .fearless_out. This is intended for now; a later version removes fewer folders.
 F action fearlessManager.names= Names
+//later: an edit of the metadata whose Names change a mount of a busy Run needs the same two Stories as a Message with a name
 G action fearlessManager.projectsInfo= ProjectsInfo
 H action fearlessManager replaces projects.info with ProjectsInfo serialized
 I action fearlessManager tells the manager GUI, if the manager GUI runs, to read projects.info again
@@ -158,12 +159,24 @@ Define fearlessManager$delegate("EditMetadata " Base16):
 A if the file at Base16 holds Info serialized, return "EditMetadata " Info
 B action error messageErrorNoInfoInFileAtBase16(Base16)
 
+Define fearlessManager$currentBase16(ProjectName):
+A fact fearlessManager.names.projectNameToBase16(ProjectName) = Base16
+B fact The Fearless project at Base16 has the name ProjectName.
+C action return Base16
+
 Define fearlessManager$delegate(Message):
 A fact Message.Targets contains "Name(" ProjectName ")".
-B if fearlessManager.names.projectNameToBase16(ProjectName) = Base16 and the Fearless project at Base16 has the name ProjectName, return Message["Name(" ProjectName ")"="Full(" ProjectName " " Base16 ")"]
-C action fearlessManager.names= fearlessManager$rereadCachedNames(fearlessManager.projectsInfo)
-D try return Message["Name(" ProjectName ")"="Full(" ProjectName " " fearlessManager.names.projectNameToBase16(ProjectName) ")"]
-E action error messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName)
+B fact fearlessManager$currentBase16(ProjectName) = Base16
+C action return Message["Name(" ProjectName ")"="Full(" ProjectName " " Base16 ")"]
+
+Define fearlessManager$delegate(Message):
+A fact Message.Targets contains "Name(" ProjectName ")".
+B fact fearlessManager$currentBase16(ProjectName) is undefined.
+C fact fearlessManager$rereadCachedNames(fearlessManager.projectsInfo) = fearlessManager.names
+D action error messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName)
+
+Define fearlessManager$runsWithChangedMounts(Names):
+A action return each Base16 where (Base16->"Run Full(" _ " " Base16 ")") in fearlessManager.longLivedMessages, and fearlessManager.projectsInfo.get(Base16).#mounts maps a TypeName to a ProjectName where fearlessManager.names.projectNameToBase16(ProjectName) is not Names.projectNameToBase16(ProjectName)
 
 Define fearlessManager$delegate("Register " Base16):
 A if Base16.taggedText is undefined, error messageErrorPathOfBase16CanNotBeRegistered(Base16)
@@ -329,6 +342,23 @@ C action fearlessManager answers "Refused\n" internalErrorCanNotAddMessageToFull
 
 Story:
 A fact fearlessManager.queue = "\t" Message "\n" Queue
+B fact Message.Targets contains "Name(" ProjectName ")", and fearlessManager$currentBase16(ProjectName) is undefined.
+C action fearlessManager$rereadCachedNames(fearlessManager.projectsInfo) = Names
+D fact Names is not fearlessManager.names.
+E action fearlessManager$runsWithChangedMounts(Names) = Base161 .. Base16n
+F fact n is not 0.
+G action fearlessManager.queue= "\t" "Terminate " Base161 "\n" .. "\t" "Terminate " Base16n "\n" "\t" Message "\n" Queue
+
+Story:
+A fact fearlessManager.queue = "\t" Message "\n" Queue
+B fact Message.Targets contains "Name(" ProjectName ")", and fearlessManager$currentBase16(ProjectName) is undefined.
+C action fearlessManager$rereadCachedNames(fearlessManager.projectsInfo) = Names
+D fact Names is not fearlessManager.names.
+E fact fearlessManager$runsWithChangedMounts(Names) is empty.
+F action fearlessManager.names= Names
+
+Story:
+A fact fearlessManager.queue = "\t" Message "\n" Queue
 B action fearlessManager.queue= Queue
 C fact Message.needsDelegation
 D action fearlessManager$delegate(Message) = Message'
@@ -403,7 +433,7 @@ D action fearlessManager answers "Terminated\n" to "Run Full(" ProjectName " " B
 Implementation notes:
 A Str is a Fearless string literal: #empty is "", #path is "path", #kind is "kind", #mains is "mains", #mounts is "mounts" and #attenuators is "attenuators".
 TaggedText.str, TypeName.str, ProjectName.str and Kind.str are the Fearless string literals holding the text of TaggedText, of TypeName, of ProjectName and of Kind.
-Each Message of fearlessManager.queue and of fearlessManager.longLivedMessages keeps the connection that the Message arrived on; a Message that fearlessManager$delegate returns keeps the connection of the Message it comes from; a Terminate Message that a Quit adds to fearlessManager.queue keeps the connection of that Quit; fearlessManager answers a Message on that connection.
+Each Message of fearlessManager.queue and of fearlessManager.longLivedMessages keeps the connection that the Message arrived on; a Message that fearlessManager$delegate returns keeps the connection of the Message it comes from; a Terminate Message that fearlessManager adds to fearlessManager.queue keeps no connection; fearlessManager answers a Message on the connection that the Message keeps, and answers nobody for a Message that keeps no connection.
 The 'manager path' is chosen by the implementation, and can differ between operating systems: each version of fearlessManager has its own ManagerFolder, and a copy of an installation is an independent installation with its own ManagerFolder.
 The lock of a LockFile is the lock of FileChannel.tryLock: the OS releases the lock when the process ends, however the process ends, and the lock follows the file when the file is renamed.
 fearlessManager finds that another process holds the lock by trying to take the lock: there is no separate check before taking the lock.
