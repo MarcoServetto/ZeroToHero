@@ -83,7 +83,8 @@ void section(Path p, List<List<Line>> sections, int i){
     case "Story:" -> storyLines(p, rest);
     case String s when s.matches("Define .*:") -> storyLines(p, rest);
     case String s when s.startsWith("Notation: ") -> notation(p, head, rest);
-    default -> error(p, head.number(), "\"%s\" is not a category line: the first line of a section is \"Text:\", \"Grammar:\", \"Well formedness:\", \"Story:\", \"Define \" followed by any text and \":\", \"Invariant:\" or \"Implementation notes:\", followed by any number of spaces, or \"Notation: \" followed by any text.".formatted(head.text()));
+    case String s when s.startsWith("Signature: ") -> rest.stream().filter(l -> !l.text().startsWith("Signature: ")).forEach(l -> error(p, l.number(), "\"%s\" is not a signature line: every line of a Signature section is \"Signature: \" followed by any text.".formatted(l.text())));
+    default -> error(p, head.number(), "\"%s\" is not a category line: the first line of a section is \"Text:\", \"Grammar:\", \"Well formedness:\", \"Story:\", \"Define \" followed by any text and \":\", \"Invariant:\" or \"Implementation notes:\", followed by any number of spaces, or \"Notation: \" or \"Signature: \" followed by any text.".formatted(head.text()));
   }
 }
 void grammarLine(Path p, Line l){
