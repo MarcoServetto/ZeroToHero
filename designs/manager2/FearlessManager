@@ -32,7 +32,7 @@ Design principles:
 Grammar:
 ProjectsInfo ::= Infos.list(Project1 .. Projectn)
 TypeNames ::= Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen))
-Project ::= Infos.map(#path, Infos.msg(TaggedText), #kind, Infos.msg(Kind), #mains, TypeNames, #mounts, Mount, #attenuators, Attenuator)
+Project ::= Infos.map(#path, Infos.msg(TaggedText), #kind, Infos.msg(Kind), #mounts, Mount, #attenuators, Attenuator)
 Mount ::= Infos.map(TypeName1, Infos.msg(ProjectName1) .. TypeNamen, Infos.msg(ProjectNamen))
 Attenuator ::= Infos.map(TypeName1, TypeNames1 .. TypeNamen, TypeNamesn)
 Kind ::= "idle" | "code" | "data"
@@ -53,11 +53,11 @@ OSExtension ::= [a-z0-9]{1,16}
 MultiExtension ::= "css.map" | "d.ts" | "d.ts.map" | "js.map" | "min.css" | "min.js" | "tar.bz2" | "tar.gz" | "tar.lz" | "tar.lz4" | "tar.xz" | "tar.zst"
 ReservedName ::= "con" | "prn" | "aux" | "nul" | "com" [1-9] | "lpt" [1-9]
 Info ::= Infos.msg(Str) | Infos.list(Info1 .. Infon) | Infos.map(Str1, Info1 .. Strn, Infon)
-#empty, #path, #kind, #mains, #mounts, #attenuators in Str
+#empty, #path, #kind, #mounts, #attenuators in Str
 LockFile ::= "no_manager.lock" | "candidate_manager.lock" | "single_manager_at_" Port ".lock"
 Port ::= [1-9][0-9]*
 Queue ::= "\t" Message1 "\n" .. "\t" Messagen "\n"
-LongLivedMessage ::= "Run Full(" ProjectName " " Base16 ")" | "Compile Full(" ProjectName " " Base16 ")"//Some Messages are also LongLivedMessage
+LongLivedMessage ::= "Run Full(" ProjectName " " Base16 ") " TypeName " " InputFile | "Compile Full(" ProjectName " " Base16 ")"//Some Messages are also LongLivedMessage
 LongLivedMap ::= (Base161->LongLivedMessage1) .. (Base16n->LongLivedMessagen)
 DirectMessage ::= "EditMetadata " Info | "Terminate " Base16 | "RefreshCache"
 
@@ -65,7 +65,6 @@ Well formedness:
 in LongLivedMap: Base161 .. Base16n are disjoint
 in Names: Name1.TaggedText .. Namen.TaggedText are disjoint, and Name1.ProjectName .. Namen.ProjectName are disjoint
 in ProjectsInfo: Project1.#path .. Projectn.#path are disjoint
-in Project: Project.#mains is Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen)) with TypeName1 .. TypeNamen disjoint
 in ProjectName: ProjectName ".fearless" is of form ValidSegment
 in TaggedText: if TaggedText is "Str:" EscapedChar1 .. EscapedCharn, then EscapedChar1 .. EscapedCharn is the result of\
   p.escape where p is a Fearless Str encoding a valid OS FS path
@@ -170,7 +169,7 @@ Signature: fearlessManager$checkProjectsOfLongLivedMessageNotChanged(LongLivedMe
 Define fearlessManager$checkProjectsOfLongLivedMessageNotChanged("Compile Full(" ProjectName " " Base16 ")",ProjectsInfo):
 A action fearlessManager$checkBusyProjectNotChanged(ProjectName,Base16,ProjectsInfo)
 
-Define fearlessManager$checkProjectsOfLongLivedMessageNotChanged("Run Full(" ProjectName " " Base16 ")",ProjectsInfo):
+Define fearlessManager$checkProjectsOfLongLivedMessageNotChanged("Run Full(" ProjectName " " Base16 ") " TypeName " " InputFile,ProjectsInfo):
 A action fearlessManager$checkBusyProjectNotChanged(ProjectName,Base16,ProjectsInfo)
 B fact fearlessManager.projectsInfo.get(Base16).#mounts = Infos.map(TypeName1, Infos.msg(ProjectName1) .. TypeNamen, Infos.msg(ProjectNamen))
 C action fearlessManager$checkBusyProjectNotChanged(ProjectName1,fearlessManager.names.projectNameToBase16(ProjectName1),ProjectsInfo) .. fearlessManager$checkBusyProjectNotChanged(ProjectNamen,fearlessManager.names.projectNameToBase16(ProjectNamen),ProjectsInfo)
@@ -224,7 +223,7 @@ D action error messageErrorNameNotAssociatedWithAnyRegisteredProject(ProjectName
 Define fearlessManager$delegate("Register " Base16):
 A if Base16.taggedText is undefined, error messageErrorPathOfBase16CanNotBeRegistered(Base16)
 B if fearlessManager.projectsInfo.get(Base16) is defined, return "EditMetadata " fearlessManager.projectsInfo
-C action return "EditMetadata " fearlessManager.projectsInfo[+=Infos.map(#path, Infos.msg(Base16.taggedText), #kind, Infos.msg("idle"), #mains, Infos.list(), #mounts, Infos.map(), #attenuators, Infos.map())]//"idle" is a Kind, so Infos.msg("idle") is Infos.msg("idle".str)
+C action return "EditMetadata " fearlessManager.projectsInfo[+=Infos.map(#path, Infos.msg(Base16.taggedText), #kind, Infos.msg("idle"), #mounts, Infos.map(), #attenuators, Infos.map())]//"idle" is a Kind, so Infos.msg("idle") is Infos.msg("idle".str)
 
 Define fearlessManager$delegate("Forget " Base16):
 A if fearlessManager.projectsInfo.get(Base16) = Project, return "EditMetadata " fearlessManager.projectsInfo[-=Project]
@@ -255,11 +254,6 @@ A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16
 B fact fearlessManager.projectsInfo.get(Base16) = Project
 C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project[#attenuators+=(TypeName->Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen)))]]
 
-Define fearlessManager$delegate("SelectMains Full(" ProjectName " " Base16 ") " TypeName1 " ".." " TypeNamen):
-A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
-B fact fearlessManager.projectsInfo.get(Base16) = Project
-C action return "EditMetadata " fearlessManager.projectsInfo[Project=Project[#mains=Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen))]]
-
 Define fearlessManager$checkProjectIsNotBusy(ProjectName,Base16):
 A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
 B if Base16 in dom(fearlessManager.longLivedMessages), error messageErrorProjectIsBusy(ProjectName,Base16)
@@ -286,16 +280,16 @@ Define fearlessManager$dispatch("Compile Full(" ProjectName " " Base16 ")"):
 A action fearlessManager$checkProjectIsNotBusy(ProjectName,Base16)
 B action fearlessManager.longLivedMessages+= (Base16->"Compile Full(" ProjectName " " Base16 ")")
 
-Define fearlessManager$dispatch("Run Full(" ProjectName " " Base16 ")"):
+Define fearlessManager$dispatch("Run Full(" ProjectName " " Base16 ") " TypeName " " InputFile):
 A action fearlessManager$checkProjectIsNotBusy(ProjectName,Base16)
-B action fearlessProject$checkCanRun(fearlessManager.projectsInfo.get(Base16))
+B action fearlessProject$checkCanRun(fearlessManager.projectsInfo.get(Base16),TypeName)
 C fact fearlessManager.projectsInfo.get(Base16).#mounts = Infos.map(TypeName1, Infos.msg(ProjectName1) .. TypeNamen, Infos.msg(ProjectNamen))
 D action fearlessManager$checkMountedProject(ProjectName1) .. fearlessManager$checkMountedProject(ProjectNamen)
 E action fearlessManager takes, at the same time, the lock in the folder locks of each Fearless project that ProjectName1 .. ProjectNamen name, and holds those locks until this Define ends
 //later: the form of the files of the folder locks, and how a lock is taken
 F action fearlessManager$compileMountedProject(ProjectName1) .. fearlessManager$compileMountedProject(ProjectNamen)
 //later: a second kind of data, for a Fearless project that no program edits, comes back when fearlessManager needs to know that a Fearless project of kind "data" does not change and the types that the running Fearless projects mount that Fearless project on can not tell.
-G action fearlessManager.longLivedMessages+= (Base16->"Run Full(" ProjectName " " Base16 ")")
+G action fearlessManager.longLivedMessages+= (Base16->"Run Full(" ProjectName " " Base16 ") " TypeName " " InputFile)
 
 Define fearlessManager$delegate("Terminate Full(" ProjectName " " Base16 ")"):
 A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
@@ -316,8 +310,8 @@ E action fearlessManager.queue= ""
 
 Invariant:
 At every moment, at most one fearlessManager is the 'single' manager of one ManagerFolder.
-At every moment, for each (Base16->"Run Full(" _ " " Base16 ")") in fearlessManager.longLivedMessages, fearlessManager.projectsInfo.get(Base16).#kind = Infos.msg("code").
-At every moment, for each (Base16->"Run Full(" _ " " Base16 ")") in fearlessManager.longLivedMessages, and each ProjectName that fearlessManager.projectsInfo.get(Base16).#mounts maps a TypeName to, fearlessManager.names.projectNameToProject(fearlessManager.projectsInfo,ProjectName) is defined.
+At every moment, for each (Base16->"Run Full(" _ " " Base16 ") " _ " " _) in fearlessManager.longLivedMessages, fearlessManager.projectsInfo.get(Base16).#kind = Infos.msg("code").
+At every moment, for each (Base16->"Run Full(" _ " " Base16 ") " _ " " _) in fearlessManager.longLivedMessages, and each ProjectName that fearlessManager.projectsInfo.get(Base16).#mounts maps a TypeName to, fearlessManager.names.projectNameToProject(fearlessManager.projectsInfo,ProjectName) is defined.
 
 Define fearlessManager$loadProjectsInfo():
 A fact The file projects.info holds Info serialized.
@@ -457,14 +451,14 @@ C fact Base16 not in dom(fearlessManager.longLivedMessages).
 D action fearlessManager answers "Terminated\n" to "Compile Full(" ProjectName " " Base16 ")"
 
 Story:
-A fact (Base16->"Run Full(" ProjectName " " Base16 ")") is added to fearlessManager.longLivedMessages.
+A fact (Base16->"Run Full(" ProjectName " " Base16 ") " TypeName " " InputFile) is added to fearlessManager.longLivedMessages.
 B fact fearlessManager.projectsInfo.get(Base16) = Project
-C action fearlessManager answers the output of the 'child process' of that Run, fearlessProject$run(Project,fearlessManager.names.mountedPaths(Project.#mounts)), to "Run Full(" ProjectName " " Base16 ")", as that output is produced
+C action fearlessManager answers the output of the 'child process' of that Run, fearlessProject$runMain(TypeName,Project.#attenuators,fearlessManager.names.mountedPaths(Project.#mounts),InputFile), to "Run Full(" ProjectName " " Base16 ") " TypeName " " InputFile, as that output is produced
 D fact Base16 not in dom(fearlessManager.longLivedMessages).
-E action fearlessManager answers "Terminated\n" to "Run Full(" ProjectName " " Base16 ")"
+E action fearlessManager answers "Terminated\n" to "Run Full(" ProjectName " " Base16 ") " TypeName " " InputFile
 
 Implementation notes:
-A Str is a Fearless string literal: #empty is "", #path is "path", #kind is "kind", #mains is "mains", #mounts is "mounts" and #attenuators is "attenuators".
+A Str is a Fearless string literal: #empty is "", #path is "path", #kind is "kind", #mounts is "mounts" and #attenuators is "attenuators".
 Each Message of fearlessManager.queue and of fearlessManager.longLivedMessages keeps the connection that the Message arrived on; a Message that fearlessManager$delegate returns keeps the connection of the Message it comes from; a Terminate Message that a Quit adds to fearlessManager.queue keeps the connection of that Quit; a Terminate Message that a "RefreshCache" adds to fearlessManager.queue keeps the connection of that "RefreshCache"; a "RefreshCache" that fearlessManager adds to fearlessManager.queue keeps the connection of the Message that fearlessManager refuses; fearlessManager answers a Message on that connection.
 The implementation finds os$folderTimeChangesAt(TaggedText) by doing it: fearlessManager notes the modification time of a folder, waits until the clock of that file system is after that time, adds a file to that folder, and reads the modification time again.
 The 'manager path' is chosen by the implementation, and can differ between operating systems: each version of fearlessManager has its own ManagerFolder, and a copy of an installation is an independent installation with its own ManagerFolder.
