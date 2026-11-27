@@ -1,0 +1,1318 @@
+'manager' is a program that can be run with the following syntax:
+   manager
+ | manager "FearlessCommand Message"
+ | manager FearlessCommandServe
+ | manager path
+where "FearlessCommand Message" is a double quote, the constant FearlessCommand, a valid Message, a double quote.
+FearlessCommandServe is the literal constant string FearlessCommandServe
+and path is an absolute path as the current OS represents them.
+
+Message ::= Show | Show projectName | Register base16 | Quit | Reset | ConnectEclipse base16 | EditMetadata base16
+  | OpenWithOrShortcut base16 | OpenWithOrShortcut base16 projectName typeName
+  | Run projectName | Compile projectName | Check projectName | Terminate projectName
+  | DeleteCache projectName | Forget projectName | Fix projectName | Kind projectName kind
+  | Mount projectName typeName projectName | Unmount projectName typeName
+  | Attenuate projectName typeName typeName* | SelectMains projectName typeName*
+kind ::= idle | code | dataRead | dataEdit
+projectName ::= a 'valid segment'
+typeName ::= (?!(con|prn|aux|nul|com[1-9]|lpt[1-9])[.])[a-z][a-z0-9_]*[.]_*[A-Z][A-Za-z0-9_]*'*
+base16 ::= Base16:([0-9A-F][0-9A-F])+
+Origin ::= program | person
+Answer ::= Applied output | Refused error
+CannotStart ::= NoDisplay | NoLockFile | NoManagerFolderCreation | BadArgument
+FatalError ::= CorruptedManagerFolder | NotHoldingFearlessExtension
+
+## Starting the 'single' manager
+
+```
+manager hello
+A manager.cannotStart(BadArgument)
+
+manager /data/a.txt /data/b.txt
+A manager.cannotStart(BadArgument)
+
+manager "FearlessCommandRegister Base16:2F"
+A Base16:2F is /, the root of a drive.
+B manager.cannotStart(BadArgument)
+
+manager "FearlessCommandSelectMains hello greet.A greet.A"
+A greet.A is named twice.
+B manager.cannotStart(BadArgument)
+
+manager
+A manager.send(Show, person)
+B The manager ends.
+
+manager "FearlessCommandRun hello"
+A manager.send(Run hello, program)
+B The manager ends.
+
+manager /data/hello
+A /data/hello is a folder.
+B manager.send(Register Base16:2F646174612F68656C6C6F, person)
+C manager.send(Show, person)
+D The manager ends.
+
+manager /data/hello/hello.fearless
+A /data/hello/hello.fearless is a file.
+B manager.send(Register Base16:2F646174612F68656C6C6F2F68656C6C6F2E666561726C657373, person)
+C manager.send(Show, person)
+D The manager ends.
+
+manager /data/a.txt
+A /data/a.txt is a file, and not a .fearless file.
+B manager.send(OpenWithOrShortcut Base16:2F646174612F612E747874, person)
+C The manager ends.
+
+manager.send(m, program)
+A The manager connects to the process holding the lock of the 'manager folder'.
+B The manager sends m, from a program, on that connection.
+C The manager prints the Answer it receives, until that process ends the connection.
+
+manager.send(m, person)
+A The manager connects to the process holding the lock of the 'manager folder'.
+B The manager sends m, from a person, on that connection.
+C The manager receives Applied, or Refused.
+D The manager ends the connection.
+
+manager.send(m, o)
+A No process holds the lock of the 'manager folder'.
+B The manager runs manager FearlessCommandServe.
+C manager.send(m, o)
+
+manager.send(m, o)
+A No process holds the lock of the 'manager folder'.
+B The manager runs manager FearlessCommandServe, as the process M.
+C M ends, and no process holds the lock of the 'manager folder'.
+D The manager prints on its standard error what M printed on its standard error.
+E The manager ends.
+
+manager FearlessCommandServe
+A The manager takes the lock of the 'manager folder'.
+B The manager accepts the connections of the manager processes.
+C The manager copies base.IconsConflict and base.IconsFearless into the folder icons of the 'manager folder'.
+D For each registered code project p: Coordinator.dropUnfinished(p).
+E manager.buildMap()
+F The manager is the 'single' manager.
+G The manager shows its tray icon.
+H For each message m, one at a time, in the order the messages arrive: manager.receive(m).
+
+manager FearlessCommandServe
+A Another manager process holds the lock of the 'manager folder'.
+B The manager ends.
+
+manager FearlessCommandServe
+A The session has no display.
+B manager.cannotStart(NoDisplay)
+
+manager FearlessCommandServe
+A The file system of the 'manager folder' offers no lock.
+B manager.cannotStart(NoLockFile)
+
+manager FearlessCommandServe
+A No 'manager folder' exists.
+B The manager can not create the 'manager folder'.
+C manager.cannotStart(NoManagerFolderCreation)
+
+manager FearlessCommandServe
+A The manager takes the lock of the 'manager folder'.
+B projects.info contains {"projects": [], "reserve": [], "extra": []}.
+C manager.fatalError(CorruptedManagerFolder)
+
+A No manager process is running.
+B The user runs manager twice, as the processes P1 and P2.
+C P1 runs manager FearlessCommandServe, as the process M1.
+D P2 runs manager FearlessCommandServe, as the process M2.
+E M1 takes the lock of the 'manager folder'.
+F M2 can not take the lock of the 'manager folder'.
+G M2 ends.
+H M1 is the 'single' manager.
+I P1 sends Show to M1.
+J P2 sends Show to M1.
+
+A No manager process is running.
+B The user deletes the 'manager folder'.
+C The user runs manager.
+D The 'single' manager has no registered project, and an empty 'reserve'.
+
+A The 'single' manager is running.
+B Another program deletes the 'manager folder'.
+C manager.selfSend(Quit)
+
+manager.cannotStart(e)
+A The manager prints e on its standard error.
+B The manager ends.
+
+manager.fatalError(e)
+A manager.dialog(e, busyProjects.names)
+B The user closes the dialog.
+C manager.reset()
+
+manager.reset()
+A Every message m that arrives until the manager ends: manager.refuse(m, an error naming the verb of m and the end of the manager).
+B For each p in busyProjects: manager.terminate(p).
+C The manager deletes the 'manager folder'.
+D Reconciliator.eradicateAll
+E The manager ends.
+
+manager.dialog(x)
+A The manager shows a dialog with x.
+B The dialog stays until the user closes it.
+```
+
+## Requests and messages
+
+```
+manager.receive(m)
+A manager.nameInference()
+B manager.autoCheck(p), when m is about the registered project p.
+C manager.apply(m)
+
+manager.selfSend(m)
+A The manager receives m, from a person, after the messages that arrived before m.
+
+manager.accept(m)
+A m starts a 'mains chain' or a 'compilation'.
+B The manager sends Applied on the connection of m, then what m writes in the Output, as m writes it.
+C The manager ends the connection of m when that 'mains chain' or that 'compilation' ends.
+
+manager.accept(m)
+A m starts no 'mains chain' and no 'compilation'.
+B The manager sends Applied on the connection of m, then what m wrote in the Output.
+C The manager ends the connection of m.
+
+manager.refuse(m, e)
+A m comes from a program.
+B The manager sends Refused and e on the connection of m.
+C The manager ends the connection of m.
+D Unlike a failed compilation, e is not in the Output.
+
+manager.refuse(m, e)
+A m comes from a person.
+B The manager sends Refused and e on the connection of m.
+C The manager ends the connection of m.
+D manager.dialog(e)
+
+A The 'single' manager applies Run hello, from the manager process P.
+B P ends the connection of Run hello.
+C The 'mains chain' of hello goes on.
+
+manager.apply(m)
+A A projectName of m names no registered project, and m is not OpenWithOrShortcut b n t.
+B manager.refuse(m, an error listing the registered projects)
+
+manager.apply(m)
+A m is about the 'busy' project p, and m is not Show p, Terminate p or EditMetadata b.
+B manager.refuse(m, an error naming p, 'busy')
+
+manager.apply(Show p?)
+A No manager GUI is running.
+B ManagerGui.start
+C manager.accept(Show p?)
+
+manager.apply(Show p?)
+A The manager GUI is running.
+B manager.accept(Show p?)
+
+'progress line' ::= at most 80 characters saying what the manager is doing and how much of it is done, with no time in it, as Ending the mains: 2 of 5 ended.
+
+manager.apply(Quit)
+A The manager sends Applied on the connection of Quit.
+B The manager sends a 'progress line' on the connection of Quit every 2 seconds, until the manager ends.
+C Every message m that arrives until the manager ends: manager.refuse(m, an error naming the verb of m and the end of the manager).
+D For each p in busyProjects: manager.terminate(p).
+E The manager ends.
+
+manager.apply(Reset)
+A The manager sends Applied on the connection of Reset.
+B manager.reset()
+
+manager.apply(ConnectEclipse b)
+A b names a path that leads to the 'Eclipse folder' F.
+B The manager puts the plugin in F.
+C The manager writes manager.info next to the plugin.
+D manager.accept(ConnectEclipse b)
+
+manager.apply(ConnectEclipse b)
+A b names a path that leads to no 'Eclipse folder'.
+B manager.refuse(ConnectEclipse b, an error naming that path)
+
+manager.apply(EditMetadata b)
+A b names a file whose text is t.
+B manager.editMetadata(EditMetadata b, t)
+
+manager.apply(EditMetadata b)
+A b names no file.
+B manager.refuse(EditMetadata b, an error naming that path)
+```
+
+## Info files
+
+```
+projects.info, manager.info ::= info
+info ::= ws (string | list | object) ws
+list ::= [[] ws []] | [[] info ([,] info)* []]
+object ::= [{] ws [}] | [{] member ([,] member)* [}]        the keys of one object all different
+member ::= ws string ws [:] info
+string ::= ["](strChar | [\\]["\\n])*["]
+strChar ::= a character of the Fearless character set, other than " and \
+ws ::= [ \n]*
+
+taggedText ::= Str:str | UStr:uStr | base16           a path in an Info file
+str ::= strAtom strMore* [ ]*
+strMore ::= [ ]*[+] strAtom | [ ]*[|^] strAtom?
+strAtom ::= [ ]*"[^"\n]*" | [ ]*`[^`\n]*` | [ ]*[(] str [)]          parentheses at most 100 deep
+uStr ::= uStrAtom uStrMore* [ ]*
+uStrMore ::= [ ]*[+] uStrAtom | [ ]*[|^] uStrAtom? | [ ]*[.]u codePoints
+codePoints ::= [ ]*["]codePoint([ ]codePoint)*["] | [ ]*[`]codePoint([ ]codePoint)*[`]
+codePoint ::= [0-9A-F]{1,6}                          at most 10FFFF, and not from D800 to DFFF
+uStrAtom ::= strAtom [.]u codePoints? | [ ]*[(] uStr [)]
+
+text(string): \" is ", \\ is \, \n is the newline, each strChar is itself
+text(Str:s) = the Str that the Fearless expression s evaluates to
+text(UStr:u) = the UStr that the Fearless expression u evaluates to
+text(Base16:h) = the path whose bytes are the pairs of h
+
+tagged(p) = Str: then p.escape       if p is a Str
+          = UStr: then p.escape      if p is a UStr and not a Str
+          = Base16: of the bytes of p   otherwise
+
+"C:\data\hello"     the path C:\data\hello, written in an Info file as "path": "Str:\"C:\\data\\hello\""
+"Hello"|"World"     Hello, a newline, World, written as "Str:\"Hello\"|\"World\""
+"caf".u"00E9"       caf then the character 00E9, written as "UStr:\"caf\".u\"00E9\""
+```
+
+## Registered projects
+
+```
+projects.info ::= {"projects": [project ([,] project)*], "reserve": [extension ([,] extension)*]}
+project ::= {"path": taggedText, "kind": kind, "mains": [typeName*], "mounts": {(typeName: projectName)*}, "attenuators": {(typeName: [typeName*])*}}
+extension ::= a 'system extension' without the dot: 1 to 16 characters, each a-z or 0-9
+
+projects.info: the members in any order; no other member; an absent mains, mounts or attenuators is empty.
+projects.info: no two projects with equal texts of path; no extension twice; the mains of a project all different.
+projects.info: only the manager writes it, and the manager 'replaces' it.
+projects.info: no project name; the names come from name inference.
+mains: the selected mains; mounts: the data project mounted on each DataRead type; attenuators: the attenuators of each main, in order, an attenuator possibly more than once.
+
+{
+  "projects": [
+    {
+      "path": "Str:\"C:\\data\\01_hello_world\"",
+      "kind": "code",
+      "mains": ["hello.Hello1", "hello.Hello3"],
+      "mounts": {"hello.Diary": "diary"},
+      "attenuators": {"hello.Hello1": ["base.NoManagerQuit", "hello.NoGui"]}
+    },
+    {
+      "path": "UStr:\"C:\\Users\\Jos\".u\"00E9\"+(\"\\da\".u\"1F600\")+(\"ta\".u)",
+      "kind": "dataEdit"
+    }
+  ],
+  "reserve": ["htm"]
+}
+
+reachable(i)  iff  the path of the project number i corresponds to a p_i of FolderShapesDesign with reach(D, i), for m the 'manager folder'
+reach(D, i)  iff  at(D, p_i)= id, not root(D, p_i), not same(D, p_i, m), not inside(D, p_i, m), not inside(D, m, p_i),
+                  forall j < i with reach(D, j): not same(D, p_i, p_j), not inside(D, p_i, p_j), not inside(D, p_j, p_i),
+                  and the desk refuses no create(D, p_i s, file) that a same or an inside above with first argument p_i needs
+
+A (greet.Hello) in hello.mains.
+B (base.NoManagerQuit) in hello.greet.Hello.attenuators.
+C (greet.Diary->diary) in hello.mounts.
+D The user makes project hello an idle project.
+E The user makes project hello a code project.
+F The user compiles project hello.
+G (greet.Hello) in hello.mains, (base.NoManagerQuit) in hello.greet.Hello.attenuators and (greet.Diary->diary) in hello.mounts, as before.
+
+A (greet.Diary->diary) in hello.mounts.
+B Project diary is a dataEdit project with the folder real_diary.
+C The user forgets project diary.
+D The user registers the folder test_diary, containing the marker diary.fearless.
+E The registered project is named diary, and is idle.
+F The mount of greet.Diary is broken.
+G The user makes project diary a dataEdit project.
+H The user runs project hello.
+I greet.Hello reads and writes the files of test_diary.
+
+A (earth.NoGui) in world.earth.World.attenuators.
+B The project world has no attenuator earth.NoGui.
+C Unlike for a Run, projects.info naming an attenuator or a main that the project does not have is well formed.
+
+manager.editMetadata(m, t)
+A t is not a valid projects.info, with the error e.
+B manager.refuse(m, e)
+
+manager.editMetadata(m, t)
+A t adds a project i with not reachable(i).
+B manager.refuse(m, an error naming the folder of i)
+
+manager.editMetadata(m, t)
+A t removes the 'busy' project p, or changes an entry of p, or makes a mount of p name another project folder.
+B manager.refuse(m, an error naming p, 'busy')
+
+manager.editMetadata(m, t)
+A t is a valid projects.info.
+B Each project that t adds is reachable.
+C t changes no entry of a 'busy' project.
+D Two projects, of t and of projects.info, with equal texts of path, are one project.
+E The manager replaces projects.info with t.
+F For each project p that t adds, and each project p whose kind t changes: Coordinator.deleteCache(p).
+G manager.buildMap(), when t removes a code project.
+H manager.giveUp(G), when t removes the extensions G from reserve.
+I manager.reconcile(), when t changes reserve.
+J For each registered project p: manager.autoCheck(p).
+K manager.accept(m)
+
+manager.apply(Kind p k)
+A manager.editMetadata(Kind p k, projects.info with the kind of p replaced by k)
+
+manager.apply(Forget p)
+A manager.editMetadata(Forget p, projects.info without p)
+B Unlike a delete in the file explorer, forgetting p changes nothing in the project folder of p, and asks no confirmation.
+
+manager.apply(Mount p t d)
+A manager.editMetadata(Mount p t d, projects.info with (t->d) in p.mounts in place of the mount of t)
+
+manager.apply(Unmount p t)
+A manager.editMetadata(Unmount p t, projects.info with no mount of t in p.mounts)
+
+manager.apply(Attenuate p t as)
+A manager.editMetadata(Attenuate p t as, projects.info with p.t.attenuators = as)
+
+manager.apply(SelectMains p ms)
+A manager.editMetadata(SelectMains p ms, projects.info with p.mains = ms)
+```
+
+## Registering a folder
+
+```
+'marker' of a folder ::= a file <name>.fearless at the top of the folder, with <name> not starting with .
+registeredAlready(f)  iff  same(D, f, q) for the project folder q of a registered project
+
+manager.apply(Register b)
+A b names the folder f, or a file in the folder f.
+B registeredAlready(f).
+C manager.accept(Register b)
+D Unlike for a new folder, projects.info does not change.
+
+manager.apply(Register b)
+A b names the folder f, or a file in the folder f.
+B not registeredAlready(f).
+C manager.editMetadata(Register b, projects.info with {"path": tagged(f), "kind": "idle"} added at the end)
+
+A Project a has the folder /data/a.
+B The manager receives Register Base16:2F646174612F612F737562.
+C manager.refuse(Register Base16:2F646174612F612F737562, an error naming /data/a/sub inside the folder of project a)
+
+name(i) = m                                            when ok(i, m)
+        = the first n of f, f2, f3, ... with ok(i, n)  otherwise
+ok(i, n)  iff  n is a 'valid segment', n != name(j) for every j < i,
+               and the project folder contains no file other than the first marker named n.fearless, ignoring case
+m: the <name> of the first marker of the project folder of i, in the order of the s of FolderShapesDesign; no m when the project folder holds no marker
+f: the first 64 characters of the 'fixed segment' of the name of the project folder of i; f2, f3, ... are f then 2, 3, ...
+
+manager.nameInference()
+A For each registered project i, in order: name(i) is the name of i.
+B The manager renames the first marker of each project folder to name(i).fearless, or creates name(i).fearless when the project folder holds no marker.
+C A created marker, and an empty first marker, contain one newline.
+
+A The project folder of hello is unreachable.
+B manager.nameInference()
+C hello keeps the name hello, the name the manager knew.
+
+A The project folder of the project number 2 is unreachable when the manager starts.
+B manager.nameInference()
+C The project number 2 has no name.
+```
+
+## Project states
+
+```
+State ::= busy | invalid | idle | dataRead | dataEdit | outOfDate | compiled
+
+state(p) = busy        if p is 'busy'
+         = invalid     if invalid(p)
+         = idle        if p.kind == idle
+         = p.kind      if p.kind == dataRead or p.kind == dataEdit
+         = outOfDate   if Coordinator.check(p) gives State.outOfDate
+         = compiled    otherwise
+
+invalid(p)  iff  p.kind != idle, and one of these holds:
+                 the project folder of p is not 'well shaped'
+                 the project folder of p holds more than one marker
+                 .config/icon of p holds more than one PNG file, or a PNG file that can not be read
+                 p.kind == code and Coordinator.check(p) gives State.invalid
+problem(p) = the error naming one of the causes of invalid(p) that hold
+compiledMains(p) = the .mains of the .manifest of State.compiled, when Coordinator.check(p) gives State.compiled
+
+manager.autoCheck(p)
+A The manager reads the project folder of p, and finds state(p) and compiledMains(p).
+B Coordinator.check(p) runs after the checks of the marker and of .config/icon.
+
+manager.autoCheck(p)
+A invalid(p), and no 'compilation' of p runs.
+B Coordinator.writeError(p, problem(p))
+
+manager.autoCheck(p)
+A The manager can not reach the project folder of p.
+B The 'compilation' of p, if running, ends.
+
+manager.autoCheck(p)
+A p is 'busy'.
+B invalid(p), or state(p) == outOfDate, or the manager can not reach the project folder of p.
+C Each 'mains chain' that makes p 'busy' ends.
+D The Output of the project of each of those 'mains chains' holds an error naming p and the main that was running.
+
+A (greet.Diary->diary) in hello.mounts.
+B The 'mains chain' of hello is running, at the main greet.Hello.
+C The user renames the folder y2026 of diary to Y2026 with the file explorer.
+D The manager GUI sends Check diary.
+E manager.autoCheck(diary) finds invalid(diary).
+F The 'mains chain' of hello ends.
+G The Output of hello holds an error naming diary and greet.Hello.
+```
+
+## Tray
+
+```
+A The 'single' manager is running, and the manager GUI shows the manager window.
+B The user closes the manager window.
+C The user, following the conventions of the desk, is easily able to see that the 'single' manager is still running.
+
+A The desk has a tray.
+B The 'single' manager is running.
+C The tray shows the icon of the manager.
+D The user clicks the icon of the manager, with any button.
+E The manager shows the menu of its tray icon: Show manager, Quit manager.
+F The user chooses Show manager.
+G manager.selfSend(Show)
+
+A The desk is macOS.
+B The 'single' manager is running.
+C The Dock shows the icon of the manager, and no tray icon of the manager shows.
+D The user clicks the Dock icon of the manager.
+E manager.selfSend(Show)
+
+A The desk is macOS.
+B The user chooses Quit in the menu of the Dock icon of the manager, in the application menu, or with Cmd+Q.
+C manager.selfSend(Quit)
+
+A The desk has no tray.
+B The 'single' manager is running, and no manager GUI is running.
+C The manager shows the 'tray icon window': the Fearless icon, at the size of a tray icon, with no title bar and no border, in the bottom right corner of the screen, above the other windows.
+D The user clicks the 'tray icon window', with any button.
+E The manager shows the menu of its tray icon.
+F For half a second, a press or a release on the menu does nothing.
+G Unlike a click on the menu, the release of the click that opened the menu chooses no entry.
+H The user presses and releases a button on Quit manager.
+I manager.selfSend(Quit)
+
+A The desk has no tray.
+B The manager GUI is running.
+C The manager shows no 'tray icon window'.
+```
+
+## The manager GUI
+
+```
+A No manager GUI is running.
+B The 'mains chain' of world is running world.earth.World.
+C The manager receives Show hello.
+D ManagerGui.start
+E The manager tells the manager GUI world.chain started.
+F The manager tells the manager GUI world.earth.World started.
+G Unlike the start of world.earth.World, what world.earth.World printed before is not told: the manager keeps no Output.
+H The manager tells the manager GUI Show hello Applied.
+
+A The manager GUI is running.
+B Eclipse sends Run hello.
+C The manager tells the manager GUI Run hello Applied.
+D The manager tells the manager GUI hello.chain started.
+E The 'mains chain' of hello starts hello.greet.Hello.
+F The manager tells the manager GUI hello.greet.Hello started.
+G hello.greet.Hello runs Debug#"Foo".
+H The manager receives "Foo" from hello.greet.Hello.
+I The manager tells the manager GUI hello.greet.Hello.out+="Foo".
+J hello.greet.Hello ends.
+K The manager tells the manager GUI hello.greet.Hello ended.
+L The 'mains chain' of hello ends.
+M The manager tells the manager GUI hello.chain ended.
+
+A The manager GUI is running.
+B Eclipse sends Compile hello.
+C The manager tells the manager GUI Compile hello Applied.
+D The manager tells the manager GUI hello.compilation started.
+E The compilation of hello prints "In file: fear:/lib/a.fear".
+F The manager tells the manager GUI hello.compilation.out+="In file: fear:/lib/a.fear".
+G The manager tells the manager GUI hello.compilation ended.
+
+A The manager GUI is running.
+B Eclipse sends Run nothere.
+C The manager tells the manager GUI Run nothere Refused, with the error.
+```
+
+## Run, Compile and Check
+
+```
+manager.apply(Run p)
+A p is not a code project.
+B manager.refuse(Run p, an error naming the kind of p)
+
+manager.apply(Run p)
+A invalid(p).
+B manager.refuse(Run p, problem(p))
+
+manager.apply(Run p)
+A state(p) == outOfDate.
+B manager.refuse(Run p, an error naming that state)
+
+manager.apply(Run p)
+A p.mains is empty, or names a main that is not in compiledMains(p).
+B manager.refuse(Run p, an error listing compiledMains(p))
+
+manager.apply(Run p)
+A p.attenuators names a main that is not in compiledMains(p), or an attenuator that is not an attenuator of p.
+B manager.refuse(Run p, an error listing compiledMains(p), or the attenuators of p)
+
+manager.apply(Run p)
+A p has a broken mount, or a DataRead type with no mount.
+B manager.refuse(Run p, an error listing each broken mount, with what makes it broken, and each DataRead type with no mount)
+
+manager.apply(Run hello)
+A state(hello) == compiled.
+B (greet.A) and (greet.B) in hello.mains, in that order, and both in compiledMains(hello).
+C hello.attenuators names only mains of hello and attenuators of hello.
+D hello has no broken mount, and no DataRead type with no mount.
+E The 'mains chain' of hello starts: Coordinator.run(hello, greet.A, launch(hello.greet.A)).
+F manager.accept(Run hello)
+G hello.greet.A ends.
+H Coordinator.run(hello, greet.B, launch(hello.greet.B))
+I hello.greet.B ends.
+J The 'mains chain' of hello ends.
+K For each project q that stops being 'busy': manager.autoCheck(q).
+
+launch(p.m) = Launch{ .attenuators: p.m.attenuators; .mounts: t -> the project folder of d, for each (t->d) in p.mounts; .optInputFile: none; .deskId: deskId(p.m) }
+
+A The 'mains chain' of hello runs hello.greet.A, then hello.greet.B.
+B hello.greet.A ends with an error, a crash included.
+C The 'mains chain' of hello ends.
+D hello.greet.B does not run.
+
+manager.apply(Compile p)
+A p is not a code project.
+B manager.refuse(Compile p, an error naming the kind of p)
+
+manager.apply(Compile p)
+A invalid(p).
+B manager.refuse(Compile p, problem(p))
+
+manager.apply(Compile p)
+A state(p) == outOfDate.
+B manager.accept(Compile p)
+C manager.compile(p), the 'compilation' of p.
+
+manager.apply(Compile p)
+A state(p) == compiled.
+B The manager writes in the Output of p that p is up to date.
+C manager.accept(Compile p)
+
+manager.apply(Check p)
+A invalid(p).
+B The manager writes problem(p) in the Output of p.
+C manager.accept(Check p)
+
+manager.apply(Check p)
+A state(p) == outOfDate.
+B The manager writes in the Output of p that p is out of date.
+C manager.accept(Check p)
+
+manager.apply(Check p)
+A not invalid(p), and state(p) != outOfDate.
+B The manager writes in the Output of p that p is neither invalid nor out of date.
+C manager.accept(Check p)
+
+manager.apply(Terminate p)
+A manager.terminate(p)
+B manager.accept(Terminate p)
+
+manager.terminate(p)
+A Each 'mains chain' and each 'compilation' that makes p 'busy' ends.
+B manager.terminate(p) returns once each of them has ended.
+C For each project q that stops being 'busy': manager.autoCheck(q).
+
+manager.apply(DeleteCache p)
+A Coordinator.deleteCache(p)
+B manager.buildMap()
+C manager.accept(DeleteCache p)
+
+manager.apply(Fix p)
+A fix(p) of FolderShapesDesign, writing its lines in the Output of p.
+B manager.accept(Fix p)
+```
+
+## File associations
+
+### The extensions of the manager
+
+```
+M                  the manager; id(M) its identity; folder(M) its 'manager folder'
+D                  the desk of FolderShapesDesign
+fearless           the 'Fearless extensions': .fearless, .fapp000 .. .fapp999, .ffile000 .. .ffile999; every other extension is a 'system extension'
+reserve(M)         the 'reserve' of M: the list reserve of projects.info
+cached(M)          the projects of the in memory map of M
+claims(p)          the extensions of the claims of the mains of p in the in memory map
+captured(M)        the 'captured extensions' of M: fearless union reserve(M)
+single(D)          the manager processes of D that are the 'single' manager
+
+manager.reconcile()
+A Reconciliator.reconcile returns G.
+B manager.giveUp(G)
+
+manager.giveUp(G)
+A G intersects fearless.
+B manager.fatalError(NotHoldingFearlessExtension)
+
+manager.giveUp(G)
+A G does not intersect fearless.
+B For each p in cached(M) with claims(p) intersecting G: manager.terminate(p), then Coordinator.deleteCache(p).
+C reserve(M) := (reserve(M) union claims(cached(M))) \ (fearless union G)
+D manager.buildMap(), when B deleted a compilation cache.
+
+I0  only manager.giveUp and manager.editMetadata change reserve(M)
+I1  forall p in cached(M). claims(p) subset of captured(M)      after manager.reconcile, while no other program changes D
+I2  |single(D)| <= 1                                             at every moment
+R1 to R4 of ReconciliatorDesign hold with i = id(M) and E = captured(M), after manager.reconcile, while no other program changes D.
+
+replaced(c)
+A c is not inside the program folder of a manager, or managerFolder(c) == folder(M).
+B replaced(c) changes nothing.
+
+replaced(c)
+A managerFolder(c) == F, the 'manager folder' of another manager.
+B No process holds the lock of F.
+C replaced takes the lock of F.
+D replaced deletes F.
+
+replaced(c)
+A managerFolder(c) == F, the 'manager folder' of another manager.
+B replaced connects to the process holding the lock of F, and sends Quit.
+C That process ends.
+D replaced takes the lock of F.
+E replaced deletes F.
+
+replaced(c)
+A managerFolder(c) == F, the 'manager folder' of another manager.
+B replaced connects to the process holding the lock of F, and sends Quit.
+C For 10 seconds no 'progress line' arrives, or no 'progress line' different from the 'progress line' before it.
+D replaced ends that process.
+E replaced takes the lock of F.
+F replaced deletes F.
+
+Every version of the manager reaches the 'single' manager, sends Quit, and sends 'progress lines' in the same way.
+```
+
+### Holding extensions
+
+```
+A No program holds a Fearless extension.
+B The user runs manager, with no registered project and an empty 'reserve'.
+C Reconciliator.reconcile returns [].
+D The 'single' manager is running.
+E The user observes that the icon of a.fearless is the Fearless icon.
+F The user observes that the icon of a.fapp123 is the conflict icon.
+
+A Foo holds .fapp123.
+B The user runs manager.
+C The manager calls Reconciliator.reconcile.
+D The Reconciliator asks the user to let the manager hold .fapp123.
+E The user gives up .fapp123.
+F manager.fatalError(NotHoldingFearlessExtension)
+
+A The 'single' manager is running.
+B No program holds .md.
+C The manager compiles project hello.
+D hello.greet.Hello claims .md.
+E The manager calls Reconciliator.reconcile.
+F The manager holds .md.
+G .md is in the 'reserve'.
+
+A The 'single' manager is running.
+B Foo holds .md.
+C The manager compiles project hello.
+D hello.greet.Hello claims .md.
+E The manager calls Reconciliator.reconcile.
+F The Reconciliator asks the user to let the manager hold .md, naming Foo.
+G The user accepts.
+H The manager holds .md.
+I .md is in the 'reserve'.
+J The user observes that Foo and the manager are in the list of the programs that can open a.md.
+
+A The 'single' manager is running.
+B Foo holds .md.
+C The manager compiles project hello.
+D hello.greet.Hello claims .md.
+E The manager calls Reconciliator.reconcile.
+F The Reconciliator asks the user to let the manager hold .md.
+G The user gives up .md.
+H The compilation cache of project hello is deleted: project hello is 'out of date'.
+I Unlike a failed step, giving up .md does not make the compilation of hello fail.
+J .md is not in the 'reserve'.
+K Foo holds .md.
+
+A The 'single' manager is running.
+B Foo holds .md.
+C The user adds .md to the 'reserve'.
+D The manager calls Reconciliator.reconcile.
+E The Reconciliator asks the user to let the manager hold .md.
+F The user gives up .md.
+G .md is not in the 'reserve'.
+
+A The 'single' manager is running.
+B Foo holds .md.
+C The user adds .md to the 'reserve'.
+D The manager calls Reconciliator.reconcile.
+E The Reconciliator asks the user to let the manager hold .md.
+F The user accepts.
+G The manager holds .md.
+H The user observes that the icon of a.md is the conflict icon.
+
+A The 'single' manager is running.
+B Foo holds .pdf.
+C The desk lets no other program change the program holding .pdf.
+D The manager compiles project hello.
+E hello.greet.Hello claims .pdf.
+F The manager calls Reconciliator.reconcile.
+G The Reconciliator asks the user to let the manager hold .pdf.
+H The user accepts.
+I The Reconciliator tells the user that the desk lets no other program hold .pdf.
+J The user gives up .pdf.
+K The compilation cache of project hello is deleted: project hello is 'out of date'.
+L .pdf is not in the 'reserve'.
+
+A The 'single' manager is running.
+B Foo holds .md and .txt.
+C The manager compiles project hello.
+D hello.greet.Hello claims .md and .txt.
+E The manager calls Reconciliator.reconcile.
+F The Reconciliator asks the user to let the manager hold .md and .txt.
+G The user accepts .md and gives up .txt.
+H The compilation cache of project hello is deleted: project hello is 'out of date'.
+I The manager calls Reconciliator.reconcile, with neither .md nor .txt.
+J Neither .md nor .txt is in the 'reserve'.
+
+A The 'single' manager is running.
+B The desk does not let the programs the user runs change the folder of the icons of the extensions.
+C The manager compiles project hello.
+D hello.greet.Hello claims .foo.
+E The manager calls Reconciliator.reconcile.
+F The Reconciliator tells the user that Fearless can not change the folder of the icons, and how to give Fearless that permission.
+G The user gives the permission in the desk.
+H The user closes the dialog.
+I The manager holds .foo.
+```
+
+### Preferences of the desk
+
+```
+A The 'single' manager is running.
+B The user sets a preference of the desk so that Foo holds .fapp123.
+C The manager compiles project world.
+D The manager calls Reconciliator.reconcile.
+E The Reconciliator asks the user to let the manager hold .fapp123.
+F The user accepts.
+G The manager holds .fapp123.
+
+A The 'single' manager is running.
+B The user sets a preference of the desk so that Foo holds .fearless.
+C The manager compiles project world.
+D The manager calls Reconciliator.reconcile.
+E The Reconciliator asks the user to let the manager hold .fearless.
+F The user gives up .fearless.
+G manager.fatalError(NotHoldingFearlessExtension)
+
+A The 'single' manager is running and holds .md.
+B hello.greet.Hello claims .md.
+C The 'mains chain' of hello is running.
+D The user sets a preference of the desk so that Foo holds .md.
+E The user forgets the code project world.
+F The manager calls Reconciliator.reconcile.
+G The Reconciliator asks the user to let the manager hold .md.
+H The user gives up .md.
+I The 'mains chain' of hello ends.
+J The compilation cache of project hello is deleted: project hello is 'out of date'.
+K .md is not in the 'reserve'.
+L Foo holds .md.
+
+A No manager process is running, and the manager holds the Fearless extensions and .md.
+B The user sets a preference of the desk so that Foo holds .md.
+C The user runs manager.
+D The manager calls Reconciliator.reconcile.
+E The Reconciliator asks the user to let the manager hold .md.
+F The user accepts.
+G The manager holds .md.
+
+A The 'single' manager is running.
+B Foo holds .txt.
+C The user sets a preference of the desk so that the manager holds .txt.
+D The manager compiles project hello.
+E The manager calls Reconciliator.reconcile.
+F The manager holds .txt.
+G .txt is not in the 'reserve'.
+H The user double clicks a.txt.
+I The manager shows the 'conflict dialog' with no entry.
+
+A The 'single' manager is running and holds .md, through a preference the user set in the desk.
+B The manager compiles project hello.
+C The manager calls Reconciliator.reconcile.
+D Reconciliator.reconcile replaces the preference of the user for .md with the setup of the manager.
+E Unlike when Foo holds .md, the Reconciliator asks nothing: the user already chose the manager for .md.
+F The manager holds .md.
+```
+
+### Releasing extensions
+
+```
+A The 'single' manager is running and holds .md.
+B The user quits the manager.
+C No manager process is running, and the manager holds the Fearless extensions and .md.
+
+A The 'single' manager is running and holds .md.
+B Only hello.greet.Hello claims .md.
+C The 'mains chain' of hello is running.
+D The user removes .md from the 'reserve'.
+E The 'mains chain' of hello ends.
+F The compilation cache of project hello is deleted.
+G The manager calls Reconciliator.reconcile.
+H The manager does not hold .md.
+```
+
+### Other programs of the Fearless family
+
+```
+A Manager M1 is the 'single' manager, and holds .md.
+B .md is in the 'reserve' of manager M2.
+C The user runs manager M2, of another version.
+D M2 calls Reconciliator.reconcile.
+E M2 sends Quit to M1.
+F M2 waits until M1 has quit.
+G M1 ends the 'mains chains' and the compilations of M1.
+H The 'manager folder' of M1 is deleted.
+I M1 holds no extension.
+J M2 holds the Fearless extensions and .md.
+
+A Manager M1 is the 'single' manager.
+B The main greet.Hello of M1 is running, and takes 6 seconds to end.
+C The user runs manager M2, of another version.
+D M2 calls Reconciliator.reconcile.
+E M2 sends Quit to M1.
+F M1 sends a 'progress line' every 2 seconds.
+G M1 ends greet.Hello.
+H M1 ends.
+I The 'manager folder' of M1 is deleted.
+J M2 holds the Fearless extensions.
+
+A Manager M1 is the 'single' manager.
+B M1 applies an EditMetadata waiting for the lock of the Fearless family.
+C The user runs manager M2, of another version.
+D The Reconciliator.reconcile of M2 holds the lock of the Fearless family.
+E M2 sends Quit to M1.
+F Unlike when M1 applies no request, M1 sends no 'progress line': M1 applies Quit only after the EditMetadata.
+G 10 seconds later, M2 ends M1.
+H The 'manager folder' of M1 is deleted.
+I M2 holds the Fearless extensions.
+
+A No manager process of M is running, and M holds the Fearless extensions and .md.
+B The program folder of M is inside folder a.
+C The user moves the program folder of M into folder b.
+D The user runs M.
+E M calls Reconciliator.reconcile.
+F The 'manager folder' of M inside folder a is deleted.
+G M holds the Fearless extensions.
+
+A The program folder of a manager has the 'launchers' L and Lw.
+B No manager process is running.
+C The manager started by L holds the Fearless extensions and .md.
+D The user runs the manager with Lw.
+E The manager calls Reconciliator.reconcile.
+F Unlike when the program folder moves, the 'manager folder' is kept: L and Lw are in the same program folder.
+G The manager started by L holds no extension.
+H The manager started by Lw holds the Fearless extensions and .md.
+
+A The program folder of a manager has the 'launchers' L and Lw.
+B The manager started by L is the 'single' manager, and holds .md.
+C The user runs the manager with Lw.
+D The manager process P started with Lw sends Show to the 'single' manager.
+E Unlike when no manager process is running, P runs no manager FearlessCommandServe, and no Reconciliator.reconcile runs.
+F The manager started by L holds the Fearless extensions and .md.
+
+A Manager M is the 'single' manager, and holds .md.
+B The user starts the 'portable Fearless' P.
+C P calls Reconciliator.reconcile.
+D P sends Quit to M.
+E P waits until M has quit.
+F M ends the 'mains chains' and the compilations of M.
+G The 'manager folder' of M is deleted.
+H M holds no extension.
+I P holds one extension: .fearless.
+
+A Foo holds .fearless.
+B The user starts the 'portable Fearless' P.
+C P calls Reconciliator.reconcile.
+D The Reconciliator asks the user to let P hold .fearless.
+E The user accepts.
+F P holds one extension: .fearless.
+
+A Foo holds .fearless.
+B The user starts the 'portable Fearless' P.
+C P calls Reconciliator.reconcile.
+D The Reconciliator asks the user to let P hold .fearless.
+E The user gives up .fearless.
+F P ends with an error naming .fearless and Foo.
+```
+
+### Icons
+
+```
+A The 'single' manager is running and holds .foo.
+B No main claims .foo.
+C The manager compiles project hello.
+D hello.greet.Hello claims .foo with the icon IconsBear.
+E The manager calls Reconciliator.reconcile.
+F The user observes that the icon of a.foo is a bear.
+
+A The 'single' manager is running and holds .foo.
+B hello.greet.Hello claims .foo with the icon IconsBear.
+C The user replaces the file src/_greet/icons/bear.png of project hello with a picture of a cat.
+D The user compiles project hello.
+E The manager calls Reconciliator.reconcile.
+F The user observes that the icon of a.foo is a cat.
+
+A The 'single' manager is running and holds .foo.
+B hello.greet.Hello claims .foo with the icon IconsBear.
+C The manager compiles project world.
+D world.earth.World claims .foo with the icon IconsBear.
+E The manager calls Reconciliator.reconcile.
+F The user observes that the icon of a.foo is the conflict icon, also with one icon for both claims.
+
+A The 'single' manager is running and holds .foo.
+B Only hello.greet.Hello claims .foo, with the icon IconsBear.
+C The user forgets project hello.
+D The manager calls Reconciliator.reconcile.
+E The user observes that the icon of a.foo is the conflict icon.
+
+A The 'single' manager is running.
+B (greet.Hello) in hello.mains.
+C hello.greet.Hello implements PreLoadIcon[IconsBear].
+D The manager compiles project hello.
+E The manager calls Reconciliator.reconcile.
+F The user runs project hello.
+G greet.Hello opens a window with the icon IconsBear.
+H The user observes that the icon of that window is a bear.
+```
+
+## OpenWith and Shortcut
+
+```
+Foo: Main, OpenWith[IconsFoo, "foo"]{ s -> ... }
+Bar: Main, Shortcut[IconsBar, "fapp123"]{ s -> ... }
+Baz: Main, OpenWith[IconsBaz]{ s -> ... }
+Qux: Main, Shortcut[IconsQux]{ s -> ... }
+
+OpenWith[I,E]: {}
+OpenWith[I]: {}
+Shortcut[I,E]: {}
+Shortcut[I]: {}
+
+claims(m) = the types OpenWith[I,E], OpenWith[I], Shortcut[I,E] and Shortcut[I] that the main m implements, each type once, also when m implements it along several paths
+
+IconsFoo, IconsBar, IconsBaz, IconsQux: the types the compiler generates for the image files _pkg/icons/foo.png, _pkg/icons/bar.png, ... of any package the main can see, base included.
+
+The Frontend refuses, before generating code, as well formedness errors:
+  a declaration with OpenWith, Shortcut or PreLoadIcon among its supertypes and no Main among its supertypes
+  an icon that is not a type name with no generic arguments
+  an extension that is not a string literal type of 1 to 16 characters, each a-z or 0-9, or that is "fearless"; "txt" and `txt` are one extension
+  a Shortcut extension other than fapp and three digits; an OpenWith extension fapp and three digits
+  a main claiming an extension twice
+```
+
+### What the manager does after `Coordinator.compile`
+
+```
+manager.compile(p)
+A Coordinator.compile(p) succeeds.
+B Every Shortcut claim of Coordinator.cachedMains(p) gives a valid shortcut file name.
+C manager.buildMap()
+D The manager creates the missing shortcut files of p.
+E Coordinator.finish(p)
+F manager.autoCheck(p)
+
+manager.compile(p)
+A Coordinator.compile(p) fails.
+B manager.buildMap()
+C manager.autoCheck(p)
+
+manager.compile(hello)
+A Coordinator.compile(hello) succeeds.
+B The Shortcut claim of hello.greet.Foo' gives no valid shortcut file name.
+C Coordinator.writeError(hello, an error naming hello.greet.Foo' and the case)
+D manager.buildMap()
+E manager.autoCheck(hello)
+
+manager.compile(hello)
+A Coordinator.compile(hello) succeeds.
+B manager.buildMap()
+C Coordinator.cachedMains(world) raises Error.cacheCorrupted e.
+D manager.cacheCorrupted(world, e)
+E Unlike a failed step of the compilation of hello, e does not make the compilation of hello fail.
+F The manager creates the missing shortcut files of hello.
+G Coordinator.finish(hello)
+H manager.autoCheck(hello)
+```
+
+### The in memory map
+
+```
+map: project -> mains, in memory only
+
+manager.buildMap()
+A For each registered code project p whose 'compilation' is not running: map(p) := Coordinator.cachedMains(p).
+B For each registered code project p whose 'compilation' is running: map(p) stays as it was.
+C manager.reconcile()
+
+manager.cacheCorrupted(p, e)
+A manager.terminate(p)
+B Coordinator.deleteCache(p)
+C Coordinator.writeError(p, e)
+D manager.buildMap(), when the manager is not building the map.
+
+A A method of Coordinator raises or gives Error.cacheCorrupted e for hello.
+B manager.cacheCorrupted(hello, e)
+
+A A file that Coordinator.iconFiles gives for hello can not be read.
+B manager.cacheCorrupted(hello, Error.cacheCorrupted)
+```
+
+### Autoselected extensions
+
+```
+takeFreeExtension(candidates) = the first e of candidates with no claim of the map using e, and with no answer of takeFreeExtension for a 'compilation' still running being e
+The manager answers the calls of takeFreeExtension, from Coordinator.compile, one at a time.
+```
+
+### Shortcut files
+
+```
+shortcutName(m) = the simple name of m with each uppercase letter, but the first, as _ then that letter in lowercase, and the first letter in lowercase
+shortcutName(FooBar) = foo_bar     shortcutName(_Foo) = _foo     shortcutName(Foo_1) = foo_1     shortcutName(FooBAR) = foo_b_a_r
+shortcut file of a Shortcut claim of m with the extension e ::= the file shortcutName(m).e at the top of the project folder, holding one newline
+
+The compilation of p fails, with an error naming the main and the case, when a main m of p with a Shortcut claim has:
+  no shortcutName: the name of m ends in primes (Foo'), or holds _ then a lowercase letter (Foo_bar)
+  a shortcutName that is a 'reserved name' (Con)
+  the shortcutName and extension of another main of p with a Shortcut claim (a.Bar and b.Bar)
+  a shortcutName that is the name of a top level file of p with no extension (readme for hello.Readme)
+
+A greet.Bar of hello claims .fapp123 with Shortcut.
+B The manager compiles hello.
+C The top of the project folder of hello holds bar.fapp123.
+D The user renames greet.Bar to greet.Baz.
+E The manager compiles hello.
+F The top of the project folder of hello holds bar.fapp123 and baz.fapp123.
+G Unlike what one may expect of a file the manager created, bar.fapp123 is not deleted: once created, a shortcut file is a file of the user, as the source files are.
+```
+
+### Reconciling
+
+```
+The arguments of the Reconciliator.reconcile of manager.reconcile:
+identity     the identity of the manager
+name         the name of the manager
+command      the 'launcher' of the manager process
+extensions   each e in captured(M), and in claims(p) for each p in cached(M), with icon(e)
+windows      for each icon i of the .preloaded of each main m of each project p of the map:
+             .windowClass deskId(p.m)-<i.name>, .name the simple name of m, .target p,
+             .png the PNG of Coordinator.iconFiles(p, i)
+programIcon  the icon of the 'launcher' of the manager process
+replaced     replaced(c), of File associations
+```
+
+#### Desk ids and icons
+
+```
+icon(e) = the Fearless icon               when e = .fearless
+        = Coordinator.iconFiles(p, i)     when e is the extension of exactly one claim of the map, a claim of a main of p with the icon i
+        = the conflict icon               otherwise
+deskId(p.m) = <identity>-<hash>, the identity of the manager, then the hash of the project folder of p and of the name of m
+the conflict icon = base.IconsConflict, the image icons/conflict.png of the folder of base: the Fearless icon with a purple ? on top
+```
+
+### Opening a file
+
+```
+manager.apply(OpenWithOrShortcut b)
+A b names no file, or an empty file.
+B manager.refuse(OpenWithOrShortcut b, an error naming that path)
+
+manager.apply(OpenWithOrShortcut b)
+A Only hello.greet.Foo claims the extension of the file f that b names.
+B A Run of only greet.Foo of hello would be refused with the error e.
+C manager.refuse(OpenWithOrShortcut b, e)
+
+manager.apply(OpenWithOrShortcut b)
+A Only hello.greet.Foo claims the extension of the file f that b names.
+B The 'mains chain' of hello runs greet.Foo: Coordinator.run(hello, greet.Foo, launch(hello.greet.Foo) with .optInputFile f).
+C manager.accept(OpenWithOrShortcut b)
+D Unlike a Run, the 'mains chain' leaves hello.mains as it is.
+
+manager.apply(OpenWithOrShortcut b)
+A hello.greet.Foo and world.earth.Foo claim the extension of the file f that b names.
+B manager.accept(OpenWithOrShortcut b)
+C The manager shows the 'conflict dialog', listing hello::greet.Foo and world::earth.Foo, each with its icon, sorted by that text.
+D The user picks world::earth.Foo.
+E manager.selfSend(OpenWithOrShortcut b world earth.Foo)
+
+manager.apply(OpenWithOrShortcut b)
+A No main claims the extension of the file that b names.
+B manager.accept(OpenWithOrShortcut b)
+C The manager shows the 'conflict dialog', with no entry.
+D The user closes the 'conflict dialog'.
+E The manager runs nothing.
+
+manager.apply(OpenWithOrShortcut b n t)
+A t of n is not one of the mains claiming the extension of the file that b names, or n names no registered project.
+B manager.refuse(OpenWithOrShortcut b n t, an error listing the mains claiming that extension)
+
+manager.apply(OpenWithOrShortcut b world earth.Foo)
+A world.earth.Foo claims the extension of the file f that b names.
+B A Run of only earth.Foo of world would not be refused.
+C The 'mains chain' of world runs earth.Foo: Coordinator.run(world, earth.Foo, launch(world.earth.Foo) with .optInputFile f).
+D manager.accept(OpenWithOrShortcut b world earth.Foo)
+
+manager.apply(OpenWithOrShortcut b world earth.Foo)
+A world.earth.Foo claims the extension of the file f that b names.
+B A Run of only earth.Foo of world would be refused with the error e.
+C manager.refuse(OpenWithOrShortcut b world earth.Foo, e)
+```
+
+### Input files
+
+```
+A The 'mains chain' of hello runs greet.Foo for the file /data/a.foo.
+B greet.Foo reads its input files: [/data/a.foo].
+C The user drops /data/b.foo and /data/c.foo on a window of greet.Foo.
+D The input files of greet.Foo are [/data/a.foo, /data/b.foo, /data/c.foo].
+E The user drops a folder on a window of greet.Foo.
+F The drop is refused, and the input files of greet.Foo stay the same.
+G The user deletes /data/a.foo.
+H greet.Foo reads /data/a.foo: a non deterministic error.
+
+A The 'mains chain' of hello runs greet.Foo for the shortcut file /data/hello/foo.fapp123.
+B greet.Foo reads its input files: [/data/hello/foo.fapp123].
+
+A The 'mains chain' of a Run of hello runs greet.Foo.
+B greet.Foo reads its input files: [].
+
+A greet.Foo reads the input file /data/a.foo twice.
+B The second read reads the file again.
+```
+
+### Messages from a running main
+
+```
+CapManager method               message                                   returns
+.show(name)                     Show name                                 Void
+.register(path)                 Register base16 of path                   Void
+.quit                           Quit                                      never
+.reset                          Reset                                     never
+.connectEclipse(path)           ConnectEclipse base16 of path             Void
+.editMetadata(path)             EditMetadata base16 of path               Void
+.openWithOrShortcut(path)       OpenWithOrShortcut base16 of path         the text after Applied
+.openWithOrShortcut(path, n, m) OpenWithOrShortcut base16 of path n m     the text after Applied
+.run(name)                      Run name                                  the text after Applied
+.compile(name)                  Compile name                              the text after Applied
+.check(name)                    Check name                                the text after Applied
+.terminate(name)                Terminate name                            Void
+.deleteCache(name)              DeleteCache name                          Void
+.kindIdle(name)                 Kind name idle                            Void
+.kindCode(name)                 Kind name code                            Void
+.kindDataRead(name)             Kind name dataRead                        Void
+.kindDataEdit(name)             Kind name dataEdit                        Void
+.forget(name)                   Forget name                               Void
+.fix(name)                      Fix name                                  the text after Applied
+.mount(name, type, data)        Mount name type data                      Void
+.unmount(name, type)            Unmount name type                         Void
+.attenuate(name, main, as)      Attenuate name main as                    Void
+.selectMains(name, mains)       SelectMains name mains                    Void
+a path: the list of the bytes naming the path, the bytes of its Base16: form
+
+CapManager.run(hello)
+A CapManager.run runs manager "FearlessCommandRun hello".
+B That manager process prints Applied, then the Output of the 'mains chain' of hello.
+C That manager process ends.
+D CapManager.run returns the text printed after Applied.
+
+CapManager.kindCode(hello)
+A CapManager.kindCode runs manager "FearlessCommandKind hello code".
+B That manager process prints Applied.
+C That manager process ends.
+D CapManager.kindCode returns Void.
+
+CapManager.run(nothere)
+A CapManager.run runs manager "FearlessCommandRun nothere".
+B That manager process prints Refused, then the error e.
+C CapManager.run is a deterministic error containing e.
+
+CapManager.register(relative)
+A relative is not an absolute path, or is the root of a drive.
+B CapManager.register is a deterministic error of the running main, and runs no manager.
+
+CapManager.selectMains(hello, [greet.A, greet.A])
+A The mains are not all different.
+B CapManager.selectMains is a deterministic error of the running main, and runs no manager.
+
+CapManager.terminate(hello), from a main of the 'mains chain' of hello
+A CapManager.terminate runs manager "FearlessCommandTerminate hello".
+B The 'mains chain' of hello ends.
+C CapManager.terminate never returns.
+```
+
+## Future design
+
+What the design will cover later; nothing in this section is current behaviour.
+- A double click on a file for a main already running adds that file to the input files of the running main, and signals the running main to wake up, for example bringing the window of the running main to the front.
+- A 'captured extension' that no main claims gets an icon of its own, showing that the manager holds the extension, instead of the conflict icon.
+- TODO: an error written in the Output of a project may need to offer an action that fixes the cause of that error, as the manager asks the user to let the manager hold an extension.
+- A main learns the extensions the main claims, for example through a `System` method.
+
+## Implementation notes
+
+- The program folder of a manager is `fearlessManaged<version>`, `fearlessManaged<version>.app` on macOS; its two 'launchers' are `fearlessManaged<version>` and `fearlessManaged<version>w`, the identities of the manager in the Fearless family; managerFolder(l) is the folder `fearless<version>` next to the program folder of l.
+- The name of the manager, the `name` of `Reconciliator.reconcile`, is `Fearless Manager`.
+- The lock of the 'manager folder': the lock (`FileChannel.tryLock`) of the file `instance.lock` in the 'manager folder'. The operating system releases the lock when the process ends, however the process ends.
+  The process holding the lock writes the identifier of its OS process, and the port of its connections, at the start of `instance.lock`, and locks only bytes of `instance.lock` after the identifier and the port: a manager process connects to that port, and `replaced` ends the process with that identifier. On Windows a process can not read the bytes that another process has locked.
+- The connection of a message: TCP on the loopback address, on the port that the desk picks for the process holding the lock; a message, its Origin, and the Answer are UTF-8 text.
+- The manager program is a Java program, so every message starts a JVM, and a message takes at least the time a JVM takes to start: that time is accepted, not a bug.
+- `manager FearlessCommandServe` starts in a process of its own, independent of the process that runs it: the end of that process, or of its terminal, does not end the 'single' manager.
+- The bytes of a `Base16:` path: on Windows the UTF-16 code units of the name, little endian (a name may contain an unpaired surrogate); elsewhere the bytes of the name as the file system stores them.
+- Each main and each compilation runs in a JVM of its own (`Coordinator.run`, see CoordinatorDesign).
+- A main or a compilation that takes all the memory ends alone, not the manager: on Linux with systemd as init (`/run/systemd/system` is a folder), `Fs.processBuilder` starts each child with `systemd-run --user --scope`, in a cgroup of its own.
+  A cgroup is a group of processes the Linux kernel accounts together; systemd-oomd ends a whole cgroup, and a child process starts in the cgroup of the parent process.
+- A main or a compilation ending with the manager: the manager starts the JVM of each main and of each compilation with a 'parent lifeline' (see Processes in AttenuationDesign) on a pipe the manager holds open.
+- `replaced` deleting a 'manager folder': holding the lock of that folder, `replaced` renames the folder to a new name next to it, then deletes the renamed folder. When the rename fails, `replaced` deletes every file of the folder that can be deleted. On Windows a folder containing a file that a process has open may not be renamed.
+- Windows always has a tray: the notification area of the taskbar.
+- The 'tray icon window' is an AWT window of type popup.
+  A Wayland client can not place its windows; AWT on Linux is an X11 client, through XWayland under Wayland.
+  On X11 no taskbar lists a popup window, and a popup window stays where the manager places the popup window.
+- Tray on Linux: `java.awt.SystemTray` needs an XEmbed tray; GNOME and most Wayland desks have none.
+  When the session bus has an owner of the name `org.kde.StatusNotifierWatcher`, the tray icon is a StatusNotifierItem registered with that watcher, with the menu served as `com.canonical.dbusmenu`.
+  The manager speaks the D-Bus wire protocol itself, on the `unix:path=` socket of `DBUS_SESSION_BUS_ADDRESS`.
+  Otherwise, when `java.awt.SystemTray` is supported, the manager uses `java.awt.SystemTray`, as on Windows.
+  A desk with neither has no tray.
+- Clicks on the tray icon on Linux: some desks show the menu served as `com.canonical.dbusmenu` themselves.
+  The other desks call `Activate`, `SecondaryActivate` or `ContextMenu` of the item, with the point of the click; the manager answers each of the three by opening the menu of the tray icon at that point.
+- On Windows the manager copies into the folder icons of the 'manager folder' also the `.ico` made from the PNG of the conflict icon and of the Fearless icon, and a running main gives its windows the `.ico` of `Coordinator.iconFiles` directly.
+- The exact rules and errors of the claims are those of `inject.Methods.checkClaims` of Frontend and of the doc comments of `OpenWith`, `Shortcut` and `PreLoadIcon` in `base`.
+- GNOME types every empty file as `application/x-zerosize`, whatever the name of the file, and never hands an empty file to the manager.
+- Renaming the first marker moves the marker to a file `<random UUID>.tmp` of the project folder, then to `<name>.fearless`.
+- The last premise of `ok(i, n)` in name inference: on a file system ignoring case, that other file and the file `n.fearless` are one file.
