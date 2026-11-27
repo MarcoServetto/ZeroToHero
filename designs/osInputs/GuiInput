@@ -1,0 +1,299 @@
+Text:
+This design is about how the Fearless GUI of a running program turns what the desk reports about Keys into the values that the program receives.
+gui is the Fearless GUI of one window of one running program.
+The program never sees a Key or a Press: the program names an input family, and receives the values of that input family.
+frame.onInput(TypeName, listener) makes TypeName the 'listened family' and listener the 'listener': an object of the program with the two methods .pressed and .released, each taking one value of the listened family.
+One input family is listened at a time: the last frame.onInput counts.
+gui.inputs is the Inputs that fearlessManager gave to the program; gui.inputs never changes while the program runs.
+gui.bindings is a Bindings held in memory; gui.bindings starts as {}.
+gui.down is a KeySet held in memory, the Keys that gui knows to be down; gui.down starts empty.
+gui.held is a HeldMap held in memory, the Keys whose going down gave a value to the listener; gui.held starts as {}.
+gui.focus is a Focus held in memory; gui.focus starts as #app.
+gui.focus is #text while a text widget has the focus, #menu while a menu is open, and #app otherwise: when no text widget has the focus and no menu is open, the whole program has the focus.
+gui.capture is a Capture held in memory; gui.capture starts as #free.
+The 'capture image' is a round image that pulses, a little bigger than a crosshair, at the center of the content of the window, on top of every widget; gui shows the capture image exactly while gui.capture is #asked.
+The mouse is 'captured' while gui.capture is #captured: the desk shows no pointer, the pointer can not leave the window, and no widget receives the mouse.
+frame.mouseCaptured, and the information that the repainter receives, tell the program whether the mouse is captured.
+A MouseButton reaches the listener only while the mouse is captured; while the mouse is not captured, a MouseButton reaches only the widgets.
+A KeyboardKey reaches the listener only while gui.focus is #app; a text widget with the focus, and an open menu, take every KeyboardKey that is not reserved.
+Every .pressed of a value is followed by exactly one .released of that value.
+There is no guarantee that the .released is prompt: in some situations the .released arrives an arbitrarily long time after the Key goes up.
+The .released can also arrive before the Key goes up, when the desk takes the keyboard or the pointer while the Key is down.
+A value bound to many Presses is pressed while at least one of the Keys that gave that value is down.
+The desk decides what a KeyboardKey types in a text widget, with the keyboard layout and the input method of the desk; Press.unreachable limits the values of the listener, and not the text that a text widget receives.
+No Key controls the window: the window is closed, resized, minimized and made full screen with the mouse, and by Alt+F4.
+//later: what the text widget with the focus and the open menus do with a Press are in the design of the widgets
+
+Grammar:
+KeySet ::= "(" Key1 ")" .. "(" Keyn ")"
+HeldMap ::= (Key1->TypeName1) .. (Keyn->TypeNamen)
+#app, #text, #menu in Focus
+#free, #asked, #captured in Capture
+
+Well formedness:
+in KeySet: Key1 .. Keyn are disjoint
+
+Notation: Key in KeySet where:
+- KeySet = _ "(" Key ")" _
+
+Notation: KeySet.shift = "Shift+" where:
+- Shift in KeySet
+
+Notation: KeySet.shift = "" where:
+- Shift not in KeySet
+
+Notation: KeySet.ctrl = "Ctrl+" where:
+- Ctrl in KeySet
+
+Notation: KeySet.ctrl = "" where:
+- Ctrl not in KeySet
+
+Notation: KeySet.alt = "Alt+" where:
+- Alt in KeySet
+
+Notation: KeySet.alt = "" where:
+- Alt not in KeySet
+
+Notation: KeySet.super = "Super+" where:
+- Super in KeySet
+
+Notation: KeySet.super = "" where:
+- Super not in KeySet
+
+Notation: KeySet.mods = KeySet.shift KeySet.ctrl KeySet.alt KeySet.super
+
+Notation: #captured.released = #free
+
+Notation: #asked.released = #asked
+
+Notation: #free.released = #free
+
+Define gui$hold(Key,TypeName):
+A fact (_->TypeName) not in gui.held
+B action gui.held+= (Key->TypeName)
+C action gui calls .pressed(TypeName) of the listener
+
+Define gui$hold(Key,TypeName):
+A fact (_->TypeName) in gui.held
+B action gui.held+= (Key->TypeName)
+
+Define gui$unhold(Key):
+A fact gui.held = HeldMap (Key->TypeName) HeldMap'
+B action gui.held= HeldMap HeldMap'
+C fact (_->TypeName) not in HeldMap HeldMap'
+D action gui calls .released(TypeName) of the listener
+
+Define gui$unhold(Key):
+A fact gui.held = HeldMap (Key->TypeName) HeldMap'
+B action gui.held= HeldMap HeldMap'
+C fact (_->TypeName) in HeldMap HeldMap'
+
+Define gui$unhold(Key):
+A fact (Key->_) not in gui.held
+
+Define gui$releaseAll():
+A fact gui.held = (_->TypeName1) .. (_->TypeNamen)
+B action gui calls .released of the listener, one time for each different value of TypeName1 .. TypeNamen
+C action gui.held= {}
+
+Define gui$quiet():
+A action gui.capture= gui.capture.released
+B action gui$releaseAll()
+
+Define gui$focus(Focus):
+A fact Focus is not #app
+B action gui$quiet()
+C action gui.focus= Focus
+
+Define gui$focus(#app):
+A action gui.focus= #app
+
+Define gui$input(Mods Key):
+A fact (gui.bindings.strip(Mods Key)->TypeName) in gui.bindings
+B action gui$hold(Key,TypeName)
+
+Define gui$input(Mods Key):
+A fact (gui.bindings.strip(Mods Key)->_) not in gui.bindings
+
+Define gui$route(Press):
+A fact Press.unreachable
+
+Define gui$route("Alt+F4"):
+A action The window gets a close request, as from the close button of the window.
+
+Define gui$route(Mods "Esc"):
+A fact not (Mods "Esc").unreachable
+B fact gui.capture = #captured
+C action gui$quiet()
+
+Define gui$route(Mods "Esc"):
+A fact not (Mods "Esc").unreachable
+B fact gui.capture != #captured
+C action gui closes every open menu, and the text widget with the focus loses the focus
+D action gui$focus(#app)
+
+Define gui$route(Mods "Tab"):
+A fact not (Mods "Tab").unreachable
+B fact The window shows at least one text widget.
+C action gui closes every open menu
+D action gui$focus(#text)
+E action gui gives the focus to the text widget after the one that had the focus, or before it when Mods holds "Shift+"; to the first text widget when no text widget had the focus
+
+Define gui$route(Mods "Tab"):
+A fact not (Mods "Tab").unreachable
+B fact The window shows no text widget.
+C action gui closes every open menu
+D action gui$focus(#app)
+
+Define gui$route(Mods MouseButton):
+A fact (Mods MouseButton).bindable
+B fact gui.capture = #captured
+C action gui$input(Mods MouseButton)
+
+Define gui$route(Mods MouseButton):
+A fact (Mods MouseButton).bindable
+B fact gui.capture != #captured
+C action The widgets get the press of MouseButton.
+
+Define gui$route(Mods KeyboardKey):
+A fact (Mods KeyboardKey).bindable
+B fact gui.focus = #app
+C action gui$input(Mods KeyboardKey)
+
+Define gui$route(Mods KeyboardKey):
+A fact (Mods KeyboardKey).bindable
+B fact gui.focus != #app
+C action The text widget with the focus, or the open menus, get Mods KeyboardKey.
+
+Story:
+A event The desk reports to gui that Key went down.
+B fact Key not in gui.down
+C fact gui.down.mods = Mods
+D action gui.down= gui.down "(" Key ")"
+E action gui$route(Mods Key)
+
+Story:
+A event The desk reports to gui that Key went down.
+B fact Key in gui.down
+C after gui.down, gui.held, gui.focus and gui.capture are unchanged, and the listener got no call.
+
+Story:
+A event The desk reports to gui that Key is up.
+B fact gui.down = KeySet "(" Key ")" KeySet'
+C action gui.down= KeySet KeySet'
+D action gui$unhold(Key)
+
+Story:
+A event The desk reports to gui that Key is up.
+B fact Key not in gui.down
+C after gui.down, gui.held, gui.focus and gui.capture are unchanged, and the listener got no call.
+
+Story:
+A event The window loses the keyboard.
+B action gui$quiet()
+C after gui.down is unchanged: a Key that is still down when the window gets the keyboard again gives no value until the desk reports that Key up and then down.
+
+Story:
+A event The program calls frame.onInput(TypeName, listener).
+B action gui$releaseAll()
+C action gui.bindings= gui.inputs.family(TypeName).bindings
+D after The listened family is TypeName, and the listener is listener.
+
+Story:
+A event A text widget gets the focus by a press of a MouseButton on that text widget.
+B action gui$focus(#text)
+
+Story:
+A event The program opens a menu.
+B action gui$focus(#menu)
+
+Story:
+A event The last open menu closes, or the text widget with the focus is removed from the window.
+B fact No menu is open, and no text widget has the focus.
+C action gui$focus(#app)
+
+Story:
+A event The program calls frame.askForMouseCapture(True).
+B fact gui.capture = #free
+C action gui.capture= #asked
+
+Story:
+A event The program calls frame.askForMouseCapture(True).
+B fact gui.capture != #free
+C after gui.capture is unchanged.
+
+Story:
+A event The program calls frame.askForMouseCapture(False).
+B fact gui.capture = #captured
+C action gui$quiet()
+
+Story:
+A event The program calls frame.askForMouseCapture(False).
+B fact gui.capture != #captured
+C action gui.capture= #free
+
+Story:
+A event The widgets get the press of MouseLeft, and the pointer is on the capture image.
+B fact gui.capture = #asked
+C action The text widget with the focus loses the focus.
+D action gui$focus(#app)
+E action gui.capture= #captured
+F after The Key MouseLeft is in gui.down and not in dom(gui.held): the release of that click gives no value.
+
+Story:
+A event The window closes.
+B action gui$quiet()
+C after The listener gets no call any more.
+
+Story:
+A fact The Bindings of the listened family WhileDriving are (A->Jump) (Shift->Run) (W->Forward).
+B event The desk reports that Alt went down, then that A went down.
+C after The Press is Alt+A, and the listener got no call.
+D event The desk reports that Alt is up, with A still down.
+E after The listener got no call: a Key gives a value only when it goes down.
+F event The desk reports that A is up, that Shift went down, then that W went down.
+G after The listener got .pressed(Run), then .pressed(Forward): Shift is a bound modifier, so the Press of W is W.
+H event The desk reports that Shift is up, then that W is up.
+I after The listener got .released(Run), then .released(Forward).
+
+Story:
+A fact The Bindings of the listened family WhileDriving are (Ctrl->Crouch) (Alt->Walk) (T->Talk).
+B event The desk reports that Ctrl went down, that Alt went down, then that T went down.
+C after The listener got .pressed(Crouch), then .pressed(Walk), and no .pressed(Talk): Ctrl+Alt+T is unreachable.
+D after The same holds on a desk that does not report that T went down, because that desk opens a terminal for Ctrl+Alt+T.
+
+Story:
+A fact The Bindings of the listened family WhileDriving are (W->Forward) (Up->Forward).
+B event The desk reports that W went down, that Up went down, that W is up, then that Up is up.
+C after The listener got .pressed(Forward) one time, when W went down, and .released(Forward) one time, when Up went up.
+
+Story:
+A fact The Bindings of the listened family WhileDriving are (MouseLeft->Fire), and the mouse is captured.
+B event The desk reports that MouseLeft went down.
+C after The listener got .pressed(Fire).
+D event The user lets MouseLeft go while the desk holds the pointer, and the desk never reports that MouseLeft is up.
+E event The user presses and lets go MouseLeft again; the desk reports that MouseLeft went down, then that MouseLeft is up.
+F after The listener got no second .pressed(Fire), and got .released(Fire) only at the end: the .released arrived late.
+
+Invariant:
+At every moment, every Key of dom(gui.held) is in gui.down.
+At every moment, if gui.capture is #captured, then gui.focus is #app.
+At every moment, if gui.focus is not #app, then gui.held is {}.
+At every moment, if gui.capture is not #captured, then no Key of dom(gui.held) is of form MouseButton.
+At every moment, every (Key->TypeName) of gui.held has TypeName in the values that gui.bindings maps to.
+The calls of .pressed and .released that one listener gets for one value alternate, starting with .pressed, and the last one is .released when another listener replaces that listener or when the window closes.
+
+Implementation notes:
+"The desk reports that Key is up" covers two sources: a release event of the desk, and the answer of the desk when gui asks whether a Key is down.
+On every repaint tick, while gui.down is not empty, gui asks the desk for the state of each Key of gui.down: GetAsyncKeyState on Windows, CGEventSourceKeyState and CGEventSourceButtonState on macOS (only while the program is in front), XQueryKeymap and XQueryPointer on a connection of its own on X11 and XWayland.
+This catches a release that the desk gives to another program or to itself, for example while the window switcher, a menu of the desk or a screenshot tool holds the keyboard.
+On GNOME on Wayland and on Hyprland the desk reports a Key up when the desk takes the keyboard, while the Key is still down: this is the early .released of the first Text.
+Two cases where the .released is late, both bugs of a desk: on GNOME on Wayland, a MouseButton held across the quick settings stays down for the desk until the next click; on KDE Plasma of openSUSE, a KeyboardKey held across a switch to a text console and back stays down for XWayland until the next key event.
+"The desk reports that Key went down" for a Key of gui.down is the autorepeat of the desk for a KeyboardKey: on X11 and XWayland nothing tells an autorepeat from a new press after a lost release, so every desk treats the two the same way, and a MouseButton follows the same rule.
+A Key is found from the physical key, never from the character: the scan code on Windows, the keyCode of the NSEvent on macOS (read by a local monitor of NSEvent), the keycode of the X11 event on Linux.
+On Windows a layout with AltGr reports the right Alt key as Ctrl and Alt together; gui drops that extra Ctrl, so the right Alt key is the Key Alt alone.
+On Windows gui drops the keyboard menu of the window (Alt alone, F10, Alt+Space); on macOS the local monitor returns nil for every key event while gui.focus is #app, and returns the event unchanged while gui.focus is #text and for every event with Command down.
+On macOS Command+Q reaches the quit handler of the program, which gives the window a close request.
+"Alt+F4": the desks that close the window for Alt+F4 give the window the same close request as the close button; on the other desks (macOS, sway, Hyprland, i3) gui gives the window that close request itself.
+The capture: clip and hide the pointer and read raw motion on Windows; CGAssociateMouseAndMouseCursorPosition on macOS; XGrabPointer confined to the window on X11 and XWayland, which succeeded on the 13 Linux desks and, on the desks that move a window with Alt and a drag, gives the MouseButton to the program.
+When the capture ends, the pointer is shown again at the center of the content of the window.

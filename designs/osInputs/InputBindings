@@ -1,0 +1,115 @@
+Text:
+This design is about how the user of fearlessManager binds Presses to the values that a Fearless program receives.
+An 'input family' of a code project is a concrete type of that project implementing base.PressReleaseInput; the 'values' of an input family are the types that its .enumList lists.
+In this design, TypeName names an input family, and TypeName' names one of its values.
+Info, Infos.msg, Infos.list, Infos.map, TypeName, ProjectName, Base16, Target, Project and the Defines of fearlessManager are the ones of the designs of fearlessManager.
+The Project of the designs of fearlessManager maps one more key, #inputs, to an Inputs; a Project that is registered starts with #inputs mapped to Infos.map().
+The Message of the designs of fearlessManager has the forms of InputMessage too, and the Error of those designs has the forms of InputError too.
+A Press that is a key of an Infos.map stands for its .str, as a TypeName does: Press.str is a bijection from the values of Press to some values of Str.
+The bindings are per project: two projects with the same input family have independent Bindings.
+When a Run starts, fearlessManager gives each main of that Run the Inputs of the Project of that Run.
+A value with no Press in the FamilyBindings of its input family is never received by the program.
+The manager GUI shows, for a code project, each input family of the project with its values, and the Presses bound to each value.
+//later: the manifest of a package lists the input families of the package and their values
+//later: an input family suggests default Presses for its values
+//later: the keys that a text widget uses to edit and to move the caret are set here too, per project
+
+Grammar:
+Bindings ::= (Press1->TypeName1) .. (Pressn->TypeNamen)
+FamilyBindings ::= Infos.map(Press1, Infos.msg(TypeName1) .. Pressn, Infos.msg(TypeNamen))
+Inputs ::= Infos.map(TypeName1, FamilyBindings1 .. TypeNamen, FamilyBindingsn)
+InputMessage ::= "Bind " Target " " TypeName " " Press " " TypeName' \
+               | "Unbind " Target " " TypeName " " Press
+InputError ::= inputErrorPressCanNotBeBound(TypeName,Press)
+#inputs in Str
+
+Well formedness:
+in Bindings: Press1.bindable .. Pressn.bindable
+in Bindings: Bindings.strip(Press1) = Press1 .. Bindings.strip(Pressn) = Pressn
+in FamilyBindings: FamilyBindings.bindings is of form Bindings
+
+Notation: Infos.map(Press1, Infos.msg(TypeName1) .. Pressn, Infos.msg(TypeNamen)).bindings = (Press1->TypeName1) .. (Pressn->TypeNamen)
+
+Notation: Bindings.keep("") = ""
+
+Notation: Bindings.keep(Modifier "+") = "" where:
+- (_Mods Modifier->_) in Bindings
+
+Notation: Bindings.keep(Modifier "+") = Modifier "+" where:
+- (_Mods Modifier->_) not in Bindings
+
+Notation: Bindings.strip(ShiftMod CtrlMod AltMod SuperMod Key) = Bindings.keep(ShiftMod) Bindings.keep(CtrlMod) Bindings.keep(AltMod) Bindings.keep(SuperMod) Key
+
+Notation: Press' in Bindings.blocked where:
+- (Press->_) in Bindings
+- Bindings.strip(Press') = Press
+- Press' != Press
+- not Press'.bindable
+
+Notation: Inputs.family(TypeName) = FamilyBindings where:
+- Inputs = Infos.map(_ TypeName, FamilyBindings _)
+
+Notation: Inputs.family(TypeName) = Infos.map() where:
+- Inputs is not of form Infos.map(_ TypeName, FamilyBindings _)
+
+Text:
+A Modifier that is the Key of a Press of Bindings is a 'bound modifier' of Bindings.
+Bindings.strip(Press) removes the bound modifiers from the Mods of Press: with Shift bound to a value, W with Shift down is the Press W, so the two values are received together.
+A Modifier that is not a bound modifier stays in the Mods: with A bound to a value and Alt bound to no value, A with Alt down is the Press Alt+A, and Alt+A is not the Press A.
+The second WellFormednessLine of Bindings refuses a Press whose Mods holds a bound modifier: no Key going down would ever give that Press.
+Bindings.blocked is the set of the 'blocked' Presses: a blocked Press is made only of Keys that are bound one by one, and still no program receives it.
+For example, with Ctrl, Alt and T bound to three values, Ctrl+Alt+T is blocked: a desk opens a terminal for it.
+A Press is about the Key that goes down last: with T down first, Ctrl and Alt going down after give the Presses Ctrl and Ctrl+Alt, which are not blocked.
+
+Define fearlessManager$delegate("Bind Full(" ProjectName " " Base16 ") " TypeName " " Press " " TypeName'):
+A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
+B fact fearlessManager.projectsInfo.get(Base16) = Project
+C fact Project.#inputs = Inputs
+D fact Inputs.family(TypeName)[+=(Press->Infos.msg(TypeName'))] = Info
+E if Info is not of form FamilyBindings, error inputErrorPressCanNotBeBound(TypeName,Press)
+F action return "EditMetadata " fearlessManager.projectsInfo[Project=Project[#inputs=Inputs[+=(TypeName->Info)]]]
+
+Define fearlessManager$delegate("Unbind Full(" ProjectName " " Base16 ") " TypeName " " Press):
+A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
+B fact fearlessManager.projectsInfo.get(Base16) = Project
+C fact Project.#inputs = Inputs
+D action return "EditMetadata " fearlessManager.projectsInfo[Project=Project[#inputs=Inputs[+=(TypeName->Inputs.family(TypeName)[/=Press])]]]
+
+Text:
+In the manager GUI, the user binds by pressing.
+The user chooses a value TypeName' of an input family TypeName of a project, then presses keys or mouse buttons inside the 'manager window'.
+The 'chosen Press' is the Press of the last Key that went down before the first Key goes up: Shift down, W down, any Key up gives Shift+W; Shift down, Shift up gives Shift.
+In the three Stories below, Target names that project, FamilyBindings is the Inputs.family(TypeName) of that project, FamilyBindings' is FamilyBindings[+=(Press->Infos.msg(TypeName'))], and Message is "Bind " Target " " TypeName " " Press " " TypeName'.
+When FamilyBindings' is not of form FamilyBindings, managerGui$send(Message) shows the InputError of the Answer, as for every other Message.
+The 'disclaimer' is a dialog of the 'manager window' that lists Press1 .. Pressn, each with the values that its Keys are bound to, and has one tick box and one button to confirm.
+
+Story:
+A event The user chooses the Press Press for the value TypeName' of the input family TypeName.
+B fact FamilyBindings' is not of form FamilyBindings, or every Press of FamilyBindings'.bindings.blocked is in FamilyBindings.bindings.blocked.
+C action managerGui$send(Message)
+
+Story:
+A event The user chooses the Press Press for the value TypeName' of the input family TypeName.
+B fact FamilyBindings' is of form FamilyBindings.
+C fact Press1 .. Pressn are the Presses of FamilyBindings'.bindings.blocked that are not in FamilyBindings.bindings.blocked, and n is not 0.
+D action The manager GUI shows the disclaimer for Press1 .. Pressn.
+E event The user ticks the tick box and confirms.
+F action managerGui$send(Message)
+
+Story:
+A event The user chooses the Press Press for the value TypeName' of the input family TypeName.
+B fact FamilyBindings' is of form FamilyBindings.
+C fact Press1 .. Pressn are the Presses of FamilyBindings'.bindings.blocked that are not in FamilyBindings.bindings.blocked, and n is not 0.
+D action The manager GUI shows the disclaimer for Press1 .. Pressn.
+E event The user closes the disclaimer without confirming.
+F after The manager GUI has sent no Message.
+
+Story:
+A event The user removes the Press Press from the input family TypeName of the project that Target names.
+B action managerGui$send("Unbind " Target " " TypeName " " Press)
+
+Implementation notes:
+A Str is a Fearless string literal: #inputs is "inputs", and Press.str is the Fearless string literal holding the text of Press.
+Nothing stores which blocked Presses the user accepted: a Bind asks only for the blocked Presses that the Bind adds, and the Bindings that projects.info already holds were accepted when they were made.
+On a desk that takes the chosen Press for itself, the 'manager window' never sees that Press, so the user can not choose it there; fearlessManager refuses the same Press on every desk through Press.bindable, and does not rely on what the 'manager window' sees.
+The text of the disclaimer names the values first and the Keys after, for example: while Crouch and Walk are held, pressing Talk does nothing (Ctrl+Alt+T).
