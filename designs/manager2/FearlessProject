@@ -18,6 +18,24 @@ OutExtension ::= ".json" | ".jar" | ".html" | ".txt" | ".unfinished"
 MountedPaths ::= MountedPath1 .. MountedPathn
 MountedPath ::= (TypeName->Base16)
 
+Signature: frontend.rankFilesError(FearlessFiles) = Str//the text that says what is wrong in the rank files FearlessFiles; undefined when nothing is wrong
+
+Signature: frontend.rank(FearlessPath) = Nat//the rank that the name of the rank file at FearlessPath gives; a smaller Nat is a lower rank
+
+Signature: frontend.mapsChanged(PackageName,FearlessFiles,Content)//holds when the maps that the rank files FearlessFiles give to PackageName are not the maps that Content, the json file of PackageName, records
+
+Signature: frontend.compile(PackageName,FearlessFiles,FearlessFiles',LowerJsons) = CompileResult//compiles the files FearlessFiles of PackageName, with the rank files FearlessFiles' and the json files of the packages of lower rank
+
+Signature: frontend.mains(Content1 .. Contentn) = TypeName1 .. TypeNamem//the types that the json files Content1 .. Contentn declare as mains
+
+Signature: frontend.attenuators(Content1 .. Contentn) = TypeName1 .. TypeNamem//the types that the json files Content1 .. Contentn declare as attenuators
+
+Signature: frontend.dataTypes(Content1 .. Contentn) = TypeName1 .. TypeNamem//the types that the json files Content1 .. Contentn declare as needing mounted data
+
+Signature: fearlessProject$jsonBase = Content//the json file of the package "base", which comes with fearlessManager
+
+Signature: fearlessProject$runMain(TypeName,Attenuator,MountedPaths,InputFile)//runs the main TypeName, with the attenuators that Attenuator gives to TypeName, with the Fearless projects of MountedPaths as mounted data, and with the file that InputFile encodes the path of as the input file; with "NoFile", the main has no input file
+
 Define fearlessProject$checkShapeRules:
 A action os$currentDesk() = Desk
 B if not fearlessProject.wellShaped(Desk, Desk.deskPath(Base16.taggedText)), error fearlessProjectErrorIsNotWellShaped(Base16)
@@ -71,18 +89,20 @@ D if the modification time of "last_compile_result.txt" is not after the modific
 E fact Project.#kind = Infos.msg(Kind)
 F if the Content of the file "last_compile_result.txt" directly inside the folder .fearless_out of Base16 is not "Accepted " Kind, error fearlessProjectErrorIsOutOfDate(Base16)
 
-Define fearlessProject$checkCanRun(Project):
+Define fearlessProject$checkCanRun(Project,TypeName):
 A if Project.#kind is not Infos.msg("code"), error fearlessProjectErrorIsNotOfKindCode(Base16)
 B action fearlessProject$checkIsUpToDate(Project)
-C if Project.#mains is Infos.list(), error fearlessProjectErrorNoMainIsSelected(Base16)
-D fact Project.#mains = Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen))
-E if TypeNamei is not in frontend.mains(fearlessProject$jsons), error fearlessProjectErrorSelectedMainIsNotAMain(TypeNamei)
-F action fearlessProject$checkAttenuators(Project.#attenuators)
-G action fearlessProject$checkMountedTypes(Project.#mounts)
+C if TypeName is not in frontend.mains(fearlessProject$jsons), error fearlessProjectErrorTypeIsNotAMain(TypeName)
+D action fearlessProject$checkAttenuators(Project.#attenuators)
+E action fearlessProject$checkMountedTypes(Project.#mounts)
+
+Signature: fearlessProject$checkAttenuators(Attenuator)
 
 Define fearlessProject$checkAttenuators(Infos.map(TypeName1, TypeNames1 .. TypeNamen, TypeNamesn)):
 A if TypeNamei is not in frontend.mains(fearlessProject$jsons), error fearlessProjectErrorAttenuatedMainIsNotAMain(TypeNamei)
 B if Infos.msg(TypeName) in TypeNamesi and TypeName is not in frontend.attenuators(fearlessProject$jsons), error fearlessProjectErrorAttenuatorIsNotAnAttenuator(TypeNamei,TypeName)
+
+Signature: fearlessProject$checkMountedTypes(Mount)
 
 Define fearlessProject$checkMountedTypes(Infos.map(TypeName1, Infos.msg(ProjectName1) .. TypeNamen, Infos.msg(ProjectNamen))):
 A if TypeNamei is not in frontend.dataTypes(fearlessProject$jsons), error fearlessProjectErrorMountedTypeIsNotADataType(TypeNamei)
@@ -117,10 +137,6 @@ D action fearlessProject$cleanup
 E action fearlessProject$packages = PackageName1 .. PackageNamen
 F action fearlessProject$compilePackage(PackageName1) .. fearlessProject$compilePackage(PackageNamen)
 
-Define fearlessProject$run(Project,MountedPaths):
-A fact Project.#mains = Infos.list(Infos.msg(TypeName1) .. Infos.msg(TypeNamen))
-B action fearlessProject$runMain(TypeName1,Project.#attenuators,MountedPaths) .. fearlessProject$runMain(TypeNamen,Project.#attenuators,MountedPaths)
-
 Define fearlessProject$cleanup:
 A action fearlessProject$packages = PackageName1 .. PackageNamen
 B if "_" PackageName OutExtension in fearlessProject$fearless_out and PackageName is not one of PackageName1 .. PackageNamen, return fearlessProject$fearless_out-= "x", for each "x" in fearlessProject$fearless_out that is not "compile_start.txt" and is not "last_compile_result.txt"
@@ -141,9 +157,10 @@ Define fearlessProject$lowerJsons(PackageName):
 A action fearlessProject$lower(PackageName) = PackageName1 .. PackageNamen
 B action return (PackageName1->fearlessProject$json(PackageName1)) .. (PackageNamen->fearlessProject$json(PackageNamen))
 
-Define fearlessProject$json(PackageName):
-A fact PackageName is "base"
-B action return fearlessProject$jsonBase
+Signature: fearlessProject$json(PackageName) = Content
+
+Define fearlessProject$json("base"):
+A action return fearlessProject$jsonBase
 
 Define fearlessProject$json(PackageName):
 A fact PackageName is not "base"
