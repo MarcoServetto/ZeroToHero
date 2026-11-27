@@ -1,0 +1,44 @@
+Later
+=====
+
+A Later[T] is the result of something in the world that ends later: the end of a process, the next input file, the answer of an IQL dialog.
+
+    Later: Sealed{}
+    Later[T:*]: Later{
+      mut .await: T;
+      mut .awaitUpTo(time: Duration): mut Opt[T];
+      }
+    Laters: Sealed{
+      .first[R:**](laters: mut List[mut Later], callbacks: mut List[mut MF[R]]): R;
+      .firstUpTo[R:*](time: Duration, laters: mut List[mut Later], callbacks: mut List[mut MF[R]]): mut Opt[R];
+      }
+
+    CapRunningMain[R]:{ ... mut .end: mut Later[R]; mut .terminate: Void; }
+    CapInputCursor:{ ... mut .file: mut Later[mut CapInputCursorNode]; mut .next: mut CapInputCursor; }
+    CapIql:{ ... mut .ask(query: Query): mut Later[Answer]; }    (IqlDesign)
+
+.end and .file replace CapRunningMain.await, CapRunningMain.awaitUpTo and CapInputCursor#; CapProcess.run is .start, then .end.await.
+
+A Later gets its result once, when what it waits for ends: a value, or an error.
+A Later made after that end has its result already.
+From then on, every call on the Later gives that result: the same value, or the same error thrown again.
+.await blocks until the Later has its result, then returns the value or throws the error.
+.awaitUpTo(time) is .await, but gives an empty Opt after time; with Duration#0 it only checks.
+Laters.first blocks until a Later of laters has its result, and takes the first such Later of the list:
+it throws the error, or it runs the callback at the same index once and returns what the callback returns.
+No other callback runs; the other Laters keep their results for later calls.
+Laters.firstUpTo is Laters.first, but gives an empty Opt after time.
+Both throw a deterministic error before waiting when laters is empty, or when laters and callbacks have different sizes.
+A wait that can never end throws a non deterministic error: a wait on a Later of CapInputCursor.file whose file has not arrived, with no window of the program open.
+
+    .let build= {sys.process.start(Build, {}).end}
+    .let answer= {sys.iql.ask(SettingsQuery)}
+    .let msg= {Laters.first(Lists#[mut Later](build, answer), Lists#[mut MF[Str]](
+      {"built"},
+      {"answered: "+(answer.await.str)}
+      ))}
+
+Implementation notes
+====================
+
+- Laters.first waits on the runtime objects of its Laters at once, with no polling: the Later of a Revokable wrapper is a runtime object made around the Later it wraps, checking the Revocation at each call.

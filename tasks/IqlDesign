@@ -1,56 +1,26 @@
-IQL and the callbacks of the Gui
-================================
-
-Goal
-====
+IQL
+===
 
 IQL asks the user for structured input: a dialog with named fields, each with a kind, a prompt, a default and constraints.
-IQL is a capability of System of its own: a program uses it with or without a Gui.
-An IQL dialog is a window built with the widgets of the Gui library, never a dialog of the toolkit.
-The IQL syntax is fluent, like the syntax of the Gui, and simpler and less flexible on purpose.
-The result of an IQL query is something the program waits on.
-One API waits on a result: the end of a process, the next input file, the result of a dialog.
-A Frame can be disabled: while a dialog is open, the frame behind it takes no input.
+CapIql is a capability of System, used with or without a Gui:
 
-Open: the IQL syntax and the result of a query are not designed yet.
-This document lists the callbacks of the Gui first, since disabling a frame is defined on them.
+    System:{ ... mut .iql: mut CapIql; }
+    CapIql: ToIso[CapIql], WidenTo[CapIql]{ mut .ask(query: Query): mut Later[Answer]; }
 
-Terms
-=====
+.ask opens the dialog and returns at once; the Later[Answer] (LaterDesign) gets the Answer when the dialog closes.
+Closing the window of the dialog without answering also gives an Answer, saying so.
+An IQL dialog is a window built with the widgets of the Gui library, not a dialog of the toolkit.
+An IQL dialog runs no mut code of the program: the Query is imm, and the library alone runs the window.
+The IQL syntax is fluent like the Gui syntax, simpler and less flexible on purpose.
 
-    the program        the Fearless code that uses s.gui.
-    the library        the standard library code that implements CapGui and Frame.
-    toolkit thread     the thread that receives the input of the window, lays out and paints it.
-    model queue        the queue of tasks of one frame, run one at a time, in order, by the model thread of the frame.
-    model task         a task of the model queue.
-    callback           code of the program that the library runs when the user acts or time passes.
-    model event        a model task that runs a callback.
-    library task       a model task that runs only code of the library.
+Open: the IQL syntax, Query and Answer.
+An IQL dialog stays open until the user answers it or closes its window, or the program ends, also when no code waits on its Later.
 
-Threads
-=======
+The handlers
+============
 
-One thread at a time runs mut code of the program.
-The thread that calls CapGui.run runs the consumer of .run, then waits until the window closes.
-Meanwhile the model thread of the frame runs the model events.
-A model event that calls CapGui.run waits in the same way until the new window closes.
-So the threads running mut code of the program form a stack, and only the top of the stack runs.
-Each handoff between two of these threads is a happens-before edge: a queue, or a wait for a task to end.
-The toolkit thread runs only imm code of the program: the painters.
-
-The getters
-===========
-
-Every getter of an object reached from CapGui is mut: the frame, the widgets, the menus and their builders.
-What the user or time changes (the text of a TextField, the positions of the dividers of a Split, Frame.elapsed) is then observed only through a mut reference, as every other observation of the world.
-A getter whose name is the name of a setter with no parameter takes another name: .fills is the getter of .fill.
-The values the library gives to painters and callbacks keep read getters: Graphics, CaretGraphics, TextRoom, ScreenContext, ResizeRequest, TextEvent, UTextEvent, KeyEvent.
-Each of them describes one moment and never changes.
-
-The callbacks
-=============
-
-Model events, each registered by the setter on the left:
+A handler is code of the program that a setter registers, and that the library runs as a model task of the Frame.
+Each setter, with what makes its model task:
 
     Button.action              a click of the primary button on the Button.
     Mouse.pressed .released .moved .dragged
@@ -74,105 +44,43 @@ Model events, each registered by the setter on the left:
     .onCommit                  Enter, Ctrl+Enter, and the focus leaving the widget by a press elsewhere, Tab or Shift+Tab,
                                when the text differs from the committed text.
 
-Library tasks run no callback: a press or a drag that moves the caret, the steps of the scroll of a drag past an edge, the keys that move the caret, Ctrl+A, Ctrl+C.
-They are model tasks only so that the user and the program change a text widget in one order.
+The toolkit thread runs the actions of the user that run no handler: a press or a drag that moves the caret, the steps of the scroll of a drag past an edge, the keys that move the caret, Ctrl+A, Ctrl+C.
+Such an action on a text widget runs once no queued or running model task changes the text of that widget, so the user and the program change the text in one order.
 
-The toolkit thread alone handles the rest, and runs no callback:
-hover highlighting, tooltips, the wheel, scroll bars, the drag of a divider of a Split,
-a menu that is open (highlighting, keys, scrolling, closing, opening a submenu),
-the focus, the composition of an input method, the full screen key, the states of the window, the drag of the Fearless corner, the repaints.
-A file dropped on the window goes to the list of the input files (CapInputCursor), with no model task.
-
-Code of the program that runs outside callbacks:
-
-    the consumer of CapGui.run      on the thread that calls .run, before the window opens.
-    the scope of each builder       on the thread that calls the builder.
-    Widget.openMenu                 the scope builds the menu, with its submenus, on the thread that calls .openMenu.
-    Painter, CaretPainter           imm, on the toolkit thread, at every repaint.
-
-Disabling a frame
+Disabling a Frame
 =================
 
-    Frame:{ ...
-      mut .enabled(Bool): mut Frame;
-      mut .enabled: Bool;
-      }
-    ScreenContext:{ ... read .enabled: Bool; }
+    Frame:{ ... mut .whileDisabled[R:*](scope: mut MF[R]): mut Action[R]; }
+    Graphics:{ ... read .enabled: Bool; }
 
-A frame is enabled when it opens.
-While a frame is disabled, the library drops each model event of the frame instead of queuing it: no callback of the frame runs.
-.enabled(False) also drops the model events of the frame already in its model queue.
-A ResizeRequest of a disabled frame is dropped like every other model event: the bands of a desk resize made while the frame is disabled stay until the next desk resize.
-The toolkit thread goes on as for an enabled frame: the repaints, hover, tooltips, scrolling, the states of the window.
-Each painter sees whether the frame is enabled through .enabled of its Graphics, and can draw a disabled look.
+Running the Action of f.whileDisabled(scope) disables f, runs scope, and enables f again when scope returns or throws; the Action gives what scope returns.
+When a key chord or a mouse button is held for f, the Action gives an Info naming it, and scope does not run.
+Held for f: its .pressed reached a handler of f, and its .released has not.
+On a disabled f, the Action runs scope and leaves f disabled.
 
-Open: a pair cut by .enabled(False): a key pressed before it and released after it, an .entered with no .exited, a press with no release.
-Open: the library tasks of a disabled frame.
-Open: whether the widgets of the library draw a disabled look of their own.
+While f is disabled:
+- a model task is dropped instead of queued, .onClose, .onResize and the model ticks included; disabling f drops those already queued;
+- a key chord or a mouse button pressed reaches no handler, and neither does its release, also after f is enabled again;
+- the toolkit thread goes on as for an enabled Frame: the repaints, hover, tooltips, the wheel, scroll bars, the drag of a divider of a Split, the focus, the composition of an input method, the states of the window, the drag of the Fearless corner, a file dropped on the window;
+- each change to f shows at once, not at the end of the model task that runs scope;
+- the widgets of the library draw a disabled look, and a painter sees .enabled of its Graphics.
+When f is enabled again, .exited and .entered run as when an open menu closes: for the widget the program last saw under the pointer, and for the widget under the pointer now.
 
-Waiting
-=======
+A dialog in front of a Frame
+============================
 
-    later      an object of type Later: the result of one source, there now or later.
-    source     what gives the result of a later: the end of a process, the next input file, the answer of a dialog.
-    result     what a source gives: a value, or an error.
-
-    Later: Sealed{}
-    Later[T:**]: Later{
-      mut .await: T;
-      mut .awaitUpTo(time: Duration): mut Opt[T];
-      }
-    Laters: Sealed{
-      .first[R:**](laters: mut List[mut Later], callbacks: mut List[mut MF[R]]): R;
-      .firstUpTo[R:**](time: Duration, laters: mut List[mut Later], callbacks: mut List[mut MF[R]]): mut Opt[R];
-      }
-
-A capability gives a later:
-
-    CapRunningMain[R]:{ mut .end: mut Later[R]; mut .terminate: Void; }
-    CapInputCursor:{ mut .file: mut Later[mut CapInputCursorNode]; mut .next: mut CapInputCursor; }
-    CapIql:{ mut .ask(query: Query): mut Later[Answer]; }
-
-CapProcess.run is CapProcess.start, then .end.await.
-Later is Sealed: only the library makes a later, so Laters.first waits on all its laters at once, with no polling.
-A later holds the result once its source gives it.
-From then on, every call on the later gives that result: it returns the same value, or throws the same error.
-.await blocks until the later holds the result, then returns the value or throws the error.
-.awaitUpTo(time) blocks at most time, and gives an empty Opt when the later does not hold the result yet; with Duration#0 it only checks.
-
-Laters.first throws a deterministic error before waiting when laters and callbacks have different sizes.
-Then it blocks until a later of laters holds its result, and takes the leftmost later that holds its result.
-When that result is an error, .first throws the error.
-Otherwise .first runs the callback at the same index, once, on the thread that calls .first, and returns what the callback returns.
-No other callback runs.
-Each callback is plain code: it reaches the value through the later it captures, whose .await returns at once.
-.firstUpTo(time) is .first, but gives an empty Opt when no later holds its result after time.
-
-    .let b= {build.end}
-    .let f= {at.file}
-    .let a= {iql.ask(SettingsQuery)}
-    .let msg= {Laters.first(Lists#(b, f, a), Lists#(
-      {"built: "+(b.await.str)},
-      {"file: "+(f.await.label)},
-      {"answered"}
-      ))}
-
-A later that lost a .first still gets its result from its source, and a later call gives that result.
-A wait whose laters can never get a result throws a non deterministic error.
-The next input file can never arrive when no window of the program is open.
-A process and an open dialog can always still give a result.
-RevokableRunningMain and RevokableInputCursor give a later made by a constructor internal to base: it checks the Revocation at each .await, .awaitUpTo, .first and .firstUpTo on it.
-
-A model event waits on a later as any code does: the model thread of the frame blocks, and the toolkit thread goes on repainting.
-A frame waiting on a dialog:
-
-    .button{:: .text "Settings" .action{Block#
-      .do{f.enabled False}
-      .let answer= {iql.ask(SettingsQuery).await}
-      .do{f.enabled True}
-      .return{model.apply answer}
+    .button{:: .text "Settings" .action{
+      f.whileDisabled{model.apply(sys.iql.ask(SettingsQuery).await)}.catch{_ -> Void}
       }}
 
-While the model event waits, the frame is disabled: the input of the user to the frame is dropped, not queued for after the wait.
-An IQL dialog runs no code of the program: the library alone runs its window, so the stack of the threads running mut code of the program does not grow.
-A frame that stays enabled checks its laters from ModelFps.action, with .awaitUpTo(Duration#0) or Laters.firstUpTo(Duration#0, ...).
+    A The Frame f is open, with the Button above.
+    B The user clicks Settings.
+    C The IQL dialog opens, and the user observes the disabled look of f.
+    D The user clicks a Button of f, types in a TextField of f, presses Ctrl+A in it, and clicks the close button of the desk border of f.
+    E The user observes that f stays open, and that the text of the TextField is unchanged and all selected.
+    F The user answers the dialog.
+    G The dialog closes; the user observes f with the new settings, no disabled look, and nothing done by the Button of D.
+
+    A The Frame f is open, with the Button above; f.onKey has a .pressed action for the key chord A.
+    B The user holds A and clicks Settings.
+    C No dialog opens, and f stays enabled: the Action gives an Info naming A, and the .catch drops it.
