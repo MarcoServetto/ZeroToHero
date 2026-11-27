@@ -60,7 +60,7 @@ Queue ::= "\t" Message1 "\n" .. "\t" Messagen "\n"
 LongLivedMessage ::= "Run Full(" ProjectName " " Base16 ") " TypeName " " InputFile | "Compile Full(" ProjectName " " Base16 ")"//Some Messages are also LongLivedMessage
 LongLivedMap ::= (Base161->LongLivedMessage1) .. (Base16n->LongLivedMessagen)
 Messages ::= Message1 .. Messagen
-DirectMessage ::= "EditMetadata " Info | "Terminate " Base16 | "RefreshCache"
+DirectMessage ::= "EditMetadata " Info | "Terminate " Base16 | "RefreshCache" | "Openers " Base16 | "Quit"
 
 Well formedness:
 in LongLivedMap: Base161 .. Base16n are disjoint
@@ -104,10 +104,8 @@ Signature: Names.mountedPaths(Mount) = MountedPaths
 Notation: Names.mountedPaths(Infos.map(TypeName1, Infos.msg(ProjectName1) .. TypeNamen, Infos.msg(ProjectNamen))) = (TypeName1->Names.projectNameToBase16(ProjectName1)) .. (TypeNamen->Names.projectNameToBase16(ProjectNamen))
 
 Notation: Message.needsDelegation where:
-- Message is not "Quit"
 - Message is not of form DirectMessage
 - Message is not of form LongLivedMessage
-- Message is not of form "Openers " Base16
 
 Notation: ProjectsInfo.get(Base16) = Project where:
 - Project in ProjectsInfo
@@ -133,15 +131,15 @@ C if Desk.at(TaggedText) is undefined, error messageErrorNoFearlessProjectAtPath
 D if Desk.anyIsSameOrInside(TaggedText, ProjectsInfo.paths - {TaggedText}), error messageErrorProjectSameOrInsideOtherProject(TaggedText)
 E if not os$folderTimeChangesAt(TaggedText), error messageErrorFolderTimeDoesNotChangeAtPath(TaggedText)
 
-Signature: fearlessManager$directlyHandleMessage(Message)
+Signature: fearlessManager$editMetadata(Info)
 
-Define fearlessManager$directlyHandleMessage("EditMetadata " Info):
+Define fearlessManager$editMetadata(Info):
 A fact Info is not of form ProjectsInfo.
 B action error messageErrorNewMetadataIsNotValid(Info)
 
-Define fearlessManager$directlyHandleMessage("EditMetadata " ProjectsInfo):
+Define fearlessManager$editMetadata(ProjectsInfo):
 A fact ProjectsInfo.paths = fearlessManager.projectsInfo.paths
-B action return fearlessManager$directlyHandleMessage("EditMetadata " ProjectsInfo,fearlessManager.names)
+B action return fearlessManager$editMetadata(ProjectsInfo,fearlessManager.names)
 
 Signature: fearlessManager$namesAfterEdit(ProjectsInfo) = Names
 
@@ -155,12 +153,12 @@ B fact TaggedText not in fearlessManager.projectsInfo.paths
 C action os$currentDesk() = Desk
 D fact On Desk, the Fearless project at TaggedText has the name ProjectName.
 
-Define fearlessManager$directlyHandleMessage("EditMetadata " ProjectsInfo):
+Define fearlessManager$editMetadata(ProjectsInfo):
 A fact ProjectsInfo.paths != fearlessManager.projectsInfo.paths
 B action fearlessManager$namesAfterEdit(ProjectsInfo) = Names
-C action return fearlessManager$directlyHandleMessage("EditMetadata " ProjectsInfo,Names)
+C action return fearlessManager$editMetadata(ProjectsInfo,Names)
 
-Define fearlessManager$directlyHandleMessage("EditMetadata " ProjectsInfo):
+Define fearlessManager$editMetadata(ProjectsInfo):
 A fact ProjectsInfo.paths != fearlessManager.projectsInfo.paths
 B fact fearlessManager$namesAfterEdit(ProjectsInfo) is undefined.//undefined when the entries of the two Defines of fearlessManager$namesAfterEdit break the Well formedness of Names: a ProjectName is repeated
 C action fearlessManager.queue= "\tRefreshCache\n" fearlessManager.queue
@@ -179,7 +177,7 @@ A action fearlessManager$checkBusyProjectNotChanged(ProjectName,Base16,ProjectsI
 B fact fearlessManager.projectsInfo.get(Base16).#mounts = Infos.map(TypeName1, Infos.msg(ProjectName1) .. TypeNamen, Infos.msg(ProjectNamen))
 C action fearlessManager$checkBusyProjectNotChanged(ProjectName1,fearlessManager.names.projectNameToBase16(ProjectName1),ProjectsInfo) .. fearlessManager$checkBusyProjectNotChanged(ProjectNamen,fearlessManager.names.projectNameToBase16(ProjectNamen),ProjectsInfo)
 
-Define fearlessManager$directlyHandleMessage("EditMetadata " ProjectsInfo,Names):
+Define fearlessManager$editMetadata(ProjectsInfo,Names):
 A fact fearlessManager.longLivedMessages = (_->LongLivedMessage1) .. (_->LongLivedMessagem)
 B action fearlessManager$checkProjectsOfLongLivedMessageNotChanged(LongLivedMessage1,ProjectsInfo) .. fearlessManager$checkProjectsOfLongLivedMessageNotChanged(LongLivedMessagem,ProjectsInfo)
 C fact {TaggedText1 .. TaggedTextn} = ProjectsInfo.paths - fearlessManager.projectsInfo.paths
@@ -190,11 +188,6 @@ F action fearlessManager.names= Names
 G action fearlessManager.projectsInfo= ProjectsInfo
 H action fearlessManager replaces projects.info with ProjectsInfo serialized
 I action fearlessManager tells the manager GUI, if the manager GUI runs, to read projects.info again
-
-Define fearlessManager$directlyHandleMessage("RefreshCache"):
-A fact fearlessManager.longLivedMessages = {}
-B action fearlessManager.names= fearlessManager$rereadCachedNames(fearlessManager.projectsInfo)
-//later: fearlessManager answers the names that fearlessManager now holds
 
 Signature: fearlessManager$checkFullTargetIsCorrect(Target)
 
@@ -218,9 +211,8 @@ Signature: fearlessManager$openers(Base16) = Messages
 Define "Run Full(" ProjectName " " Base16 ") " TypeName " " Base16' in fearlessManager$openers(Base16'):
 A fact fearlessManager.projectsInfo.get(Base16) = Project
 B fact Project.#kind = Infos.msg("code")
-C action fearlessProject$checkIsUpToDate(Project) ends with done.
-D fact TypeName in frontend.claims(fearlessProject$jsons,Base16'.extension)
-E fact (Base16.taggedText->ProjectName) in fearlessManager.names
+C fact TypeName in frontend.claims(fearlessProject$jsons,Base16'.extension)
+D fact (Base16.taggedText->ProjectName) in fearlessManager.names
 //later: shortcut files; the extensions that fearlessManager chooses for a main; how the desk learns the extensions and the icons of the mains
 //later: opening a file with a main that is running adds that file to the input files of that main
 
@@ -311,19 +303,6 @@ Define fearlessManager$delegate("Terminate Full(" ProjectName " " Base16 ")"):
 A action fearlessManager$checkFullTargetIsCorrect("Full(" ProjectName " " Base16 ")")
 B action return "Terminate " Base16
 
-Define fearlessManager$directlyHandleMessage("Terminate " Base16):
-A if Base16 not in dom(fearlessManager.longLivedMessages), error messageErrorProjectIsNotBusy(Base16)
-B fact fearlessManager.longLivedMessages = LongLivedMap (Base16->LongLivedMessage) LongLivedMap'
-C action fearlessManager.longLivedMessages= LongLivedMap LongLivedMap'
-
-Define fearlessManager$directlyHandleMessage("Quit"):
-A action fearlessManager renames the LockFile to no_manager.lock
-B action fearlessManager stops listening for connections
-C fact fearlessManager.queue = "\t" Message1 "\n" .. "\t" Messagen "\n"
-D action fearlessManager answers "Refused\n" internalErrorManagerIsQuitting() to each of Message1 .. Messagen
-E action fearlessManager.queue= ""
-//later: sending progress lines to fearlessMessage
-
 Invariant:
 At every moment, at most one fearlessManager is the 'single' manager of one ManagerFolder.
 At every moment, for each (Base16->"Run Full(" _ " " Base16 ") " _ " " _) in fearlessManager.longLivedMessages, fearlessManager.projectsInfo.get(Base16).#kind = Infos.msg("code").
@@ -331,11 +310,11 @@ At every moment, for each (Base16->"Run Full(" _ " " Base16 ") " _ " " _) in fea
 
 Define fearlessManager$loadProjectsInfo():
 A fact The file projects.info holds Info serialized.
-B action fearlessManager$directlyHandleMessage("EditMetadata " Info) ends with done.
+B action fearlessManager$editMetadata(Info) ends with done.
 
 Define fearlessManager$loadProjectsInfo():
 A fact The file projects.info holds Info serialized.
-B action fearlessManager$directlyHandleMessage("EditMetadata " Info) ends with Error.
+B action fearlessManager$editMetadata(Info) ends with Error.
 C action fearlessManager replaces projects.info with Infos.list() serialized
 //later: fearlessManager keeps a backup of the projects.info that is replaced
 
@@ -408,18 +387,29 @@ D action fearlessManager$delegate(Message) ends with Error.
 E action fearlessManager answers "Refused\n" Error
 
 Story:
-A fact fearlessManager.queue = "\t" Message "\n" Queue
+A fact fearlessManager.queue = "\t" "EditMetadata " Info "\n" Queue
 B action fearlessManager.queue= Queue
-C fact Message is of form DirectMessage.
-D action fearlessManager$directlyHandleMessage(Message) ends with done.
+C action fearlessManager$editMetadata(Info) ends with done.
+D action fearlessManager answers "Applied\n"
+
+Story:
+A fact fearlessManager.queue = "\t" "EditMetadata " Info "\n" Queue
+B action fearlessManager.queue= Queue
+C action fearlessManager$editMetadata(Info) ends with Error.
+D action fearlessManager answers "Refused\n" Error
+
+Story:
+A fact fearlessManager.queue = "\t" "Terminate " Base16 "\n" Queue
+B action fearlessManager.queue= Queue
+C fact fearlessManager.longLivedMessages = LongLivedMap (Base16->LongLivedMessage) LongLivedMap'
+D action fearlessManager.longLivedMessages= LongLivedMap LongLivedMap'
 E action fearlessManager answers "Applied\n"
 
 Story:
-A fact fearlessManager.queue = "\t" Message "\n" Queue
+A fact fearlessManager.queue = "\t" "Terminate " Base16 "\n" Queue
 B action fearlessManager.queue= Queue
-C fact Message is of form DirectMessage.
-D action fearlessManager$directlyHandleMessage(Message) ends with Error.
-E action fearlessManager answers "Refused\n" Error
+C fact Base16 not in dom(fearlessManager.longLivedMessages)
+D action fearlessManager answers "Refused\n" messageErrorProjectIsNotBusy(Base16)
 
 Story:
 A fact fearlessManager.queue = "\t" "Openers " Base16 "\n" Queue
@@ -433,6 +423,14 @@ B fact fearlessManager.longLivedMessages = (Base160->_) .. (Base16n->_)
 C action fearlessManager.queue= "\t" "Terminate " Base160 "\n" .. "\t" "Terminate " Base16n "\n" "\tRefreshCache\n" Queue
 
 Story:
+A fact fearlessManager.queue = "\tRefreshCache\n" Queue
+B fact fearlessManager.longLivedMessages = {}
+C action fearlessManager.queue= Queue
+D action fearlessManager.names= fearlessManager$rereadCachedNames(fearlessManager.projectsInfo)
+E action fearlessManager answers "Applied\n"
+//later: fearlessManager answers the names that fearlessManager now holds
+
+Story:
 A fact fearlessManager.queue = "\tQuit\n" Queue
 B fact fearlessManager.longLivedMessages = (Base160->_) .. (Base16n->_)
 C action fearlessManager.queue= "\t" "Terminate " Base160 "\n" .. "\t" "Terminate " Base16n "\n" "\tQuit\n" Queue
@@ -441,10 +439,14 @@ Story:
 A fact fearlessManager.queue = "\tQuit\n" Queue
 B fact fearlessManager.longLivedMessages = {}
 C fact Every Story that starts with a LongLivedMessage added to fearlessManager.longLivedMessages has ended.
-D action fearlessManager.queue= Queue
-E action fearlessManager$directlyHandleMessage("Quit")
-F action fearlessManager answers "Applied\n"
-G action fearlessManager ends
+D action fearlessManager renames the LockFile to no_manager.lock
+E action fearlessManager stops listening for connections
+F fact Queue = "\t" Message1 "\n" .. "\t" Messagen "\n"
+G action fearlessManager answers "Refused\n" internalErrorManagerIsQuitting() to each of Message1 .. Messagen
+H action fearlessManager.queue= ""
+I action fearlessManager answers "Applied\n"
+J action fearlessManager ends
+//later: sending progress lines to fearlessMessage
 
 Story:
 A fact fearlessManager.queue = "\t" LongLivedMessage "\n" Queue
