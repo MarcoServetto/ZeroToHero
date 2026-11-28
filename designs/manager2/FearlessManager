@@ -60,7 +60,7 @@ Queue ::= "\t" Message1 "\n" .. "\t" Messagen "\n"
 LongLivedMessage ::= "Run Full(" ProjectName " " Base16 ") " TypeName " " InputFile | "Compile Full(" ProjectName " " Base16 ")"//Some Messages are also LongLivedMessage
 LongLivedMap ::= (Base161->LongLivedMessage1) .. (Base16n->LongLivedMessagen)
 Messages ::= Message1 .. Messagen
-DirectMessage ::= "EditMetadata " Info | "Terminate " Base16 | "RefreshCache" | "Openers " Base16 | "Quit"
+DirectMessage ::= "EditMetadata " Info | "Terminate " Base16 | "RefreshCache" | "Openers " Base16 | "Extensions" | "Quit"
 
 Well formedness:
 in LongLivedMap: Base161 .. Base16n are disjoint
@@ -206,6 +206,13 @@ B fact The Fearless project at Base16 does not have the name ProjectName, or fea
 C action fearlessManager.queue= "\tRefreshCache\n" fearlessManager.queue
 D action error messageErrorNameNotAssociatedWithBase16(ProjectName,Base16)
 
+Signature: fearlessManager$claimedExtensions = OSExtensions
+
+Define OSExtension in fearlessManager$claimedExtensions:
+A fact fearlessManager.projectsInfo.get(Base16) = Project
+B fact Project.#kind = Infos.msg("code")
+C fact frontend.claims(fearlessProject$jsons,OSExtension) = TypeName0 .. TypeNamen
+
 Signature: fearlessManager$openers(Base16) = Messages
 
 Define "Run Full(" ProjectName " " Base16 ") " TypeName " " Base16' in fearlessManager$openers(Base16'):
@@ -340,6 +347,8 @@ D action fearlessManager listens for connections on the loopback address, on the
 //later: the operating system associates the extension .fearless with one version of fearlessManager, and only that version runs. A fearlessManager that starts finds whether it took that association from another version or already had it. A fearlessManager that took the association removes the caches of the projects, the folders .fearless_out: the package "base" changes only when the version changes, and no test of fearlessProject$compilePackage or of fearlessProject$checkIsUpToDate sees a change of "base".
 E action fearlessManager renames candidate_manager.lock to "single_manager_at_" Port ".lock"
 F after fearlessManager is the 'single' manager.
+G action fearlessManager runs the fearlessOnClick that is in the same folder as fearlessManager with the one argument "Reconcile"
+//later: fearlessManager runs that fearlessOnClick with the one argument "Reconcile" also when fearlessManager$claimedExtensions changes
 
 Story:
 A event fearlessManager starts.
@@ -427,6 +436,12 @@ C fact fearlessManager$openers(Base16) = Message1 .. Messagen
 D action fearlessManager answers "Applied\n" Message1 "\n" .. Messagen "\n"
 
 Story:
+A fact fearlessManager.queue = "\tExtensions\n" Queue
+B action fearlessManager.queue= Queue
+C fact fearlessManager$claimedExtensions = OSExtension1 .. OSExtensionn
+D action fearlessManager answers "Applied\n" OSExtension1 "\n" .. OSExtensionn "\n"
+
+Story:
 A fact fearlessManager.queue = "\tRefreshCache\n" Queue
 B fact fearlessManager.longLivedMessages = (Base160->_) .. (Base16n->_)
 C action fearlessManager.queue= "\t" "Terminate " Base160 "\n" .. "\t" "Terminate " Base16n "\n" "\tRefreshCache\n" Queue
@@ -494,7 +509,7 @@ Implementation notes:
 A Str is a Fearless string literal: #empty is "", #path is "path", #kind is "kind", #mounts is "mounts" and #attenuators is "attenuators".
 Each Message of fearlessManager.queue and of fearlessManager.longLivedMessages keeps the connection that the Message arrived on; a Message that fearlessManager$delegate returns keeps the connection of the Message it comes from; a Terminate Message that a Quit adds to fearlessManager.queue keeps the connection of that Quit; a Terminate Message that a "RefreshCache" adds to fearlessManager.queue keeps the connection of that "RefreshCache"; a "RefreshCache" that fearlessManager adds to fearlessManager.queue keeps the connection of the Message that fearlessManager refuses; fearlessManager answers a Message on that connection.
 The implementation finds os$folderTimeChangesAt(TaggedText) by doing it: fearlessManager notes the modification time of a folder, waits until the clock of that file system is after that time, adds a file to that folder, and reads the modification time again.
-The 'manager path' is chosen by the implementation, and can differ between operating systems: each version of fearlessManager has its own ManagerFolder, and a copy of an installation is an independent installation with its own ManagerFolder.
+The 'manager path' is chosen by the implementation, and can differ between operating systems: each version of fearlessManager has its own ManagerFolder, and a copy of fearlessManager at another path has its own ManagerFolder.
 The lock of a LockFile is the lock of FileChannel.tryLock: the OS releases the lock when the process ends, however the process ends, and the lock follows the file when the file is renamed.
 fearlessManager finds that another process holds the lock by trying to take the lock: there is no separate check before taking the lock.
 fearlessManager creates the ManagerFolder by filling a new folder next to the 'manager path', then renaming that new folder to the 'manager path': the rename fails when a folder is at the 'manager path' already.
